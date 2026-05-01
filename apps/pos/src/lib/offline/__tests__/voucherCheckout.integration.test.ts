@@ -2,6 +2,12 @@
  * Codex review B5 (2026-05-01) — end-to-end integration test for the offline
  * voucher checkout flow.
  *
+ * B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
+ * writes a local voucher_ledger row. The canonical voucher_ledger entry is
+ * server-authored exclusively (ReceiptSyncService now invokes
+ * VoucherRedemptionService::redeem during sync). The local mirror picks up
+ * the canonical row on the next pullVoucherLedger.
+ *
  * Wires every layer the B5 commit chain touches against a REAL SQLite
  * engine (node:sqlite via SqliteTestAdapter), no mocks for the database
  * layer. The flow proven here:
@@ -10,11 +16,12 @@
  *   2. Seed a terminal_state row + a local voucher with current_balance 50 EUR.
  *   3. Call createOfflineReceipt with a 50 EUR cart and a single
  *      store_voucher payment whose serial matches the seeded voucher.
- *   4. Assert (a) the offline_receipts row landed with the v3 fiscal hash,
- *      (b) a pending voucher_ledger Redeemed row exists with the receipt's
- *      idempotency key as its id-prefix correlation point, (c) the local
- *      voucher's current_balance is now 0.00, and (d) the local voucher's
- *      status transitioned to FullyRedeemed.
+ *   4. Assert (a) the offline_receipts row landed with the fiscal hash,
+ *      (b) NO local voucher_ledger row was written (Option B — the canonical
+ *      row arrives server-side via sync), (c) the local voucher's
+ *      current_balance is now 0.00 (decrement is local-only for cashier
+ *      visibility), and (d) the local voucher's status transitioned to
+ *      FullyRedeemed.
  *
  * This is the "real flow test" the Codex review B5 final report explicitly
  * asked for ("Add a real flow test that starts from the mounted POS UI…").
@@ -25,10 +32,10 @@
  * VoucherTenderModal opens on tile tap and the apply callback fires.
  *
  * Together these two test files cover the B5 contract from cashier tap
- * through to local SQLite ledger row + balance decrement.
+ * through to local SQLite balance decrement.
  *
- * Tests fail on parent commit 5b65cd06 (createOfflineReceipt has no
- * voucher-redemption logic) and pass after the B5 receiptService change.
+ * Tests fail on the original B5 commit abb1323a (which wrote the local
+ * voucher_ledger row) and pass after Option B removes that write.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -131,7 +138,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     adapter.close();
   });
 
-  it('full flow: voucher applied → receipt sealed → ledger row + balance decrement on SAME transaction', async () => {
+  it('full flow: voucher applied → receipt sealed → balance decrement, NO local ledger row (Option B)', async () => {
     await seedVoucher(adapter, {
       id: 'voucher-int-001',
       code: 'SV-INT-0099',
@@ -180,31 +187,20 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     expect(receiptRows).toHaveLength(1);
     expect(receiptRows[0]!.total).toBe('50.00');
 
-    // (b) Pending voucher_ledger Redeemed row exists.
-    const ledgerRows = await adapter.select<
-      Array<{
-        voucher_id: string;
-        event: string;
-        amount: string;
-        currency: string;
-        sync_status: string;
-        terminal_id: string;
-        user_id: string;
-      }>
-    >(
-      `SELECT voucher_id, event, amount, currency, sync_status, terminal_id, user_id
-         FROM voucher_ledger WHERE voucher_id = $1`,
+    // (b) NO local voucher_ledger row was written (Option B). The canonical
+    //     row is server-authored exclusively — ReceiptSyncService now
+    //     invokes VoucherRedemptionService::redeem during sync, which
+    //     writes the canonical row tied to the synced receipt. The local
+    //     mirror picks up that row on the next pullVoucherLedger.
+    const ledgerRows = await adapter.select<Array<{ voucher_id: string }>>(
+      `SELECT voucher_id FROM voucher_ledger WHERE voucher_id = $1`,
       ['voucher-int-001'],
     );
-    expect(ledgerRows).toHaveLength(1);
-    expect(ledgerRows[0]!.event).toBe('Redeemed');
-    expect(ledgerRows[0]!.amount).toBe('50.00');
-    expect(ledgerRows[0]!.currency).toBe('EUR');
-    expect(ledgerRows[0]!.sync_status).toBe('pending');
-    expect(ledgerRows[0]!.terminal_id).toBe('terminal-int-1');
-    expect(ledgerRows[0]!.user_id).toBe('op-int-1');
+    expect(ledgerRows).toHaveLength(0);
 
-    // (c) Voucher's current_balance decremented to zero.
+    // (c) Voucher's current_balance decremented to zero (local-only
+    //     optimistic update so the cashier sees the right balance until
+    //     sync reconciles the canonical state).
     const after = await findByCode(adapter as never, 'SV-INT-0099');
     expect(after).not.toBeNull();
     expect(after!.current_balance).toBe('0.00');
@@ -286,7 +282,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     expect(ledgerCount[0]!.count).toBe(0);
   });
 
-  it('mixed tender (cash + voucher): only voucher tender writes voucher_ledger; cash leaves it untouched', async () => {
+  it('mixed tender (cash + voucher): voucher balance decrements, NO local ledger row (Option B)', async () => {
     await seedVoucher(adapter, {
       id: 'voucher-int-003',
       code: 'SV-INT-MIXED',
@@ -322,15 +318,15 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       ],
     });
 
-    // Exactly one voucher_ledger row (for the voucher tender — NOT cash).
+    // Option B: NO local voucher_ledger rows. Cash never wrote one (correct);
+    // voucher tender no longer writes one either.
     const ledgerRows = await adapter.select<Array<{ voucher_id: string; amount: string }>>(
       'SELECT voucher_id, amount FROM voucher_ledger',
     );
-    expect(ledgerRows).toHaveLength(1);
-    expect(ledgerRows[0]!.voucher_id).toBe('voucher-int-003');
-    expect(ledgerRows[0]!.amount).toBe('20.00');
+    expect(ledgerRows).toHaveLength(0);
 
-    // Voucher fully redeemed (50 - 20 ... wait, balance was 20, redeemed 20 → 0).
+    // Voucher's local balance still decrements (optimistic UI for cashier).
+    // Balance was 20, redeemed 20 → 0.
     const after = await findByCode(adapter as never, 'SV-INT-MIXED');
     expect(after!.current_balance).toBe('0.00');
     expect(after!.status).toBe('FullyRedeemed');

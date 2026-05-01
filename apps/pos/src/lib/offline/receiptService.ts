@@ -13,7 +13,6 @@ import {
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   findByCode as findVoucherByCode,
-  insertPendingVoucherLedgerRow,
   updateVoucherBalanceAndStatus,
   type LocalVoucher,
   type VoucherStatus,
@@ -385,39 +384,60 @@ export async function createOfflineReceipt(
 
   // 5b. Codex review B5 (2026-05-01): pre-resolve every store_voucher payment
   //     against the local voucher mirror BEFORE entering the transaction. We
-  //     need (a) the local voucher.id to write the ledger row's voucher_id FK
-  //     and (b) the current_balance to compute the new balance with bcsub.
-  //     The lookup is read-only and side-effect-free, so it is safe outside
-  //     the transaction; the writes inside the transaction use these
+  //     need (a) the local voucher.id to update the projection row, and
+  //     (b) the current_balance to compute the new balance with bcsub. The
+  //     lookup is read-only and side-effect-free, so it is safe outside the
+  //     transaction; the balance update inside the transaction uses these
   //     pre-resolved snapshots.
   //
   //     If a voucher is missing from the local mirror, fail loud — the cashier
   //     applied a tender for which we have no projection, which means the
-  //     server cannot map the push to a real voucher either. This is the
-  //     offline analogue of `VoucherRedemptionService` throwing
+  //     server cannot map the redemption to a real voucher either. This is
+  //     the offline analogue of `VoucherRedemptionService` throwing
   //     `VoucherInvalidStatusException` for an unknown code.
   const voucherTenders = collectStoreVoucherPayments(input.payments);
   const resolvedVouchers = await resolveLocalVouchers(db, voucherTenders);
 
-  // 5c. Wrap receipt insert + hash chain advance + voucher ledger writes in
-  //     a single transaction. Either the receipt + chain + ledger + balance
-  //     all commit, or none do — this prevents the cashier from sealing a
-  //     fiscal receipt that references a voucher whose balance never moved.
+  // 5c. Wrap receipt insert + hash chain advance + voucher balance updates
+  //     in a single transaction. Either the receipt + chain + balance all
+  //     commit, or none do — this prevents the cashier from sealing a
+  //     fiscal receipt that references a voucher whose local projection
+  //     never moved.
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertOfflineReceipt(db, offlineReceipt);
     await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
 
-    // Codex review B5 (2026-05-01): for every store_voucher payment in this
-    // receipt, append a Redeemed ledger row in pending sync state, decrement
-    // the local voucher projection's balance, and update its status to
-    // FullyRedeemed (zero balance) or PartiallyRedeemed (positive residual).
-    // The push pipeline (`syncService.pushVoucherLedgerEntries`) ships the
-    // pending rows to the server, where `VoucherLedgerPushService::ingest`
-    // dedupes against the canonical projection. The server-side
-    // VoucherRedemptionService is the source of truth for GL accounting; the
-    // local writes are projection updates that keep the cashier's view
-    // consistent until the server replays the redemption.
+    // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
+    // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
+    // entry is server-authored exclusively — `ReceiptSyncService` now invokes
+    // `VoucherRedemptionService::redeem` during sync, which produces the
+    // canonical row tied to the synced receipt with a server-controlled UUID.
+    // The local mirror picks up that row on the next pullVoucherLedger.
+    //
+    // Why we keep the local balance update:
+    //   - The cashier sees the right voucher balance immediately on this
+    //     terminal (e.g. for stacked redemptions in the same session) until
+    //     sync reconciles the canonical state.
+    //   - The atomicity guarantee is unchanged: a balance-update failure
+    //     rolls back the receipt insert + chain advance.
+    //
+    // Why we removed the local voucher_ledger row:
+    //   - The previous write produced a row with `receipt_id = null` because
+    //     no server receipt id existed yet at offline-write time.
+    //   - `VoucherLedgerPushService::push()` rejects every such row with
+    //     `'receipt_id_required_for_redemption'`, and the audit found the
+    //     push client silently dropped the failure (Minor 2 — fixed in the
+    //     companion commit). Even with the silent-drop fixed, the server
+    //     cannot ingest this row shape because there is no canonical
+    //     receipt to bind the GL leg against.
+    //   - Removing the local write removes the bug at the root: the
+    //     server-side redemption during sync is now the single canonical
+    //     entry point. The push pipeline (`pushVoucherLedgerEntries`)
+    //     becomes reserved for future offline-issued voucher operations
+    //     not tied to a synced receipt (e.g., goodwill issuance from a
+    //     back-office screen), per the
+    //     `VoucherLedgerPushService` docblock contract.
     for (let i = 0; i < voucherTenders.length; i++) {
       const tender = voucherTenders[i]!;
       const voucher = resolvedVouchers[i]!;
@@ -432,18 +452,6 @@ export async function createOfflineReceipt(
       const newStatus: VoucherStatus = bccomp(clampedBalance, '0') === 0
         ? 'FullyRedeemed'
         : 'PartiallyRedeemed';
-
-      await insertPendingVoucherLedgerRow(db, {
-        id: crypto.randomUUID(),
-        voucher_id: voucher.id,
-        event: 'Redeemed',
-        amount: bcformat(tender.amount, decimals),
-        currency: input.currency,
-        receipt_id: null,
-        terminal_id: input.terminalId,
-        user_id: input.operatorId,
-        occurred_at: postedAt,
-      });
 
       await updateVoucherBalanceAndStatus(db, voucher.id, clampedBalance, newStatus);
     }

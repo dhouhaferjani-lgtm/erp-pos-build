@@ -766,7 +766,26 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     vi.mocked(findVoucherByCode).mockResolvedValue(null);
   });
 
-  it('writes a pending voucher_ledger Redeemed row when a store_voucher payment is present', async () => {
+  // B5-fix audit decision (Option B, 2026-05-01): the offline path NO LONGER
+  // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
+  // is server-authored exclusively — ReceiptSyncService now invokes
+  // VoucherRedemptionService::redeem during sync, which produces the
+  // canonical row with a server-controlled UUID and a real receipt_id. The
+  // local mirror picks up that row on the next pullVoucherLedger.
+  //
+  // What the offline path KEEPS doing:
+  //   - Decrement local voucher balance (so the cashier sees the right
+  //     balance immediately on this terminal until sync).
+  //   - Update local voucher status (PartiallyRedeemed / FullyRedeemed).
+  //   - Atomic with the receipt insert (single BEGIN/COMMIT envelope).
+  //
+  // What the offline path STOPS doing:
+  //   - Writing a local voucher_ledger row with receipt_id=null, which the
+  //     server's VoucherLedgerPushService rejects with
+  //     'receipt_id_required_for_redemption'. That row was the source of
+  //     the audit's silent-drop blocker; removing it removes the bug at the
+  //     root.
+  it('does NOT write a local voucher_ledger row for store_voucher payments — server-authored only (Option B)', async () => {
     vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
     const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
 
@@ -789,19 +808,11 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
       ],
     });
 
-    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledOnce();
-    const ledgerCall = vi.mocked(insertPendingVoucherLedgerRow).mock.calls[0]!;
-    const ledgerRow = ledgerCall[1];
-    expect(ledgerRow.event).toBe('Redeemed');
-    expect(ledgerRow.amount).toBe('20.00');
-    expect(ledgerRow.voucher_id).toBe('v-001');
-    expect(ledgerRow.currency).toBe('EUR');
-    expect(ledgerRow.terminal_id).toBe('terminal-1');
-    expect(ledgerRow.user_id).toBe('op-cashier-1');
-    expect(ledgerRow.receipt_id).toBeNull(); // server assigns this on push
-    // Ledger id must be a fresh UUID (not voucher.id, not receipt.id).
-    expect(ledgerRow.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    expect(ledgerRow.id).not.toBe('v-001');
+    // (a) NO local voucher_ledger row was created.
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
+    // (b) Local balance was still decremented so the cashier sees the
+    //     correct projection until the canonical row arrives via pull.
+    expect(updateVoucherBalanceAndStatus).toHaveBeenCalledOnce();
   });
 
   it('decrements the local voucher balance by the redeemed amount and updates status to PartiallyRedeemed', async () => {
@@ -896,10 +907,14 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
   });
 
-  it('rolls back the WHOLE transaction when insertPendingVoucherLedgerRow fails (atomicity)', async () => {
+  it('rolls back the WHOLE transaction when updateVoucherBalanceAndStatus fails (atomicity, Option B)', async () => {
+    // After Option B (2026-05-01), the local balance update is the only
+    // voucher-related write inside the transaction (the voucher_ledger
+    // write was removed). A failure here must still roll back the receipt
+    // insert + chain advance — single-shot atomicity.
     vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
-    vi.mocked(insertPendingVoucherLedgerRow).mockRejectedValueOnce(
-      new Error('voucher_ledger insert failed'),
+    vi.mocked(updateVoucherBalanceAndStatus).mockRejectedValueOnce(
+      new Error('voucher balance update failed'),
     );
 
     const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
@@ -923,14 +938,15 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
           },
         ],
       }),
-    ).rejects.toThrow('voucher_ledger insert failed');
+    ).rejects.toThrow('voucher balance update failed');
 
     const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
     expect(executeCalls).toContain('BEGIN TRANSACTION');
     expect(executeCalls).toContain('ROLLBACK');
     expect(executeCalls).not.toContain('COMMIT');
-    // Voucher balance update never ran (failure was BEFORE that call).
-    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+    // The local voucher_ledger row write was removed in Option B; no
+    // ledger-write expectation here (it never runs in any path).
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
   });
 
   it('does NOT touch the voucher_ledger when the receipt has no store_voucher payments (cash-only regression guard)', async () => {
@@ -953,7 +969,7 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     expect(findVoucherByCode).not.toHaveBeenCalled();
   });
 
-  it('handles multiple store_voucher tenders in one receipt (each writes its own ledger row + balance update)', async () => {
+  it('handles multiple store_voucher tenders in one receipt (each updates its own balance) — Option B no local ledger', async () => {
     vi.mocked(findVoucherByCode)
       .mockResolvedValueOnce(makeLocalVoucher({ id: 'v-A', code: 'SV-A', current_balance: '40.00' }))
       .mockResolvedValueOnce(makeLocalVoucher({ id: 'v-B', code: 'SV-B', current_balance: '15.00' }));
@@ -985,14 +1001,11 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
       ],
     });
 
-    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledTimes(2);
+    // Option B: no local voucher_ledger writes. Each tender still updates
+    // the local voucher's balance + status so the cashier's projection
+    // reflects reality.
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
     expect(updateVoucherBalanceAndStatus).toHaveBeenCalledTimes(2);
-
-    const ledgerRows = vi.mocked(insertPendingVoucherLedgerRow).mock.calls.map((c) => c[1]);
-    expect(ledgerRows[0]!.voucher_id).toBe('v-A');
-    expect(ledgerRows[0]!.amount).toBe('40.00');
-    expect(ledgerRows[1]!.voucher_id).toBe('v-B');
-    expect(ledgerRows[1]!.amount).toBe('10.00');
 
     const balanceUpdates = vi.mocked(updateVoucherBalanceAndStatus).mock.calls;
     // SV-A: 40 - 40 = 0 → FullyRedeemed
@@ -1005,7 +1018,7 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     expect(balanceUpdates[1]![3]).toBe('PartiallyRedeemed');
   });
 
-  it('voucher ledger writes happen INSIDE the BEGIN/COMMIT envelope (atomic with receipt insert)', async () => {
+  it('voucher balance update happens INSIDE the BEGIN/COMMIT envelope (atomic with receipt insert)', async () => {
     vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
     const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
 
@@ -1034,13 +1047,12 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     expect(beginIdx).toBeGreaterThanOrEqual(0);
     expect(commitIdx).toBeGreaterThan(beginIdx);
 
-    // The mocked helpers don't issue raw db.execute calls (they're mocked at
-    // the module boundary), but `insertOfflineReceipt` ran within the
-    // envelope and `insertPendingVoucherLedgerRow`/`updateVoucherBalanceAndStatus`
-    // were both called exactly once. Together with the rollback-on-failure
-    // test above, this proves they share the same transactional fate.
+    // After Option B the only voucher-related write inside the transaction
+    // is the balance update. Together with the rollback-on-failure test,
+    // this proves the receipt insert and the balance update share the same
+    // transactional fate.
     expect(insertOfflineReceipt).toHaveBeenCalledOnce();
-    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledOnce();
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
     expect(updateVoucherBalanceAndStatus).toHaveBeenCalledOnce();
   });
 
