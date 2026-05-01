@@ -30,15 +30,52 @@ export interface ActionMenuProps {
   isLoading?: boolean
 }
 
-interface MenuPosition {
+export interface MenuPosition {
   top: number
   left: number
   /** Width in pixels — pinned to MENU_WIDTH for consistency. */
   width: number
 }
 
-const MENU_WIDTH = 192 // matches w-48
-const MENU_VERTICAL_GAP = 4
+export const MENU_WIDTH = 192 // matches w-48
+export const MENU_VERTICAL_GAP = 4
+
+/**
+ * Pure position-computation function.
+ *
+ * Exported so it can be unit-tested directly without JSDOM layout.
+ * The component calls this internally after obtaining the live rect and
+ * menu height from refs.
+ *
+ * @param triggerRect  - DOMRect of the trigger button (from getBoundingClientRect)
+ * @param menuHeight   - Rendered height of the menu panel in pixels (0 before first paint)
+ * @param viewportWidth  - window.innerWidth
+ * @param viewportHeight - window.innerHeight
+ */
+export function computeMenuPosition(
+  triggerRect: Pick<DOMRect, 'top' | 'bottom' | 'right'>,
+  menuHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): MenuPosition {
+  // Right-align to the trigger
+  let left = triggerRect.right - MENU_WIDTH
+  if (left < 8) left = 8
+  if (left + MENU_WIDTH > viewportWidth - 8) {
+    left = viewportWidth - MENU_WIDTH - 8
+  }
+
+  // Drop below by default; flip up if it would clip past the viewport
+  const spaceBelow = viewportHeight - triggerRect.bottom
+  const spaceAbove = triggerRect.top
+  const wantsUp = menuHeight > 0 && spaceBelow < menuHeight + MENU_VERTICAL_GAP && spaceAbove > spaceBelow
+
+  const top = wantsUp
+    ? Math.max(8, triggerRect.top - menuHeight - MENU_VERTICAL_GAP)
+    : Math.min(viewportHeight - 8, triggerRect.bottom + MENU_VERTICAL_GAP)
+
+  return { top, left, width: MENU_WIDTH }
+}
 
 /**
  * A right-aligned action menu that renders into a portal so it cannot be
@@ -64,28 +101,12 @@ export function ActionMenu({
     const trigger = triggerRef.current
     if (trigger === null) return null
 
-    const rect = trigger.getBoundingClientRect()
-    const menuHeight = menuRef.current?.offsetHeight ?? 0
-    const viewportHeight = window.innerHeight
-    const viewportWidth = window.innerWidth
-
-    // Right-align to the trigger
-    let left = rect.right - MENU_WIDTH
-    if (left < 8) left = 8
-    if (left + MENU_WIDTH > viewportWidth - 8) {
-      left = viewportWidth - MENU_WIDTH - 8
-    }
-
-    // Drop below by default; flip up if it would clip past the viewport
-    const spaceBelow = viewportHeight - rect.bottom
-    const spaceAbove = rect.top
-    const wantsUp = menuHeight > 0 && spaceBelow < menuHeight + MENU_VERTICAL_GAP && spaceAbove > spaceBelow
-
-    const top = wantsUp
-      ? Math.max(8, rect.top - menuHeight - MENU_VERTICAL_GAP)
-      : Math.min(viewportHeight - 8, rect.bottom + MENU_VERTICAL_GAP)
-
-    return { top, left, width: MENU_WIDTH }
+    return computeMenuPosition(
+      trigger.getBoundingClientRect(),
+      menuRef.current?.offsetHeight ?? 0,
+      window.innerWidth,
+      window.innerHeight,
+    )
   }
 
   useLayoutEffect(() => {
