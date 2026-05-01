@@ -755,7 +755,9 @@
     "pinModal": {
       "title": "Définir le PIN POS",
       "pinLabel": "PIN (4-6 chiffres)",
-      "clearPin": "Supprimer le PIN"
+      "clearPin": "Supprimer le PIN",
+      "generate": "Générer un PIN aléatoire",
+      "shareWithCashier": "Partagez ce PIN avec le caissier maintenant — il ne sera plus affiché après l'enregistrement."
     },
     "validation": {
       "nameRequired": "Le nom est requis",

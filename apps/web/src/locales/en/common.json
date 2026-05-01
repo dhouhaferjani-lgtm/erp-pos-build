@@ -752,7 +752,9 @@
     "pinModal": {
       "title": "Set POS PIN",
       "pinLabel": "PIN (4-6 digits)",
-      "clearPin": "Clear PIN"
+      "clearPin": "Clear PIN",
+      "generate": "Generate random PIN",
+      "shareWithCashier": "Share this PIN with the cashier now — it will not be shown again after saving."
     },
     "validation": {
       "nameRequired": "Name is required",

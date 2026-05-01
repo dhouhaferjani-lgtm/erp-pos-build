@@ -514,6 +514,13 @@ class UserController extends Controller
         if ($pin === null) {
             $user->update(['pos_pin' => null]);
 
+            $this->logAuditEvent(
+                eventType: 'user.pos_pin_cleared',
+                aggregateId: $user->id,
+                userId: $currentUser->id,
+                companyId: $request->header('X-Company-Id'),
+            );
+
             return response()->json([
                 'data' => ['message' => 'POS PIN cleared'],
                 'meta' => $this->getMeta($request),

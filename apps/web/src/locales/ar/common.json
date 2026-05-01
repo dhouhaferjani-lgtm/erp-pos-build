@@ -752,7 +752,9 @@
     "pinModal": {
       "title": "تعيين رمز PIN لنقطة البيع",
       "pinLabel": "رمز PIN (4 إلى 6 أرقام)",
-      "clearPin": "مسح الرمز"
+      "clearPin": "مسح الرمز",
+      "generate": "إنشاء رمز PIN عشوائي",
+      "shareWithCashier": "شارك هذا الرمز مع الصرّاف الآن — لن يظهر مرة أخرى بعد الحفظ."
     },
     "validation": {
       "nameRequired": "الاسم مطلوب",

@@ -524,10 +524,36 @@ interface PosPinModalProps {
   isLoading: boolean
 }
 
+/**
+ * Generate a numeric PIN of `length` digits using a cryptographically
+ * strong source when available. Used so admins can reset a PIN without
+ * picking one themselves; the PIN is shown once on screen.
+ */
+export function generateRandomPin(length = 4): string {
+  if (length < 4 || length > 6) {
+    throw new Error('PIN length must be between 4 and 6 digits.')
+  }
+  const cryptoApi = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : null
+  let result = ''
+  if (cryptoApi !== null && typeof cryptoApi.getRandomValues === 'function') {
+    const buffer = new Uint32Array(length)
+    cryptoApi.getRandomValues(buffer)
+    for (const value of buffer) {
+      result += (value % 10).toString()
+    }
+  } else {
+    for (let i = 0; i < length; i += 1) {
+      result += Math.floor(Math.random() * 10).toString()
+    }
+  }
+  return result
+}
+
 function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps) {
   const { t } = useTranslation()
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
+  const [wasGenerated, setWasGenerated] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -537,6 +563,12 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
     }
     setPinError(null)
     onSubmit(pin)
+  }
+
+  const handleGenerate = () => {
+    setPin(generateRandomPin(4))
+    setPinError(null)
+    setWasGenerated(true)
   }
 
   return (
@@ -563,6 +595,7 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
                   const v = e.target.value.replace(/\D/g, '')
                   setPin(v)
                   setPinError(null)
+                  setWasGenerated(false)
                 }}
                 className={`mt-1 block w-full rounded-md border px-3 py-2 text-center text-2xl tracking-[0.5em] shadow-sm focus:outline-none focus:ring-1 ${
                   pinError
@@ -572,6 +605,21 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
                 autoFocus
               />
               {pinError && <p className="mt-1 text-sm text-red-600">{pinError}</p>}
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isLoading}
+                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              >
+                {t('users.pinModal.generate', { defaultValue: 'Generate random PIN' })}
+              </button>
+              {wasGenerated && (
+                <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {t('users.pinModal.shareWithCashier', {
+                    defaultValue: 'Share this PIN with the cashier now — it will not be shown again after saving.',
+                  })}
+                </p>
+              )}
             </div>
 
             <div className="flex justify-between gap-3 pt-2">
