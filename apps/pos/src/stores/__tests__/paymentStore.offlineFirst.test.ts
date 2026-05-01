@@ -242,6 +242,61 @@ describe('paymentStore offline-first cash checkout', () => {
     ).rejects.toThrow(/unknown payment method|method not found/i);
   });
 
+  it('B3-followup audit (Finding 1): processAdvancedCheckout forwards instrument_type + instrument_serial into createOfflineReceipt for voucher tenders', async () => {
+    // This test locks the production-path proof for B3: a voucher-bearing
+    // AdvancedPaymentLine (which is what AdvancedPaymentsModal now emits when
+    // paymentStore.voucherTenders is non-empty) must reach createOfflineReceipt
+    // with the instrument fields populated. Without this branch the v3 fiscal
+    // hash binds a null serial and the original B3 production bug re-surfaces
+    // at the entry point.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    usePaymentStore.setState({
+      paymentMethods: [
+        makePaymentMethod({ id: 'pm-cash', code: 'CASH' }),
+        makePaymentMethod({ id: 'pm-store-voucher', code: 'store_voucher', is_physical: false, requires_third_party: false }),
+      ],
+      paymentRepositories: [
+        makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+        makePaymentRepository({ id: 'repo-virtual', type: 'virtual' }),
+      ],
+    });
+
+    await usePaymentStore.getState().processAdvancedCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      [
+        // Cash half — no instrument fields.
+        { payment_method_id: 'pm-cash', amount: 25, repository_id: 'repo-cash' },
+        // Voucher half — instrument fields populated, mimicking the
+        // AdvancedPaymentsModal merge of paymentStore.voucherTenders.
+        {
+          payment_method_id: 'pm-store-voucher',
+          amount: 25,
+          repository_id: 'repo-virtual',
+          instrument_type: 'store_voucher',
+          instrument_serial: 'SV-2026-0099',
+        },
+      ],
+    );
+
+    expect(createOfflineReceipt).toHaveBeenCalledOnce();
+    const callArgs = vi.mocked(createOfflineReceipt).mock.calls[0]![1];
+    expect(callArgs.payments).toHaveLength(2);
+    expect(callArgs.payments[0]).toEqual(expect.objectContaining({
+      methodCode: 'CASH',
+      amount: '25.00',
+      instrumentType: undefined,
+      instrumentSerial: undefined,
+    }));
+    expect(callArgs.payments[1]).toEqual(expect.objectContaining({
+      methodCode: 'store_voucher',
+      amount: '25.00',
+      instrumentType: 'store_voucher',
+      instrumentSerial: 'SV-2026-0099',
+    }));
+  });
+
   it('card checkout honors currency decimals (TND = 3 decimals)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
     useAuthStore.setState({

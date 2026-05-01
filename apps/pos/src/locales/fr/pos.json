@@ -573,7 +573,10 @@
     "repositoryRequired": "Sélectionnez un compte de dépôt",
     "delete": "Supprimer",
     "orderSummary": "Résumé de la commande",
-    "itemsCount": "{{count}} article(s)"
+    "itemsCount": "{{count}} article(s)",
+    "voucherTenderLabel": "Bon d'achat",
+    "voucherMethodMissing": "Impossible d'appliquer le bon d'achat — le mode de paiement « bon d'achat » n'est pas configuré pour ce terminal.",
+    "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte virtuel ou bancaire n'est configuré pour les bons."
   },
   "consumptionMode": {
     "label": "Mode de consommation",

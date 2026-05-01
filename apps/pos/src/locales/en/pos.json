@@ -573,7 +573,10 @@
     "repositoryRequired": "Select a deposit account",
     "delete": "Remove",
     "orderSummary": "Order Summary",
-    "itemsCount": "{{count}} item(s)"
+    "itemsCount": "{{count}} item(s)",
+    "voucherTenderLabel": "Voucher",
+    "voucherMethodMissing": "Cannot apply voucher tender — store voucher payment method is not configured for this terminal.",
+    "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual or bank-account repository is configured for vouchers."
   },
   "consumptionMode": {
     "label": "Consumption Mode",

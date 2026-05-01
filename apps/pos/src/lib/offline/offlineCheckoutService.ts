@@ -34,6 +34,17 @@ export interface CheckoutInput {
     repositoryId?: string;
     cardLastFour?: string;
     transactionReference?: string;
+    /**
+     * B3-followup audit (Finding 1, 2026-05-01): voucher / instrument
+     * discriminator. Bound into the v3 fiscal hash and persisted on
+     * `pos_receipt_payments.instrument_type`. Omit for cash / card.
+     */
+    instrumentType?: 'store_voucher' | 'restaurant_voucher' | 'gift_card';
+    /**
+     * B3-followup audit (Finding 1, 2026-05-01): voucher serial / gift-card
+     * code that tendered this row. Required when `instrumentType` is set.
+     */
+    instrumentSerial?: string;
   }>;
   consumptionMode?: string;
   tableId?: string;
@@ -75,14 +86,32 @@ async function onlineCheckout(
   const receipt = await createReceipt(
     input.receiptData as unknown as Parameters<typeof createReceipt>[0],
   );
+
+  // B3-followup audit (Finding 1, 2026-05-01): when split-payment data is
+  // supplied via `input.payments` (e.g. from AdvancedPaymentsModal +
+  // VoucherTender flow), forward each row to the online endpoint with its
+  // instrument fields populated. Without this, a voucher-bearing online sale
+  // produces a v3 receipt whose `pos_receipt_payments.instrument_serial` is
+  // null — defeating the v3 hash binding (the original B3 production bug,
+  // re-surfacing here at the entry point).
+  const onlinePayments = input.payments && input.payments.length > 0
+    ? input.payments.map((p) => ({
+      payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
+      amount: parseFloat(p.amount),
+      repository_id: p.repositoryId ?? input.paymentRepositoryId,
+      ...(p.cardLastFour ? { card_last_four: p.cardLastFour } : {}),
+      ...(p.transactionReference ? { transaction_reference: p.transactionReference } : {}),
+      ...(p.instrumentType ? { instrument_type: p.instrumentType } : {}),
+      ...(p.instrumentSerial ? { instrument_serial: p.instrumentSerial } : {}),
+    }))
+    : [{
+      payment_method_id: input.paymentMethodId,
+      amount: parseFloat(receipt.total),
+      repository_id: input.paymentRepositoryId,
+    }];
+
   const paymentResponse = await processReceiptPayments(receipt.id, {
-    payments: [
-      {
-        payment_method_id: input.paymentMethodId,
-        amount: parseFloat(receipt.total),
-        repository_id: input.paymentRepositoryId,
-      },
-    ],
+    payments: onlinePayments,
   });
 
   const totalAmount = parseFloat(receipt.total);
@@ -122,6 +151,9 @@ async function offlineCheckout(
     paymentRepositoryId: input.paymentRepositoryId,
     tenderedAmount: input.tenderedAmount,
     transactionDiscount: input.transactionDiscount,
+    // B3-followup audit (Finding 1, 2026-05-01): forward instrument fields
+    // verbatim so a voucher tender enters the v3 fiscal hash with its serial
+    // bound, and `payments_json` carries the snapshot to the sync layer.
     payments: input.payments ?? defaultPayments,
     consumptionMode: input.consumptionMode,
     tableId: input.tableId,
