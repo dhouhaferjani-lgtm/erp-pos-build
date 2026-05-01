@@ -23,6 +23,12 @@
  *      visibility), and (d) the local voucher's status transitioned to
  *      FullyRedeemed.
  *
+ * (B5-fix audit Nit, 2026-05-01) — earlier docs in this header claimed an
+ * assertion about "the receipt's idempotency key as its id-prefix
+ * correlation point" on a pending voucher_ledger row. That assertion never
+ * existed in the test body and the schema does not carry such a tie. The
+ * note has been removed from the contract description above.
+ *
  * This is the "real flow test" the Codex review B5 final report explicitly
  * asked for ("Add a real flow test that starts from the mounted POS UI…").
  * Mounting the full HomePage with React + Tauri runtime is out of scope

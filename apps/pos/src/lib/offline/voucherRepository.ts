@@ -422,23 +422,44 @@ export async function markVoucherLedgerEntryFailed(
 // ─── Local-write helpers (offline POS originates ledger rows) ───────────────
 
 /**
- * Codex review B5 (2026-05-01): payload for a locally-originated voucher
- * ledger row. This is the offline-first analogue of
- * `VoucherRedemptionService::redeem` on the server: when the cashier applies
- * a voucher tender at POS, we must (a) write a `Redeemed` row here so the
- * sync push pipeline can replay it server-side, AND (b) decrement the local
- * voucher projection so subsequent lookups in the same session reflect the
- * new balance.
+ * Payload for a locally-originated voucher_ledger row.
  *
- * The `idempotency_key` field is the CALLER's responsibility — typically the
- * receipt's idempotency key — and is NOT a column on `voucher_ledger` (the
- * mirror schema doesn't carry it). The push pipeline correlates ledger rows
- * to receipts via `receipt_id` once the server assigns it; for offline rows
- * `receipt_id` is null at write time, and the push payload uses the ledger
- * `id` as the natural correlation key.
+ * B5-fix audit decision (Option B, 2026-05-01) — STATUS: this helper is NO
+ * LONGER called by `createOfflineReceipt`. The receipt-tied redemption row
+ * is now server-authored exclusively (ReceiptSyncService invokes
+ * VoucherRedemptionService::redeem during sync). The helper remains for
+ * potential future offline-issued voucher operations not tied to a synced
+ * receipt — e.g. goodwill issuance from a back-office screen — which is
+ * what the `VoucherLedgerPushService` push contract was actually designed
+ * for. Until such a flow exists, this helper is dead code retained as
+ * scaffolding.
+ *
+ * Idempotency contract (B5-fix audit Minor 3, 2026-05-01):
+ *   The `id` field is a LOCAL primary key for the voucher_ledger mirror
+ *   table. It is NOT persisted as the canonical voucher_ledger.id on the
+ *   server — `VoucherLedgerPushService::push` calls `redeem()` which
+ *   generates a server-controlled UUID. The client-supplied `id`
+ *   round-trips back to the client only as a correlation key in the push
+ *   response (so the client can find which local row the per-entry result
+ *   refers to).
+ *
+ *   The CANONICAL idempotency contract is the natural tuple
+ *   `(voucher_id, receipt_id, event=Redeemed)` — the redemption service's
+ *   duplicate-in-transaction guard at VoucherRedemptionService.php:139-147.
+ *   A replay of the same (voucher, receipt) raises
+ *   `VoucherDuplicateInTransactionException` which the push handler maps
+ *   to `status: 'duplicate'`.
+ *
+ *   Earlier docs claimed the ledger `id` was the natural correlation key
+ *   on the canonical projection — that was incorrect. The correlation
+ *   exists only inside the push response payload.
  */
 export interface PendingVoucherLedgerWrite {
-  /** UUID for the ledger row. Required — the row's primary key. */
+  /**
+   * LOCAL UUID for the voucher_ledger mirror row's primary key. NOT
+   * persisted as the canonical voucher_ledger.id on the server — see
+   * idempotency contract on the interface docblock.
+   */
   id: string;
   /** FK into local `vouchers.id`. */
   voucher_id: string;
@@ -454,10 +475,12 @@ export interface PendingVoucherLedgerWrite {
   /** ISO 4217 currency code. */
   currency: string;
   /**
-   * Server receipt id, null until sync completes. Offline ledger rows are
-   * written before the server assigns a receipt UUID; the push handler
-   * correlates them via the receipt's idempotency key. See
-   * `VoucherLedgerPushService::ingest` server-side.
+   * Server receipt id. For receipt-tied redemptions this is REQUIRED on the
+   * server (`VoucherLedgerPushService::push` rejects null with
+   * `'receipt_id_required_for_redemption'`), which is why Option B moved
+   * the redemption write entirely to the server during ReceiptSyncService.
+   * For potential future non-receipt-tied flows (goodwill issuance, etc.)
+   * receipt_id may be null and the server-side handler accepts that.
    */
   receipt_id: string | null;
   /** FK into local `terminal_state.terminal_id`. */
@@ -469,16 +492,26 @@ export interface PendingVoucherLedgerWrite {
 }
 
 /**
- * Codex review B5 (2026-05-01): write a single locally-originated
- * voucher_ledger row in the `pending` sync state. The companion sync push
- * pipeline (`syncService.pushVoucherLedgerEntries`) consumes these and ships
- * them to the server.
+ * Write a single locally-originated voucher_ledger row in the `pending`
+ * sync state.
  *
- * This deliberately does NOT wrap in its own transaction — the caller
- * (`createOfflineReceipt`) holds the wrapping `BEGIN TRANSACTION` so the
- * receipt insert + ledger insert + balance decrement atomically commit or
- * roll back together. A failure here MUST surface to the caller so the
- * outer transaction rolls back.
+ * B5-fix audit (Option B, 2026-05-01): this helper is NO LONGER called by
+ * `createOfflineReceipt` (the receipt-tied redemption is now
+ * server-authored during sync). It remains for future offline-issued
+ * voucher operations not tied to a synced receipt (e.g. back-office
+ * goodwill issuance) which match the `VoucherLedgerPushService` push
+ * contract. Until such a flow exists, this is dead code retained as
+ * scaffolding.
+ *
+ * Note that even when called, the contract above means a row with
+ * `receipt_id = null` will be REJECTED by the server when pushed
+ * (`VoucherLedgerPushService::push` line 83-85). Callers must populate
+ * receipt_id from the synced receipt's server id BEFORE allowing the row
+ * to enter the push pipeline.
+ *
+ * This deliberately does NOT wrap in its own transaction — when callers
+ * do invoke this, they may want to share a wrapping transaction with
+ * other writes for atomicity.
  */
 export async function insertPendingVoucherLedgerRow(
   db: Database,

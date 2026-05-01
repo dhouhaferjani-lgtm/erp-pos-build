@@ -26,16 +26,36 @@ use App\Shared\Domain\CurrencyScale;
  * server-initiated and not accepted via this push path — they fail with
  * reason `event_kind_not_supported_in_offline_path`.
  *
+ * B5-fix audit (Option B, 2026-05-01) — STATUS: receipt-tied redemptions
+ * (the offline POS cashier path) NO LONGER flow through this push handler.
+ * They are now ingested server-side directly by `ReceiptSyncService` during
+ * `syncBatch()`, which invokes `VoucherRedemptionService::redeem` inside
+ * the same DB::transaction as the receipt write — atomic, no partial state.
+ * That sidesteps the `receipt_id_required_for_redemption` rejection below
+ * because the canonical receipt exists by the time redemption fires.
+ *
+ * This handler is reserved for FUTURE offline-issued voucher operations
+ * not tied to a synced receipt — e.g. goodwill issuance from a back-office
+ * screen, or refund-issuance flows that complete asynchronously. Phase 1
+ * has no such flow live yet.
+ *
  * Idempotency is enforced by the redemption service via the natural
  * (voucher_id, receipt_id, event=Redeemed) tuple: a replay raises
  * VoucherDuplicateInTransactionException, which this handler maps to
- * status="duplicate" and a successful (one-row-only) outcome. The
- * client-supplied `id` is NOT persisted to voucher_ledger.id (the redemption
- * service generates a server-controlled UUID); it round-trips back to the
- * client only as a correlation key in the response.
+ * status="duplicate" and a successful (one-row-only) outcome.
+ *
+ * Idempotency contract (B5-fix audit Minor 3, 2026-05-01): the
+ * client-supplied `id` is NOT persisted to voucher_ledger.id on the
+ * canonical projection. The redemption service generates a server-
+ * controlled UUID for the new row; the client `id` round-trips back in
+ * the response payload as a correlation key so the client can match the
+ * per-entry result back to its local pending row, but it does NOT
+ * dedupe replays — that's the (voucher, receipt) tuple's job.
  *
  * Cross-terminal pushes are rejected with reason `voucher_not_for_this_terminal`.
  * Unknown vouchers are rejected with reason `voucher_not_found`.
+ * Rows with null receipt_id are rejected with `receipt_id_required_for_redemption`
+ * (the server cannot anchor the GL leg without a receipt).
  */
 final class VoucherLedgerPushService
 {
