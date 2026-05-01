@@ -416,17 +416,18 @@ final class ReceiptSyncService
             //     with `method_code`, `instrument_type`, and `instrument_serial`
             //     populated. We MUST persist them on the synced row or the server's
             //     post-finalize hash recomputation reads null and rejects the
-            //     receipt as a chain break. Prefer the client-supplied `method_code`
-            //     (it's the snapshot the client hashed against) and fall back to a
-            //     live `payment_methods.code` lookup only when the field is absent
-            //     (stale pre-B3 client). instrument_type is coerced through the
+            //     receipt as a chain break. instrument_type is coerced through the
             //     PaymentInstrumentKind enum so an unknown string fails fast.
+            //
+            //     B3-followup audit (Finding 2, 2026-05-01): the previous fallback
+            //     to a live `PaymentMethod::code` lookup when `method_code` was
+            //     absent has been deleted. `method_code` is now REQUIRED on the
+            //     wire (`SyncReceiptsRequest.php`) and required-or-throw in the DTO
+            //     (`SyncReceiptPayload::fromArray()`). The client-supplied snapshot
+            //     is the only acceptable input — anything else risks silent hash-
+            //     input substitution that the audit explicitly flagged.
             foreach ($payload->payments as $entry) {
                 $method = PaymentMethod::findOrFail($entry['payment_method_id']);
-                $methodCodeFromPayload = $entry['method_code'] ?? null;
-                $methodCode = $methodCodeFromPayload !== null && $methodCodeFromPayload !== ''
-                    ? $methodCodeFromPayload
-                    : $method->code;
                 $instrumentTypeValue = $entry['instrument_type'] ?? null;
                 $instrumentType = $instrumentTypeValue !== null && $instrumentTypeValue !== ''
                     ? PaymentInstrumentKind::from($instrumentTypeValue)
@@ -436,7 +437,7 @@ final class ReceiptSyncService
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $entry['payment_method_id'],
                     'payment_type' => $method->code,
-                    'payment_method_code' => $methodCode,
+                    'payment_method_code' => $entry['method_code'],
                     'amount' => $entry['amount'],
                     'card_last_four' => $entry['card_last_four'] ?? null,
                     'transaction_reference' => $entry['transaction_reference'] ?? null,

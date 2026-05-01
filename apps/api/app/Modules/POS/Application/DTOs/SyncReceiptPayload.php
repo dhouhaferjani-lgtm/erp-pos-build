@@ -33,11 +33,13 @@ final readonly class SyncReceiptPayload
      * @param  string  $paymentMethodId  Payment method UUID (legacy single-pay field)
      * @param  string  $paymentRepositoryId  Payment repository UUID (legacy single-pay field)
      * @param  string  $createdAt  ISO 8601 timestamp when receipt was created offline
-     * @param  array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null, method_code?: string|null, instrument_type?: string|null, instrument_serial?: string|null}>  $payments  Per-payment entries (split-pay support).
-     *                                                                                                                                                                                                                                                                       Codex review B3 (2026-04-30) added `method_code`, `instrument_type`, and `instrument_serial`
-     *                                                                                                                                                                                                                                                                       so a voucher-bearing offline receipt round-trips through sync without the server
-     *                                                                                                                                                                                                                                                                       recomputing a hash from null instrument fields. method_code is the snapshot the
-     *                                                                                                                                                                                                                                                                       client hashed against; the server prefers it over a live PaymentMethod join.
+     * @param  array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null, method_code: string, instrument_type?: string|null, instrument_serial?: string|null}>  $payments  Per-payment entries (split-pay support).
+     *                                                                                                                                                                                                                                                                 Codex review B3 (2026-04-30) added `method_code`, `instrument_type`, and `instrument_serial`
+     *                                                                                                                                                                                                                                                                 so a voucher-bearing offline receipt round-trips through sync without the server
+     *                                                                                                                                                                                                                                                                 recomputing a hash from null instrument fields. method_code is the snapshot the
+     *                                                                                                                                                                                                                                                                 client hashed against; the server uses it directly (no live PaymentMethod join).
+     *                                                                                                                                                                                                                                                                 B3-followup audit (Finding 2, 2026-05-01): method_code is REQUIRED on the wire and
+     *                                                                                                                                                                                                                                                                 fromArray() throws when absent — the prior nullable-with-fallback contract is gone.
      * @param  string|null  $consumptionMode  F&B consumption mode: SUR_PLACE or A_EMPORTER
      * @param  string|null  $tableId  F&B table UUID (dine-in only)
      * @param  int  $fiscalSchemaVersion  REQUIRED. Fiscal hash schema version this receipt
@@ -69,7 +71,7 @@ final readonly class SyncReceiptPayload
         public string $paymentMethodId,
         public string $paymentRepositoryId,
         public string $createdAt,
-        /** @var array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null, method_code?: string|null, instrument_type?: string|null, instrument_serial?: string|null}> */
+        /** @var array<int, array{payment_method_id: string, repository_id: string, amount: string, card_last_four?: string|null, transaction_reference?: string|null, method_code: string, instrument_type?: string|null, instrument_serial?: string|null}> */
         public array $payments,
         public ?string $consumptionMode,
         public ?string $tableId,
@@ -89,18 +91,32 @@ final readonly class SyncReceiptPayload
         // instrument_serial from the wire payload. The POS client computes the
         // offline v3 fiscal hash with these fields populated; if the server drops
         // them here, the recomputed hash will not match and the receipt is
-        // rejected as a chain break. Defensive defaults to null so a stale
-        // pre-B3 client (cash-only) still parses without exception.
-        $payments = array_map(static fn (array $p): array => [
-            'payment_method_id' => (string) $p['payment_method_id'],
-            'repository_id' => (string) $p['repository_id'],
-            'amount' => (string) $p['amount'],
-            'card_last_four' => isset($p['card_last_four']) ? (string) $p['card_last_four'] : null,
-            'transaction_reference' => isset($p['transaction_reference']) ? (string) $p['transaction_reference'] : null,
-            'method_code' => isset($p['method_code']) ? (string) $p['method_code'] : null,
-            'instrument_type' => isset($p['instrument_type']) ? (string) $p['instrument_type'] : null,
-            'instrument_serial' => isset($p['instrument_serial']) ? (string) $p['instrument_serial'] : null,
-        ], $rawPayments);
+        // rejected as a chain break.
+        //
+        // B3-followup audit (Finding 2, 2026-05-01): method_code is REQUIRED.
+        // The request validator gates this; a payload reaching fromArray() with
+        // a missing/empty method_code means an upstream path bypassed validation,
+        // so we fail fast instead of falling back to a live PaymentMethod join
+        // (which the prior implementation did and the audit flagged as silent
+        // hash-input substitution).
+        $payments = array_map(static function (array $p): array {
+            if (! isset($p['method_code']) || ! is_string($p['method_code']) || $p['method_code'] === '') {
+                throw new \InvalidArgumentException(
+                    'SyncReceiptPayload.fromArray: payment row is missing required `method_code` (expected the snapshot the POS hashed against).'
+                );
+            }
+
+            return [
+                'payment_method_id' => (string) $p['payment_method_id'],
+                'repository_id' => (string) $p['repository_id'],
+                'amount' => (string) $p['amount'],
+                'card_last_four' => isset($p['card_last_four']) ? (string) $p['card_last_four'] : null,
+                'transaction_reference' => isset($p['transaction_reference']) ? (string) $p['transaction_reference'] : null,
+                'method_code' => (string) $p['method_code'],
+                'instrument_type' => isset($p['instrument_type']) ? (string) $p['instrument_type'] : null,
+                'instrument_serial' => isset($p['instrument_serial']) ? (string) $p['instrument_serial'] : null,
+            ];
+        }, $rawPayments);
 
         // Codex review B1 (2026-04-30): `fiscal_schema_version` is REQUIRED.
         // The request validator (`SyncReceiptsRequest`) is the primary gate — if

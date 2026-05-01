@@ -502,7 +502,14 @@ final class ReceiptSyncServiceV3Test extends TestCase
             'payment_repository_id' => $this->paymentRepo->id,
             'created_at' => now()->toIso8601String(),
             'payments' => [
-                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '20.00',
+                    // B3-followup audit (Finding 2, 2026-05-01): method_code is
+                    // REQUIRED on the sync wire.
+                    'method_code' => $this->paymentMethod->code,
+                ],
             ],
             'consumption_mode' => null,
             'table_id' => null,

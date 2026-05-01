@@ -75,6 +75,14 @@ interface SyncReceiptPayloadPayment {
    * sealed. The POS computes the v3 fiscal hash with this value; the server
    * MUST persist the same string into `pos_receipt_payments.payment_method_code`
    * or the recomputed hash will diverge. Codex review B3 (2026-04-30).
+   *
+   * B3-followup audit (Finding 2, 2026-05-01): this field is REQUIRED on the
+   * sync wire (server validator promoted from `nullable` to `required`). A
+   * payload that emits `method_code: ''` (e.g. legacy synthesized fallback
+   * for pre-v16 receipts with NULL payments_json) will be rejected with 422.
+   * That outcome is correct — those payloads cannot reproduce the offline
+   * hash anyway, so failing loud at the wire is preferable to a silent
+   * server-side fallback that the audit explicitly flagged.
    */
   method_code: string;
   /**

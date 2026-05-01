@@ -179,6 +179,10 @@ final class OfflineV3CutoverSyncTest extends TestCase
                     'payment_method_id' => $this->paymentMethod->id,
                     'repository_id' => $this->paymentRepo->id,
                     'amount' => '20.000',
+                    // B3-followup audit (Finding 2, 2026-05-01): method_code is
+                    // REQUIRED on the sync wire (was nullable). The audit
+                    // promoted the rule and removed the writer's fallback.
+                    'method_code' => $this->paymentMethod->code,
                 ],
             ],
             'consumption_mode' => null,

@@ -91,7 +91,17 @@ final class SyncReceiptsRequest extends FormRequest
             // over a live PaymentMethod join. Both-or-neither for the instrument
             // pair is enforced in withValidator() (Laravel's required_with does
             // not bind to the same wildcard index).
-            'receipts.*.payments.*.method_code' => ['nullable', 'string', 'max:64'],
+            //
+            // B3-followup audit (Finding 2, 2026-05-01): promoted from `nullable`
+            // to `required`. The audit flagged that a stale pre-B3 client could
+            // in theory queue a voucher-bearing receipt with no method_code and
+            // hit the writer's fallback to a live PaymentMethod::code lookup.
+            // The fallback is the wrong contract: method_code is the hash-input
+            // snapshot, not a live join. Required-on-the-wire makes the contract
+            // explicit and lets us delete the fallback in ReceiptSyncService.
+            // No pre-B3 voucher path existed (voucher tender wiring landed with
+            // B3), so no production client is sending a missing method_code.
+            'receipts.*.payments.*.method_code' => ['required', 'string', 'max:64'],
             'receipts.*.payments.*.instrument_type' => [
                 'nullable',
                 'string',
