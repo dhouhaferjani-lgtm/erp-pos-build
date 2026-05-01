@@ -107,6 +107,14 @@ const virtualRepo: PaymentRepository = {
   type: 'virtual',
 };
 
+const bankAccountRepo: PaymentRepository = {
+  ...cashRepo,
+  id: 'repo-bank',
+  code: 'MAIN-BANK',
+  name: 'Main Bank Account',
+  type: 'bank_account',
+};
+
 function renderModal(overrides: {
   total?: number;
   paymentMethods?: PaymentMethod[];
@@ -275,5 +283,48 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     // onComplete must NOT have been called — the modal surfaces an error.
     expect(onComplete).not.toHaveBeenCalled();
     expect(screen.getByText('advancedPayments.voucherMethodMissing')).toBeInTheDocument();
+  });
+
+  /**
+   * B3-followup audit (Minor 2, 2026-05-01): the bank_account fallback for
+   * voucher repository must be REMOVED. A tenant with no `virtual` repo but
+   * a configured `bank_account` repo was silently routing voucher tenders to
+   * a bank account ID — correct v3 hash but wrong GL journal (voucher
+   * liability posted against bank account = reconciliation drift).
+   *
+   * This test MUST fail on parent commit 55dced44 (which has the fallback)
+   * and MUST pass on the new HEAD (where the fallback is dropped).
+   */
+  it('Complete with voucher tenders fails with voucherRepositoryMissing when only bank_account repo is configured (no virtual repo)', async () => {
+    mockVoucherTenders = [
+      { code: 'SV-2026-9999', amount: '50.00' },
+    ];
+
+    const { onComplete } = renderModal({
+      total: 50,
+      // Tenant has cash_register + bank_account repos — but NO virtual repo.
+      paymentRepositories: [cashRepo, bankAccountRepo],
+    });
+
+    const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
+    fireEvent.click(completeBtn!);
+    await Promise.resolve();
+
+    // onComplete must NOT be called — the modal must surface a clear error.
+    expect(onComplete).not.toHaveBeenCalled();
+
+    // The error message must be visible (not silently routed to bank_account).
+    expect(
+      screen.getByText('advancedPayments.voucherRepositoryMissing'),
+    ).toBeInTheDocument();
+
+    // Defensive: confirm the bank_account repo ID was NOT passed to onComplete.
+    // (This assertion is redundant given onComplete wasn't called, but makes
+    // the intent explicit for future readers.)
+    expect(onComplete).not.toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ repository_id: 'repo-bank' }),
+      ]),
+    );
   });
 });

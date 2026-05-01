@@ -120,14 +120,17 @@ export function AdvancedPaymentsModal({
 
   // Voucher tenders need a payment_repository_id at the API boundary
   // (`payments.*.repository_id` is required uuid). Vouchers are virtual money
-  // — no physical till, no bank account — so prefer a `virtual` repository.
-  // Fall back to `bank_account` to avoid blocking the cashier when the tenant
-  // has not configured a virtual one yet.
+  // — no physical till, no bank account — so a `virtual` repository is
+  // required. No silent fallback to bank_account: routing a voucher tender
+  // through a bank-account repository ID would post the voucher liability
+  // redemption against the bank-account GL journal, causing reconciliation
+  // drift (fiscal hash remains correct, but bookkeeping does not).
+  // B3-followup audit (Minor 2, 2026-05-01): bank_account fallback removed.
+  // If no virtual repo is configured the `voucherRepositoryMissing` error
+  // fires at handleComplete() time — clear cashier message, no silent GL drift.
   const voucherRepository = useMemo(
     () =>
-      paymentRepositories.find((r) => r.is_active && r.type === 'virtual') ??
-      paymentRepositories.find((r) => r.is_active && r.type === 'bank_account') ??
-      null,
+      paymentRepositories.find((r) => r.is_active && r.type === 'virtual') ?? null,
     [paymentRepositories],
   );
 
