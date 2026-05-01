@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -134,6 +136,15 @@ final class StoreReceiptPaymentsRequest extends FormRequest
             if (! is_array($payments)) {
                 return;
             }
+
+            // Codex review B4 (2026-04-30): cache PaymentMethod lookups across
+            // the per-row loop so a multi-line tender doesn't issue N queries.
+            // Tenant scoping is implicit — the `exists:payment_methods,id` rule
+            // already proved each ID belongs to a real method, and the global
+            // tenant scope on the model filters cross-tenant rows on read.
+            /** @var array<string, ?PaymentMethod> $methodCache */
+            $methodCache = [];
+
             foreach ($payments as $index => $payment) {
                 if (! is_array($payment)) {
                     continue;
@@ -147,11 +158,63 @@ final class StoreReceiptPaymentsRequest extends FormRequest
                         "payments.{$index}.instrument_serial",
                         'instrument_serial is required when instrument_type is provided',
                     );
-                } elseif ($hasSerial && ! $hasType) {
+
+                    continue;
+                }
+                if ($hasSerial && ! $hasType) {
                     $validator->errors()->add(
                         "payments.{$index}.instrument_type",
                         'instrument_type is required when instrument_serial is provided',
                     );
+
+                    continue;
+                }
+
+                // Codex review B4 (2026-04-30): value-conditional rule.
+                // Both-or-neither is necessary but not sufficient — `both null`
+                // still passes that check. For instrument-bearing payment
+                // method codes (store_voucher / restaurant_voucher / gift_card,
+                // per the PaymentInstrumentKind enum), BOTH fields MUST be
+                // present and non-empty. Without this, a stale client could
+                // submit `payment_method_id` = a store_voucher method with no
+                // serial, the v3 hash would faithfully bind
+                // `method_code = store_voucher, instrument_serial = null`,
+                // and the legally meaningful event ("voucher SV-XXXX paid")
+                // would never reach the chain.
+                $paymentMethodId = $payment['payment_method_id'] ?? null;
+                if (! is_string($paymentMethodId) || $paymentMethodId === '') {
+                    // The base rule (`required`, `uuid`, `exists`) will surface
+                    // a separate error for this row. Skip the B4 rule so we
+                    // don't double-report.
+                    continue;
+                }
+
+                if (! array_key_exists($paymentMethodId, $methodCache)) {
+                    /** @var ?PaymentMethod $found */
+                    $found = PaymentMethod::query()->find($paymentMethodId);
+                    $methodCache[$paymentMethodId] = $found;
+                }
+                $resolvedMethod = $methodCache[$paymentMethodId];
+
+                if ($resolvedMethod === null) {
+                    // The `exists` rule will fail this row; nothing to add.
+                    continue;
+                }
+
+                $methodCode = (string) $resolvedMethod->code;
+                if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                    if (! $hasType) {
+                        $validator->errors()->add(
+                            "payments.{$index}.instrument_type",
+                            "instrument_type is required when payment method code is {$methodCode}",
+                        );
+                    }
+                    if (! $hasSerial) {
+                        $validator->errors()->add(
+                            "payments.{$index}.instrument_serial",
+                            "instrument_serial is required when payment method code is {$methodCode}",
+                        );
+                    }
                 }
             }
         });

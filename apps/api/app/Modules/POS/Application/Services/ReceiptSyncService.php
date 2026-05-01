@@ -19,6 +19,7 @@ use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
+use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Exceptions\OfflineFiscalHashMismatchException;
 use App\Modules\POS\Domain\Exceptions\OfflineReceiptVersionMismatchException;
 use App\Modules\POS\Domain\Receipt;
@@ -428,6 +429,32 @@ final class ReceiptSyncService
             //     input substitution that the audit explicitly flagged.
             foreach ($payload->payments as $entry) {
                 $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+
+                // Codex review B4 (2026-04-30): defense-in-depth at the sync
+                // writer. The HTTP request validator (SyncReceiptsRequest)
+                // rejects this shape with 422, but a programmatic caller —
+                // a queue retry job, a backfill script, a future controller —
+                // bypasses FormRequest validation and constructs
+                // SyncReceiptPayload directly. Without this guard, a v3
+                // receipt could still be sealed with `method_code = store_voucher`
+                // and `instrument_serial = null` — the same fiscal-hash hole
+                // B4 closes "once and for all." The throw happens before the
+                // ReceiptPayment write so the enclosing DB::transaction()
+                // rolls back cleanly with no partial chain state. The
+                // syncBatch() catch block converts this to SyncStatus::Failed
+                // for batch reporting.
+                $methodCode = (string) $entry['method_code'];
+                if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                    $instrumentTypeInput = $entry['instrument_type'] ?? null;
+                    $instrumentSerialInput = $entry['instrument_serial'] ?? null;
+                    if (
+                        ! is_string($instrumentTypeInput) || $instrumentTypeInput === ''
+                        || ! is_string($instrumentSerialInput) || $instrumentSerialInput === ''
+                    ) {
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+                }
+
                 $instrumentTypeValue = $entry['instrument_type'] ?? null;
                 $instrumentType = $instrumentTypeValue !== null && $instrumentTypeValue !== ''
                     ? PaymentInstrumentKind::from($instrumentTypeValue)

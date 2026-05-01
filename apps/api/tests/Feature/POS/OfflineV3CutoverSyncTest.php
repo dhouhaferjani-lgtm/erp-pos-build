@@ -384,6 +384,89 @@ final class OfflineV3CutoverSyncTest extends TestCase
         $this->assertSame($expectedHash, $terminal->last_hash);
     }
 
+    /**
+     * Codex review B4 (2026-04-30) — end-to-end fiscal proof on the sync wire.
+     *
+     * The offline+sync test above proves that a voucher-bearing receipt
+     * round-trips when the instrument pair is present. This test proves the
+     * inverse: a stale offline client (or a forged payload) that ships
+     * `method_code: store_voucher` with both instrument fields null MUST be
+     * rejected by the request validator with 422 — not silently sealed into
+     * the v3 chain with a null voucher serial.
+     *
+     * The positive case at line 226 must continue to pass; this test must
+     * fail on parent commit (where the value-conditional rule does not exist)
+     * and pass on HEAD.
+     */
+    public function test_v3_terminal_rejects_store_voucher_payment_with_null_instrument_fields(): void
+    {
+        $terminal = $this->makeTerminal(fiscalSchemaVersion: 3);
+        $this->makeShift($terminal);
+
+        $payload = [
+            'idempotency_key' => 'v3-voucher-null-fields-'.uniqid(),
+            'receipt_number' => 'POS-V3-NULLINSTR-001',
+            'terminal_id' => $terminal->id,
+            'operator_id' => $this->user->id,
+            'lines' => [
+                [
+                    'product_id' => $this->product->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.000',
+                ],
+            ],
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '10.000',
+            'currency' => 'TND',
+            'offline_fiscal_hash' => str_repeat('a', 64),
+            'previous_hash' => null,
+            'hash_sequence' => 1,
+            'transaction_discount_amount' => null,
+            'transaction_discount_reason' => null,
+            'tendered_amount' => '10.000',
+            'change_due' => '0.000',
+            'payment_method_id' => $this->voucherMethod->id,
+            'payment_repository_id' => $this->voucherRepo->id,
+            'created_at' => now()->toIso8601String(),
+            'payments' => [
+                [
+                    'payment_method_id' => $this->voucherMethod->id,
+                    'repository_id' => $this->voucherRepo->id,
+                    'amount' => '10.000',
+                    'method_code' => 'store_voucher',
+                    // Both instrument fields deliberately omitted — this is the
+                    // exact stale-client shape Codex flagged.
+                    'instrument_type' => null,
+                    'instrument_serial' => null,
+                ],
+            ],
+            'consumption_mode' => null,
+            'table_id' => null,
+            'fiscal_schema_version' => 3,
+        ];
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        // The validator must intercept BEFORE the writer ever runs. 422 with
+        // both keys named in the response body so cause is unambiguous.
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+        $this->assertStringContainsString('store_voucher', $body);
+
+        // The terminal chain MUST NOT have advanced — no receipt persisted.
+        $terminal->refresh();
+        $this->assertSame(1, $terminal->current_sequence);
+        $this->assertNull($terminal->last_hash);
+
+        $this->assertDatabaseMissing('pos_receipts', [
+            'idempotency_key' => $payload['idempotency_key'],
+        ]);
+    }
+
     private function makeTerminal(int $fiscalSchemaVersion): Terminal
     {
         return Terminal::factory()->create([

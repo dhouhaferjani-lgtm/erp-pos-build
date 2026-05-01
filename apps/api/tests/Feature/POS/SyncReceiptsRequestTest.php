@@ -113,6 +113,107 @@ final class SyncReceiptsRequestTest extends TestCase
     }
 
     /**
+     * Codex review B4 (2026-04-30): on the sync wire `method_code` is the
+     * client snapshot — there is no FK lookup in validation. So the
+     * value-conditional rule must inspect the snapshot string itself: if
+     * (lowercased) it is one of the instrument-bearing codes per the
+     * PaymentInstrumentKind enum, both `instrument_type` and
+     * `instrument_serial` MUST be present and non-empty.
+     *
+     * Without this guard, a stale offline client (or a forged sync payload)
+     * could ship `method_code: store_voucher` with both instrument fields
+     * null and the v3 hash recomputation would faithfully bind a null
+     * voucher serial — same fiscal-integrity hole as B2/B3.
+     */
+    public function test_sync_payload_store_voucher_with_null_instrument_fields_returns_422(): void
+    {
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = 'store_voucher';
+        // Both instrument fields deliberately omitted — must be rejected.
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+        // Surface the offending method code so cause is unambiguous.
+        $this->assertStringContainsString('store_voucher', $body);
+    }
+
+    public function test_sync_payload_store_voucher_uppercase_with_null_instrument_fields_returns_422(): void
+    {
+        // Normalization: even an uppercased method_code (from a stale client
+        // that ignored backend-shaped lowercase migration) must be detected.
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = 'STORE_VOUCHER';
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+    }
+
+    public function test_sync_payload_restaurant_voucher_with_null_instrument_fields_returns_422(): void
+    {
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = 'restaurant_voucher';
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('restaurant_voucher', $body);
+    }
+
+    public function test_sync_payload_gift_card_with_null_instrument_fields_returns_422(): void
+    {
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = 'gift_card';
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('gift_card', $body);
+    }
+
+    public function test_sync_payload_store_voucher_with_empty_instrument_fields_returns_422(): void
+    {
+        // Empty strings must be treated as null for B4 enforcement, otherwise
+        // a client could submit `""` to bypass the value-conditional rule.
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = 'store_voucher';
+        $payload['payments'][0]['instrument_type'] = '';
+        $payload['payments'][0]['instrument_serial'] = '';
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+    }
+
+    public function test_sync_payload_cash_with_null_instrument_fields_still_passes_validation(): void
+    {
+        // Positive control for B4: non-instrument-bearing method codes (here
+        // CASH from the seeder) must continue to land with null instrument
+        // fields — the rule is value-conditional, not blanket-required.
+        $payload = $this->buildReceiptPayload();
+        $payload['payments'][0]['method_code'] = $this->paymentMethod->code; // CASH
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        // 200 means the validation gate didn't bite. Downstream sync may still
+        // fail on hash mismatch (not under test here) but B4's rule must not
+        // touch a cash row.
+        $response->assertStatus(200);
+    }
+
+    /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -168,11 +169,51 @@ final class SyncReceiptsRequest extends FormRequest
                             "receipts.{$rIndex}.payments.{$pIndex}.instrument_serial",
                             'instrument_serial is required when instrument_type is provided',
                         );
-                    } elseif ($hasSerial && ! $hasType) {
+
+                        continue;
+                    }
+                    if ($hasSerial && ! $hasType) {
                         $validator->errors()->add(
                             "receipts.{$rIndex}.payments.{$pIndex}.instrument_type",
                             'instrument_type is required when instrument_serial is provided',
                         );
+
+                        continue;
+                    }
+
+                    // Codex review B4 (2026-04-30): value-conditional rule.
+                    // On the sync wire, `method_code` is the client-supplied
+                    // snapshot the offline POS sealed against — there is no
+                    // FK lookup. So the rule inspects the snapshot string
+                    // directly: if (lowercased) it matches an instrument-bearing
+                    // case of PaymentInstrumentKind, both fields are REQUIRED.
+                    //
+                    // Without this guard, a stale offline client could ship
+                    // `method_code: store_voucher` with both instrument fields
+                    // null and the v3 hash recomputation would faithfully bind
+                    // a null voucher serial — same fiscal-integrity hole as
+                    // B2/B3, just shifted from "field dropped by code" to
+                    // "field optional under the voucher method".
+                    $methodCode = $payment['method_code'] ?? null;
+                    if (! is_string($methodCode) || $methodCode === '') {
+                        // The base `required` rule on method_code will surface
+                        // a separate error; skip B4 to avoid double-reporting.
+                        continue;
+                    }
+
+                    if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                        if (! $hasType) {
+                            $validator->errors()->add(
+                                "receipts.{$rIndex}.payments.{$pIndex}.instrument_type",
+                                "instrument_type is required when method_code is {$methodCode}",
+                            );
+                        }
+                        if (! $hasSerial) {
+                            $validator->errors()->add(
+                                "receipts.{$rIndex}.payments.{$pIndex}.instrument_serial",
+                                "instrument_serial is required when method_code is {$methodCode}",
+                            );
+                        }
                     }
                 }
             }

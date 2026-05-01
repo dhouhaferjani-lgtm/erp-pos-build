@@ -256,6 +256,175 @@ final class StoreReceiptPaymentsInstrumentBindingTest extends TestCase
         $this->assertStringContainsString('instrument_type', (string) $body);
     }
 
+    /**
+     * Codex review B4 (2026-04-30): the both-or-neither rule is not enough.
+     * A `payment_methods.code = store_voucher` row with BOTH instrument fields
+     * null still passes the both-or-neither check (both are absent), and the
+     * v3 fiscal hash then binds `method_code = store_voucher` and
+     * `instrument_serial = null` — same fiscal-integrity failure class as B2/B3.
+     *
+     * The validator must reject this: when the resolved PaymentMethod's code
+     * is instrument-bearing (per PaymentInstrumentKind enum), both fields are
+     * required. This test was the failing-first proof for the new rule and
+     * MUST pass on HEAD.
+     */
+    public function test_store_voucher_method_with_null_instrument_fields_returns_422(): void
+    {
+        $receipt = $this->seedReceipt('10.000');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $this->voucherMethod->id,
+                'repository_id' => $this->voucherRepo->id,
+                // Both instrument fields deliberately omitted — this is the
+                // exact stale-client / cooperative-bypass shape Codex flagged.
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        // Both keys must surface so the error UI can guide the cashier.
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+        // The error message names the payment method code so an integrator
+        // can wire the cause back to the offending tender row.
+        $this->assertStringContainsString('store_voucher', $body);
+    }
+
+    public function test_store_voucher_method_with_empty_string_instrument_fields_returns_422(): void
+    {
+        $receipt = $this->seedReceipt('10.000');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $this->voucherMethod->id,
+                'repository_id' => $this->voucherRepo->id,
+                // Empty strings must be treated the same as null — otherwise a
+                // client could submit `""` and silently bypass enforcement.
+                'instrument_type' => '',
+                'instrument_serial' => '',
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('instrument_type', $body);
+        $this->assertStringContainsString('instrument_serial', $body);
+    }
+
+    public function test_restaurant_voucher_method_with_null_instrument_fields_returns_422(): void
+    {
+        // Seed a separate restaurant_voucher PaymentMethod for this tenant —
+        // the rule is enum-derived, not store-voucher-only.
+        $restaurantMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Restaurant Voucher',
+            'code' => 'restaurant_voucher',
+        ]);
+
+        $receipt = $this->seedReceipt('10.000');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $restaurantMethod->id,
+                'repository_id' => $this->voucherRepo->id,
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('restaurant_voucher', $body);
+    }
+
+    public function test_gift_card_method_with_null_instrument_fields_returns_422(): void
+    {
+        $giftCardMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Gift Card',
+            'code' => 'gift_card',
+        ]);
+
+        $receipt = $this->seedReceipt('10.000');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $giftCardMethod->id,
+                'repository_id' => $this->voucherRepo->id,
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('gift_card', $body);
+    }
+
+    /**
+     * Positive control for B4: a non-instrument-bearing method (cash) with
+     * null instrument fields must still pass. The B4 rule is value-conditional —
+     * it only bites for store_voucher / restaurant_voucher / gift_card method
+     * codes; cash/card rows continue to land with no instrument metadata.
+     */
+    public function test_cash_method_with_null_instrument_fields_still_succeeds(): void
+    {
+        // Reuse the Cash system_purpose account seeded in setUp() — only one
+        // account per (company_id, system_purpose) is permitted by the unique
+        // constraint, so creating a second `system_purpose = Cash` row here
+        // would fail the integrity check.
+        $cashGl = Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::Cash)
+            ->firstOrFail();
+        $cashMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Cash',
+            'code' => 'cash',
+        ]);
+        $cashRepo = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Cash Drawer',
+            'code' => 'CASH-01',
+            'type' => RepositoryType::CashRegister->value,
+            'gl_account_id' => $cashGl->id,
+        ]);
+
+        $receipt = $this->seedReceipt('10.000');
+        Sanctum::actingAs($this->cashier);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $cashMethod->id,
+                'repository_id' => $cashRepo->id,
+                // No instrument fields — this is the legitimate cash-only shape.
+            ]],
+        ]);
+
+        $this->assertContains(
+            $response->status(),
+            [200, 201],
+            'Cash payment with null instrument fields must succeed; got '.$response->status().': '.$response->getContent(),
+        );
+
+        $persistedPayment = ReceiptPayment::query()
+            ->where('receipt_id', $receipt->id)
+            ->firstOrFail();
+        $this->assertNull($persistedPayment->instrument_type);
+        $this->assertNull($persistedPayment->instrument_serial);
+        $this->assertSame('cash', $persistedPayment->payment_method_code);
+    }
+
     private function seedReceipt(string $total): Receipt
     {
         return Receipt::create([

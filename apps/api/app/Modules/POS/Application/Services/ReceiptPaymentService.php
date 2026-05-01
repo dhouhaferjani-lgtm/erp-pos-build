@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -168,6 +169,30 @@ final class ReceiptPaymentService
 
                 // Get payment method name for receipt payment record
                 $paymentMethod = PaymentMethod::findOrFail($paymentData['payment_method_id']);
+
+                // Codex review B4 (2026-04-30): defense-in-depth at the writer.
+                // The HTTP request validator (StoreReceiptPaymentsRequest) rejects
+                // this shape with 422, but programmatic callers (queue jobs,
+                // internal flows, future controllers, tests) bypass FormRequest
+                // validation. Without this guard, a v3 receipt could still be
+                // sealed with `method_code = store_voucher` and
+                // `instrument_serial = null` — exactly the fiscal-hash hole B4
+                // closes "once and for all." The throw happens before any
+                // Treasury / GL / ReceiptPayment write so the enclosing
+                // DB::transaction() rolls back cleanly with no partial chain
+                // state. Mapped to HTTP 422 by the generic DomainException
+                // renderer in bootstrap/app.php.
+                $methodCode = (string) $paymentMethod->code;
+                if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                    $instrumentTypeInput = $paymentData['instrument_type'] ?? null;
+                    $instrumentSerialInput = $paymentData['instrument_serial'] ?? null;
+                    if (
+                        ! is_string($instrumentTypeInput) || $instrumentTypeInput === ''
+                        || ! is_string($instrumentSerialInput) || $instrumentSerialInput === ''
+                    ) {
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+                }
 
                 // Create Treasury Payment record
                 $treasuryPayment = Payment::create([
