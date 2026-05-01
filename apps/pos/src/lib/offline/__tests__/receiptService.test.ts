@@ -467,6 +467,120 @@ describe('receiptService - createOfflineReceipt', () => {
     expect(parsedPayments[0]!.instrument_serial).toBe('SVC-2026-0001');
   });
 
+  it('B3-followup audit (Finding 3): the wire payload produced by receiptToPayload matches the canonical input the hash was sealed against', async () => {
+    // The original B3 self-consistency test below proves
+    //   createOfflineReceipt → buildCanonicalPayload
+    // are byte-consistent. The audit flagged that a future TS-only drift in
+    // either `receiptService.ts:167-173` (canonical input builder) or
+    // `syncService.ts:1191-1211` (wire payload parser) could pass that test
+    // while shipping a wire payload from which the server cannot reproduce
+    // the hash — because nothing today asserts the wire payload matches the
+    // canonical input shape on every byte. This test closes that gap.
+    vi.mocked(getTerminalState).mockResolvedValue({
+      ...terminalState,
+      fiscal_schema_version: 3,
+      last_hash: 'prev-hash-wire-shape',
+      hash_sequence: 11,
+    });
+
+    const items = [makeCartItem({ line_total: '30.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    const fixedNow = new Date('2026-04-30T12:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    try {
+      const result = await createOfflineReceipt(db, {
+        terminalId: 'terminal-1',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        cartItems: items,
+        currency: 'EUR',
+        paymentMethodId: 'pm-voucher',
+        paymentRepositoryId: 'repo-voucher',
+        tenderedAmount: 30,
+        payments: [
+          {
+            methodCode: 'store_voucher',
+            amount: '30.00',
+            instrumentType: 'store_voucher',
+            instrumentSerial: 'SVC-2026-0099',
+          },
+        ],
+      });
+
+      // Capture the persisted row that insertOfflineReceipt was called with.
+      const persisted = vi.mocked(insertOfflineReceipt).mock.calls[0]![1] as Omit<
+        OfflineReceipt,
+        'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'
+      >;
+
+      // Materialize a full OfflineReceipt (with the metadata columns the sync
+      // layer depends on) and run it through receiptToPayload.
+      const fullReceipt = {
+        ...persisted,
+        created_at: fixedNow.toISOString(),
+        synced_at: null,
+        sync_error: null,
+        retry_count: 0,
+        server_receipt_id: null,
+      } as unknown as Parameters<typeof import('@/lib/sync/syncService')['__test_receiptToPayload']>[0];
+
+      // Import the test-only export of receiptToPayload (added below by
+      // Finding 3 — the production sync path imports the same fn).
+      const { __test_receiptToPayload: receiptToPayload } = await import('@/lib/sync/syncService');
+      const wire = receiptToPayload(fullReceipt);
+
+      // Assertion 1 (wire shape). The wire payment row MUST carry method_code,
+      // instrument_type, instrument_serial verbatim — this is the contract the
+      // server reads when it recomputes the v3 hash. A drift here (dropping
+      // a field, changing case normalization, mismatching sort order) would
+      // pass the existing canonical test but fail real sync.
+      expect(wire.payments).toHaveLength(1);
+      expect(wire.payments[0]).toEqual({
+        payment_method_id: 'pm-voucher',
+        repository_id: 'repo-voucher',
+        amount: '30.00',
+        card_last_four: null,
+        transaction_reference: null,
+        method_code: 'store_voucher',
+        instrument_type: 'store_voucher',
+        instrument_serial: 'SVC-2026-0099',
+      });
+
+      // Assertion 2 (cross-check). Recompute the hash from the wire payment
+      // shape (lowercased method_code per the canonicalizer's rule) and assert
+      // it matches the offline-sealed hash. This proves the wire payload
+      // would let the server reproduce the same hash byte-for-byte.
+      const { buildCanonicalPayload } = await import('@/lib/fiscal/v3/canonicalPayload');
+      const canonical = await buildCanonicalPayload({
+        receipt_number: result.receiptNumber,
+        posted_at: fixedNow.toISOString(),
+        previous_hash: 'prev-hash-wire-shape',
+        total: '30.00',
+        currency: 'EUR',
+        vat_breakdown: [],
+        payments: wire.payments.map((p) => ({
+          method_code: p.method_code.toLowerCase(),
+          payment_type: 'pos',
+          amount: p.amount,
+          instrument_type: p.instrument_type,
+          instrument_serial: p.instrument_serial,
+        })),
+        voucher_ledger_entries: [],
+        exchange_group_id: null,
+        audit: null,
+      });
+      const enc = new TextEncoder().encode(canonical);
+      const buf = await crypto.subtle.digest('SHA-256', enc);
+      const expectedHash = Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      expect(result.fiscalHash).toBe(expectedHash);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('Codex review B3: createOfflineReceipt hash is self-consistent with the canonical builder for voucher payments', async () => {
     vi.mocked(getTerminalState).mockResolvedValue({
       ...terminalState,

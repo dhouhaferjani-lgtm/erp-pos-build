@@ -1260,3 +1260,23 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     fiscal_schema_version: fiscalSchemaVersion,
   };
 }
+
+/**
+ * Test-only export of `receiptToPayload`.
+ *
+ * B3-followup audit (Finding 3, 2026-05-01): the `OfflineV3CutoverSyncTest`
+ * voucher case precomputes the expected hash via PHP `ReceiptFinalizationService`
+ * rather than the TS canonicalizer. That bridge is correct (PHP=PHP) but it
+ * does not catch a future TS-only drift in `receiptService.ts:167-173` (canonical
+ * input builder) or `syncService.ts:receiptToPayload` (wire payload parser).
+ *
+ * The TS-side test at `receiptService.test.ts` ("the wire payload produced by
+ * receiptToPayload matches the canonical input the hash was sealed against")
+ * imports this symbol to assert the production sync code path produces a wire
+ * payload from which the server can reproduce the offline-sealed hash. Drift
+ * in either mapper will fail that test loudly.
+ *
+ * Naming: prefixed with `__test_` so it is unmistakable that this is not
+ * production API. The implementation it points at IS production code.
+ */
+export const __test_receiptToPayload = receiptToPayload;

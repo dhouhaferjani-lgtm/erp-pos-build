@@ -1059,3 +1059,99 @@ describe('zReportToSyncPayload', () => {
     expect(ts['writeoffCount']).toBe(0);
   });
 });
+
+describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', () => {
+  // Pure unit-level test: feed a fully-built voucher offline receipt to the
+  // production sync parser and assert the wire payment block is byte-for-byte
+  // what the canonical builder would expect. This is complementary to the
+  // hash assertion in receiptService.test.ts — that test proves the canonical
+  // input matches the offline hash; this test proves the wire payload matches
+  // the canonical input. Together they bracket every TS surface the server
+  // depends on for v3 hash recomputation.
+
+  it('preserves method_code, instrument_type, and instrument_serial verbatim for a voucher tender row', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      id: 'wire-r1',
+      idempotency_key: 'wire-idem-1',
+      hash_sequence: 1,
+      fiscal_schema_version: 3,
+      payments_json: JSON.stringify([
+        {
+          payment_method_id: 'pm-store-voucher',
+          repository_id: 'repo-virtual',
+          amount: '20.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'store_voucher',
+          instrument_type: 'store_voucher',
+          instrument_serial: 'SV-2026-WIRE-01',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+
+    // The wire shape MUST be exactly this — not a superset, not coerced.
+    // A future drift (e.g. accidentally lowercasing method_code, dropping a
+    // field, or sorting payments) would fail loudly here.
+    expect(wire.payments).toEqual([
+      {
+        payment_method_id: 'pm-store-voucher',
+        repository_id: 'repo-virtual',
+        amount: '20.00',
+        card_last_four: null,
+        transaction_reference: null,
+        method_code: 'store_voucher',
+        instrument_type: 'store_voucher',
+        instrument_serial: 'SV-2026-WIRE-01',
+      },
+    ]);
+  });
+
+  it('preserves cash + voucher split-payment shape (order, fields, nulls) verbatim', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      id: 'wire-r2',
+      idempotency_key: 'wire-idem-2',
+      hash_sequence: 2,
+      fiscal_schema_version: 3,
+      payments_json: JSON.stringify([
+        {
+          payment_method_id: 'pm-cash',
+          repository_id: 'repo-cash',
+          amount: '15.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'cash',
+          instrument_type: null,
+          instrument_serial: null,
+        },
+        {
+          payment_method_id: 'pm-store-voucher',
+          repository_id: 'repo-virtual',
+          amount: '10.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'store_voucher',
+          instrument_type: 'store_voucher',
+          instrument_serial: 'SV-2026-WIRE-02',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+
+    expect(wire.payments).toHaveLength(2);
+    expect(wire.payments[0]!.method_code).toBe('cash');
+    expect(wire.payments[0]!.instrument_type).toBeNull();
+    expect(wire.payments[0]!.instrument_serial).toBeNull();
+    expect(wire.payments[1]!.method_code).toBe('store_voucher');
+    expect(wire.payments[1]!.instrument_type).toBe('store_voucher');
+    expect(wire.payments[1]!.instrument_serial).toBe('SV-2026-WIRE-02');
+  });
+});
