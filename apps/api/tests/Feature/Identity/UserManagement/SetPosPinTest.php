@@ -288,4 +288,58 @@ class SetPosPinTest extends TestCase
             'tenant_id' => $this->tenant->id,
         ]);
     }
+
+    /**
+     * Symmetry lock: both the set and clear audit events must share the same
+     * `user.pos_pin_` namespace prefix.
+     *
+     * This test guards against future drift where someone renames one event
+     * (e.g. to `pos_pin_set` without the `user.` domain prefix, or to
+     * `user.pin_cleared` with a different stem) while leaving the other
+     * unchanged. The existing per-operation tests assert the exact strings;
+     * this test adds an explicit structural invariant so the symmetry contract
+     * is visible and enforced in one place.
+     */
+    public function test_pos_pin_set_and_cleared_audit_events_share_the_same_namespace(): void
+    {
+        // --- set ---
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/users/{$this->cashierUser->id}/pos-pin", ['pin' => '4321'])
+            ->assertOk();
+
+        // --- clear ---
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson("/api/v1/users/{$this->cashierUser->id}/pos-pin", ['pin' => null])
+            ->assertOk();
+
+        $events = \App\Modules\Compliance\Domain\AuditEvent::where('aggregate_type', 'user')
+            ->where('aggregate_id', $this->cashierUser->id)
+            ->whereIn('event_type', ['user.pos_pin_set', 'user.pos_pin_cleared'])
+            ->pluck('event_type')
+            ->sort()
+            ->values()
+            ->all();
+
+        // Both events must be present.
+        $this->assertCount(2, $events);
+
+        $setEvent   = $events[1]; // 'user.pos_pin_set'     (alphabetically after 'cleared')
+        $clearEvent = $events[0]; // 'user.pos_pin_cleared'
+
+        // Derive the shared namespace prefix by stripping the last `_`-delimited segment.
+        $setPrefix   = implode('_', array_slice(explode('_', $setEvent), 0, -1));
+        $clearPrefix = implode('_', array_slice(explode('_', $clearEvent), 0, -1));
+
+        $this->assertSame(
+            $setPrefix,
+            $clearPrefix,
+            "pos_pin set/clear audit events must share a common namespace prefix. " .
+            "Got '{$setEvent}' and '{$clearEvent}'."
+        );
+
+        // The shared prefix must be 'user.pos_pin' — lock the exact namespace.
+        $this->assertSame('user.pos_pin', $setPrefix);
+    }
 }
