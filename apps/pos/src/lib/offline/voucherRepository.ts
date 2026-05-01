@@ -418,3 +418,117 @@ export async function markVoucherLedgerEntryFailed(
     [reason, id],
   );
 }
+
+// ─── Local-write helpers (offline POS originates ledger rows) ───────────────
+
+/**
+ * Codex review B5 (2026-05-01): payload for a locally-originated voucher
+ * ledger row. This is the offline-first analogue of
+ * `VoucherRedemptionService::redeem` on the server: when the cashier applies
+ * a voucher tender at POS, we must (a) write a `Redeemed` row here so the
+ * sync push pipeline can replay it server-side, AND (b) decrement the local
+ * voucher projection so subsequent lookups in the same session reflect the
+ * new balance.
+ *
+ * The `idempotency_key` field is the CALLER's responsibility — typically the
+ * receipt's idempotency key — and is NOT a column on `voucher_ledger` (the
+ * mirror schema doesn't carry it). The push pipeline correlates ledger rows
+ * to receipts via `receipt_id` once the server assigns it; for offline rows
+ * `receipt_id` is null at write time, and the push payload uses the ledger
+ * `id` as the natural correlation key.
+ */
+export interface PendingVoucherLedgerWrite {
+  /** UUID for the ledger row. Required — the row's primary key. */
+  id: string;
+  /** FK into local `vouchers.id`. */
+  voucher_id: string;
+  /** Lifecycle event. POS only ever originates `Redeemed` (Phase 1 spec §6.5). */
+  event: VoucherLedgerEvent;
+  /**
+   * Decimal-string amount at currency scale (e.g. '20.00'). The server-side
+   * VoucherRedemptionService stores a SIGNED amount (negative for redemptions),
+   * but the local mirror is unsigned by convention — the push handler signs
+   * server-side. Keep consistent with `LocalVoucherLedgerEntry.amount`.
+   */
+  amount: string;
+  /** ISO 4217 currency code. */
+  currency: string;
+  /**
+   * Server receipt id, null until sync completes. Offline ledger rows are
+   * written before the server assigns a receipt UUID; the push handler
+   * correlates them via the receipt's idempotency key. See
+   * `VoucherLedgerPushService::ingest` server-side.
+   */
+  receipt_id: string | null;
+  /** FK into local `terminal_state.terminal_id`. */
+  terminal_id: string;
+  /** Cashier user UUID (who originated the redemption). */
+  user_id: string;
+  /** ISO 8601 UTC timestamp the redemption occurred. */
+  occurred_at: string;
+}
+
+/**
+ * Codex review B5 (2026-05-01): write a single locally-originated
+ * voucher_ledger row in the `pending` sync state. The companion sync push
+ * pipeline (`syncService.pushVoucherLedgerEntries`) consumes these and ships
+ * them to the server.
+ *
+ * This deliberately does NOT wrap in its own transaction — the caller
+ * (`createOfflineReceipt`) holds the wrapping `BEGIN TRANSACTION` so the
+ * receipt insert + ledger insert + balance decrement atomically commit or
+ * roll back together. A failure here MUST surface to the caller so the
+ * outer transaction rolls back.
+ */
+export async function insertPendingVoucherLedgerRow(
+  db: Database,
+  row: PendingVoucherLedgerWrite,
+): Promise<void> {
+  await execute(
+    db,
+    `INSERT INTO voucher_ledger (
+       id, voucher_id, event, amount, currency, receipt_id, terminal_id,
+       user_id, occurred_at, sync_status, synced_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL
+     )`,
+    [
+      row.id,
+      row.voucher_id,
+      row.event,
+      row.amount,
+      row.currency,
+      row.receipt_id,
+      row.terminal_id,
+      row.user_id,
+      row.occurred_at,
+    ],
+  );
+}
+
+/**
+ * Codex review B5 (2026-05-01): decrement the local voucher projection's
+ * balance and update its status. Intended to fire inside the same SQLite
+ * transaction as `insertPendingVoucherLedgerRow` so the projection and the
+ * audit trail move together.
+ *
+ * Caller is responsible for computing the new balance with bcsub (string
+ * arithmetic, never parseFloat) and the new status (`'PartiallyRedeemed'` or
+ * `'FullyRedeemed'`). This helper does the SQL UPDATE only.
+ */
+export async function updateVoucherBalanceAndStatus(
+  db: Database,
+  voucherId: string,
+  newBalance: string,
+  newStatus: VoucherStatus,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE vouchers
+        SET current_balance = $1,
+            status = $2,
+            synced_at = datetime('now')
+      WHERE id = $3`,
+    [newBalance, newStatus, voucherId],
+  );
+}

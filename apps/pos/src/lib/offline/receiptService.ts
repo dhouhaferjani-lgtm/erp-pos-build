@@ -11,6 +11,13 @@ import {
   insertOfflineReceipt,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  findByCode as findVoucherByCode,
+  insertPendingVoucherLedgerRow,
+  updateVoucherBalanceAndStatus,
+  type LocalVoucher,
+  type VoucherStatus,
+} from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
 
 interface OfflineReceiptInput {
@@ -179,6 +186,55 @@ async function computeV3FiscalHash(input: V3HashInput): Promise<string> {
   return sha256Hex(canonical);
 }
 
+/**
+ * Codex review B5 (2026-05-01): pull out the store_voucher tenders for the
+ * receipt. Each entry retains the original payment shape for amount lookup;
+ * the caller resolves the local voucher row separately. Restaurant vouchers
+ * and gift cards do NOT enter the local voucher mirror in Phase 1 (spec
+ * §3.2.1 + §6.5), so this function only matches on `store_voucher`.
+ */
+function collectStoreVoucherPayments(
+  payments: OfflineReceiptInput['payments'],
+): Array<{ serial: string; amount: string }> {
+  const out: Array<{ serial: string; amount: string }> = [];
+  for (const p of payments) {
+    if (p.instrumentType === 'store_voucher' && typeof p.instrumentSerial === 'string' && p.instrumentSerial !== '') {
+      out.push({ serial: p.instrumentSerial, amount: p.amount });
+    }
+  }
+  return out;
+}
+
+/**
+ * Codex review B5 (2026-05-01): resolve every store_voucher tender against
+ * the local voucher projection. Throws on the first miss so the caller can
+ * fail the whole receipt creation BEFORE entering the transaction — a
+ * receipt referencing an unknown voucher cannot be redeemed server-side
+ * either, so refusing here gives the cashier a clear "voucher not found"
+ * message rather than letting the receipt seal and silently fail to push.
+ *
+ * The returned array is index-aligned with the input — caller iterates in
+ * order to pair each tender with its resolved voucher.
+ */
+async function resolveLocalVouchers(
+  db: Database,
+  tenders: ReadonlyArray<{ serial: string; amount: string }>,
+): Promise<LocalVoucher[]> {
+  const out: LocalVoucher[] = [];
+  for (const tender of tenders) {
+    const voucher = await findVoucherByCode(db, tender.serial);
+    if (voucher === null) {
+      throw new Error(
+        `Voucher tender '${tender.serial}' is not present in the local voucher mirror. `
+          + `Cannot create receipt: the cashier applied a tender for a voucher this terminal has never seen. `
+          + `Check that the voucher exists on the server and that this terminal has synced recently.`,
+      );
+    }
+    out.push(voucher);
+  }
+  return out;
+}
+
 export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
@@ -327,12 +383,71 @@ export async function createOfflineReceipt(
     fiscal_schema_version: fiscalSchemaVersion,
   };
 
-  // 5b. Wrap receipt insert + hash chain advance in a transaction
-  //     to prevent inconsistent state if either operation fails
+  // 5b. Codex review B5 (2026-05-01): pre-resolve every store_voucher payment
+  //     against the local voucher mirror BEFORE entering the transaction. We
+  //     need (a) the local voucher.id to write the ledger row's voucher_id FK
+  //     and (b) the current_balance to compute the new balance with bcsub.
+  //     The lookup is read-only and side-effect-free, so it is safe outside
+  //     the transaction; the writes inside the transaction use these
+  //     pre-resolved snapshots.
+  //
+  //     If a voucher is missing from the local mirror, fail loud — the cashier
+  //     applied a tender for which we have no projection, which means the
+  //     server cannot map the push to a real voucher either. This is the
+  //     offline analogue of `VoucherRedemptionService` throwing
+  //     `VoucherInvalidStatusException` for an unknown code.
+  const voucherTenders = collectStoreVoucherPayments(input.payments);
+  const resolvedVouchers = await resolveLocalVouchers(db, voucherTenders);
+
+  // 5c. Wrap receipt insert + hash chain advance + voucher ledger writes in
+  //     a single transaction. Either the receipt + chain + ledger + balance
+  //     all commit, or none do — this prevents the cashier from sealing a
+  //     fiscal receipt that references a voucher whose balance never moved.
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertOfflineReceipt(db, offlineReceipt);
     await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+
+    // Codex review B5 (2026-05-01): for every store_voucher payment in this
+    // receipt, append a Redeemed ledger row in pending sync state, decrement
+    // the local voucher projection's balance, and update its status to
+    // FullyRedeemed (zero balance) or PartiallyRedeemed (positive residual).
+    // The push pipeline (`syncService.pushVoucherLedgerEntries`) ships the
+    // pending rows to the server, where `VoucherLedgerPushService::ingest`
+    // dedupes against the canonical projection. The server-side
+    // VoucherRedemptionService is the source of truth for GL accounting; the
+    // local writes are projection updates that keep the cashier's view
+    // consistent until the server replays the redemption.
+    for (let i = 0; i < voucherTenders.length; i++) {
+      const tender = voucherTenders[i]!;
+      const voucher = resolvedVouchers[i]!;
+      const newBalance = bcsub(voucher.current_balance, tender.amount, decimals);
+      // Defensive: never let local balance go negative. The B4 server-side
+      // validator catches over-redemption on the wire, but a stale local
+      // mirror could theoretically race; clamp to zero rather than persist
+      // a negative balance that would corrupt subsequent local reads.
+      const clampedBalance = bccomp(newBalance, '0') < 0
+        ? bcformat('0', decimals)
+        : bcformat(newBalance, decimals);
+      const newStatus: VoucherStatus = bccomp(clampedBalance, '0') === 0
+        ? 'FullyRedeemed'
+        : 'PartiallyRedeemed';
+
+      await insertPendingVoucherLedgerRow(db, {
+        id: crypto.randomUUID(),
+        voucher_id: voucher.id,
+        event: 'Redeemed',
+        amount: bcformat(tender.amount, decimals),
+        currency: input.currency,
+        receipt_id: null,
+        terminal_id: input.terminalId,
+        user_id: input.operatorId,
+        occurred_at: postedAt,
+      });
+
+      await updateVoucherBalanceAndStatus(db, voucher.id, clampedBalance, newStatus);
+    }
+
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');

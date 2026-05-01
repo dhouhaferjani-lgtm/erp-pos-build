@@ -14,10 +14,26 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   insertOfflineReceipt: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Codex review B5 (2026-05-01): mock the local voucher repository so the
+// store_voucher path can be exercised end-to-end. Default behavior:
+//   - findByCode returns null (no voucher) — store_voucher tests override
+//   - insertPendingVoucherLedgerRow + updateVoucherBalanceAndStatus succeed
+vi.mock('@/lib/offline/voucherRepository', () => ({
+  findByCode: vi.fn().mockResolvedValue(null),
+  insertPendingVoucherLedgerRow: vi.fn().mockResolvedValue(undefined),
+  updateVoucherBalanceAndStatus: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { createOfflineReceipt } from '../receiptService';
 import { computeFiscalHash } from '@/lib/fiscal/hashService';
 import { getTerminalState, advanceHashChain } from '@/lib/db/repositories/terminalStateRepository';
 import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  findByCode as findVoucherByCode,
+  insertPendingVoucherLedgerRow,
+  updateVoucherBalanceAndStatus,
+  type LocalVoucher,
+} from '@/lib/offline/voucherRepository';
 import { makeCartItem } from '@/test/helpers';
 import type { FiscalHashInput } from '@/lib/fiscal/hashService';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
@@ -49,6 +65,29 @@ describe('receiptService - createOfflineReceipt', () => {
     vi.clearAllMocks();
     db = makeMockDb();
     vi.mocked(getTerminalState).mockResolvedValue(terminalState);
+    // Codex review B5 (2026-05-01): default findByCode to return a generic
+    // voucher so pre-existing voucher-bearing tests in this block (which
+    // pre-date the B5 redemption wiring) keep passing without per-test
+    // setup. Tests that assert the missing-voucher behavior live in the
+    // dedicated B5 describe block below and override this default.
+    vi.mocked(findVoucherByCode).mockImplementation(async (_db, code) => ({
+      id: `mirror-${code}`,
+      code,
+      initial_balance: '1000.00',
+      current_balance: '1000.00',
+      currency: 'EUR',
+      status: 'Issued' as const,
+      redemption_mode: 'Bearer' as const,
+      voucher_kind: 'MPV',
+      source: 'Refund' as const,
+      issued_at: '2026-01-01T00:00:00Z',
+      expires_at: null,
+      partner_id: null,
+      issued_to_partner_id: null,
+      redeemable_at_terminal_id: 'terminal-1',
+      notes: null,
+      synced_at: '2026-04-30T00:00:00Z',
+    }));
   });
 
   it('computes subtotal, tax, and total correctly', async () => {
@@ -677,5 +716,361 @@ describe('receiptService - createOfflineReceipt', () => {
     const parsedPayments = JSON.parse(inserted.payments_json) as Array<{ amount: string }>;
     expect(parsedPayments).toHaveLength(1);
     expect(parsedPayments[0]!.amount).toBe('30.00');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Codex review B5 (2026-05-01): voucher tender writes the local
+// voucher_ledger Redeemed row and decrements the voucher projection.
+//
+// These tests fail on parent commit 5b65cd06 (where createOfflineReceipt
+// has no voucher-redemption logic — the receipt seals but the voucher's
+// balance never moves and no ledger row is appended) and pass after the
+// receiptService change.
+//
+// The server-side VoucherRedemptionService remains the source of truth for
+// GL posting; the offline path produces the projection updates + the
+// pending ledger row that VoucherLedgerPushService::ingest dedupes against
+// the canonical projection.
+// ────────────────────────────────────────────────────────────────────────────
+
+function makeLocalVoucher(overrides: Partial<LocalVoucher> = {}): LocalVoucher {
+  return {
+    id: 'v-001',
+    code: 'SV-2026-0099',
+    initial_balance: '50.00',
+    current_balance: '50.00',
+    currency: 'EUR',
+    status: 'Issued',
+    redemption_mode: 'Bearer',
+    voucher_kind: 'MPV',
+    source: 'Refund',
+    issued_at: '2026-04-01T00:00:00Z',
+    expires_at: null,
+    partner_id: null,
+    issued_to_partner_id: null,
+    redeemable_at_terminal_id: 'terminal-1',
+    notes: null,
+    synced_at: '2026-04-30T00:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('receiptService - B5 voucher tender redemption (offline)', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(getTerminalState).mockResolvedValue(terminalState);
+    vi.mocked(findVoucherByCode).mockResolvedValue(null);
+  });
+
+  it('writes a pending voucher_ledger Redeemed row when a store_voucher payment is present', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-cashier-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-store-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 20,
+      payments: [
+        {
+          methodCode: 'store_voucher',
+          amount: '20.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-2026-0099',
+        },
+      ],
+    });
+
+    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledOnce();
+    const ledgerCall = vi.mocked(insertPendingVoucherLedgerRow).mock.calls[0]!;
+    const ledgerRow = ledgerCall[1];
+    expect(ledgerRow.event).toBe('Redeemed');
+    expect(ledgerRow.amount).toBe('20.00');
+    expect(ledgerRow.voucher_id).toBe('v-001');
+    expect(ledgerRow.currency).toBe('EUR');
+    expect(ledgerRow.terminal_id).toBe('terminal-1');
+    expect(ledgerRow.user_id).toBe('op-cashier-1');
+    expect(ledgerRow.receipt_id).toBeNull(); // server assigns this on push
+    // Ledger id must be a fresh UUID (not voucher.id, not receipt.id).
+    expect(ledgerRow.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    expect(ledgerRow.id).not.toBe('v-001');
+  });
+
+  it('decrements the local voucher balance by the redeemed amount and updates status to PartiallyRedeemed', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher({ current_balance: '50.00' }));
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-store-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 20,
+      payments: [
+        {
+          methodCode: 'store_voucher',
+          amount: '20.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-2026-0099',
+        },
+      ],
+    });
+
+    expect(updateVoucherBalanceAndStatus).toHaveBeenCalledOnce();
+    const [, voucherId, newBalance, newStatus] =
+      vi.mocked(updateVoucherBalanceAndStatus).mock.calls[0]!;
+    expect(voucherId).toBe('v-001');
+    expect(newBalance).toBe('30.00'); // 50 - 20
+    expect(newStatus).toBe('PartiallyRedeemed');
+  });
+
+  it('sets status to FullyRedeemed when the redemption exhausts the balance', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher({ current_balance: '50.00' }));
+    const items = [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-store-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 50,
+      payments: [
+        {
+          methodCode: 'store_voucher',
+          amount: '50.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-2026-0099',
+        },
+      ],
+    });
+
+    const [, , newBalance, newStatus] =
+      vi.mocked(updateVoucherBalanceAndStatus).mock.calls[0]!;
+    expect(newBalance).toBe('0.00');
+    expect(newStatus).toBe('FullyRedeemed');
+  });
+
+  it('throws and rolls back when the local voucher mirror does not have the tendered code', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(null);
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await expect(
+      createOfflineReceipt(db, {
+        terminalId: 'terminal-1',
+        operatorId: 'op-1',
+        operatorName: 'Cashier',
+        cartItems: items,
+        currency: 'EUR',
+        paymentMethodId: 'pm-store-voucher',
+        paymentRepositoryId: 'repo-virtual',
+        tenderedAmount: 20,
+        payments: [
+          {
+            methodCode: 'store_voucher',
+            amount: '20.00',
+            instrumentType: 'store_voucher',
+            instrumentSerial: 'UNKNOWN-VOUCHER',
+          },
+        ],
+      }),
+    ).rejects.toThrow(/UNKNOWN-VOUCHER/);
+
+    // Receipt insert never ran — the missing-voucher guard fires before
+    // BEGIN TRANSACTION.
+    expect(insertOfflineReceipt).not.toHaveBeenCalled();
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
+    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the WHOLE transaction when insertPendingVoucherLedgerRow fails (atomicity)', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
+    vi.mocked(insertPendingVoucherLedgerRow).mockRejectedValueOnce(
+      new Error('voucher_ledger insert failed'),
+    );
+
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await expect(
+      createOfflineReceipt(db, {
+        terminalId: 'terminal-1',
+        operatorId: 'op-1',
+        operatorName: 'Cashier',
+        cartItems: items,
+        currency: 'EUR',
+        paymentMethodId: 'pm-store-voucher',
+        paymentRepositoryId: 'repo-virtual',
+        tenderedAmount: 20,
+        payments: [
+          {
+            methodCode: 'store_voucher',
+            amount: '20.00',
+            instrumentType: 'store_voucher',
+            instrumentSerial: 'SV-2026-0099',
+          },
+        ],
+      }),
+    ).rejects.toThrow('voucher_ledger insert failed');
+
+    const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
+    expect(executeCalls).toContain('BEGIN TRANSACTION');
+    expect(executeCalls).toContain('ROLLBACK');
+    expect(executeCalls).not.toContain('COMMIT');
+    // Voucher balance update never ran (failure was BEFORE that call).
+    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+  });
+
+  it('does NOT touch the voucher_ledger when the receipt has no store_voucher payments (cash-only regression guard)', async () => {
+    const items = [makeCartItem({ line_total: '30.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 30,
+      payments: [{ methodCode: 'CASH', amount: '30.00' }],
+    });
+
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
+    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+    expect(findVoucherByCode).not.toHaveBeenCalled();
+  });
+
+  it('handles multiple store_voucher tenders in one receipt (each writes its own ledger row + balance update)', async () => {
+    vi.mocked(findVoucherByCode)
+      .mockResolvedValueOnce(makeLocalVoucher({ id: 'v-A', code: 'SV-A', current_balance: '40.00' }))
+      .mockResolvedValueOnce(makeLocalVoucher({ id: 'v-B', code: 'SV-B', current_balance: '15.00' }));
+
+    const items = [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-store-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 50,
+      payments: [
+        {
+          methodCode: 'store_voucher',
+          amount: '40.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-A',
+        },
+        {
+          methodCode: 'store_voucher',
+          amount: '10.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-B',
+        },
+      ],
+    });
+
+    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledTimes(2);
+    expect(updateVoucherBalanceAndStatus).toHaveBeenCalledTimes(2);
+
+    const ledgerRows = vi.mocked(insertPendingVoucherLedgerRow).mock.calls.map((c) => c[1]);
+    expect(ledgerRows[0]!.voucher_id).toBe('v-A');
+    expect(ledgerRows[0]!.amount).toBe('40.00');
+    expect(ledgerRows[1]!.voucher_id).toBe('v-B');
+    expect(ledgerRows[1]!.amount).toBe('10.00');
+
+    const balanceUpdates = vi.mocked(updateVoucherBalanceAndStatus).mock.calls;
+    // SV-A: 40 - 40 = 0 → FullyRedeemed
+    expect(balanceUpdates[0]![1]).toBe('v-A');
+    expect(balanceUpdates[0]![2]).toBe('0.00');
+    expect(balanceUpdates[0]![3]).toBe('FullyRedeemed');
+    // SV-B: 15 - 10 = 5 → PartiallyRedeemed
+    expect(balanceUpdates[1]![1]).toBe('v-B');
+    expect(balanceUpdates[1]![2]).toBe('5.00');
+    expect(balanceUpdates[1]![3]).toBe('PartiallyRedeemed');
+  });
+
+  it('voucher ledger writes happen INSIDE the BEGIN/COMMIT envelope (atomic with receipt insert)', async () => {
+    vi.mocked(findVoucherByCode).mockResolvedValue(makeLocalVoucher());
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-store-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 20,
+      payments: [
+        {
+          methodCode: 'store_voucher',
+          amount: '20.00',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-2026-0099',
+        },
+      ],
+    });
+
+    const executeCalls = vi.mocked(db.execute).mock.calls.map((c) => c[0]);
+    const beginIdx = executeCalls.indexOf('BEGIN TRANSACTION');
+    const commitIdx = executeCalls.indexOf('COMMIT');
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(commitIdx).toBeGreaterThan(beginIdx);
+
+    // The mocked helpers don't issue raw db.execute calls (they're mocked at
+    // the module boundary), but `insertOfflineReceipt` ran within the
+    // envelope and `insertPendingVoucherLedgerRow`/`updateVoucherBalanceAndStatus`
+    // were both called exactly once. Together with the rollback-on-failure
+    // test above, this proves they share the same transactional fate.
+    expect(insertOfflineReceipt).toHaveBeenCalledOnce();
+    expect(insertPendingVoucherLedgerRow).toHaveBeenCalledOnce();
+    expect(updateVoucherBalanceAndStatus).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT redeem a payment whose instrumentType is restaurant_voucher (Phase 2 — only store_voucher writes locally)', async () => {
+    // Restaurant vouchers are tracked on pos_receipt_payments instrument
+    // fields ONLY. They never enter the local `vouchers` table in Phase 1
+    // (spec §3.2.1). The offline write must skip them.
+    const items = [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0.00' })];
+
+    await createOfflineReceipt(db, {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Cashier',
+      cartItems: items,
+      currency: 'EUR',
+      paymentMethodId: 'pm-restaurant-voucher',
+      paymentRepositoryId: 'repo-virtual',
+      tenderedAmount: 20,
+      payments: [
+        {
+          methodCode: 'restaurant_voucher',
+          amount: '20.00',
+          instrumentType: 'restaurant_voucher',
+          instrumentSerial: 'TR-XYZ',
+        },
+      ],
+    });
+
+    expect(findVoucherByCode).not.toHaveBeenCalled();
+    expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
+    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
   });
 });
