@@ -8,7 +8,6 @@ import {
   UserPlus,
   Mail,
   Phone,
-  MoreVertical,
   CheckCircle,
   XCircle,
   KeyRound,
@@ -20,6 +19,7 @@ import { api, getErrorMessage } from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
+import { ActionMenu, type ActionMenuItem } from '../../components/ui/ActionMenu'
 import { UserEditModal } from './components/UserEditModal'
 import type { User } from '../users/types'
 
@@ -77,7 +77,6 @@ export function UsersPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
   const [showPinModal, setShowPinModal] = useState<string | null>(null)
-  const [showActionMenu, setShowActionMenu] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [notification, setNotification] = useState<{
     type: 'success' | 'error'
@@ -137,7 +136,6 @@ export function UsersPage() {
     },
     onSettled: () => {
       setActionLoading(null)
-      setShowActionMenu(null)
     },
   })
 
@@ -155,7 +153,6 @@ export function UsersPage() {
     },
     onSettled: () => {
       setActionLoading(null)
-      setShowActionMenu(null)
     },
   })
 
@@ -172,7 +169,6 @@ export function UsersPage() {
     },
     onSettled: () => {
       setActionLoading(null)
-      setShowActionMenu(null)
     },
   })
 
@@ -190,7 +186,6 @@ export function UsersPage() {
     },
     onSettled: () => {
       setActionLoading(null)
-      setShowActionMenu(null)
     },
   })
 
@@ -232,41 +227,69 @@ export function UsersPage() {
     })
   }
 
-  const handleAction = (action: string, userId: string) => {
-    switch (action) {
-      case 'edit': {
-        setShowActionMenu(null)
-        const userToEdit = users.find((u) => u.id === userId)
-        if (userToEdit) {
-          setEditUser(userToEdit as User)
-        }
-        break
-      }
-      case 'activate':
-        activateMutation.mutate(userId)
-        break
-      case 'deactivate':
-        if (confirm(t('users.confirmations.deactivate'))) {
-          deactivateMutation.mutate(userId)
-        } else {
-          setShowActionMenu(null)
-        }
-        break
-      case 'reset-password':
-        resetPasswordMutation.mutate(userId)
-        break
-      case 'set-pin':
-        setShowActionMenu(null)
-        setShowPinModal(userId)
-        break
-      case 'delete':
-        if (confirm(t('users.confirmations.delete'))) {
-          deleteMutation.mutate(userId)
-        } else {
-          setShowActionMenu(null)
-        }
-        break
+  const buildMenuItems = (user: User): ActionMenuItem[] => {
+    const items: ActionMenuItem[] = [
+      {
+        key: 'edit',
+        label: t('users.actions.edit', { defaultValue: 'Edit' }),
+        icon: <Pencil className="h-4 w-4 text-blue-500" />,
+        onClick: () => { setEditUser(user) },
+      },
+    ]
+
+    if (user.status !== 'active') {
+      items.push({
+        key: 'activate',
+        label: t('users.actions.activate'),
+        icon: <CheckCircle className="h-4 w-4 text-green-500" />,
+        onClick: () => { activateMutation.mutate(user.id) },
+      })
     }
+
+    if (user.status === 'active' && user.id !== currentUser?.id) {
+      items.push({
+        key: 'deactivate',
+        label: t('users.actions.deactivate'),
+        icon: <XCircle className="h-4 w-4 text-yellow-500" />,
+        onClick: () => {
+          if (confirm(t('users.confirmations.deactivate'))) {
+            deactivateMutation.mutate(user.id)
+          }
+        },
+      })
+    }
+
+    items.push({
+      key: 'set-pin',
+      label: t('users.actions.setPosPin', { defaultValue: 'Set POS PIN' }),
+      icon: <Hash className="h-4 w-4 text-indigo-500" />,
+      onClick: () => { setShowPinModal(user.id) },
+    })
+
+    if (user.email) {
+      items.push({
+        key: 'reset-password',
+        label: t('users.actions.resetPassword'),
+        icon: <KeyRound className="h-4 w-4 text-blue-500" />,
+        onClick: () => { resetPasswordMutation.mutate(user.id) },
+      })
+    }
+
+    if (user.id !== currentUser?.id) {
+      items.push({
+        key: 'delete',
+        label: t('users.actions.delete'),
+        icon: <Trash2 className="h-4 w-4" />,
+        destructive: true,
+        onClick: () => {
+          if (confirm(t('users.confirmations.delete'))) {
+            deleteMutation.mutate(user.id)
+          }
+        },
+      })
+    }
+
+    return items
   }
 
   return (
@@ -437,77 +460,11 @@ export function UsersPage() {
                     {formatDate(user.lastLoginAt)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
-                    <div className="relative">
-                      <button
-                        onClick={() => {
-                          setShowActionMenu(showActionMenu === user.id ? null : user.id)
-                        }}
-                        disabled={actionLoading === user.id}
-                        className="text-gray-400 hover:text-gray-600 p-1 rounded"
-                      >
-                        {actionLoading === user.id ? (
-                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-                        ) : (
-                          <MoreVertical className="h-5 w-5" />
-                        )}
-                      </button>
-                      {showActionMenu === user.id && (
-                        <div className="absolute right-0 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-10">
-                          <div className="py-1">
-                            <button
-                              onClick={() => { handleAction('edit', user.id) }}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              <Pencil className="h-4 w-4 text-blue-500" />
-                              {t('users.actions.edit', { defaultValue: 'Edit' })}
-                            </button>
-                            {user.status !== 'active' && (
-                              <button
-                                onClick={() => { handleAction('activate', user.id) }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                              >
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                                {t('users.actions.activate')}
-                              </button>
-                            )}
-                            {user.status === 'active' && user.id !== currentUser?.id && (
-                              <button
-                                onClick={() => { handleAction('deactivate', user.id) }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                              >
-                                <XCircle className="h-4 w-4 text-yellow-500" />
-                                {t('users.actions.deactivate')}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => { handleAction('set-pin', user.id) }}
-                              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              <Hash className="h-4 w-4 text-indigo-500" />
-                              {t('users.actions.setPosPin', { defaultValue: 'Set POS PIN' })}
-                            </button>
-                            {user.email && (
-                              <button
-                                onClick={() => { handleAction('reset-password', user.id) }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                              >
-                                <KeyRound className="h-4 w-4 text-blue-500" />
-                                {t('users.actions.resetPassword')}
-                              </button>
-                            )}
-                            {user.id !== currentUser?.id && (
-                              <button
-                                onClick={() => { handleAction('delete', user.id) }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                {t('users.actions.delete')}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <ActionMenu
+                      items={buildMenuItems(user)}
+                      ariaLabel={t('users.table.actions')}
+                      isLoading={actionLoading === user.id}
+                    />
                   </td>
                 </tr>
               ))}
@@ -548,10 +505,6 @@ export function UsersPage() {
         />
       )}
 
-      {/* Click outside to close action menu */}
-      {showActionMenu && (
-        <div className="fixed inset-0 z-0" onClick={() => { setShowActionMenu(null) }} />
-      )}
     </div>
   )
 }
@@ -571,10 +524,36 @@ interface PosPinModalProps {
   isLoading: boolean
 }
 
+/**
+ * Generate a numeric PIN of `length` digits using a cryptographically
+ * strong source when available. Used so admins can reset a PIN without
+ * picking one themselves; the PIN is shown once on screen.
+ */
+export function generateRandomPin(length = 4): string {
+  if (length < 4 || length > 6) {
+    throw new Error('PIN length must be between 4 and 6 digits.')
+  }
+  const cryptoApi = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : null
+  let result = ''
+  if (cryptoApi !== null && typeof cryptoApi.getRandomValues === 'function') {
+    const buffer = new Uint32Array(length)
+    cryptoApi.getRandomValues(buffer)
+    for (const value of buffer) {
+      result += (value % 10).toString()
+    }
+  } else {
+    for (let i = 0; i < length; i += 1) {
+      result += Math.floor(Math.random() * 10).toString()
+    }
+  }
+  return result
+}
+
 function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps) {
   const { t } = useTranslation()
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
+  const [wasGenerated, setWasGenerated] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -584,6 +563,12 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
     }
     setPinError(null)
     onSubmit(pin)
+  }
+
+  const handleGenerate = () => {
+    setPin(generateRandomPin(4))
+    setPinError(null)
+    setWasGenerated(true)
   }
 
   return (
@@ -610,6 +595,7 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
                   const v = e.target.value.replace(/\D/g, '')
                   setPin(v)
                   setPinError(null)
+                  setWasGenerated(false)
                 }}
                 className={`mt-1 block w-full rounded-md border px-3 py-2 text-center text-2xl tracking-[0.5em] shadow-sm focus:outline-none focus:ring-1 ${
                   pinError
@@ -619,6 +605,21 @@ function PosPinModal({ onClose, onSubmit, onClear, isLoading }: PosPinModalProps
                 autoFocus
               />
               {pinError && <p className="mt-1 text-sm text-red-600">{pinError}</p>}
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isLoading}
+                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              >
+                {t('users.pinModal.generate', { defaultValue: 'Generate random PIN' })}
+              </button>
+              {wasGenerated && (
+                <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {t('users.pinModal.shareWithCashier', {
+                    defaultValue: 'Share this PIN with the cashier now — it will not be shown again after saving.',
+                  })}
+                </p>
+              )}
             </div>
 
             <div className="flex justify-between gap-3 pt-2">
