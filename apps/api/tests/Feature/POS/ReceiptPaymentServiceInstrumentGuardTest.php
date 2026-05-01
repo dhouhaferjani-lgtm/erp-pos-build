@@ -140,6 +140,11 @@ final class ReceiptPaymentServiceInstrumentGuardTest extends TestCase
 
         $this->expectException(InstrumentRequiredException::class);
         $this->expectExceptionMessage('store_voucher');
+        // Negative-substring invariant: public 422 message must NOT leak internal
+        // transport field names. These are implementation details that should not
+        // surface to cashiers or third-party integrators. (B4 Codex review Minor)
+        $this->expectExceptionMessageMatches('/^(?!.*\binstrument_type\b).*$/s');
+        $this->expectExceptionMessageMatches('/^(?!.*\binstrument_serial\b).*$/s');
 
         $service->processReceiptPayments(
             receiptId: $receipt->id,

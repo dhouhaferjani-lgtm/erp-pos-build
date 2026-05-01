@@ -85,7 +85,12 @@ final class ReceiptSyncServiceInstrumentGuardTest extends TestCase
         $this->assertSame(SyncStatus::Failed, $results[0]->status);
         $errorMessage = (string) $results[0]->error;
         $this->assertStringContainsString('store_voucher', $errorMessage);
-        $this->assertStringContainsString('instrument', $errorMessage);
+        $this->assertStringContainsString('voucher identity', $errorMessage);
+        // Negative-substring invariant: public 422 message must NOT leak internal
+        // transport field names to cashiers or third-party integrators.
+        // (B4 Codex review Minor — locks the no-leak invariant)
+        $this->assertStringNotContainsString('instrument_type', $errorMessage);
+        $this->assertStringNotContainsString('instrument_serial', $errorMessage);
 
         // No receipt should have been persisted (the wrapping transaction rolled back).
         $this->assertDatabaseMissing('pos_receipts', [
@@ -106,7 +111,10 @@ final class ReceiptSyncServiceInstrumentGuardTest extends TestCase
         $results = $service->syncBatch([$payload]);
 
         $this->assertSame(SyncStatus::Failed, $results[0]->status);
-        $this->assertStringContainsString('instrument', (string) $results[0]->error);
+        $errorMessage = (string) $results[0]->error;
+        $this->assertStringContainsString('voucher identity', $errorMessage);
+        $this->assertStringNotContainsString('instrument_type', $errorMessage);
+        $this->assertStringNotContainsString('instrument_serial', $errorMessage);
     }
 
     private function buildVoucherPayloadWithNullInstrumentFields(

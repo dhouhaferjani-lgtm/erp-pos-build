@@ -29,8 +29,7 @@ final class InstrumentRequiredException extends DomainException
     {
         return new self(
             sprintf(
-                'Payment method "%s" requires both instrument_type and instrument_serial. '
-                .'Leaving them null breaks the v3 fiscal-hash binding for instrument-bearing tenders.',
+                'Payment method "%s" requires a voucher identity (kind and serial) to be present and non-empty.',
                 $methodCode,
             )
         );
