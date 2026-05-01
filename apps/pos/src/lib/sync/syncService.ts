@@ -1046,16 +1046,64 @@ export async function pullReceiptQrIndex(
 }
 
 /**
+ * Per-entry result returned by POST /pos/voucher-ledger/sync. The controller
+ * (`VoucherSyncController::pushVoucherLedger`) returns a 200 with an array
+ * of these alongside `synced`, `duplicates`, and `failed` counts. Per-entry
+ * `status: 'failed'` is the server's structured way of reporting that the
+ * row could not be ingested (e.g. `receipt_id_required_for_redemption`,
+ * `voucher_not_found`) — it is NOT an HTTP-level error.
+ *
+ * B5-fix audit Minor 2 (2026-05-01): the previous implementation only
+ * inspected HTTP-level failures and unconditionally called
+ * `markVoucherLedgerEntrySynced` after `apiPost` resolved, even when the
+ * 200 response carried `status: 'failed'`. That silent-drop caused offline
+ * `voucher_ledger` rows to be lost on first push and never retried.
+ */
+interface VoucherLedgerPushEntryResult {
+  id: string;
+  status: 'synced' | 'duplicate' | 'failed';
+  error: string | null;
+}
+
+interface VoucherLedgerPushResponse {
+  results: VoucherLedgerPushEntryResult[];
+  synced: number;
+  duplicates: number;
+  failed: number;
+}
+
+/**
+ * Type guard for the controller's structured response. A stale server (or a
+ * proxy that strips fields) might return `{}` — we treat that as a failure
+ * so the row stays pending rather than getting silently dropped.
+ */
+function isVoucherLedgerPushResponse(value: unknown): value is VoucherLedgerPushResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { results?: unknown };
+  return Array.isArray(v.results);
+}
+
+/**
  * Push locally-written voucher_ledger entries (e.g. issued during a refund or
- * exchange while offline) to the server. Marks each row 'synced' on success
- * or 'failed' with the error reason on failure. Per-row errors do not halt
- * the loop — voucher chain is independent of the receipt fiscal chain.
- * Backend endpoint pending.
+ * exchange while offline) to the server. The controller returns a structured
+ * 200 response with per-entry `{id, status, error}` — we MUST inspect that
+ * shape, not just HTTP status. Per-row errors do not halt the loop — voucher
+ * chain is independent of the receipt fiscal chain.
+ *
+ * Per-entry status semantics:
+ *   - `'synced'` or `'duplicate'` → mark the local row synced (the server
+ *     accepted it, possibly idempotently).
+ *   - `'failed'` → mark the local row failed with the per-entry error reason.
+ *     The row stays in the `'failed'` state and is NOT retried by this
+ *     function; an operator-visible failure surfaces in the sync log.
+ *
+ * HTTP-level errors (network failure, 5xx, 422) are caught by `apiPost` and
+ * converted to thrown exceptions; the catch block marks the row failed with
+ * the HTTP error message.
  */
 export async function pushVoucherLedgerEntries(
   db: Database,
 ): Promise<{ pushed: number; failed: number; errors: string[] }> {
-  // Backend endpoint pending: POST /pos/voucher-ledger/sync (delivered in a later backend task).
   const pending = await getPendingVoucherLedgerEntries(db);
   let pushed = 0;
   let failed = 0;
@@ -1067,10 +1115,48 @@ export async function pushVoucherLedgerEntries(
 
   for (const entry of pending) {
     try {
-      await apiPost('/pos/voucher-ledger/sync', { entries: [entry] });
-      await markVoucherLedgerEntrySynced(db, entry.id);
-      await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'success');
-      pushed++;
+      const response = await apiPost<unknown>('/pos/voucher-ledger/sync', { entries: [entry] });
+
+      // Defense-in-depth: a malformed / stale response shape MUST fail the
+      // row. The previous implementation marked the row synced as long as
+      // apiPost resolved — silent-drop bug.
+      if (!isVoucherLedgerPushResponse(response)) {
+        const message = 'Malformed response from /pos/voucher-ledger/sync (no per-entry results)';
+        await markVoucherLedgerEntryFailed(db, entry.id, message);
+        await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', message);
+        errors.push(`Voucher ledger ${entry.id}: ${message}`);
+        failed++;
+        continue;
+      }
+
+      // Find the per-entry result for this row. We posted exactly one entry
+      // so there should be exactly one result, but match by id for safety.
+      const perEntryResult = response.results.find((r) => r.id === entry.id) ?? response.results[0];
+
+      if (perEntryResult === undefined) {
+        const message = 'Empty per-entry results array from /pos/voucher-ledger/sync';
+        await markVoucherLedgerEntryFailed(db, entry.id, message);
+        await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', message);
+        errors.push(`Voucher ledger ${entry.id}: ${message}`);
+        failed++;
+        continue;
+      }
+
+      if (perEntryResult.status === 'synced' || perEntryResult.status === 'duplicate') {
+        await markVoucherLedgerEntrySynced(db, entry.id);
+        await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'success', perEntryResult.status);
+        pushed++;
+      } else {
+        // status === 'failed' — the server explicitly rejected this row.
+        // Common reasons: 'receipt_id_required_for_redemption',
+        // 'voucher_not_found', 'voucher_invalid_status',
+        // 'voucher_insufficient_balance', 'voucher_not_for_this_terminal'.
+        const reason = perEntryResult.error ?? 'unknown_failure';
+        await markVoucherLedgerEntryFailed(db, entry.id, reason);
+        await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', reason);
+        errors.push(`Voucher ledger ${entry.id}: ${reason}`);
+        failed++;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       await markVoucherLedgerEntryFailed(db, entry.id, message);
