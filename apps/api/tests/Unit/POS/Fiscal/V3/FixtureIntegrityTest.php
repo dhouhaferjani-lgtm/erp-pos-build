@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS\Fiscal\V3;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -95,9 +96,8 @@ final class FixtureIntegrityTest extends TestCase
 
     /**
      * The raw bytes of every fixture file must match the hardcoded SHA-256.
-     *
-     * @dataProvider fixtureHashProvider
      */
+    #[DataProvider('fixtureHashProvider')]
     public function test_fixture_file_content_hash_matches_manifest(string $filename, string $expectedHash): void
     {
         $path = base_path(self::FIXTURE_DIR.'/'.$filename);
@@ -125,9 +125,7 @@ final class FixtureIntegrityTest extends TestCase
         );
     }
 
-    /**
-     * @return array<string, array{0: string, 1: string}>
-     */
+    /** @return array<string, array{0: string, 1: string}> */
     public static function fixtureHashProvider(): array
     {
         $result = [];
