@@ -1155,3 +1155,66 @@ describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', ()
     expect(wire.payments[1]!.instrument_serial).toBe('SV-2026-WIRE-02');
   });
 });
+
+describe('B3-followup audit (Finding 4): receiptToPayload fails loudly on invalid fiscal_schema_version', () => {
+  // Pre-existing comment in syncService.ts:1222-1225 said "any unexpected
+  // value is a schema bug and should fail loudly via the server's hard-reject
+  // path", but the code coerced anything that wasn't 3 to 2 silently. The
+  // audit flagged the comment-vs-code drift. This test locks the fix:
+  // unexpected values throw at the wire-parser layer, with a message that
+  // names the receipt and the bad value so on-call can find the row.
+
+  it('throws on fiscal_schema_version = 4 with a message naming the receipt and the bad value', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'POS01-2026-00099999',
+      idempotency_key: 'idem-bad-version',
+      fiscal_schema_version: 4 as unknown as 2 | 3,
+    });
+
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/POS01-2026-00099999/);
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/fiscal_schema_version/);
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/4/);
+  });
+
+  it('throws when fiscal_schema_version is undefined / null', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'POS01-2026-00099998',
+      idempotency_key: 'idem-null-version',
+      fiscal_schema_version: undefined as unknown as 2 | 3,
+    });
+
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/fiscal_schema_version/);
+  });
+
+  it('accepts fiscal_schema_version = 2', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      idempotency_key: 'idem-v2',
+      fiscal_schema_version: 2,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.fiscal_schema_version).toBe(2);
+  });
+
+  it('accepts fiscal_schema_version = 3', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      idempotency_key: 'idem-v3',
+      fiscal_schema_version: 3,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.fiscal_schema_version).toBe(3);
+  });
+});

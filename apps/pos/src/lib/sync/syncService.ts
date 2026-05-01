@@ -1229,9 +1229,26 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
 
   // Codex review B1: stamp the version this receipt was sealed under. We do
   // NOT default-to-2 here — that would silently let a v3-sealed receipt sync
-  // as v2 if the column ever read back as undefined. Any unexpected value is
-  // a schema bug and should fail loudly via the server's hard-reject path.
-  const fiscalSchemaVersion = receipt.fiscal_schema_version === 3 ? 3 : 2;
+  // as v2 if the column ever read back as undefined.
+  //
+  // B3-followup audit (Finding 4, 2026-05-01): the prior implementation said
+  // "any unexpected value is a schema bug and should fail loudly" in this
+  // comment but actually coerced anything that wasn't 3 to 2 silently. Now
+  // it actually fails loudly. The error names the receipt and the bad value
+  // so an on-call engineer can locate the row in the offline_receipts table.
+  // The server's hard-reject path remains as a defense in depth for any
+  // payload that slips through — but we should not be sending it in the
+  // first place.
+  const fiscalSchemaVersion: 2 | 3 = (() => {
+    if (receipt.fiscal_schema_version === 2 || receipt.fiscal_schema_version === 3) {
+      return receipt.fiscal_schema_version;
+    }
+    throw new Error(
+      `[sync] Receipt ${receipt.receipt_number} (idempotency_key=${receipt.idempotency_key}) ` +
+      `has invalid fiscal_schema_version=${String(receipt.fiscal_schema_version)}; ` +
+      `expected 2 or 3. This indicates a schema or migration bug — investigate the offline_receipts row.`,
+    );
+  })();
 
   return {
     idempotency_key: receipt.idempotency_key,
