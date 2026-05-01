@@ -575,6 +575,8 @@
     "orderSummary": "Order Summary",
     "itemsCount": "{{count}} item(s)",
     "voucherTenderLabel": "Voucher",
+    "voucherBadge": "Voucher",
+    "voucherTenderFlowRequired": "Voucher tenders use a dedicated scan / lookup flow — please use the voucher button or scan the code rather than adding it as a normal payment line.",
     "voucherMethodMissing": "Cannot apply voucher tender — store voucher payment method is not configured for this terminal.",
     "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual payment repository is configured for this terminal. Contact your administrator."
   },

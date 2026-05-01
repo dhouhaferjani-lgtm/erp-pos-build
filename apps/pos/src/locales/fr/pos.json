@@ -575,6 +575,8 @@
     "orderSummary": "Résumé de la commande",
     "itemsCount": "{{count}} article(s)",
     "voucherTenderLabel": "Bon d'achat",
+    "voucherBadge": "Bon",
+    "voucherTenderFlowRequired": "Les bons d'achat utilisent un flux de scan / recherche dédié — utilisez le bouton « bon d'achat » ou scannez le code plutôt que de l'ajouter comme paiement normal.",
     "voucherMethodMissing": "Impossible d'appliquer le bon d'achat — le mode de paiement « bon d'achat » n'est pas configuré pour ce terminal.",
     "voucherRepositoryMissing": "Impossible d'appliquer le bon d'achat — aucun compte de paiement virtuel n'est configuré pour ce terminal. Contactez votre administrateur."
   },

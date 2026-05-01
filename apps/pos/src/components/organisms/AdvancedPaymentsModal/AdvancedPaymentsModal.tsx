@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { NumPad } from '@/components/molecules/NumPad';
+import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore, type AdvancedPaymentLine } from '@/stores/paymentStore';
 
@@ -177,8 +178,41 @@ export function AdvancedPaymentsModal({
   const overpayment = Math.max(0, totalPaid - total);
   const isFullyPaid = totalPaid >= total;
 
+  // Codex review B4 (2026-04-30) UI half: tapping an instrument-bearing
+  // payment method tile (store_voucher / restaurant_voucher / gift_card per
+  // the PaymentInstrumentKind enum on the server, mirrored in
+  // `lib/payment/paymentMethodKind.ts`) MUST NOT enter the free-form
+  // PaymentLineItem flow. A free-form line carries no instrument fields and
+  // the server's StoreReceiptPaymentsRequest validator would reject the
+  // submission with 422 — but more importantly, it would let a v3 receipt
+  // bind `method_code = store_voucher, instrument_serial = null` if the
+  // server enforcement ever drifted. Routing here through the dedicated
+  // voucher tender flow means voucher tenders ALWAYS land via
+  // `paymentStore.voucherTenders` with the voucher code as instrument_serial.
+  //
+  // For B4 scope: B5 wires `VoucherTenderModal` mount + scan flow. Until then,
+  // surface a clear cashier message so the cause of "tile is unresponsive"
+  // is unambiguous. A silent no-op was rejected as bad UX.
   const handleSelectMethod = useCallback(
     (methodId: string) => {
+      const tappedMethod = activeMethods.find((m) => m.id === methodId);
+      if (
+        tappedMethod !== undefined
+        && requiresInstrumentForMethodCode(tappedMethod.code ?? '')
+      ) {
+        // Clear any in-progress free-form selection state so a previously
+        // selected cash/card row's config UI disappears the moment the user
+        // pivots to a voucher tile.
+        setSelectedMethodId(null);
+        setAmount('');
+        setRepositoryId('');
+        setReference('');
+        setCardLastFour('');
+        setValidationError(t('advancedPayments.voucherTenderFlowRequired'));
+
+        return;
+      }
+
       setSelectedMethodId(methodId);
       setAmount(remaining > 0 ? remaining.toFixed(decimals) : '');
       setRepositoryId('');
@@ -186,7 +220,7 @@ export function AdvancedPaymentsModal({
       setCardLastFour('');
       setValidationError(null);
     },
-    [remaining, decimals],
+    [activeMethods, remaining, decimals, t],
   );
 
   const handlePayRemaining = useCallback(() => {
@@ -348,6 +382,13 @@ export function AdvancedPaymentsModal({
             {activeMethods.map((method) => {
               const Icon = getMethodIcon(method);
               const isSelected = selectedMethodId === method.id;
+              // Codex review B4 (2026-04-30): mark instrument-bearing tiles
+              // (store_voucher / restaurant_voucher / gift_card) so the
+              // cashier sees at a glance that tapping them routes through
+              // the voucher tender flow rather than the free-form line UI.
+              const isInstrumentBearing = requiresInstrumentForMethodCode(
+                method.code ?? '',
+              );
               return (
                 <button
                   key={method.id}
@@ -359,8 +400,17 @@ export function AdvancedPaymentsModal({
                       : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50',
                   )}
                 >
-                  <Icon className="h-5 w-5 shrink-0" />
+                  {isInstrumentBearing ? (
+                    <Ticket className="h-5 w-5 shrink-0 text-purple-600" />
+                  ) : (
+                    <Icon className="h-5 w-5 shrink-0" />
+                  )}
                   <span className="text-sm font-medium">{method.name}</span>
+                  {isInstrumentBearing && (
+                    <span className="ml-auto rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-purple-700">
+                      {t('advancedPayments.voucherBadge')}
+                    </span>
+                  )}
                 </button>
               );
             })}

@@ -139,6 +139,87 @@ function renderModal(overrides: {
   };
 }
 
+describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through voucher flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+  });
+
+  /**
+   * Codex review B4 (2026-04-30) UI half: tapping a `store_voucher` /
+   * `restaurant_voucher` / `gift_card` payment-method tile must NOT create a
+   * free-form `PaymentLineItem` (which would carry no instrument fields and
+   * the server would 422 on at the validator). Instead the tap MUST route
+   * through the voucher tender flow (the dedicated `VoucherTenderModal`
+   * scan/lookup path that writes a `VoucherTenderRow` with the voucher code
+   * as `instrument_serial`). For B4 scope, the tap can no-op or open a stub —
+   * what matters is that no normal payment line is added. B5 wires the actual
+   * mount of `VoucherTenderModal`.
+   */
+  it('tapping store_voucher method tile does NOT add a free-form payment line', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+    });
+
+    // Tap the Store Voucher tile.
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    // The "Add Payment" button must NOT appear (the modal must not have
+    // entered the per-line config flow for a voucher tap). If it did, the
+    // cashier could populate amount + repository + click Add Payment, which
+    // is exactly the free-form path B4 forbids.
+    expect(screen.queryByText('advancedPayments.addPayment')).not.toBeInTheDocument();
+  });
+
+  it('tapping store_voucher method tile shows a clear cashier message about the voucher flow', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    // Either the dedicated voucher tender modal is open OR the cashier sees
+    // a documented message explaining the special flow. A silent no-op is
+    // unacceptable: the cashier would be left wondering why the tile did
+    // nothing. This assertion locks the contract that ANY user feedback is
+    // required (the exact wording / mounted modal is out of scope for B4 —
+    // B5 ships the proper mount).
+    expect(
+      screen.getByText('advancedPayments.voucherTenderFlowRequired'),
+    ).toBeInTheDocument();
+  });
+
+  it('tapping cash method tile still adds a normal PaymentLineItem (regression guard)', async () => {
+    const { onComplete } = renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+    });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByText(/advancedPayments.payRemaining/i));
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
+    expect(completeBtn).not.toBeDisabled();
+    fireEvent.click(completeBtn!);
+    await Promise.resolve();
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    const payments = vi.mocked(onComplete).mock.calls[0]![0];
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toEqual(expect.objectContaining({
+      payment_method_id: 'pm-cash',
+      amount: 50,
+      repository_id: 'repo-cash',
+    }));
+    // Cash rows must continue to land WITHOUT instrument metadata.
+    expect(payments[0].instrument_type).toBeUndefined();
+    expect(payments[0].instrument_serial).toBeUndefined();
+  });
+});
+
 describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
