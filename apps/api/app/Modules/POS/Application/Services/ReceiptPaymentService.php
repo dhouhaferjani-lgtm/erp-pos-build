@@ -21,6 +21,8 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
+use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Domain\CurrencyScale;
@@ -47,6 +49,7 @@ final class ReceiptPaymentService
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private readonly ReceiptFinalizationService $finalizationService,
+        private readonly VoucherRedemptionService $voucherRedemptionService,
     ) {}
 
     /**
@@ -257,6 +260,48 @@ final class ReceiptPaymentService
 
                 $receiptPayments[] = $receiptPayment;
                 $treasuryPayments[] = $treasuryPayment;
+
+                // Codex review B5 (2026-05-01): for store_voucher payments,
+                // delegate the voucher-side accounting to the canonical
+                // VoucherRedemptionService. It writes the voucher_ledger
+                // Redeemed row, posts the Dr VoucherLiability / Cr
+                // PosTenderClearing journal, decrements the voucher's
+                // current_balance, and transitions its status. The receipt
+                // payment row + treasury payment + repository GL entry above
+                // remain — those represent the cashier's view of "this
+                // tender came in via the voucher repository." The voucher
+                // repository's GL account should be configured as
+                // PosTenderClearing in deployment so the two journals net
+                // out to Dr VoucherLiability / Cr Revenue (correct net
+                // accounting: voucher liability extinguishes, revenue
+                // recognized).
+                //
+                // The call inherits the wrapping DB::transaction(), so any
+                // VoucherRedemptionException (insufficient balance, expired,
+                // duplicate, terminal mismatch, currency mismatch, customer
+                // mismatch) rolls back the receipt payment + treasury
+                // payment + GL entry too — atomic, no partial chain state.
+                if ($instrumentType === PaymentInstrumentKind::StoreVoucher) {
+                    $instrumentSerial = $paymentData['instrument_serial'] ?? null;
+                    if (! is_string($instrumentSerial) || $instrumentSerial === '') {
+                        // Defense-in-depth: B4 guard above already enforces
+                        // this, but assert again here so the redemption call
+                        // never runs with an empty serial. The B4 throw site
+                        // is the real fence; this is unreachable.
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+
+                    $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
+                        voucherCode: $instrumentSerial,
+                        appliedAmount: $paymentData['amount'],
+                        currency: (string) $receipt->currency,
+                        receiptId: $receipt->id,
+                        cashierId: (string) $receipt->cashier_id,
+                        terminalId: (string) $receipt->terminal_id,
+                        partnerId: $customerId,
+                        instrumentKind: PaymentInstrumentKind::StoreVoucher,
+                    ));
+                }
             }
 
             // A1 — Tolerance write-off: same-transaction GL post + shift increment.

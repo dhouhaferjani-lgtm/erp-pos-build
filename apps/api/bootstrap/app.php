@@ -13,6 +13,12 @@ use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
+use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherExpiredException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherInsufficientBalanceException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisCustomerException;
+use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisTerminalException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -190,6 +196,82 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'error' => [
                         'code' => 'REFUND_DESTINATION_NOT_ALLOWED',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // Codex review B5 (2026-05-01): Voucher redemption exceptions extend
+        // \RuntimeException (not \DomainException), so without these handlers
+        // the new ReceiptPaymentService::processReceiptPayments call to
+        // VoucherRedemptionService::redeem would bubble to 500 on the
+        // online checkout path. Map each to a typed 422 with a stable
+        // error.code so the POS UI can surface clear cashier messages
+        // (e.g. "Voucher not found", "Insufficient balance"). The codes
+        // are deliberately distinct rather than collapsing to a single
+        // BUSINESS_ERROR — the cashier needs different recovery actions
+        // for "wrong code" vs. "voucher empty" vs. "wrong terminal."
+        $exceptions->render(function (VoucherInvalidStatusException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_INVALID_STATUS',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (VoucherInsufficientBalanceException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_INSUFFICIENT_BALANCE',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (VoucherExpiredException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_EXPIRED',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (VoucherNotForThisTerminalException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_WRONG_TERMINAL',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (VoucherNotForThisCustomerException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_WRONG_CUSTOMER',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (VoucherDuplicateInTransactionException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'VOUCHER_DUPLICATE_IN_TRANSACTION',
                         'message' => $e->getMessage(),
                     ],
                 ], 422);

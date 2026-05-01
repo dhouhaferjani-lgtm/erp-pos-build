@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Models\Country;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
@@ -21,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Domain\Voucher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -91,26 +93,19 @@ final class ReceiptPaymentServiceInstrumentGuardTest extends TestCase
             'opening_cash' => '0.000',
         ]);
 
-        // GL accounts (the writer touches GL even on the failure path's
-        // pre-check, so they must exist).
-        $voucherClearing = Account::create([
-            'tenant_id' => $this->tenant->id,
+        // Codex review B5 (2026-05-01): seed the FULL chart of accounts so
+        // the success path (which now calls VoucherRedemptionService::redeem
+        // and posts Dr VoucherLiability / Cr PosTenderClearing) can resolve
+        // every system account purpose without per-test setup.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+
+        // The voucher clearing account is the existing positive-control
+        // anchor; resolve it from the seeded chart by purpose so we can
+        // wire the voucher repository's gl_account_id.
+        $voucherClearing = Account::where([
             'company_id' => $this->company->id,
-            'code' => '467',
-            'name' => 'Voucher Clearing',
-            'type' => 'liability',
-            'system_purpose' => SystemAccountPurpose::Cash,
-            'is_active' => true,
-        ]);
-        Account::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'code' => '707',
-            'name' => 'Product Revenue',
-            'type' => 'revenue',
-            'system_purpose' => SystemAccountPurpose::ProductRevenue,
-            'is_active' => true,
-        ]);
+            'system_purpose' => SystemAccountPurpose::PosTenderClearing->value,
+        ])->firstOrFail();
 
         $this->voucherMethod = PaymentMethod::create([
             'tenant_id' => $this->tenant->id,
@@ -182,6 +177,13 @@ final class ReceiptPaymentServiceInstrumentGuardTest extends TestCase
 
     public function test_process_receipt_payments_succeeds_when_store_voucher_carries_full_instrument_pair(): void
     {
+        // Codex review B5 (2026-05-01): the success path now calls
+        // VoucherRedemptionService::redeem, which requires a real voucher
+        // matching the instrument_serial. Seed one for this terminal so the
+        // redemption call can succeed; this also lets us assert the
+        // ledger/balance/status round-trip.
+        $voucher = $this->seedVoucher('SV-2026-0099', '50.00');
+
         $receipt = $this->seedPendingSealReceipt('15.000');
 
         /** @var ReceiptPaymentService $service */
@@ -207,6 +209,32 @@ final class ReceiptPaymentServiceInstrumentGuardTest extends TestCase
         // dedicated v3 fixture tests; here we just prove the guard does not
         // bite legitimate voucher tenders.
         $this->assertSame('SV-2026-0099', $result['receipt_payments'][0]->instrument_serial);
+
+        // Codex review B5 (2026-05-01): the redemption ran — the voucher
+        // balance moved by the redeemed amount and a Redeemed ledger row
+        // exists on the canonical projection. Internal precision = scale + 2.
+        $voucher->refresh();
+        $this->assertSame('35.00000', $voucher->current_balance); // 50 - 15
+        $this->assertDatabaseHas('voucher_ledger', [
+            'voucher_id' => $voucher->id,
+            'event' => 'redeemed',
+            'receipt_id' => $receipt->id,
+        ]);
+    }
+
+    private function seedVoucher(string $code, string $balance): Voucher
+    {
+        return Voucher::factory()
+            ->forTerminal($this->terminal)
+            ->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'code' => $code,
+                'currency' => 'EUR',
+                'initial_balance' => $balance,
+                'current_balance' => $balance,
+                'issued_by_user_id' => $this->cashier->id,
+            ]);
     }
 
     private static int $receiptCounter = 0;

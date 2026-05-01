@@ -24,6 +24,7 @@ use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Treasury\DTOs\ToleranceCheckResult;
 use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
@@ -56,6 +57,12 @@ final class ReceiptPaymentServiceTest extends TestCase
             $this->glService,
             $this->app->make(PaymentToleranceCheckerContract::class),
             $this->app->make(ReceiptFinalizationService::class),
+            // Codex review B5 (2026-05-01): VoucherRedemptionService is now
+            // injected so store_voucher tenders trigger the canonical
+            // redemption pipeline. None of the unit tests in this file use
+            // store_voucher payments, so the service is resolved from the
+            // container as a real instance — no mock needed.
+            $this->app->make(VoucherRedemptionService::class),
         );
     }
 
@@ -339,6 +346,7 @@ final class ReceiptPaymentServiceTest extends TestCase
             $this->glService,
             $spy,
             $this->app->make(ReceiptFinalizationService::class),
+            $this->app->make(VoucherRedemptionService::class),
         );
 
         $service->processReceiptPayments(
