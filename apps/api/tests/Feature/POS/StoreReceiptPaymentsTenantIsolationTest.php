@@ -11,8 +11,10 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -23,6 +25,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
@@ -188,11 +191,17 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
             ]],
         ]);
 
-        $this->assertContains(
-            $response->status(),
-            [404, 422],
-            'Cross-tenant payment_method_id must be rejected; got '.$response->status().': '.$response->getContent(),
-        );
+        // Codex review #8 (2026-05-01): pin the specific error key so the
+        // rejection origin is unambiguous. A 422 from a different rule (e.g.,
+        // exists falling through to company_id) would silently mask a hole in
+        // the tenant_id predicate. The codebase emits a custom 422 envelope
+        // that doesn't match assertJsonValidationErrors's default shape (see
+        // StoreReceiptPaymentsInstrumentBindingTest comment), so we match on
+        // the field name and the customized "does not exist" message text.
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('payment_method_id', $body);
+        $this->assertStringContainsString('Payment method does not exist', $body);
 
         $receipt->refresh();
         $this->assertSame(
@@ -221,11 +230,10 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
             ]],
         ]);
 
-        $this->assertContains(
-            $response->status(),
-            [404, 422],
-            'Cross-tenant repository_id must be rejected; got '.$response->status().': '.$response->getContent(),
-        );
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('repository_id', $body);
+        $this->assertStringContainsString('Payment repository does not exist', $body);
 
         $receipt->refresh();
         $this->assertSame(FiscalStatus::PendingSeal, $receipt->fiscal_status);
@@ -250,11 +258,10 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
             'customer_id' => $this->partnerA->id,
         ]);
 
-        $this->assertContains(
-            $response->status(),
-            [404, 422],
-            'Cross-tenant customer_id must be rejected; got '.$response->status().': '.$response->getContent(),
-        );
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('customer_id', $body);
+        $this->assertStringContainsString('Customer does not exist', $body);
 
         $receipt->refresh();
         $this->assertSame(FiscalStatus::PendingSeal, $receipt->fiscal_status);
@@ -262,6 +269,117 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
             0,
             ReceiptPayment::query()->where('receipt_id', $receipt->id)->count(),
         );
+    }
+
+    /**
+     * Codex review #4 (2026-05-01): same-tenant/cross-company case.
+     *
+     * The original cross-tenant tests differ on BOTH tenant AND company, so a
+     * 422 from the company predicate alone would silently mask a hole in the
+     * tenant predicate (and vice versa). This test isolates the company axis:
+     * tenant B is the same, but the payment_method_id and repository_id belong
+     * to a SECOND company on the same tenant. The validator must still reject.
+     */
+    public function test_same_tenant_cross_company_is_rejected(): void
+    {
+        $companyB2 = Company::factory()->create([
+            'tenant_id' => $this->tenantB->id,
+            'country_code' => 'FR',
+            'currency' => 'EUR',
+        ]);
+        app(ChartOfAccountsService::class)->seedForCompany($companyB2);
+        $cashGlB2 = Account::query()
+            ->where('company_id', $companyB2->id)
+            ->where('system_purpose', SystemAccountPurpose::Cash)
+            ->firstOrFail();
+
+        $methodB2 = PaymentMethod::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $companyB2->id,
+            'name' => 'Cash B2',
+            'code' => 'cash',
+        ]);
+        $repoB2 = PaymentRepository::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $companyB2->id,
+            'name' => 'Cash Drawer B2',
+            'code' => 'CASH-B2',
+            'type' => RepositoryType::CashRegister->value,
+            'gl_account_id' => $cashGlB2->id,
+        ]);
+
+        $receipt = $this->seedReceiptForTenantB('10.000');
+        Sanctum::actingAs($this->cashierB);
+
+        $response = $this->postJson("/api/v1/pos/receipts/{$receipt->id}/payments", [
+            'payments' => [[
+                'amount' => '10.000',
+                'payment_method_id' => $methodB2->id,
+                'repository_id' => $repoB2->id,
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $body = (string) $response->getContent();
+        $this->assertStringContainsString('payment_method_id', $body);
+        $this->assertStringContainsString('repository_id', $body);
+        $this->assertStringContainsString('Payment method does not exist', $body);
+        $this->assertStringContainsString('Payment repository does not exist', $body);
+
+        $receipt->refresh();
+        $this->assertSame(FiscalStatus::PendingSeal, $receipt->fiscal_status);
+        $this->assertSame(
+            0,
+            ReceiptPayment::query()->where('receipt_id', $receipt->id)->count(),
+        );
+    }
+
+    /**
+     * Codex review #5 (2026-05-01): service-layer bypass for programmatic
+     * callers.
+     *
+     * StoreReceiptPaymentsRequest is the HTTP boundary; queue jobs, internal
+     * flows, console commands, and future controllers can call
+     * ReceiptPaymentService::processReceiptPayments() directly with a raw
+     * customerId argument. Without explicit Partner scoping in the service,
+     * a programmatic caller can persist tenant A's partner_id onto tenant B's
+     * treasury_payment row — exactly the exploit class the HTTP fix closed at
+     * the validator. The service must reject this with ModelNotFoundException
+     * before any GL or payment write.
+     */
+    public function test_service_rejects_cross_tenant_customer_id_when_form_request_is_bypassed(): void
+    {
+        $receipt = $this->seedReceiptForTenantB('10.000');
+
+        // The service reads CompanyContext for the resolved company; set it
+        // to tenant B's company so the service path is reached as if a
+        // legitimate internal caller were running in tenant B's context.
+        app(CompanyContext::class)->setCompanyId($this->companyB->id);
+
+        $this->expectException(ModelNotFoundException::class);
+
+        try {
+            app(ReceiptPaymentService::class)->processReceiptPayments(
+                receiptId: $receipt->id,
+                payments: [[
+                    'amount' => '10.000',
+                    'payment_method_id' => $this->methodB->id,
+                    'repository_id' => $this->repoB->id,
+                ]],
+                // Tenant A's partner_id smuggled into tenant B's payment.
+                customerId: $this->partnerA->id,
+            );
+        } finally {
+            // Defense-in-depth: regardless of the throw, no payment row may
+            // exist. If the test fails at expectException but a payment was
+            // written, that is the real exploit and the assertion below must
+            // surface it.
+            $this->assertSame(
+                0,
+                ReceiptPayment::query()->where('receipt_id', $receipt->id)->count(),
+                'No ReceiptPayment row may be written when cross-tenant customer_id is submitted via service',
+            );
+        }
     }
 
     public function test_same_tenant_payment_succeeds_as_control(): void
