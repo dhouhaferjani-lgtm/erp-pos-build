@@ -158,8 +158,18 @@ final class ReceiptPaymentService
             $treasuryPayments = [];
 
             foreach ($payments as $index => $paymentData) {
-                // Get payment repository
-                $repository = PaymentRepository::findOrFail($paymentData['repository_id']);
+                // Tenant-isolation sweep (2026-05-01): scope the lookup to the
+                // receipt's tenant and the resolved company so a programmatic
+                // caller (queue job, internal flow, future controller, or test)
+                // that bypasses StoreReceiptPaymentsRequest cannot bind another
+                // tenant's repository onto this receipt's payment chain. The
+                // request validator's `Rule::exists(...)->where(tenant/company)`
+                // rejects this shape with 422 at the HTTP boundary; this is
+                // defense in depth.
+                $repository = PaymentRepository::query()
+                    ->where('tenant_id', $receipt->tenant_id)
+                    ->where('company_id', $companyId)
+                    ->findOrFail($paymentData['repository_id']);
 
                 if ($repository->gl_account_id === null) {
                     throw new \RuntimeException(
@@ -170,8 +180,16 @@ final class ReceiptPaymentService
                     );
                 }
 
-                // Get payment method name for receipt payment record
-                $paymentMethod = PaymentMethod::findOrFail($paymentData['payment_method_id']);
+                // Tenant-isolation sweep (2026-05-01): same scoping as the
+                // PaymentRepository lookup above. Without this, a cross-tenant
+                // payment_method_id bypassing the validator would still land
+                // its `code` snapshot into pos_receipt_payments and the v3
+                // fiscal hash would bind another tenant's method semantics
+                // into this tenant's chain.
+                $paymentMethod = PaymentMethod::query()
+                    ->where('tenant_id', $receipt->tenant_id)
+                    ->where('company_id', $companyId)
+                    ->findOrFail($paymentData['payment_method_id']);
 
                 // Codex review B4 (2026-04-30): defense-in-depth at the writer.
                 // The HTTP request validator (StoreReceiptPaymentsRequest) rejects
