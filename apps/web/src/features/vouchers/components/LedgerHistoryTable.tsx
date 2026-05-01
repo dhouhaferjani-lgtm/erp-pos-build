@@ -8,7 +8,30 @@ interface LedgerHistoryTableProps {
   currency: string
 }
 
+/**
+ * Codex review R3 (2026-04-30): the backend's `formatLedger()` returns
+ * lowercase storage values from the `VoucherEvent` enum (`issued`,
+ * `redeemed`, `voided`, `transferred`, `expiry_extended`, etc.). Until R3
+ * landed, this map keyed off the PascalCase TS union so every real backend
+ * row fell through to the grey default. We now key the lowercase wire
+ * values, and keep the PascalCase aliases pointing to the same classes so
+ * pre-R3 hand-fed test fixtures keep rendering with a coloured badge while
+ * the migration completes.
+ */
 const EVENT_BADGE_CLASSES: Record<string, string> = {
+  // Canonical lowercase wire values (backend formatLedger output).
+  issued: 'bg-green-100 text-green-800',
+  redeemed: 'bg-blue-100 text-blue-800',
+  partially_redeemed: 'bg-blue-100 text-blue-800',
+  voided: 'bg-red-100 text-red-800',
+  expired: 'bg-orange-100 text-orange-800',
+  reversed: 'bg-indigo-100 text-indigo-800',
+  transferred: 'bg-yellow-100 text-yellow-800',
+  rounding_adjustment: 'bg-gray-100 text-gray-700',
+  // Codex review m2: administrative expiry-extension event — purple, same
+  // hue as the legacy "Extended" alias so the visual contract is unchanged.
+  expiry_extended: 'bg-purple-100 text-purple-800',
+  // Legacy PascalCase aliases — kept so pre-R3 fixtures don't grey out.
   Issued: 'bg-green-100 text-green-800',
   Redeemed: 'bg-blue-100 text-blue-800',
   Refunded: 'bg-indigo-100 text-indigo-800',
@@ -19,8 +42,13 @@ const EVENT_BADGE_CLASSES: Record<string, string> = {
   Adjusted: 'bg-gray-100 text-gray-700',
 }
 
+/**
+ * Codex review R3 (2026-04-30): mirror the case-canonicalization in
+ * EVENT_BADGE_CLASSES — `issued` is the wire value, `Issued` the legacy
+ * fixture value, and both must be classified as positive (green +).
+ */
 function isPositiveEvent(event: string): boolean {
-  return ['Issued', 'Refunded', 'Adjusted'].includes(event)
+  return ['issued', 'Issued', 'Refunded', 'Adjusted'].includes(event)
 }
 
 export function LedgerHistoryTable({ rows, currency }: LedgerHistoryTableProps) {

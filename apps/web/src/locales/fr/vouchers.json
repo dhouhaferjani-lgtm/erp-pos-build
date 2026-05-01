@@ -21,6 +21,15 @@
   },
 
   "events": {
+    "issued": "Émission",
+    "redeemed": "Utilisation",
+    "partially_redeemed": "Utilisation partielle",
+    "voided": "Annulation",
+    "expired": "Expiration",
+    "reversed": "Annulé",
+    "transferred": "Transfert",
+    "rounding_adjustment": "Ajustement d'arrondi",
+    "expiry_extended": "Expiration prolongée",
     "Issued": "Émission",
     "Redeemed": "Utilisation",
     "Refunded": "Remboursement",
@@ -28,8 +37,7 @@
     "Expired": "Expiration",
     "Extended": "Prolongation",
     "Transferred": "Transfert",
-    "Adjusted": "Ajustement",
-    "expiry_extended": "Expiration prolongée"
+    "Adjusted": "Ajustement"
   },
 
   "redemptionModes": {

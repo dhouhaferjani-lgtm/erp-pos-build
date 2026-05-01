@@ -21,6 +21,15 @@
   },
 
   "events": {
+    "issued": "إصدار",
+    "redeemed": "استخدام",
+    "partially_redeemed": "استخدام جزئي",
+    "voided": "إلغاء",
+    "expired": "انتهاء الصلاحية",
+    "reversed": "عكس",
+    "transferred": "تحويل",
+    "rounding_adjustment": "تعديل التقريب",
+    "expiry_extended": "تمديد تاريخ الانتهاء",
     "Issued": "إصدار",
     "Redeemed": "استخدام",
     "Refunded": "استرداد",
@@ -28,8 +37,7 @@
     "Expired": "انتهاء الصلاحية",
     "Extended": "تمديد",
     "Transferred": "تحويل",
-    "Adjusted": "تعديل",
-    "expiry_extended": "تمديد تاريخ الانتهاء"
+    "Adjusted": "تعديل"
   },
 
   "redemptionModes": {

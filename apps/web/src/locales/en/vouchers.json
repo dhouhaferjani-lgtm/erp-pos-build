@@ -21,6 +21,15 @@
   },
 
   "events": {
+    "issued": "Issued",
+    "redeemed": "Redeemed",
+    "partially_redeemed": "Partially Redeemed",
+    "voided": "Voided",
+    "expired": "Expired",
+    "reversed": "Reversed",
+    "transferred": "Transferred",
+    "rounding_adjustment": "Rounding Adjustment",
+    "expiry_extended": "Expiry Extended",
     "Issued": "Issued",
     "Redeemed": "Redeemed",
     "Refunded": "Refunded",
@@ -28,8 +37,7 @@
     "Expired": "Expired",
     "Extended": "Extended",
     "Transferred": "Transferred",
-    "Adjusted": "Adjusted",
-    "expiry_extended": "Expiry Extended"
+    "Adjusted": "Adjusted"
   },
 
   "redemptionModes": {
