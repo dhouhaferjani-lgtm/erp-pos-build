@@ -590,6 +590,35 @@ final class VoucherControllerTest extends TestCase
         $this->assertStringContainsString($reason, (string) $voucher->notes);
     }
 
+    public function test_transfer_persists_override_reason(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'partner_id' => null,
+            'override_reason' => null,
+        ]);
+
+        $reason = 'Customer requested transfer to spouse';
+
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/transfer", [
+                'to_partner_id' => $partner->id,
+                'reason' => $reason,
+            ])
+            ->assertOk();
+
+        $this->assertSame($reason, $voucher->fresh()->override_reason);
+    }
+
     // -------------------------------------------------------------------------
     // POST /api/v1/vouchers/{id}/extend-expiry
     // -------------------------------------------------------------------------
@@ -619,6 +648,53 @@ final class VoucherControllerTest extends TestCase
 
         $voucher->refresh();
 
+        $this->assertSame($newExpiry, $voucher->expires_at?->toDateString());
+        $this->assertStringContainsString('[EXPIRY-EXTENDED ', (string) $voucher->notes);
+        $this->assertStringContainsString($reason, (string) $voucher->notes);
+    }
+
+    public function test_extend_expiry_writes_ledger_row_with_expiry_extended_event(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $voucher = Voucher::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'issued_by_user_id' => $this->user->id,
+            'status' => VoucherStatus::Issued,
+            'expires_at' => now()->addDays(30)->toDateString(),
+        ]);
+
+        $newExpiry = now()->addDays(120)->toDateString();
+        $reason = 'Customer requested extension during after-sales call';
+
+        $response = $this->withHeader('X-Company-Id', $this->company->id)
+            ->postJson("/api/v1/vouchers/{$voucher->id}/extend-expiry", [
+                'new_expires_at' => $newExpiry,
+                'reason' => $reason,
+            ]);
+
+        $response->assertOk();
+
+        // The administrative state change MUST be reconstructible from the ledger,
+        // symmetrical with void() and transfer(). Codex review m2 (2026-04-30).
+        $this->assertDatabaseHas('voucher_ledger', [
+            'voucher_id' => $voucher->id,
+            'event' => VoucherEvent::ExpiryExtended->value,
+            'amount' => '0.00000',
+            'currency' => $voucher->currency,
+            'user_id' => $this->user->id,
+            'policy_trigger' => 'manual_expiry_extension',
+            'gl_journal_entry_id' => null,
+            'authorized_by_user_id' => null,
+            'reverses_voucher_ledger_id' => null,
+            'receipt_id' => null,
+            'terminal_id' => null,
+        ]);
+
+        // The original assertions from test_extend_expiry_persists_new_expires_at_and_notes
+        // must still hold — the new ledger row is additive.
+        $voucher->refresh();
         $this->assertSame($newExpiry, $voucher->expires_at?->toDateString());
         $this->assertStringContainsString('[EXPIRY-EXTENDED ', (string) $voucher->notes);
         $this->assertStringContainsString($reason, (string) $voucher->notes);

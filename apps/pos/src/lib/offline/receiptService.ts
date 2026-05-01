@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
 import { computeFiscalHash } from '@/lib/fiscal/hashService';
+import { buildCanonicalPayload, type V3CanonicalInput } from '@/lib/fiscal/v3/canonicalPayload';
 import {
   getTerminalState,
   advanceHashChain,
@@ -10,6 +11,12 @@ import {
   insertOfflineReceipt,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  findByCode as findVoucherByCode,
+  updateVoucherBalanceAndStatus,
+  type LocalVoucher,
+  type VoucherStatus,
+} from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
 
 interface OfflineReceiptInput {
@@ -32,6 +39,16 @@ interface OfflineReceiptInput {
     repositoryId?: string;
     cardLastFour?: string;
     transactionReference?: string;
+    /**
+     * v3-only: payment instrument kind for voucher-bearing tenders. One of
+     * 'store_voucher' | 'restaurant_voucher' | 'gift_card', or null/undefined
+     * for non-instrument tenders (cash, card). Bound into the v3 fiscal hash
+     * so a sealed receipt cannot be reattributed to a different instrument.
+     * Codex review B2 (server) + B1 (client).
+     */
+    instrumentType?: 'store_voucher' | 'restaurant_voucher' | 'gift_card' | null;
+    /** v3-only: actual voucher serial / gift-card code that tendered this row. */
+    instrumentSerial?: string | null;
   }>;
   /** F&B: 'SUR_PLACE' | 'A_EMPORTER' — omit for retail */
   consumptionMode?: string;
@@ -98,6 +115,125 @@ function generateReceiptNumber(
   return `${locationCode}-${terminalCode}-${year}-${paddedSeq}`;
 }
 
+/**
+ * Compute the SHA-256 hex digest of a UTF-8 string. Mirrors PHP's
+ * `hash('sha256', …)`. Used to seal the v3 canonical payload.
+ */
+async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+interface V3HashInput {
+  previousHash: string;
+  receiptNumber: string;
+  postedAt: string;
+  total: string;
+  currency: string;
+  vatBreakdown: VatBreakdownEntry[];
+  payments: OfflineReceiptInput['payments'];
+  decimals: number;
+}
+
+/**
+ * Compute the v3 fiscal hash for an offline receipt.
+ *
+ * Wraps `buildCanonicalPayload` (already proven to mirror the post-B2 PHP
+ * builder byte-for-byte by fixture-08) with the receipt-creator's input.
+ *
+ * Phase 1 simplifications (all match the v2 path's implicit contract):
+ *   - `payment_type = 'pos'` for every row (matches V3ReceiptHashComputer.php's
+ *     hardcoded sentinel until the e-commerce / online-ordering channels land).
+ *   - `voucher_ledger_entries = []` and `audit = null`. Voucher ledger entries
+ *     are populated server-side from the Voucher domain when the receipt is
+ *     persisted; offline-issued receipts do not yet wire voucher events into
+ *     the canonical hash. This matches the legacy v2 path which never carried
+ *     ledger entries either, so cash-only and card-only sales produce
+ *     equivalent canonical input shapes between v2 and v3.
+ *   - `exchange_group_id = null`. Phase F exchange-pair receipts are
+ *     server-finalized; offline receipts are always single-half.
+ *
+ * `method_code` is `payment.methodCode.toLowerCase()` to match the server's
+ * post-B2 normalisation (V3ReceiptHashComputer.php:140).
+ */
+async function computeV3FiscalHash(input: V3HashInput): Promise<string> {
+  const canonicalInput: V3CanonicalInput = {
+    receipt_number: input.receiptNumber,
+    posted_at: input.postedAt,
+    previous_hash: input.previousHash || null,
+    total: input.total,
+    currency: input.currency,
+    vat_breakdown: input.vatBreakdown.map((v) => ({
+      rate: v.rate,
+      amount: v.amount,
+    })),
+    payments: input.payments.map((p) => ({
+      method_code: p.methodCode.toLowerCase(),
+      payment_type: 'pos',
+      amount: bcformat(p.amount, input.decimals),
+      instrument_type: p.instrumentType ?? null,
+      instrument_serial: p.instrumentSerial ?? null,
+    })),
+    voucher_ledger_entries: [],
+    exchange_group_id: null,
+    audit: null,
+  };
+  const canonical = await buildCanonicalPayload(canonicalInput);
+  return sha256Hex(canonical);
+}
+
+/**
+ * Codex review B5 (2026-05-01): pull out the store_voucher tenders for the
+ * receipt. Each entry retains the original payment shape for amount lookup;
+ * the caller resolves the local voucher row separately. Restaurant vouchers
+ * and gift cards do NOT enter the local voucher mirror in Phase 1 (spec
+ * §3.2.1 + §6.5), so this function only matches on `store_voucher`.
+ */
+function collectStoreVoucherPayments(
+  payments: OfflineReceiptInput['payments'],
+): Array<{ serial: string; amount: string }> {
+  const out: Array<{ serial: string; amount: string }> = [];
+  for (const p of payments) {
+    if (p.instrumentType === 'store_voucher' && typeof p.instrumentSerial === 'string' && p.instrumentSerial !== '') {
+      out.push({ serial: p.instrumentSerial, amount: p.amount });
+    }
+  }
+  return out;
+}
+
+/**
+ * Codex review B5 (2026-05-01): resolve every store_voucher tender against
+ * the local voucher projection. Throws on the first miss so the caller can
+ * fail the whole receipt creation BEFORE entering the transaction — a
+ * receipt referencing an unknown voucher cannot be redeemed server-side
+ * either, so refusing here gives the cashier a clear "voucher not found"
+ * message rather than letting the receipt seal and silently fail to push.
+ *
+ * The returned array is index-aligned with the input — caller iterates in
+ * order to pair each tender with its resolved voucher.
+ */
+async function resolveLocalVouchers(
+  db: Database,
+  tenders: ReadonlyArray<{ serial: string; amount: string }>,
+): Promise<LocalVoucher[]> {
+  const out: LocalVoucher[] = [];
+  for (const tender of tenders) {
+    const voucher = await findVoucherByCode(db, tender.serial);
+    if (voucher === null) {
+      throw new Error(
+        `Voucher tender '${tender.serial}' is not present in the local voucher mirror. `
+          + `Cannot create receipt: the cashier applied a tender for a voucher this terminal has never seen. `
+          + `Check that the voucher exists on the server and that this terminal has synced recently.`,
+      );
+    }
+    out.push(voucher);
+  }
+  return out;
+}
+
 export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
@@ -132,19 +268,44 @@ export async function createOfflineReceipt(
   const newSequence = terminalState.hash_sequence + 1;
   const receiptNumber = generateReceiptNumber(terminalState.location_code, terminalState.terminal_code, newSequence);
 
-  // 4. Compute fiscal hash with real VAT breakdown
+  // 4. Compute fiscal hash with real VAT breakdown.
+  //
+  // Codex review B1 (2026-04-30): branch on the terminal's fiscal_schema_version.
+  //   - v2 → legacy `computeFiscalHash` (pipe-joined string, SHA-256). Bit-for-bit
+  //     unchanged from before B1 — the legacy path must remain stable so v2
+  //     terminals that have not cut over keep producing identical hashes.
+  //   - v3 → `buildCanonicalPayload` (RFC 8785 canonical JSON, mirrors the
+  //     post-B2 PHP builder byte-for-byte) + SHA-256. Fixture-08 in
+  //     `apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/` proves the
+  //     parity; the test in `canonicalPayload.test.ts` runs every CI build.
+  //
+  // posted_at: ISO 8601 UTC with trailing Z (matches the v3 PHP builder's
+  // `Y-m-d\TH:i:s\Z` formatter — bare `toISOString()` already produces this
+  // shape for UTC values).
   const postedAt = new Date().toISOString();
   const vatBreakdown = computeVatBreakdown(input.cartItems, decimals);
   const totalFormatted = bcformat(total, decimals);
-  const fiscalHash = await computeFiscalHash({
-    previousHash: terminalState.last_hash,
-    receiptNumber,
-    postedAt,
-    total: totalFormatted,
-    currency: input.currency,
-    vatBreakdown,
-    payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
-  });
+  const fiscalSchemaVersion = terminalState.fiscal_schema_version;
+  const fiscalHash = fiscalSchemaVersion === 3
+    ? await computeV3FiscalHash({
+      previousHash: terminalState.last_hash,
+      receiptNumber,
+      postedAt,
+      total: totalFormatted,
+      currency: input.currency,
+      vatBreakdown,
+      payments: input.payments,
+      decimals,
+    })
+    : await computeFiscalHash({
+      previousHash: terminalState.last_hash,
+      receiptNumber,
+      postedAt,
+      total: totalFormatted,
+      currency: input.currency,
+      vatBreakdown,
+      payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
+    });
 
   // 5. Store offline receipt
   const receiptId = crypto.randomUUID();
@@ -153,6 +314,12 @@ export async function createOfflineReceipt(
   const changeDueRaw = bcsub(String(input.tenderedAmount), total);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
 
+  // Codex review B3 (2026-04-30): persist methodCode, instrumentType, and
+  // instrumentSerial on every row in payments_json so the sync layer can
+  // forward them to the server. The v3 fiscal hash is computed with these
+  // fields included (lines 167-173 above) — if payments_json strips them,
+  // the server will recompute the hash from null instrument fields and
+  // reject the payload as a chain break.
   const paymentsJson = JSON.stringify(
     input.payments.map((p) => ({
       payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
@@ -160,6 +327,9 @@ export async function createOfflineReceipt(
       amount: p.amount,
       card_last_four: p.cardLastFour ?? null,
       transaction_reference: p.transactionReference ?? null,
+      method_code: p.methodCode,
+      instrument_type: p.instrumentType ?? null,
+      instrument_serial: p.instrumentSerial ?? null,
     }))
   );
 
@@ -209,14 +379,83 @@ export async function createOfflineReceipt(
     payments_json: paymentsJson,
     consumption_mode: input.consumptionMode ?? null,
     table_id: input.tableId ?? null,
+    fiscal_schema_version: fiscalSchemaVersion,
   };
 
-  // 5b. Wrap receipt insert + hash chain advance in a transaction
-  //     to prevent inconsistent state if either operation fails
+  // 5b. Codex review B5 (2026-05-01): pre-resolve every store_voucher payment
+  //     against the local voucher mirror BEFORE entering the transaction. We
+  //     need (a) the local voucher.id to update the projection row, and
+  //     (b) the current_balance to compute the new balance with bcsub. The
+  //     lookup is read-only and side-effect-free, so it is safe outside the
+  //     transaction; the balance update inside the transaction uses these
+  //     pre-resolved snapshots.
+  //
+  //     If a voucher is missing from the local mirror, fail loud — the cashier
+  //     applied a tender for which we have no projection, which means the
+  //     server cannot map the redemption to a real voucher either. This is
+  //     the offline analogue of `VoucherRedemptionService` throwing
+  //     `VoucherInvalidStatusException` for an unknown code.
+  const voucherTenders = collectStoreVoucherPayments(input.payments);
+  const resolvedVouchers = await resolveLocalVouchers(db, voucherTenders);
+
+  // 5c. Wrap receipt insert + hash chain advance + voucher balance updates
+  //     in a single transaction. Either the receipt + chain + balance all
+  //     commit, or none do — this prevents the cashier from sealing a
+  //     fiscal receipt that references a voucher whose local projection
+  //     never moved.
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertOfflineReceipt(db, offlineReceipt);
     await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+
+    // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
+    // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
+    // entry is server-authored exclusively — `ReceiptSyncService` now invokes
+    // `VoucherRedemptionService::redeem` during sync, which produces the
+    // canonical row tied to the synced receipt with a server-controlled UUID.
+    // The local mirror picks up that row on the next pullVoucherLedger.
+    //
+    // Why we keep the local balance update:
+    //   - The cashier sees the right voucher balance immediately on this
+    //     terminal (e.g. for stacked redemptions in the same session) until
+    //     sync reconciles the canonical state.
+    //   - The atomicity guarantee is unchanged: a balance-update failure
+    //     rolls back the receipt insert + chain advance.
+    //
+    // Why we removed the local voucher_ledger row:
+    //   - The previous write produced a row with `receipt_id = null` because
+    //     no server receipt id existed yet at offline-write time.
+    //   - `VoucherLedgerPushService::push()` rejects every such row with
+    //     `'receipt_id_required_for_redemption'`, and the audit found the
+    //     push client silently dropped the failure (Minor 2 — fixed in the
+    //     companion commit). Even with the silent-drop fixed, the server
+    //     cannot ingest this row shape because there is no canonical
+    //     receipt to bind the GL leg against.
+    //   - Removing the local write removes the bug at the root: the
+    //     server-side redemption during sync is now the single canonical
+    //     entry point. The push pipeline (`pushVoucherLedgerEntries`)
+    //     becomes reserved for future offline-issued voucher operations
+    //     not tied to a synced receipt (e.g., goodwill issuance from a
+    //     back-office screen), per the
+    //     `VoucherLedgerPushService` docblock contract.
+    for (let i = 0; i < voucherTenders.length; i++) {
+      const tender = voucherTenders[i]!;
+      const voucher = resolvedVouchers[i]!;
+      const newBalance = bcsub(voucher.current_balance, tender.amount, decimals);
+      // Defensive: never let local balance go negative. The B4 server-side
+      // validator catches over-redemption on the wire, but a stale local
+      // mirror could theoretically race; clamp to zero rather than persist
+      // a negative balance that would corrupt subsequent local reads.
+      const clampedBalance = bccomp(newBalance, '0') < 0
+        ? bcformat('0', decimals)
+        : bcformat(newBalance, decimals);
+      const newStatus: VoucherStatus = bccomp(clampedBalance, '0') === 0
+        ? 'FullyRedeemed'
+        : 'PartiallyRedeemed';
+
+      await updateVoucherBalanceAndStatus(db, voucher.id, clampedBalance, newStatus);
+    }
+
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');

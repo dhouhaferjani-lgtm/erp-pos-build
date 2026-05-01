@@ -66,6 +66,16 @@ export interface ProcessReceiptPaymentsRequest {
     card_last_four?: string;
     transaction_reference?: string;
     authorization_code?: string;
+    /**
+     * B3-followup audit (Finding 1, 2026-05-01): voucher / instrument
+     * discriminator. Bound into the v3 fiscal hash by the server's
+     * `V3ReceiptHashComputer`. Omit for cash / card; both `instrument_type`
+     * and `instrument_serial` must be set together (server enforces in
+     * `StoreReceiptPaymentsRequest::withValidator()`).
+     */
+    instrument_type?: 'store_voucher' | 'restaurant_voucher' | 'gift_card';
+    /** Voucher serial / gift-card code that tendered this row. */
+    instrument_serial?: string;
   }>;
   customer_id?: string;
 }

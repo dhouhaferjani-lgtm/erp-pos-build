@@ -15,9 +15,11 @@ use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\SyncReceiptResult;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
+use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Exceptions\OfflineFiscalHashMismatchException;
 use App\Modules\POS\Domain\Exceptions\OfflineReceiptVersionMismatchException;
 use App\Modules\POS\Domain\Receipt;
@@ -29,6 +31,8 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
+use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Carbon;
@@ -54,6 +58,7 @@ final class ReceiptSyncService
         private readonly ReceiptHashService $receiptHashService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ReceiptFinalizationService $finalizationService,
+        private readonly VoucherRedemptionService $voucherRedemptionService,
     ) {}
 
     private function scale(): int
@@ -408,16 +413,66 @@ final class ReceiptSyncService
 
             // 11. Create payment records
             //     (Phase 1: voucher ledger entries are empty.)
+            //     payment_method_code is an immutable snapshot of payment_methods.code
+            //     bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
+            //
+            //     Codex review B3 (2026-04-30): the offline POS sealed the v3 hash
+            //     with `method_code`, `instrument_type`, and `instrument_serial`
+            //     populated. We MUST persist them on the synced row or the server's
+            //     post-finalize hash recomputation reads null and rejects the
+            //     receipt as a chain break. instrument_type is coerced through the
+            //     PaymentInstrumentKind enum so an unknown string fails fast.
+            //
+            //     B3-followup audit (Finding 2, 2026-05-01): the previous fallback
+            //     to a live `PaymentMethod::code` lookup when `method_code` was
+            //     absent has been deleted. `method_code` is now REQUIRED on the
+            //     wire (`SyncReceiptsRequest.php`) and required-or-throw in the DTO
+            //     (`SyncReceiptPayload::fromArray()`). The client-supplied snapshot
+            //     is the only acceptable input — anything else risks silent hash-
+            //     input substitution that the audit explicitly flagged.
             foreach ($payload->payments as $entry) {
                 $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+
+                // Codex review B4 (2026-04-30): defense-in-depth at the sync
+                // writer. The HTTP request validator (SyncReceiptsRequest)
+                // rejects this shape with 422, but a programmatic caller —
+                // a queue retry job, a backfill script, a future controller —
+                // bypasses FormRequest validation and constructs
+                // SyncReceiptPayload directly. Without this guard, a v3
+                // receipt could still be sealed with `method_code = store_voucher`
+                // and `instrument_serial = null` — the same fiscal-hash hole
+                // B4 closes "once and for all." The throw happens before the
+                // ReceiptPayment write so the enclosing DB::transaction()
+                // rolls back cleanly with no partial chain state. The
+                // syncBatch() catch block converts this to SyncStatus::Failed
+                // for batch reporting.
+                $methodCode = (string) $entry['method_code'];
+                if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                    $instrumentTypeInput = $entry['instrument_type'] ?? null;
+                    $instrumentSerialInput = $entry['instrument_serial'] ?? null;
+                    if (
+                        ! is_string($instrumentTypeInput) || $instrumentTypeInput === ''
+                        || ! is_string($instrumentSerialInput) || $instrumentSerialInput === ''
+                    ) {
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+                }
+
+                $instrumentTypeValue = $entry['instrument_type'] ?? null;
+                $instrumentType = $instrumentTypeValue !== null && $instrumentTypeValue !== ''
+                    ? PaymentInstrumentKind::from($instrumentTypeValue)
+                    : null;
                 ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $entry['payment_method_id'],
                     'payment_type' => $method->code,
+                    'payment_method_code' => $entry['method_code'],
                     'amount' => $entry['amount'],
                     'card_last_four' => $entry['card_last_four'] ?? null,
                     'transaction_reference' => $entry['transaction_reference'] ?? null,
+                    'instrument_type' => $instrumentType,
+                    'instrument_serial' => $entry['instrument_serial'] ?? null,
                 ]);
             }
 
@@ -437,6 +492,63 @@ final class ReceiptSyncService
                     $payload->offlineFiscalHash,
                     (string) $fiscalHash,
                 );
+            }
+
+            // 13b. B5-fix audit blocker (2026-05-01): for every store_voucher
+            //      payment row that was just persisted, invoke
+            //      VoucherRedemptionService::redeem so the canonical
+            //      redemption lands on the server (voucher_ledger Redeemed
+            //      row, voucher balance decrement, status transition, GL
+            //      journal). This mirrors what ReceiptPaymentService does on
+            //      the online admin POS path and closes the offline → sync
+            //      audit blocker.
+            //
+            //      ORDERING: redemption MUST happen AFTER finalize() so the
+            //      v3 fiscal hash is computed BEFORE any voucher_ledger
+            //      row exists for this receipt. The offline POS hashes with
+            //      `voucher_ledger_entries: []` (the spec's offline
+            //      simplification — voucher ledger writes are server-
+            //      authored side effects, not inputs to the offline hash).
+            //      If we redeemed BEFORE finalize, the V3ReceiptHashComputer
+            //      would read the just-written voucher_ledger row and
+            //      produce a hash that does not match the offline hash,
+            //      breaking the chain on every voucher-bearing receipt.
+            //
+            //      The redemption call inherits the wrapping transaction; a
+            //      VoucherRedemptionException (insufficient balance,
+            //      unknown voucher, expired, currency mismatch, terminal
+            //      mismatch, duplicate-in-transaction) bubbles to the outer
+            //      syncBatch() catch block and is reported as
+            //      SyncStatus::Failed — the wrapping transaction rolls
+            //      back the receipt + lines + VAT + payments + chain
+            //      advance + redemption atomically, so no partial state
+            //      lands on disk and the chain does NOT advance.
+            foreach ($payload->payments as $entry) {
+                $instrumentTypeValue = $entry['instrument_type'] ?? null;
+                if ($instrumentTypeValue !== 'store_voucher') {
+                    continue;
+                }
+
+                $instrumentSerial = $entry['instrument_serial'] ?? null;
+                if (! is_string($instrumentSerial) || $instrumentSerial === '') {
+                    // Defense-in-depth: the B4 guard above already enforces
+                    // a non-empty serial when method_code requires it.
+                    // This branch is unreachable when the guard ran.
+                    throw InstrumentRequiredException::forMethodCode((string) $entry['method_code']);
+                }
+
+                /** @var numeric-string $appliedAmount */
+                $appliedAmount = (string) $entry['amount'];
+                $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
+                    voucherCode: $instrumentSerial,
+                    appliedAmount: $appliedAmount,
+                    currency: (string) $receipt->currency,
+                    receiptId: $receipt->id,
+                    cashierId: (string) $receipt->cashier_id,
+                    terminalId: (string) $receipt->terminal_id,
+                    partnerId: null,
+                    instrumentKind: PaymentInstrumentKind::StoreVoucher,
+                ));
             }
 
             // 14. Decrement stock for product lines

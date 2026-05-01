@@ -61,6 +61,14 @@ export interface AdvancedPaymentLine {
   repository_id: string;
   card_last_four?: string;
   transaction_reference?: string;
+  /**
+   * Codex review B3 (2026-04-30): voucher / instrument discriminator for
+   * this tender row. Set with `instrument_serial` when paying with a
+   * store-voucher / restaurant-voucher / gift-card; omit for cash / card.
+   */
+  instrument_type?: 'store_voucher' | 'restaurant_voucher' | 'gift_card';
+  /** Voucher serial / gift-card code. Required when `instrument_type` is set. */
+  instrument_serial?: string;
 }
 
 interface PaymentActions {
@@ -139,6 +147,17 @@ interface LocalFirstPaymentLine {
   repositoryId: string;
   cardLastFour?: string;
   transactionReference?: string;
+  /**
+   * Codex review B3 (2026-04-30): voucher / instrument discriminator. Bound
+   * into the v3 fiscal hash by `buildCanonicalPayload`. Pass for store-voucher,
+   * restaurant-voucher, gift-card tenders; omit for cash / card.
+   */
+  instrumentType?: 'store_voucher' | 'restaurant_voucher' | 'gift_card';
+  /**
+   * Codex review B3 (2026-04-30): voucher serial / gift-card code that
+   * tendered this row. Required when instrumentType is set.
+   */
+  instrumentSerial?: string;
 }
 
 async function createReceiptLocalFirst(
@@ -193,6 +212,11 @@ async function createReceiptLocalFirst(
       repositoryId: p.repositoryId,
       cardLastFour: p.cardLastFour,
       transactionReference: p.transactionReference,
+      // Codex review B3 (2026-04-30): forward instrument fields end-to-end
+      // so a voucher tender's serial enters createOfflineReceipt's v3 hash
+      // input AND its payments_json. Cash / card tenders omit these.
+      instrumentType: p.instrumentType,
+      instrumentSerial: p.instrumentSerial,
     })),
     consumptionMode,
     tableId: tableId ?? undefined,
@@ -424,6 +448,10 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           repositoryId: p.repository_id,
           cardLastFour: p.card_last_four,
           transactionReference: p.transaction_reference,
+          // Codex review B3 (2026-04-30): forward instrument fields so a
+          // voucher tender enters the v3 fiscal hash with its serial bound.
+          instrumentType: p.instrument_type,
+          instrumentSerial: p.instrument_serial,
         };
       });
 

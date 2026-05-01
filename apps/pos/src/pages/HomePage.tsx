@@ -134,6 +134,36 @@ export function HomePage() {
   const discardTransaction = useHoldStore((s) => s.discardTransaction);
   const loadHeldTransactions = useHoldStore((s) => s.loadHeldTransactions);
 
+  // Codex review B5 (2026-05-01): SQLite handle for VoucherTenderModal's
+  // local-first lookup. AdvancedPaymentsModal mounts VoucherTenderModal
+  // when an instrument-bearing tile is tapped; the modal reads vouchers
+  // from this handle via `findByCode(db, code)`. Loaded once when
+  // companyId is known and reused across modal opens (getDatabase is
+  // idempotent for the same companyId — it returns the cached handle).
+  const companyIdForVoucherDb = useAuthStore((s) => s.companyId);
+  const [voucherDb, setVoucherDb] = useState<import('@tauri-apps/plugin-sql').default | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyIdForVoucherDb) {
+      setVoucherDb(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void (async () => {
+      try {
+        const db = await getDatabase(companyIdForVoucherDb);
+        if (!cancelled) setVoucherDb(db);
+      } catch (err) {
+        console.warn('[POS] Voucher DB handle unavailable; voucher tender flow will fall back to dead-end message:', err);
+        if (!cancelled) setVoucherDb(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyIdForVoucherDb]);
+
   // Modal state
   const [showCashModal, setShowCashModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -1000,6 +1030,7 @@ export function HomePage() {
         onComplete={handleAdvancedComplete}
         isProcessing={isProcessing}
         error={paymentError}
+        voucherDb={voucherDb}
       />
 
       {/* Held transactions modal */}

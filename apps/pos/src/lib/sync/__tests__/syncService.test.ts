@@ -267,6 +267,93 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
     });
 
+    it('Codex review B3: receiptToPayload preserves method_code, instrument_type, and instrument_serial from payments_json', async () => {
+      const voucherReceipt = makeOfflineReceipt({
+        id: 'r-voucher',
+        idempotency_key: 'idem-voucher',
+        hash_sequence: 1,
+        fiscal_schema_version: 3,
+        payments_json: JSON.stringify([
+          {
+            payment_method_id: 'pm-cash',
+            repository_id: 'repo-cash',
+            amount: '10.00',
+            card_last_four: null,
+            transaction_reference: null,
+            method_code: 'cash',
+            instrument_type: null,
+            instrument_serial: null,
+          },
+          {
+            payment_method_id: 'pm-voucher',
+            repository_id: 'repo-voucher',
+            amount: '15.00',
+            card_last_four: null,
+            transaction_reference: null,
+            method_code: 'store_voucher',
+            instrument_type: 'store_voucher',
+            instrument_serial: 'SV-2026-0042',
+          },
+        ]),
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([voucherReceipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([{ idempotency_key: 'idem-voucher', status: 'synced' }]),
+      );
+
+      await pushOfflineReceipts(db);
+
+      const calls = vi.mocked(apiPost).mock.calls;
+      expect(calls).toHaveLength(1);
+      type PostBody = {
+        receipts: Array<{
+          payments: Array<{
+            method_code: string;
+            instrument_type: string | null;
+            instrument_serial: string | null;
+          }>;
+        }>;
+      };
+      const body = calls[0]![1] as PostBody;
+      const payments = body.receipts[0]!.payments;
+      expect(payments).toHaveLength(2);
+      expect(payments[0]!.method_code).toBe('cash');
+      expect(payments[0]!.instrument_type).toBeNull();
+      expect(payments[0]!.instrument_serial).toBeNull();
+      expect(payments[1]!.method_code).toBe('store_voucher');
+      expect(payments[1]!.instrument_type).toBe('store_voucher');
+      expect(payments[1]!.instrument_serial).toBe('SV-2026-0042');
+    });
+
+    it('Codex review B1: stamps fiscal_schema_version on every push payload', async () => {
+      const v2Receipt = makeOfflineReceipt({
+        id: 'r-v2',
+        idempotency_key: 'idem-v2',
+        hash_sequence: 1,
+        fiscal_schema_version: 2,
+      });
+      const v3Receipt = makeOfflineReceipt({
+        id: 'r-v3',
+        idempotency_key: 'idem-v3',
+        hash_sequence: 2,
+        fiscal_schema_version: 3,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([v2Receipt, v3Receipt]);
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v2', status: 'synced' }]))
+        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v3', status: 'synced' }]));
+
+      await pushOfflineReceipts(db);
+
+      // Inspect the bodies passed to apiPost; both must carry the field.
+      const calls = vi.mocked(apiPost).mock.calls;
+      expect(calls).toHaveLength(2);
+      const firstBody = calls[0]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
+      const secondBody = calls[1]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
+      expect(firstBody.receipts[0]!.fiscal_schema_version).toBe(2);
+      expect(secondBody.receipts[0]!.fiscal_schema_version).toBe(3);
+    });
+
     it('captures server_receipt_id from sync response and writes it to SQLite', async () => {
       const receipt = makeOfflineReceipt({
         id: 'client-uuid-1',
@@ -372,8 +459,22 @@ describe('syncService', () => {
 
       const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
       const payload = callArgs['receipts'][0]!;
+      // Codex review B3 (2026-04-30): the legacy `makeOfflineReceipt` helper
+      // emits a payments_json row without method_code / instrument fields
+      // (mimicking pre-B3 queued receipts). The sync layer's defensive
+      // parser coerces method_code to '' and instrument fields to null —
+      // this is the expected shape on the wire.
       expect(payload['payments']).toEqual([
-        { payment_method_id: 'pm-1', repository_id: 'repo-1', amount: '30.00', card_last_four: null, transaction_reference: null },
+        {
+          payment_method_id: 'pm-1',
+          repository_id: 'repo-1',
+          amount: '30.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: '',
+          instrument_type: null,
+          instrument_serial: null,
+        },
       ]);
       expect(payload['consumption_mode']).toBe('SUR_PLACE');
       expect(payload['table_id']).toBe('table-5');
@@ -521,6 +622,7 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: 'hash-xyz',
         hash_sequence: 10,
+        fiscal_schema_version: 2,
       });
 
       const result = await pullTerminalState(db, 'term-1');
@@ -535,6 +637,7 @@ describe('syncService', () => {
         hash_sequence: 10,
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 2,
       });
       expect(computeGenesisHash).not.toHaveBeenCalled();
     });
@@ -547,6 +650,7 @@ describe('syncService', () => {
         genesis_seed: 'abcd1234',
         last_hash: null,
         hash_sequence: 0,
+        fiscal_schema_version: 2,
       });
 
       const result = await pullTerminalState(db, 'term-1');
@@ -562,7 +666,28 @@ describe('syncService', () => {
         hash_sequence: 0,
         manager_pin_throttle_until: null,
         manager_pin_failed_attempts: 0,
+        fiscal_schema_version: 2,
       });
+    });
+
+    it('Codex review B1: projects v3 fiscal_schema_version when the server declares it', async () => {
+      vi.mocked(apiGet).mockResolvedValue({
+        id: 'term-1',
+        code: 'T001',
+        location: { code: 'SHOP1' },
+        genesis_seed: 'abcd1234',
+        last_hash: 'hash-xyz',
+        hash_sequence: 12,
+        fiscal_schema_version: 3,
+      });
+
+      const result = await pullTerminalState(db, 'term-1');
+
+      expect(result).toBe(true);
+      expect(upsertTerminalState).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({ fiscal_schema_version: 3 }),
+      );
     });
 
     it('returns false when no genesis seed', async () => {
@@ -932,5 +1057,164 @@ describe('zReportToSyncPayload', () => {
     expect(ts['totalAmount']).toBe('0.000');
     expect(typeof ts['currencyCode']).toBe('string');
     expect(ts['writeoffCount']).toBe(0);
+  });
+});
+
+describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', () => {
+  // Pure unit-level test: feed a fully-built voucher offline receipt to the
+  // production sync parser and assert the wire payment block is byte-for-byte
+  // what the canonical builder would expect. This is complementary to the
+  // hash assertion in receiptService.test.ts — that test proves the canonical
+  // input matches the offline hash; this test proves the wire payload matches
+  // the canonical input. Together they bracket every TS surface the server
+  // depends on for v3 hash recomputation.
+
+  it('preserves method_code, instrument_type, and instrument_serial verbatim for a voucher tender row', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      id: 'wire-r1',
+      idempotency_key: 'wire-idem-1',
+      hash_sequence: 1,
+      fiscal_schema_version: 3,
+      payments_json: JSON.stringify([
+        {
+          payment_method_id: 'pm-store-voucher',
+          repository_id: 'repo-virtual',
+          amount: '20.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'store_voucher',
+          instrument_type: 'store_voucher',
+          instrument_serial: 'SV-2026-WIRE-01',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+
+    // The wire shape MUST be exactly this — not a superset, not coerced.
+    // A future drift (e.g. accidentally lowercasing method_code, dropping a
+    // field, or sorting payments) would fail loudly here.
+    expect(wire.payments).toEqual([
+      {
+        payment_method_id: 'pm-store-voucher',
+        repository_id: 'repo-virtual',
+        amount: '20.00',
+        card_last_four: null,
+        transaction_reference: null,
+        method_code: 'store_voucher',
+        instrument_type: 'store_voucher',
+        instrument_serial: 'SV-2026-WIRE-01',
+      },
+    ]);
+  });
+
+  it('preserves cash + voucher split-payment shape (order, fields, nulls) verbatim', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      id: 'wire-r2',
+      idempotency_key: 'wire-idem-2',
+      hash_sequence: 2,
+      fiscal_schema_version: 3,
+      payments_json: JSON.stringify([
+        {
+          payment_method_id: 'pm-cash',
+          repository_id: 'repo-cash',
+          amount: '15.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'cash',
+          instrument_type: null,
+          instrument_serial: null,
+        },
+        {
+          payment_method_id: 'pm-store-voucher',
+          repository_id: 'repo-virtual',
+          amount: '10.00',
+          card_last_four: null,
+          transaction_reference: null,
+          method_code: 'store_voucher',
+          instrument_type: 'store_voucher',
+          instrument_serial: 'SV-2026-WIRE-02',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+
+    expect(wire.payments).toHaveLength(2);
+    expect(wire.payments[0]!.method_code).toBe('cash');
+    expect(wire.payments[0]!.instrument_type).toBeNull();
+    expect(wire.payments[0]!.instrument_serial).toBeNull();
+    expect(wire.payments[1]!.method_code).toBe('store_voucher');
+    expect(wire.payments[1]!.instrument_type).toBe('store_voucher');
+    expect(wire.payments[1]!.instrument_serial).toBe('SV-2026-WIRE-02');
+  });
+});
+
+describe('B3-followup audit (Finding 4): receiptToPayload fails loudly on invalid fiscal_schema_version', () => {
+  // Pre-existing comment in syncService.ts:1222-1225 said "any unexpected
+  // value is a schema bug and should fail loudly via the server's hard-reject
+  // path", but the code coerced anything that wasn't 3 to 2 silently. The
+  // audit flagged the comment-vs-code drift. This test locks the fix:
+  // unexpected values throw at the wire-parser layer, with a message that
+  // names the receipt and the bad value so on-call can find the row.
+
+  it('throws on fiscal_schema_version = 4 with a message naming the receipt and the bad value', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'POS01-2026-00099999',
+      idempotency_key: 'idem-bad-version',
+      fiscal_schema_version: 4 as unknown as 2 | 3,
+    });
+
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/POS01-2026-00099999/);
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/fiscal_schema_version/);
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/4/);
+  });
+
+  it('throws when fiscal_schema_version is undefined / null', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'POS01-2026-00099998',
+      idempotency_key: 'idem-null-version',
+      fiscal_schema_version: undefined as unknown as 2 | 3,
+    });
+
+    expect(() => __test_receiptToPayload(receipt)).toThrowError(/fiscal_schema_version/);
+  });
+
+  it('accepts fiscal_schema_version = 2', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      idempotency_key: 'idem-v2',
+      fiscal_schema_version: 2,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.fiscal_schema_version).toBe(2);
+  });
+
+  it('accepts fiscal_schema_version = 3', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      idempotency_key: 'idem-v3',
+      fiscal_schema_version: 3,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.fiscal_schema_version).toBe(3);
   });
 });

@@ -70,4 +70,42 @@ describe('LedgerHistoryTable', () => {
     render(<LedgerHistoryTable rows={rows} currency="EUR" />)
     expect(screen.getByRole('link', { name: 'REC-001' })).toBeInTheDocument()
   })
+
+  // Codex review R3 (2026-04-30): the backend's `formatLedger()` returns
+  // lowercase storage values from the `VoucherEvent` enum (`issued`,
+  // `redeemed`, `voided`, `transferred`, `expiry_extended`, etc.). Until R3
+  // landed, the frontend keyed badge colors / positivity off PascalCase, so
+  // every real backend row fell through to the grey default badge. These
+  // tests prove the lowercase wire values render with the proper badge
+  // colour classes — without falling back to grey.
+  it('renders a backend-shaped lowercase `redeemed` row with the redeemed badge class (not grey fallback)', () => {
+    const rows = [makeRow({ id: 'l-r', event: 'redeemed', amount: '15.00' })]
+    render(<LedgerHistoryTable rows={rows} currency="EUR" />)
+    const badge = screen.getByTestId('event-badge-redeemed')
+    expect(badge).toBeInTheDocument()
+    // The redeemed badge class is bg-blue-*; assert we did NOT fall through
+    // to the grey default (bg-gray-100).
+    expect(badge.className).toContain('bg-blue-100')
+    expect(badge.className).not.toContain('bg-gray-100')
+    // i18n key resolves against the lowercase namespace.
+    expect(badge.textContent).toBe('vouchers:events.redeemed')
+  })
+
+  it('renders a backend-shaped lowercase `issued` row with green positive amount', () => {
+    const rows = [makeRow({ id: 'l-i', event: 'issued', amount: '50.00' })]
+    render(<LedgerHistoryTable rows={rows} currency="EUR" />)
+    const amountEl = screen.getByText((content) => content.includes('+') && content.includes('50.00'))
+    expect(amountEl.className).toContain('text-green-700')
+    const badge = screen.getByTestId('event-badge-issued')
+    expect(badge.className).toContain('bg-green-100')
+  })
+
+  it('renders a backend-shaped `expiry_extended` ledger event with its own badge colour', () => {
+    const rows = [makeRow({ id: 'l-x', event: 'expiry_extended', amount: '0.00' })]
+    render(<LedgerHistoryTable rows={rows} currency="EUR" />)
+    const badge = screen.getByTestId('event-badge-expiry_extended')
+    expect(badge).toBeInTheDocument()
+    // Falls into the metadata-only colour bucket, not the grey default.
+    expect(badge.className).not.toContain('bg-gray-100')
+  })
 })

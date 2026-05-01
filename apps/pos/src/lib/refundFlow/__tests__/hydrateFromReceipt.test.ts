@@ -45,6 +45,7 @@ function makeOfflineReceipt(linesJson: string): OfflineReceipt {
     consumption_mode: null,
     table_id: null,
     server_receipt_id: null,
+    fiscal_schema_version: 2,
     created_at: '2026-04-28T09:00:00Z',
     synced_at: '2026-04-28T09:01:00Z',
     sync_error: null,

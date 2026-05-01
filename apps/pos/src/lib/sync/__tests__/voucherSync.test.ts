@@ -185,6 +185,49 @@ describe('pullReceiptQrIndex', () => {
     expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(db, [RECEIPT_INDEX]);
   });
 
+  it('persists partner_id when the server response includes a non-null partner_id (M2)', async () => {
+    // Codex review M2: partner_id must flow from wire payload → local SQLite row.
+    const partnerId = '123e4567-e89b-12d3-a456-426614174000';
+    const entryWithPartner: LocalReceiptQrIndexEntry = {
+      ...RECEIPT_INDEX,
+      receipt_uuid: 'aaaaaaaa-0000-0000-0000-000000000001',
+      partner_id: partnerId,
+    };
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ entries: [entryWithPartner] });
+
+    const count = await pullReceiptQrIndex(db, TERMINAL_ID);
+
+    expect(count).toBe(1);
+    expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(
+      db,
+      expect.arrayContaining([
+        expect.objectContaining({ partner_id: partnerId }),
+      ]),
+    );
+  });
+
+  it('persists partner_id as null when the server response has partner_id null (M2)', async () => {
+    // Codex review M2: null partner_id must round-trip correctly.
+    const entryNoPartner: LocalReceiptQrIndexEntry = {
+      ...RECEIPT_INDEX,
+      receipt_uuid: 'aaaaaaaa-0000-0000-0000-000000000002',
+      partner_id: null,
+    };
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ entries: [entryNoPartner] });
+
+    const count = await pullReceiptQrIndex(db, TERMINAL_ID);
+
+    expect(count).toBe(1);
+    expect(upsertReceiptQrIndexEntries).toHaveBeenCalledWith(
+      db,
+      expect.arrayContaining([
+        expect.objectContaining({ partner_id: null }),
+      ]),
+    );
+  });
+
   it('returns 0 on backend error and logs', async () => {
     vi.mocked(apiGet).mockRejectedValueOnce(new Error('boom'));
 
@@ -205,9 +248,17 @@ describe('pushVoucherLedgerEntries', () => {
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('posts each pending entry and marks it synced on success', async () => {
+  it('posts each pending entry and marks it synced on per-entry success', async () => {
     vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER]);
-    vi.mocked(apiPost).mockResolvedValueOnce({});
+    // Server returns the controller's structured 200 shape with per-entry
+    // status. apiPost unwraps response.data.data, so the test sees the
+    // inner object directly.
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      results: [{ id: LEDGER.id, status: 'synced', error: null }],
+      synced: 1,
+      duplicates: 0,
+      failed: 0,
+    });
 
     const result = await pushVoucherLedgerEntries(db);
 
@@ -217,7 +268,24 @@ describe('pushVoucherLedgerEntries', () => {
     expect(markVoucherLedgerEntrySynced).toHaveBeenCalledWith(db, LEDGER.id);
   });
 
-  it('marks the entry failed when the push throws', async () => {
+  it('treats per-entry status="duplicate" as a benign success and marks synced', async () => {
+    vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER]);
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      results: [{ id: LEDGER.id, status: 'duplicate', error: null }],
+      synced: 0,
+      duplicates: 1,
+      failed: 0,
+    });
+
+    const result = await pushVoucherLedgerEntries(db);
+
+    expect(result.pushed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(markVoucherLedgerEntrySynced).toHaveBeenCalledWith(db, LEDGER.id);
+    expect(markVoucherLedgerEntryFailed).not.toHaveBeenCalled();
+  });
+
+  it('marks the entry failed when the push throws (HTTP-level error)', async () => {
     vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER]);
     vi.mocked(apiPost).mockRejectedValueOnce(new Error('network down'));
 
@@ -233,12 +301,83 @@ describe('pushVoucherLedgerEntries', () => {
     );
   });
 
-  it('continues processing remaining entries after one fails', async () => {
+  // B5-fix audit Minor 2 (2026-05-01): the controller returns 200 with
+  // per-entry `{status: 'failed', error: '<reason>'}` for entries the server
+  // could not ingest (e.g. `receipt_id_required_for_redemption`). The
+  // previous client implementation only inspected HTTP-level errors and
+  // unconditionally marked the row synced — silent-drop bug. This test locks
+  // the new contract: per-entry failures keep the row pending and surface
+  // the per-entry error reason.
+  it('marks the entry failed when the response carries per-entry status="failed" (Minor 2 silent-drop fix)', async () => {
+    vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER]);
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      results: [{
+        id: LEDGER.id,
+        status: 'failed',
+        error: 'receipt_id_required_for_redemption',
+      }],
+      synced: 0,
+      duplicates: 0,
+      failed: 1,
+    });
+
+    const result = await pushVoucherLedgerEntries(db);
+
+    expect(result.pushed).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.errors[0]).toContain('receipt_id_required_for_redemption');
+    expect(markVoucherLedgerEntryFailed).toHaveBeenCalledWith(
+      db,
+      LEDGER.id,
+      'receipt_id_required_for_redemption',
+    );
+    // The entry MUST NOT have been marked synced — that was the silent-drop bug.
+    expect(markVoucherLedgerEntrySynced).not.toHaveBeenCalled();
+  });
+
+  it('handles a mixed-status response: success + failure + duplicate per entry', async () => {
+    const second: LocalVoucherLedgerEntry = { ...LEDGER, id: 'ledger-uuid-2' };
+    const third: LocalVoucherLedgerEntry = { ...LEDGER, id: 'ledger-uuid-3' };
+    vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER, second, third]);
+    // Each entry is posted in its own request (one entry per call) per the
+    // current loop shape. We mock three separate responses.
+    vi.mocked(apiPost)
+      .mockResolvedValueOnce({
+        results: [{ id: LEDGER.id, status: 'synced', error: null }],
+        synced: 1, duplicates: 0, failed: 0,
+      })
+      .mockResolvedValueOnce({
+        results: [{ id: 'ledger-uuid-2', status: 'failed', error: 'voucher_not_found' }],
+        synced: 0, duplicates: 0, failed: 1,
+      })
+      .mockResolvedValueOnce({
+        results: [{ id: 'ledger-uuid-3', status: 'duplicate', error: null }],
+        synced: 0, duplicates: 1, failed: 0,
+      });
+
+    const result = await pushVoucherLedgerEntries(db);
+
+    // synced + duplicate count toward pushed; failed alone counts toward failed.
+    expect(result.pushed).toBe(2);
+    expect(result.failed).toBe(1);
+    expect(markVoucherLedgerEntrySynced).toHaveBeenCalledWith(db, LEDGER.id);
+    expect(markVoucherLedgerEntryFailed).toHaveBeenCalledWith(
+      db,
+      'ledger-uuid-2',
+      'voucher_not_found',
+    );
+    expect(markVoucherLedgerEntrySynced).toHaveBeenCalledWith(db, 'ledger-uuid-3');
+  });
+
+  it('continues processing remaining entries after one HTTP-throws', async () => {
     const second: LocalVoucherLedgerEntry = { ...LEDGER, id: 'ledger-uuid-2' };
     vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER, second]);
     vi.mocked(apiPost)
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce({
+        results: [{ id: 'ledger-uuid-2', status: 'synced', error: null }],
+        synced: 1, duplicates: 0, failed: 0,
+      });
 
     const result = await pushVoucherLedgerEntries(db);
 
@@ -246,5 +385,21 @@ describe('pushVoucherLedgerEntries', () => {
     expect(result.failed).toBe(1);
     expect(markVoucherLedgerEntryFailed).toHaveBeenCalledWith(db, 'ledger-uuid-1', 'boom');
     expect(markVoucherLedgerEntrySynced).toHaveBeenCalledWith(db, 'ledger-uuid-2');
+  });
+
+  it('treats a malformed response (missing results array) as a per-entry failure', async () => {
+    // Defense-in-depth: if a stale server returns the old shape `{}` (no
+    // results field), we MUST NOT mark the row synced. The previous code
+    // unconditionally marked it synced, so any stale server would silently
+    // drop the row. Defense fails the row safely.
+    vi.mocked(getPendingVoucherLedgerEntries).mockResolvedValueOnce([LEDGER]);
+    vi.mocked(apiPost).mockResolvedValueOnce({});
+
+    const result = await pushVoucherLedgerEntries(db);
+
+    expect(result.pushed).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(markVoucherLedgerEntrySynced).not.toHaveBeenCalled();
+    expect(markVoucherLedgerEntryFailed).toHaveBeenCalled();
   });
 });

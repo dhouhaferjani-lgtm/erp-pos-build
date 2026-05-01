@@ -668,4 +668,42 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_refund_drafts_terminal ON refund_drafts(terminal_id);
     `,
   },
+  {
+    // Codex review B1 (2026-04-30) — wire offline v3 fiscal hashing.
+    //
+    // Adds `fiscal_schema_version` to two tables:
+    //   - terminal_state: projection of the server-side Terminal column. The
+    //     receipt-creation path branches on this value to choose v2 (legacy
+    //     `computeFiscalHash`) vs v3 (`buildCanonicalPayload` + SHA-256). The
+    //     value is refreshed every `pullTerminalState` cycle.
+    //   - offline_receipts: stamped at insert time so the sync payload can
+    //     declare the version each row was sealed against. The server's
+    //     `ReceiptSyncService` rejects any payload whose declared version
+    //     does not match the terminal's current version.
+    //
+    // Default of 2 mirrors the pre-cutover state: terminals start as v2 and
+    // are flipped to v3 by `FiscalSchemaCutoverController`. We have no
+    // production data, so a NOT NULL DEFAULT 2 backfill is safe — any
+    // pre-existing rows reflect v2-era receipts that were sealed against the
+    // legacy hash schema.
+    version: 28,
+    name: 'add_fiscal_schema_version',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE terminal_state ADD COLUMN fiscal_schema_version INTEGER NOT NULL DEFAULT 2',
+        'ALTER TABLE offline_receipts ADD COLUMN fiscal_schema_version INTEGER NOT NULL DEFAULT 2',
+      ];
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

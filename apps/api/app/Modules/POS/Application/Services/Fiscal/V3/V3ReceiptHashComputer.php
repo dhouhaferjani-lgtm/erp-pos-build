@@ -76,7 +76,7 @@ final class V3ReceiptHashComputer
      *   total: numeric-string,
      *   currency: string,
      *   vat_breakdown: list<array{rate: string, amount: numeric-string}>,
-     *   payments: list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: null, instrument_serial: null}>,
+     *   payments: list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: string|null, instrument_serial: string|null}>,
      *   voucher_ledger_entries: list<array{voucher_id: string, voucher_code: string, event: string, amount: numeric-string, gl_journal_entry_id: string|null}>,
      *   exchange_group_id: string|null,
      *   audit: array{authorized_by_user_id: string|null, override_reason: string|null, out_of_window: bool|null, policy_trigger: string|null, refund_request_id: string|null}|null
@@ -115,23 +115,33 @@ final class V3ReceiptHashComputer
             })
             ->all());
 
-        // payments: method_code and instrument_* are not yet separate columns on
-        // pos_receipt_payments in Phase 1. Mapping convention:
-        //   method_code  = strtolower(payment_type)  — the tender identifier (cash, card…)
-        //   payment_type = "pos"                      — Phase 1 sentinel: all POS receipts
-        //                                               carry a channel type of "pos";
-        //                                               a dedicated column lands in Task 3.3+
+        // payments: source the canonical inputs from per-row immutable snapshots.
+        //   method_code        = strtolower(payment_method_code)  — the tender identifier (cash,
+        //                        store_voucher, …) snapshot from payment_methods.code at
+        //                        receipt-creation time. Lower-cased here to honour the spec's
+        //                        case-normalisation convention (fixture goldens are lowercase).
+        //                        Codex review B2 (2026-04-30) replaced the legacy mapping that
+        //                        derived this from the mutable `payment_type` snapshot.
+        //   payment_type       = "pos"  — Phase 1 sentinel: all POS receipts carry a channel
+        //                        type of "pos"; a dedicated column lands in Task 3.3+ when the
+        //                        e-commerce / online-ordering channels are wired up.
+        //   instrument_type    = $payment->instrument_type?->value (string|null) — discriminator
+        //                        for the `instrument_serial` kind (store_voucher, restaurant_voucher,
+        //                        gift_card). Bound into the hash so a receipt paid with a
+        //                        store_voucher serial cannot be reconstructed as a cash receipt.
+        //   instrument_serial  = $payment->instrument_serial (string|null) — the actual serial
+        //                        / voucher code that tendered this row. Tamper-evident in the
+        //                        canonical input.
         // Amounts formatted at currency scale.
-        // instrument_type and instrument_serial are null until voucher tasks land.
-        /** @var list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: null, instrument_serial: null}> $payments */
+        /** @var list<array{method_code: string, payment_type: string, amount: numeric-string, instrument_type: string|null, instrument_serial: string|null}> $payments */
         $payments = array_values($receipt->payments
             ->map(function ($payment) use ($currencyScale): array {
                 return [
-                    'method_code' => strtolower((string) $payment->payment_type),
+                    'method_code' => strtolower((string) $payment->payment_method_code),
                     'payment_type' => 'pos',
                     'amount' => CurrencyScale::bcformat((string) $payment->amount, $currencyScale),
-                    'instrument_type' => null,
-                    'instrument_serial' => null,
+                    'instrument_type' => $payment->instrument_type?->value,
+                    'instrument_serial' => $payment->instrument_serial,
                 ];
             })
             ->all());

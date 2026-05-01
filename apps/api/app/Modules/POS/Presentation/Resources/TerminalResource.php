@@ -44,6 +44,10 @@ final class TerminalResource extends JsonResource
             'hash_sequence' => max(0, $this->current_sequence - 1),
             'current_sequence' => $this->current_sequence,
             'current_year' => $this->current_year,
+            // Codex review B1 (2026-04-30): expose the fiscal hash schema version
+            // so the offline POS client can branch on it (v2 → legacy
+            // computeFiscalHash, v3 → canonical-payload SHA-256 builder).
+            'fiscal_schema_version' => (int) $this->fiscal_schema_version,
             'is_training_mode' => (bool) $this->is_training_mode,
             'max_discount_percent' => (float) $this->max_discount_percent,
             'allow_line_discounts' => (bool) $this->allow_line_discounts,

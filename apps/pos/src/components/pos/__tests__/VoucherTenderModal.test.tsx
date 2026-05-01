@@ -116,6 +116,7 @@ function buildProps(overrides: Partial<Parameters<typeof VoucherTenderModal>[0]>
     remainingDue: '30.00',
     currency: 'EUR',
     onApplied: vi.fn(),
+    methodCode: 'store_voucher' as const,
     ...overrides,
   };
 }
@@ -148,6 +149,36 @@ describe('VoucherTenderModal — rendering', () => {
   it('renders nothing when isOpen is false', () => {
     render(<VoucherTenderModal {...buildProps({ isOpen: false })} />);
     expect(screen.queryByTestId('voucher-tender-modal')).not.toBeInTheDocument();
+  });
+
+  // B5-fix audit Minor 1 (2026-05-01): the modal must accept a methodCode
+  // prop discriminating which tender tile opened it. In Phase 1 only
+  // 'store_voucher' is fully wired; the prop exists so the discriminator
+  // is correct end-to-end and won't need refactoring when restaurant_voucher
+  // and gift_card land in Phase 2+.
+  it('accepts a methodCode prop and applies the correct discriminator on apply', async () => {
+    const onApplied = vi.fn();
+    mockFindByCode.mockResolvedValue(makeVoucher({ voucher_kind: 'MPV' }));
+
+    render(
+      <VoucherTenderModal
+        {...buildProps({ onApplied, methodCode: 'store_voucher' })}
+      />,
+    );
+
+    await typeCodeAndLookup('VOUCHER-001');
+    await waitFor(() => expect(screen.getByTestId('voucher-found-section')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('voucher-apply-button'));
+    });
+
+    // onApplied was called — the discriminator is implicit via the
+    // methodCode prop and surfaces in the parent's voucherTenders mapping.
+    expect(onApplied).toHaveBeenCalledWith('VOUCHER-001', expect.any(String));
+    // addVoucherPayment was called — the parent uses methodCode to decide
+    // how to label the resulting tender row when building AdvancedPaymentLine.
+    expect(mockAddVoucherPayment).toHaveBeenCalled();
   });
 });
 

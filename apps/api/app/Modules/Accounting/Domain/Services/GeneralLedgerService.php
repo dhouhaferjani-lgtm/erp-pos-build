@@ -876,16 +876,31 @@ final class GeneralLedgerService
      * Per EU Directive 2016/1065, MPV-issued vouchers carry NO VAT lines at the
      * voucher layer. VAT is computed only on the underlying redeeming sale.
      *
-     * Phase 1 supports: Issued (from Refund, ExchangeSurplus, Goodwill).
-     * PartiallyRedeemed is a projection-only event and returns no GL entry.
-     * All other events (Redeemed, Voided, Expired, Reversed, Transferred,
-     * RoundingAdjustment) are Phase 2+ and will throw until wired.
+     * Phase 1 supports: Issued (from Refund, ExchangeSurplus, Goodwill),
+     * Redeemed (voucher redemption GL impact), Voided (voucher write-off),
+     * and RoundingAdjustment (cross-currency residual settlement).
+     * PartiallyRedeemed is a projection-only event and explicitly throws
+     * here — callers must not invoke this method for it.
+     *
+     * Codex review m2 + R4 (2026-04-30): the administrative ExpiryExtended
+     * event (added by VoucherController::extendExpiry) is intentionally
+     * NOT in the wired set. It is a metadata-only ledger row with
+     * amount = '0.00000', written by the controller via VoucherLedger::forceCreate
+     * directly so the ledger keeps its 1:1 audit-of-mutations property
+     * without producing a phantom GL journal entry. Likewise, Transferred
+     * and Reversed remain Phase 2+ and will fall through to the
+     * unwired-event LogicException.
      *
      * GL matrix (Phase 1):
      *   Issued + Refund/ExchangeSurplus → Dr SalesReturnsClearing / Cr VoucherLiability
      *   Issued + Goodwill               → Dr MarketingGoodwillExpense / Cr VoucherLiability
+     *   Redeemed                        → Dr VoucherLiability        / Cr Cash (or revenue clearing)
+     *   Voided                          → Dr VoucherLiability        / Cr GoodwillExpense (write-off)
+     *   RoundingAdjustment              → cross-currency residual leg
      *
-     * @throws \LogicException when event is not yet wired in Phase 1
+     * @throws \LogicException when event is PartiallyRedeemed (no GL impact)
+     *                         or not yet wired in Phase 1 (Transferred,
+     *                         Reversed, Expired)
      */
     public function createVoucherLedgerEntry(VoucherLedger $ledgerRow, Voucher $voucher): JournalEntry
     {

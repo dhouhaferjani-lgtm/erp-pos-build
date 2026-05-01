@@ -28,7 +28,7 @@ const mockVouchers = [
   {
     id: 'v1',
     code: 'VCH-001',
-    source: 'Refund' as const,
+    source: 'refund' as const,
     status: 'Issued' as const,
     initial_balance: '50.00',
     current_balance: '50.00',
@@ -47,7 +47,7 @@ const mockVouchers = [
   {
     id: 'v2',
     code: 'VCH-002',
-    source: 'Goodwill' as const,
+    source: 'goodwill' as const,
     status: 'PartiallyRedeemed' as const,
     initial_balance: '100.00',
     current_balance: '30.00',
@@ -165,14 +165,14 @@ describe('VoucherListPage', () => {
     expect(screen.getByText('vouchers:empty.title')).toBeInTheDocument()
   })
 
-  it('source filter chip click calls setSearchParams with source=Refund in the params', () => {
+  it('source filter chip click calls setSearchParams with source=refund in the params', () => {
     render(<VoucherListPage />)
-    const refundChip = screen.getByTestId('source-filter-Refund')
+    const refundChip = screen.getByTestId('source-filter-refund')
     fireEvent.click(refundChip)
     expect(mockSetSearchParams).toHaveBeenCalled()
     // The call receives a URLSearchParams instance; assert the value actually set
     const arg = mockSetSearchParams.mock.calls[0][0] as URLSearchParams
-    expect(arg.get('source')).toBe('Refund')
+    expect(arg.get('source')).toBe('refund')
   })
 
   it('Issue Goodwill button is visible when permission is present', () => {

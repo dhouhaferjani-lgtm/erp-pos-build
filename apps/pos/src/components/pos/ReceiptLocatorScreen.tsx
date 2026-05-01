@@ -3,19 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { RotateCcw } from 'lucide-react';
 import { Modal } from './Modal';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
-import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
-import {
-  findReceiptByNumber,
-  findRecentReceiptsByPartner,
-} from '@/lib/offline/voucherRepository';
+import { findReceiptByNumber } from '@/lib/offline/voucherRepository';
 import { getDatabase } from '@/lib/db';
 import type { LocalReceiptQrIndexEntry } from '@/lib/offline/voucherRepository';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type ActiveTab = 'scan' | 'customer';
 
 interface ReceiptLocatorScreenProps {
   isOpen: boolean;
@@ -71,22 +65,48 @@ function ReceiptRow({ entry, onRefund, locale, t }: ReceiptRowProps) {
   );
 }
 
-// ─── Scan / Type tab ─────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
-interface ScanTabProps {
-  terminalId: string;
-  onRefund: (entry: LocalReceiptQrIndexEntry) => void;
-  companyId: string;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-  locale: string;
-}
+/**
+ * ReceiptLocatorScreen (Phase H Task 51, spec §6.1 — M2-UI fix).
+ *
+ * Single-search modal: "Scan or type ticket number" — looks up by
+ * receipt_number in local SQLite only. If the found entry belongs to a
+ * different terminal, shows a "not for this terminal" message without emitting
+ * any event.
+ *
+ * The "Find by customer" tab has been removed (Codex review M2-UI). It was
+ * wired to a partner_id UUID input that cashiers cannot produce at the till.
+ * Phase 2 will rebuild customer search with proper phone/email/loyalty-card
+ * identifier resolution once those are mirrored locally for offline use.
+ * The `partner_id` column on `receipt_qr_index` stays populated (M2-backend)
+ * so Phase 2 can query it immediately on reactivation.
+ *
+ * "Refund this" on any row calls:
+ *   `useRefundFlowStore.getState().setPendingScanResult(entry)` then `acceptPendingScan()`
+ * which emits the same `ReceiptTokenAccepted` event that Task 50's scan
+ * dispatcher emits — Task 52 has a single consumer for both entry-points.
+ *
+ * CONTRACT: No API call is ever made from this component. Vitest mocks for
+ * apiGet, apiPost, @tauri-apps/plugin-http.fetch, and globalThis.fetch must
+ * remain un-called across all flows.
+ *
+ * FIXED SIZE: the modal uses size="xl" (max-w-2xl) and the content area has a
+ * fixed min-height so the modal stays dimensionally stable regardless of search
+ * results (feedback_modal_fixed_size.md invariant).
+ */
+export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenProps) {
+  const { t, i18n } = useTranslation('pos');
+  const terminal = useTerminalStore((s) => s.terminal);
+  const companyId = useAuthStore((s) => s.companyId) ?? '';
 
-function ScanTab({ terminalId, onRefund, companyId, t, locale }: ScanTabProps) {
   const [input, setInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   // null = not yet searched; 'not-found' | 'wrong-terminal' = error state; entry = found
   const [found, setFound] = useState<LocalReceiptQrIndexEntry | null | 'not-found' | 'wrong-terminal'>(null);
   const [hasSearched, setHasSearched] = useState(false);
+
+  const terminalId = terminal?.id ?? '';
 
   const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
@@ -112,225 +132,6 @@ function ScanTab({ terminalId, onRefund, companyId, t, locale }: ScanTabProps) {
     }
   }, [input, companyId, terminalId]);
 
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-gray-600">{t('receiptLocator.scanHint')}</p>
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            setHasSearched(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              void handleSubmit();
-            }
-          }}
-          placeholder={t('receiptLocator.numberPlaceholder')}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          aria-label={t('receiptLocator.numberPlaceholder')}
-        />
-        <button
-          type="button"
-          onClick={() => void handleSubmit()}
-          disabled={isSearching || !input.trim()}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {isSearching ? t('receiptLocator.searching') : t('receiptLocator.search')}
-        </button>
-      </div>
-
-      {hasSearched && (
-        <div>
-          {found === 'not-found' && (
-            <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              {t('receiptLocator.notFound')}
-            </p>
-          )}
-          {found === 'wrong-terminal' && (
-            <p role="alert" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              {t('receiptLocator.wrongTerminal')}
-            </p>
-          )}
-          {found !== 'not-found' && found !== 'wrong-terminal' && found !== null && (
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                {t('receiptLocator.found')}
-              </p>
-              <ReceiptRow
-                entry={found}
-                onRefund={onRefund}
-                locale={locale}
-                t={t}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Find by customer tab ────────────────────────────────────────────────────
-
-interface CustomerTabProps {
-  onRefund: (entry: LocalReceiptQrIndexEntry) => void;
-  companyId: string;
-  /**
-   * Permission-bound search window applied at READ time (Phase H Block 2.5b).
-   *   - `null` → caller holds `pos.search_customer_full_history`; show the
-   *     full fiscal year (calendar year for Phase 1).
-   *   - positive number → cashier-tier window in days (default 30) for users
-   *     who only hold `pos.search_customer_recent_purchases`.
-   */
-  searchWindowDays: number | null;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-  locale: string;
-}
-
-function CustomerTab({ onRefund, companyId, searchWindowDays, t, locale }: CustomerTabProps) {
-  const [partnerInput, setPartnerInput] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<LocalReceiptQrIndexEntry[] | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  const handleSearch = useCallback(async () => {
-    const trimmed = partnerInput.trim();
-    if (!trimmed) return;
-    if (partnerInput.length > 128) return;
-
-    setIsSearching(true);
-    setHasSearched(false);
-    try {
-      const db = await getDatabase(companyId);
-      const entries = await findRecentReceiptsByPartner(
-        db,
-        trimmed,
-        20,
-        searchWindowDays,
-      );
-      setResults(entries);
-    } catch {
-      setResults([]);
-    } finally {
-      setIsSearching(false);
-      setHasSearched(true);
-    }
-  }, [partnerInput, companyId, searchWindowDays]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-gray-600">{t('receiptLocator.customerHint')}</p>
-
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={partnerInput}
-          onChange={(e) => {
-            setPartnerInput(e.target.value);
-            setHasSearched(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              void handleSearch();
-            }
-          }}
-          placeholder={t('receiptLocator.customerPlaceholder')}
-          maxLength={128}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          aria-label={t('receiptLocator.customerPlaceholder')}
-        />
-        <button
-          type="button"
-          onClick={() => void handleSearch()}
-          disabled={isSearching || !partnerInput.trim()}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {isSearching ? t('receiptLocator.searching') : t('receiptLocator.search')}
-        </button>
-      </div>
-
-      {hasSearched && results !== null && results.length === 0 && (
-        <p role="alert" className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">
-          {t('receiptLocator.noCustomerReceipts')}
-        </p>
-      )}
-
-      {results !== null && results.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-            {t('receiptLocator.customerResults', { count: results.length })}
-          </p>
-          {results.map((entry) => (
-            <ReceiptRow
-              key={entry.receipt_uuid}
-              entry={entry}
-              onRefund={onRefund}
-              locale={locale}
-              t={t}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
-/**
- * ReceiptLocatorScreen (Phase H Task 51, spec §6.1).
- *
- * Two-tab modal:
- *   1. "Scan or type ticket number" — always visible; looks up by receipt_number
- *      in local SQLite only. If the found entry belongs to a different terminal,
- *      shows a "not for this terminal" message without emitting any event.
- *   2. "Find by customer" — visible only when the operator holds the
- *      `pos.search_customer_recent_purchases` permission. Queries by partner_id
- *      in local SQLite only.
- *
- * "Refund this" on any row calls:
- *   `useRefundFlowStore.getState().setPendingScanResult(entry)` then `acceptPendingScan()`
- * which emits the same `ReceiptTokenAccepted` event that Task 50's scan
- * dispatcher emits — Task 52 has a single consumer for both entry-points.
- *
- * CONTRACT: No API call is ever made from this component. Vitest mocks for
- * apiGet, apiPost, @tauri-apps/plugin-http.fetch, and globalThis.fetch must
- * remain un-called across all flows.
- *
- * FIXED SIZE: the modal uses size="xl" (max-w-2xl) and the content area does
- * not grow when tabs switch — tab content has a fixed min-height so the modal
- * stays dimensionally stable.
- */
-export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenProps) {
-  const { t, i18n } = useTranslation('pos');
-  const operator = useOperatorStore((s) => s.operator);
-  const terminal = useTerminalStore((s) => s.terminal);
-  const companyId = useAuthStore((s) => s.companyId) ?? '';
-
-  const canSearchByCustomer =
-    operator?.permissions.includes('pos.search_customer_recent_purchases') ?? false;
-
-  // Phase H Block 2.5b — permission-bound search window applied at READ time.
-  // Storage on this terminal already retains the full current fiscal year
-  // (see cleanupSyncedReceipts in offlineReceiptRepository.ts). This decides
-  // the SLICE the cashier is allowed to see when searching by customer:
-  //   - pos.search_customer_full_history → null → no date filter
-  //   - pos.search_customer_recent_purchases (only) → 30-day window
-  // Default 30 days is intentionally a frontend constant — the backend
-  // `customerHistoryWindowDays` from `ReservationSettings` defaults to 14, but
-  // the original Phase H §3.5 cashier slice on the POS UI was specced at
-  // 30 days. Phase 2 may pull this from companyConfig to allow per-tenant
-  // overrides.
-  const hasFullHistoryPermission =
-    operator?.permissions.includes('pos.search_customer_full_history') ?? false;
-  const searchWindowDays: number | null = hasFullHistoryPermission ? null : 30;
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>('scan');
-
   const handleRefund = useCallback(
     (entry: LocalReceiptQrIndexEntry) => {
       useRefundFlowStore.getState().setPendingScanResult(entry);
@@ -340,8 +141,6 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
     [onClose],
   );
 
-  const terminalId = terminal?.id ?? '';
-
   return (
     <Modal
       isOpen={isOpen}
@@ -349,67 +148,63 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
       title={t('receiptLocator.title')}
       size="xl"
     >
-      {/* Tab bar — fixed height so the modal width never changes on switch */}
-      <div role="tablist" className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
-        <button
-          type="button"
-          role="tab"
-          id="receipt-locator-tab-scan"
-          aria-selected={activeTab === 'scan'}
-          aria-controls="receipt-locator-panel-scan"
-          onClick={() => setActiveTab('scan')}
-          className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'scan'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          {t('receiptLocator.tabScan')}
-        </button>
+      {/* Fixed min-height preserves modal dimensions regardless of result state */}
+      <div data-testid="receipt-locator-body" className="flex min-h-[280px] flex-col gap-4">
+        <p className="text-sm text-gray-600">{t('receiptLocator.scanHint')}</p>
 
-        {canSearchByCustomer && (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setHasSearched(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void handleSubmit();
+              }
+            }}
+            placeholder={t('receiptLocator.numberPlaceholder')}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            aria-label={t('receiptLocator.numberPlaceholder')}
+          />
           <button
             type="button"
-            role="tab"
-            id="receipt-locator-tab-customer"
-            aria-selected={activeTab === 'customer'}
-            aria-controls="receipt-locator-panel-customer"
-            onClick={() => setActiveTab('customer')}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              activeTab === 'customer'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            onClick={() => void handleSubmit()}
+            disabled={isSearching || !input.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {t('receiptLocator.tabCustomer')}
+            {isSearching ? t('receiptLocator.searching') : t('receiptLocator.search')}
           </button>
-        )}
-      </div>
+        </div>
 
-      {/* Tab content — fixed min-height so modal doesn't resize between tabs */}
-      <div
-        role="tabpanel"
-        id={`receipt-locator-panel-${activeTab}`}
-        aria-labelledby={`receipt-locator-tab-${activeTab}`}
-        className="min-h-[280px]"
-      >
-        {activeTab === 'scan' && (
-          <ScanTab
-            terminalId={terminalId}
-            onRefund={handleRefund}
-            companyId={companyId}
-            t={t}
-            locale={i18n.language}
-          />
-        )}
-        {activeTab === 'customer' && canSearchByCustomer && (
-          <CustomerTab
-            onRefund={handleRefund}
-            companyId={companyId}
-            searchWindowDays={searchWindowDays}
-            t={t}
-            locale={i18n.language}
-          />
+        {hasSearched && (
+          <div>
+            {found === 'not-found' && (
+              <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                {t('receiptLocator.notFound')}
+              </p>
+            )}
+            {found === 'wrong-terminal' && (
+              <p role="alert" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {t('receiptLocator.wrongTerminal')}
+              </p>
+            )}
+            {found !== 'not-found' && found !== 'wrong-terminal' && found !== null && (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {t('receiptLocator.found')}
+                </p>
+                <ReceiptRow
+                  entry={found}
+                  onRefund={handleRefund}
+                  locale={i18n.language}
+                  t={t}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
     </Modal>

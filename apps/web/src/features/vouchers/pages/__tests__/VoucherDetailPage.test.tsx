@@ -43,7 +43,7 @@ vi.mock('@/hooks/usePermissions', () => ({
 const mockVoucherDetail = {
   id: 'v1',
   code: 'VCH-GOODWILL-01',
-  source: 'Goodwill' as const,
+  source: 'goodwill' as const,
   status: 'Issued' as const,
   initial_balance: '200.00',
   current_balance: '200.00',
@@ -76,7 +76,7 @@ const mockVoucherDetail = {
     },
   ],
   provenance: {
-    source: 'Goodwill' as const,
+    source: 'goodwill' as const,
     issued_by_user_id: 'u1',
     issued_by_user_name: 'Admin User',
     authorized_by_user_id: null,

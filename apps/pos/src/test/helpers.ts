@@ -150,6 +150,7 @@ export function makeOfflineReceipt(overrides: Partial<OfflineReceipt> = {}): Off
     consumption_mode: null,
     table_id: null,
     server_receipt_id: null,
+    fiscal_schema_version: 2,
     created_at: '2026-01-01T00:00:00.000Z',
     synced_at: null,
     sync_error: null,

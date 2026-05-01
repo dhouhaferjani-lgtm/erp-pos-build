@@ -12,7 +12,7 @@ export function ProvenanceSection({ voucherSource, provenance }: ProvenanceSecti
 
   if (!provenance) return null
 
-  if (voucherSource === 'Refund' || voucherSource === 'ExchangeSurplus') {
+  if (voucherSource === 'refund' || voucherSource === 'exchange_surplus') {
     const p = provenance as RefundProvenance
     return (
       <div className="space-y-2">
@@ -50,7 +50,7 @@ export function ProvenanceSection({ voucherSource, provenance }: ProvenanceSecti
     )
   }
 
-  if (voucherSource === 'Goodwill') {
+  if (voucherSource === 'goodwill') {
     const p = provenance as GoodwillProvenance
     return (
       <div className="space-y-2">
@@ -79,7 +79,7 @@ export function ProvenanceSection({ voucherSource, provenance }: ProvenanceSecti
     )
   }
 
-  if (voucherSource === 'LoyaltyCredit') {
+  if (voucherSource === 'loyalty_credit') {
     const p = provenance as LoyaltyCreditProvenance
     return (
       <div className="space-y-2">
@@ -96,7 +96,7 @@ export function ProvenanceSection({ voucherSource, provenance }: ProvenanceSecti
     )
   }
 
-  if (voucherSource === 'GiftCard' || voucherSource === 'Promotional') {
+  if (voucherSource === 'gift_card_purchase' || voucherSource === 'promotional') {
     return (
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-700">{t('provenance.title')}</h3>

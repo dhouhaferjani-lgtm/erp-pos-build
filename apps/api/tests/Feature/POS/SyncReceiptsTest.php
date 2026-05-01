@@ -132,7 +132,12 @@ final class SyncReceiptsTest extends TestCase
             'tendered_amount' => '25.00',
             'change_due' => '5.00',
             'payments' => [
-                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '25.00'],
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '25.00',
+                    'method_code' => $this->paymentMethod->code,
+                ],
             ],
         ]);
 
@@ -248,8 +253,20 @@ final class SyncReceiptsTest extends TestCase
         $payload = $this->buildReceiptPayload([
             'total' => '30.00',
             'payments' => [
-                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '10.00'],
-                ['payment_method_id' => $paymentMethod2->id, 'repository_id' => $paymentRepo2->id, 'amount' => '20.00', 'card_last_four' => '4242', 'transaction_reference' => 'AUTH-123'],
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '10.00',
+                    'method_code' => $this->paymentMethod->code,
+                ],
+                [
+                    'payment_method_id' => $paymentMethod2->id,
+                    'repository_id' => $paymentRepo2->id,
+                    'amount' => '20.00',
+                    'card_last_four' => '4242',
+                    'transaction_reference' => 'AUTH-123',
+                    'method_code' => $paymentMethod2->code,
+                ],
             ],
         ]);
 
@@ -288,7 +305,12 @@ final class SyncReceiptsTest extends TestCase
             'consumption_mode' => 'SUR_PLACE',
             'table_id' => $tableId,
             'payments' => [
-                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '20.00',
+                    'method_code' => $this->paymentMethod->code,
+                ],
             ],
         ]);
 
@@ -344,10 +366,23 @@ final class SyncReceiptsTest extends TestCase
             'payment_repository_id' => $this->paymentRepo->id,
             'created_at' => now()->toIso8601String(),
             'payments' => [
-                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $this->paymentRepo->id, 'amount' => '20.00'],
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '20.00',
+                    // B3-followup audit (Finding 2, 2026-05-01): method_code is
+                    // now REQUIRED on the sync wire (was nullable). Every
+                    // payment row in this helper carries it so unrelated tests
+                    // exercise the validator's positive path.
+                    'method_code' => $this->paymentMethod->code,
+                ],
             ],
             'consumption_mode' => null,
             'table_id' => null,
+            // Codex review B1 (2026-04-30): clients MUST declare the version
+            // every payload was sealed under. v2 here matches the legacy
+            // hash path these tests exercise — the terminal default is v2.
+            'fiscal_schema_version' => 2,
         ];
 
         $payload = array_merge($defaults, $overrides);

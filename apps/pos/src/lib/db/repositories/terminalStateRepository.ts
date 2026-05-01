@@ -46,6 +46,13 @@ export interface TerminalHashState {
   hash_sequence: number;
   manager_pin_throttle_until: string | null;
   manager_pin_failed_attempts: number;
+  /**
+   * Fiscal hash schema version (2 = legacy `computeFiscalHash`, 3 = v3 canonical
+   * payload + SHA-256). Codex review B1 (2026-04-30): the offline receipt creator
+   * branches on this value, and the sync layer stamps every payload with the
+   * version it sealed under so the server can hard-reject mismatched versions.
+   */
+  fiscal_schema_version: 2 | 3;
 }
 
 /**
@@ -78,13 +85,26 @@ export async function getTerminalState(
   db: Database,
   terminalId: string,
 ): Promise<TerminalHashState | null> {
-  return queryOne<TerminalHashState>(
+  // Project `fiscal_schema_version` so the receipt-creation path can branch on
+  // it without a second query. The migration default is 2, so older rows that
+  // pre-date the column ALTER will read as v2 — safe legacy behaviour.
+  const row = await queryOne<Omit<TerminalHashState, 'fiscal_schema_version'> & { fiscal_schema_version: number }>(
     db,
     `SELECT terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence,
-            manager_pin_throttle_until, manager_pin_failed_attempts
+            manager_pin_throttle_until, manager_pin_failed_attempts, fiscal_schema_version
      FROM terminal_state WHERE terminal_id = $1`,
     [terminalId],
   );
+  if (row === null) return null;
+  // Coerce the integer column to the typed union (2 | 3). Any other value is a
+  // server-side bug — fail loudly so a stray "1" or "4" cannot silently route
+  // to the v2 legacy path.
+  if (row.fiscal_schema_version !== 2 && row.fiscal_schema_version !== 3) {
+    throw new Error(
+      `[fiscal] Unexpected fiscal_schema_version=${row.fiscal_schema_version} for terminal ${terminalId}. Expected 2 or 3.`,
+    );
+  }
+  return { ...row, fiscal_schema_version: row.fiscal_schema_version };
 }
 
 export async function setManagerPinThrottle(
@@ -140,14 +160,15 @@ export async function upsertTerminalState(
 
   await execute(
     db,
-    `INSERT INTO terminal_state (terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, datetime('now'))
+    `INSERT INTO terminal_state (terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence, fiscal_schema_version, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
        location_code = excluded.location_code,
        genesis_seed = excluded.genesis_seed,
        last_hash = excluded.last_hash,
        hash_sequence = excluded.hash_sequence,
+       fiscal_schema_version = excluded.fiscal_schema_version,
        updated_at = datetime('now')`,
     [
       state.terminal_id,
@@ -156,6 +177,7 @@ export async function upsertTerminalState(
       state.genesis_seed,
       state.last_hash,
       state.hash_sequence,
+      state.fiscal_schema_version,
     ],
   );
 

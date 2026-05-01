@@ -18,12 +18,12 @@ import type { Voucher, VoucherSource, VoidVoucherPayload, ExtendExpiryPayload } 
 
 const SOURCE_FILTERS: Array<{ value: VoucherSource | ''; label: string }> = [
   { value: '', label: 'sources.All' },
-  { value: 'Refund', label: 'sources.Refund' },
-  { value: 'ExchangeSurplus', label: 'sources.ExchangeSurplus' },
-  { value: 'Goodwill', label: 'sources.Goodwill' },
-  { value: 'LoyaltyCredit', label: 'sources.LoyaltyCredit' },
-  { value: 'GiftCard', label: 'sources.GiftCard' },
-  { value: 'Promotional', label: 'sources.Promotional' },
+  { value: 'refund', label: 'sources.refund' },
+  { value: 'exchange_surplus', label: 'sources.exchange_surplus' },
+  { value: 'goodwill', label: 'sources.goodwill' },
+  { value: 'loyalty_credit', label: 'sources.loyalty_credit' },
+  { value: 'gift_card_purchase', label: 'sources.gift_card_purchase' },
+  { value: 'promotional', label: 'sources.promotional' },
 ]
 
 export function VoucherListPage() {

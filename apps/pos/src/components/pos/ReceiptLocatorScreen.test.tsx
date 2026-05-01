@@ -1,9 +1,12 @@
 /**
- * ReceiptLocatorScreen — Vitest test suite (Phase H Task 51)
+ * ReceiptLocatorScreen — Vitest test suite (Phase H Task 51, M2-UI fix)
  *
- * Critical invariant: NO network call may be issued by any flow exercised
- * here. apiGet, apiPost, @tauri-apps/plugin-http.fetch, and globalThis.fetch
- * are mocked and asserted not-called across every test.
+ * Critical invariants:
+ *   - NO network call may be issued by any flow exercised here. apiGet,
+ *     apiPost, @tauri-apps/plugin-http.fetch, and globalThis.fetch are mocked
+ *     and asserted not-called across every test.
+ *   - The "Find by customer" tab MUST NOT exist. Phase 2 will rebuild it with
+ *     proper identifier resolution (phone / email / loyalty mirror).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -28,7 +31,6 @@ vi.mock('@/lib/offline/voucherRepository', async (importOriginal) => {
   return {
     ...actual,
     findReceiptByNumber: vi.fn(),
-    findRecentReceiptsByPartner: vi.fn(),
   };
 });
 
@@ -90,12 +92,10 @@ vi.mock('@/stores/authStore', () => ({
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
   useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
+    t: (key: string, _opts?: Record<string, unknown>) => {
       const map: Record<string, string> = {
         'receiptLocator.title': 'Returns / Exchange',
         'receiptLocator.entryButton': 'Returns / Exchange',
-        'receiptLocator.tabScan': 'Scan or type ticket number',
-        'receiptLocator.tabCustomer': 'Find by customer',
         'receiptLocator.scanHint': 'Enter the receipt number or scan the QR code.',
         'receiptLocator.numberPlaceholder': 'Receipt number',
         'receiptLocator.search': 'Search',
@@ -104,10 +104,6 @@ vi.mock('react-i18next', () => ({
         'receiptLocator.notFound': 'No receipt found for that number.',
         'receiptLocator.wrongTerminal': 'This receipt belongs to a different terminal.',
         'receiptLocator.refundThis': 'Refund this',
-        'receiptLocator.customerHint': 'Enter the customer ID to find their recent purchases.',
-        'receiptLocator.customerPlaceholder': 'Customer ID',
-        'receiptLocator.noCustomerReceipts': 'No receipts found for this customer.',
-        'receiptLocator.customerResults': `${String(opts?.count ?? 0)} receipt(s) found`,
       };
       return map[key] ?? key;
     },
@@ -136,36 +132,12 @@ const OTHER_TERMINAL_ENTRY: LocalReceiptQrIndexEntry = {
   terminal_id: 'term-OTHER',
 };
 
-const CUSTOMER_ENTRY_1: LocalReceiptQrIndexEntry = {
-  receipt_uuid: '660e8400-e29b-41d4-a716-446655440001',
-  qr_token: null,
-  receipt_number: 'R-0010',
-  terminal_id: 'term-1',
-  posted_at: '2026-04-27T10:00:00+00:00',
-  total: '9900',
-  currency: 'EUR',
-  partner_id: 'partner-abc',
-  synced_at: '2026-04-27T10:00:05+00:00',
-};
-
-const CUSTOMER_ENTRY_2: LocalReceiptQrIndexEntry = {
-  receipt_uuid: '770e8400-e29b-41d4-a716-446655440002',
-  qr_token: null,
-  receipt_number: 'R-0011',
-  terminal_id: 'term-1',
-  posted_at: '2026-04-25T08:00:00+00:00',
-  total: '5050',
-  currency: 'EUR',
-  partner_id: 'partner-abc',
-  synced_at: '2026-04-25T08:00:05+00:00',
-};
-
 // ─── Import mocked modules (AFTER vi.mock declarations) ───────────────────────
 
 import { ReceiptLocatorScreen } from './ReceiptLocatorScreen';
 import { apiGet, apiPost } from '@/lib/api';
 import { fetch as httpFetch } from '@tauri-apps/plugin-http';
-import { findReceiptByNumber, findRecentReceiptsByPartner } from '@/lib/offline/voucherRepository';
+import { findReceiptByNumber } from '@/lib/offline/voucherRepository';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -173,20 +145,13 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 
 // ─── Store setup helper ───────────────────────────────────────────────────────
 
-function setupStores({
-  canSearchCustomer = false,
-  canSearchFullHistory = false,
-}: { canSearchCustomer?: boolean; canSearchFullHistory?: boolean } = {}) {
-  const permissions: string[] = [];
-  if (canSearchCustomer) permissions.push('pos.search_customer_recent_purchases');
-  if (canSearchFullHistory) permissions.push('pos.search_customer_full_history');
-
+function setupStores() {
   // Cast to unknown first to bypass strict store-selector compatibility checks
   // in test mocks — these mocks only supply the slice of state that
   // ReceiptLocatorScreen reads, not the full store shape.
   (useOperatorStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (selector: (s: { operator: { id: string; name: string; permissions: string[]; roles: string[] } | null }) => unknown) =>
-      selector({ operator: { id: 'op-1', name: 'Alice', permissions, roles: ['cashier'] } }),
+      selector({ operator: { id: 'op-1', name: 'Alice', permissions: [], roles: ['cashier'] } }),
   );
 
   (useTerminalStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
@@ -212,23 +177,25 @@ beforeEach(() => {
 });
 
 describe('ReceiptLocatorScreen', () => {
+  // ── M2-UI: Customer tab must not exist (Codex review M2) ─────────────────
+
+  it('does NOT render a Find-by-customer tab (M2-UI: tab dropped, Phase 2 will rebuild)', () => {
+    setupStores();
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    expect(screen.queryByText(/find by customer/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/rechercher par client/i)).not.toBeInTheDocument();
+  });
+
+  it('does NOT render a tab bar at all (single search field, no tablist)', () => {
+    setupStores();
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+  });
+
   // ── Rendering ──────────────────────────────────────────────────────────────
-
-  it('renders both tabs when operator has search_customer_recent_purchases permission', () => {
-    setupStores({ canSearchCustomer: true });
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    expect(screen.getByRole('tab', { name: 'Scan or type ticket number' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Find by customer' })).toBeInTheDocument();
-  });
-
-  it('hides the Find-by-customer tab when operator lacks the permission', () => {
-    setupStores({ canSearchCustomer: false });
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    expect(screen.getByRole('tab', { name: 'Scan or type ticket number' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Find by customer' })).not.toBeInTheDocument();
-  });
 
   it('renders nothing when isOpen is false', () => {
     setupStores();
@@ -236,7 +203,15 @@ describe('ReceiptLocatorScreen', () => {
     expect(container.textContent).toBe('');
   });
 
-  // ── Scan / type tab: not found ─────────────────────────────────────────────
+  it('renders the receipt-number search field when open', () => {
+    setupStores();
+    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
+
+    expect(screen.getByRole('textbox', { name: 'Receipt number' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+  });
+
+  // ── Scan / type: not found ─────────────────────────────────────────────────
 
   it('shows not-found message when receipt number does not exist in local SQLite', async () => {
     setupStores();
@@ -257,7 +232,7 @@ describe('ReceiptLocatorScreen', () => {
     expect(mockAcceptPendingScan).not.toHaveBeenCalled();
   });
 
-  // ── Scan / type tab: wrong terminal ──────────────────────────────────────
+  // ── Scan / type: wrong terminal ──────────────────────────────────────────
 
   it('shows wrong-terminal message when receipt belongs to a different terminal; no event emitted', async () => {
     setupStores();
@@ -278,7 +253,7 @@ describe('ReceiptLocatorScreen', () => {
     expect(mockAcceptPendingScan).not.toHaveBeenCalled();
   });
 
-  // ── Scan / type tab: found → Refund this → event emitted ─────────────────
+  // ── Scan / type: found → Refund this → event emitted ─────────────────────
 
   it('displays receipt summary and emits event via refundFlowStore when "Refund this" is clicked', async () => {
     setupStores();
@@ -308,72 +283,7 @@ describe('ReceiptLocatorScreen', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // ── Find-by-customer tab: results + Refund this ───────────────────────────
-
-  it('switches to customer tab, searches by partner ID, renders result list, emits event on Refund this', async () => {
-    setupStores({ canSearchCustomer: true });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1, CUSTOMER_ENTRY_2]);
-    const onClose = vi.fn();
-
-    render(<ReceiptLocatorScreen isOpen={true} onClose={onClose} />);
-
-    // Switch tab
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-
-    // Enter partner ID
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-abc' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('R-0010')).toBeInTheDocument();
-      expect(screen.getByText('R-0011')).toBeInTheDocument();
-    });
-
-    // Operator has only `pos.search_customer_recent_purchases` (no full-history) →
-    // permission-bound 30-day window applied at READ time (Phase H Block 2.5b).
-    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith({}, 'partner-abc', 20, 30);
-
-    // Click the first "Refund this" button
-    const refundButtons = screen.getAllByRole('button', { name: 'Refund this' });
-    expect(refundButtons.length).toBe(2);
-
-    fireEvent.click(refundButtons[0]!);
-
-    expect(mockSetPendingScanResult).toHaveBeenCalledWith(CUSTOMER_ENTRY_1);
-    expect(mockAcceptPendingScan).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows empty state when customer has no receipts in local index', async () => {
-    setupStores({ canSearchCustomer: true });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([]);
-
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-unknown' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('No receipts found for this customer.')).toBeInTheDocument();
-    });
-  });
-
-  // ── ARIA: tablist / tabpanel roles ────────────────────────────────────────
-
-  it('tab wrapper has role="tablist" and active panel has role="tabpanel"', () => {
-    setupStores({ canSearchCustomer: true });
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
-    expect(screen.getByRole('tabpanel')).toBeInTheDocument();
-  });
-
-  // ── ARIA: alerts for error / empty states ─────────────────────────────────
+  // ── ARIA: alerts for error states ─────────────────────────────────────────
 
   it('announces "not found" error via role="alert"', async () => {
     setupStores();
@@ -409,39 +319,9 @@ describe('ReceiptLocatorScreen', () => {
     });
   });
 
-  it('announces customer-tab empty state via role="alert"', async () => {
-    setupStores({ canSearchCustomer: true });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([]);
-
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-none' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByRole('alert')).toHaveTextContent('No receipts found for this customer.');
-    });
-  });
-
-  // ── Partner input: maxLength cap ──────────────────────────────────────────
-
-  it('partner input caps value at 128 characters via maxLength', () => {
-    setupStores({ canSearchCustomer: true });
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-
-    const input = screen.getByRole('textbox', { name: 'Customer ID' });
-    expect(input).toHaveAttribute('maxLength', '128');
-  });
-
   // ── No-fetch contract ─────────────────────────────────────────────────────
 
-  it('does NOT touch the network during any flow (scan tab, found, refund)', async () => {
+  it('does NOT touch the network during any flow (scan, found, refund)', async () => {
     setupStores();
     vi.mocked(findReceiptByNumber).mockResolvedValue(TERMINAL_ENTRY);
 
@@ -470,83 +350,16 @@ describe('ReceiptLocatorScreen', () => {
     fetchSpy.mockRestore();
   });
 
-  it('does NOT touch the network during customer-tab flow', async () => {
-    setupStores({ canSearchCustomer: true });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1]);
+  // ── Fixed-size invariant: modal body never resizes ────────────────────────
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
-      throw new Error('globalThis.fetch must not be called');
-    });
-
+  it('maintains a fixed min-height content area for modal stability', () => {
+    setupStores();
     render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-abc' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('R-0010')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refund this' }));
-
-    expect(apiGet).not.toHaveBeenCalled();
-    expect(apiPost).not.toHaveBeenCalled();
-    expect(httpFetch).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-
-    fetchSpy.mockRestore();
-  });
-
-  // ── Permission-bound search window (Phase H Block 2.5b) ───────────────────
-
-  it('passes windowDays = null (full fiscal year) when operator has pos.search_customer_full_history', async () => {
-    setupStores({ canSearchCustomer: true, canSearchFullHistory: true });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1]);
-
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-abc' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(findRecentReceiptsByPartner).toHaveBeenCalled();
-    });
-
-    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith(
-      {},
-      'partner-abc',
-      20,
-      null,
-    );
-  });
-
-  it('passes windowDays = 30 when operator only has pos.search_customer_recent_purchases', async () => {
-    setupStores({ canSearchCustomer: true, canSearchFullHistory: false });
-    vi.mocked(findRecentReceiptsByPartner).mockResolvedValue([CUSTOMER_ENTRY_1]);
-
-    render(<ReceiptLocatorScreen isOpen={true} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Find by customer' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Customer ID' }), {
-      target: { value: 'partner-abc' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-
-    await waitFor(() => {
-      expect(findRecentReceiptsByPartner).toHaveBeenCalled();
-    });
-
-    expect(findRecentReceiptsByPartner).toHaveBeenCalledWith(
-      {},
-      'partner-abc',
-      20,
-      30,
-    );
+    // The content wrapper must carry min-h-[280px] so the xl modal never
+    // collapses or grows when the result set changes.
+    const contentArea = document.querySelector('[data-testid="receipt-locator-body"]');
+    expect(contentArea).not.toBeNull();
+    expect(contentArea?.className).toContain('min-h-');
   });
 });

@@ -8,8 +8,10 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
@@ -19,6 +21,8 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
+use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Treasury\Enums\ToleranceType;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Domain\CurrencyScale;
@@ -45,12 +49,19 @@ final class ReceiptPaymentService
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly PaymentToleranceCheckerContract $toleranceChecker,
         private readonly ReceiptFinalizationService $finalizationService,
+        private readonly VoucherRedemptionService $voucherRedemptionService,
     ) {}
 
     /**
      * Process split payments for a receipt.
      *
-     * @param  array<int, array{payment_method_id: string, amount: numeric-string, repository_id: string, card_last_four?: string|null, transaction_reference?: string|null, authorization_code?: string|null}>  $payments
+     * Codex review B3 (2026-04-30): `instrument_type` and `instrument_serial`
+     * are accepted per-payment so voucher-bearing tenders persist the actual
+     * voucher serial into `pos_receipt_payments`. Both fields together (or both
+     * absent) — the request validator enforces this. The v3 fiscal hash binds
+     * these fields, so dropping them silently would defeat the chain.
+     *
+     * @param  array<int, array{payment_method_id: string, amount: numeric-string, repository_id: string, card_last_four?: string|null, transaction_reference?: string|null, authorization_code?: string|null, instrument_type?: string|null, instrument_serial?: string|null}>  $payments
      * @return array{receipt: Receipt, receipt_payments: array<int, ReceiptPayment>, treasury_payments: array<int, Payment>, change_due: numeric-string, tolerance_writeoff: numeric-string}
      *
      * @throws \InvalidArgumentException
@@ -162,6 +173,30 @@ final class ReceiptPaymentService
                 // Get payment method name for receipt payment record
                 $paymentMethod = PaymentMethod::findOrFail($paymentData['payment_method_id']);
 
+                // Codex review B4 (2026-04-30): defense-in-depth at the writer.
+                // The HTTP request validator (StoreReceiptPaymentsRequest) rejects
+                // this shape with 422, but programmatic callers (queue jobs,
+                // internal flows, future controllers, tests) bypass FormRequest
+                // validation. Without this guard, a v3 receipt could still be
+                // sealed with `method_code = store_voucher` and
+                // `instrument_serial = null` — exactly the fiscal-hash hole B4
+                // closes "once and for all." The throw happens before any
+                // Treasury / GL / ReceiptPayment write so the enclosing
+                // DB::transaction() rolls back cleanly with no partial chain
+                // state. Mapped to HTTP 422 by the generic DomainException
+                // renderer in bootstrap/app.php.
+                $methodCode = (string) $paymentMethod->code;
+                if (PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)) {
+                    $instrumentTypeInput = $paymentData['instrument_type'] ?? null;
+                    $instrumentSerialInput = $paymentData['instrument_serial'] ?? null;
+                    if (
+                        ! is_string($instrumentTypeInput) || $instrumentTypeInput === ''
+                        || ! is_string($instrumentSerialInput) || $instrumentSerialInput === ''
+                    ) {
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+                }
+
                 // Create Treasury Payment record
                 $treasuryPayment = Payment::create([
                     'id' => Str::uuid()->toString(),
@@ -195,21 +230,78 @@ final class ReceiptPaymentService
                     $receipt->cashier
                 );
 
-                // Create ReceiptPayment record linked to Treasury payment
+                // Create ReceiptPayment record linked to Treasury payment.
+                // payment_method_code is an immutable snapshot of payment_methods.code
+                // bound into the v3 canonical fiscal hash (Codex review B2, 2026-04-30).
+                //
+                // Codex review B3 (2026-04-30): coerce instrument_type to the
+                // PaymentInstrumentKind enum so the cast on the model accepts it.
+                // Fail loudly on an unknown string — the request validator's `in:`
+                // rule should make this unreachable, but we don't trust string
+                // inputs to enums.
+                $instrumentTypeValue = $paymentData['instrument_type'] ?? null;
+                $instrumentType = $instrumentTypeValue !== null
+                    ? PaymentInstrumentKind::from($instrumentTypeValue)
+                    : null;
                 $receiptPayment = ReceiptPayment::create([
                     'id' => Str::uuid()->toString(),
                     'receipt_id' => $receipt->id,
                     'payment_method_id' => $paymentData['payment_method_id'],
                     'payment_type' => $paymentMethod->name,
+                    'payment_method_code' => $paymentMethod->code,
                     'amount' => $paymentData['amount'],
                     'card_last_four' => $paymentData['card_last_four'] ?? null,
                     'transaction_reference' => $paymentData['transaction_reference'] ?? null,
                     'authorization_code' => $paymentData['authorization_code'] ?? null,
+                    'instrument_type' => $instrumentType,
+                    'instrument_serial' => $paymentData['instrument_serial'] ?? null,
                     'treasury_payment_id' => $treasuryPayment->id,
                 ]);
 
                 $receiptPayments[] = $receiptPayment;
                 $treasuryPayments[] = $treasuryPayment;
+
+                // Codex review B5 (2026-05-01): for store_voucher payments,
+                // delegate the voucher-side accounting to the canonical
+                // VoucherRedemptionService. It writes the voucher_ledger
+                // Redeemed row, posts the Dr VoucherLiability / Cr
+                // PosTenderClearing journal, decrements the voucher's
+                // current_balance, and transitions its status. The receipt
+                // payment row + treasury payment + repository GL entry above
+                // remain — those represent the cashier's view of "this
+                // tender came in via the voucher repository." The voucher
+                // repository's GL account should be configured as
+                // PosTenderClearing in deployment so the two journals net
+                // out to Dr VoucherLiability / Cr Revenue (correct net
+                // accounting: voucher liability extinguishes, revenue
+                // recognized).
+                //
+                // The call inherits the wrapping DB::transaction(), so any
+                // VoucherRedemptionException (insufficient balance, expired,
+                // duplicate, terminal mismatch, currency mismatch, customer
+                // mismatch) rolls back the receipt payment + treasury
+                // payment + GL entry too — atomic, no partial chain state.
+                if ($instrumentType === PaymentInstrumentKind::StoreVoucher) {
+                    $instrumentSerial = $paymentData['instrument_serial'] ?? null;
+                    if (! is_string($instrumentSerial) || $instrumentSerial === '') {
+                        // Defense-in-depth: B4 guard above already enforces
+                        // this, but assert again here so the redemption call
+                        // never runs with an empty serial. The B4 throw site
+                        // is the real fence; this is unreachable.
+                        throw InstrumentRequiredException::forMethodCode($methodCode);
+                    }
+
+                    $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
+                        voucherCode: $instrumentSerial,
+                        appliedAmount: $paymentData['amount'],
+                        currency: (string) $receipt->currency,
+                        receiptId: $receipt->id,
+                        cashierId: (string) $receipt->cashier_id,
+                        terminalId: (string) $receipt->terminal_id,
+                        partnerId: $customerId,
+                        instrumentKind: PaymentInstrumentKind::StoreVoucher,
+                    ));
+                }
             }
 
             // A1 — Tolerance write-off: same-transaction GL post + shift increment.

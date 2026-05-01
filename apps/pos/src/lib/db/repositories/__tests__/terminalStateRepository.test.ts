@@ -28,6 +28,7 @@ const baseState: TerminalHashState = {
   hash_sequence: 5,
   manager_pin_throttle_until: null,
   manager_pin_failed_attempts: 0,
+  fiscal_schema_version: 2,
 };
 
 describe('terminalStateRepository — regression guards', () => {

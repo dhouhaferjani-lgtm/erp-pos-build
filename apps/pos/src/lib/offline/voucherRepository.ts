@@ -44,7 +44,11 @@ export type VoucherLedgerEvent =
   | 'Expired'
   | 'Voided'
   | 'Transferred'
-  | 'Reversed';
+  | 'Reversed'
+  // Administrative metadata-only event written by the back-office on
+  // VoucherController::extendExpiry(). The POS itself never originates one
+  // — it can only ever appear in inbound sync streams. Codex review m2 (2026-04-30).
+  | 'ExpiryExtended';
 
 export type LedgerSyncStatus = 'synced' | 'pending' | 'failed';
 
@@ -164,65 +168,6 @@ export async function findReceiptByNumber(
     db,
     `SELECT ${RECEIPT_QR_INDEX_COLUMNS} FROM receipt_qr_index WHERE receipt_number = $1 LIMIT 1`,
     [number],
-  );
-}
-
-/**
- * Returns the most recent receipts in the local index that are linked to the
- * given `partnerId`. Ordered newest-first by `posted_at`.
- *
- * This query is LOCAL ONLY — no API call. The `partner_id` column was added by
- * migration 26; rows synced before the backend wires this field will have
- * `partner_id = null` and will NOT appear here. That is expected and correct —
- * the "Find by customer" tab will simply show fewer results until the sync
- * layer is updated to populate the column.
- *
- * `windowDays` is the permission-bound search window applied at READ time
- * (Phase H Block 2.5b). Storage is full fiscal year on the POS terminal; this
- * parameter narrows the cashier-visible slice based on what the operator is
- * allowed to see:
- *
- *   - `null` (default) → no date filter — caller has full-history permission
- *     (`pos.search_customer_full_history`).
- *   - positive number ≤ 3650 → only receipts where `posted_at >= now - N days`.
- *     Used for cashiers with the recent-purchases permission only.
- *   - values > 3650 (including `Number.MAX_VALUE`) → treated as `null` (full
- *     window). SQLite's `datetime` modifier returns NULL for extreme integers,
- *     which would silently suppress all rows; the upper bound prevents that.
- *
- * The numeric value is interpolated directly into the SQL because SQLite's
- * `datetime(..., '-N days')` modifier does not accept a bound parameter for
- * the modifier text. The TypeScript signature constrains `windowDays` to
- * `number | null`, and we guard with `Number.isFinite`, `> 0`, and `<= 3650`
- * so the inline fragment cannot host SQL injection and extreme inputs fall
- * through safely to the full-window path.
- *
- * TODO (follow-up): Update syncService + backend ReceiptSyncController to
- * include `partner_id` in the sync payload, and pass it through
- * `upsertReceiptQrIndexEntries` so this query becomes fully useful.
- */
-export async function findRecentReceiptsByPartner(
-  db: Database,
-  partnerId: string,
-  limit: number = 20,
-  windowDays: number | null = null,
-): Promise<LocalReceiptQrIndexEntry[]> {
-  const windowClause =
-    windowDays !== null &&
-    Number.isFinite(windowDays) &&
-    windowDays > 0 &&
-    windowDays <= 3650
-      ? ` AND posted_at >= datetime('now', '-${Math.floor(windowDays)} days')`
-      : '';
-
-  return queryAll<LocalReceiptQrIndexEntry>(
-    db,
-    `SELECT ${RECEIPT_QR_INDEX_COLUMNS}
-       FROM receipt_qr_index
-      WHERE partner_id = $1${windowClause}
-      ORDER BY posted_at DESC
-      LIMIT $2`,
-    [partnerId, limit],
   );
 }
 
@@ -471,5 +416,152 @@ export async function markVoucherLedgerEntryFailed(
             sync_error = $1
       WHERE id = $2`,
     [reason, id],
+  );
+}
+
+// ─── Local-write helpers (offline POS originates ledger rows) ───────────────
+
+/**
+ * Payload for a locally-originated voucher_ledger row.
+ *
+ * B5-fix audit decision (Option B, 2026-05-01) — STATUS: this helper is NO
+ * LONGER called by `createOfflineReceipt`. The receipt-tied redemption row
+ * is now server-authored exclusively (ReceiptSyncService invokes
+ * VoucherRedemptionService::redeem during sync). The helper remains for
+ * potential future offline-issued voucher operations not tied to a synced
+ * receipt — e.g. goodwill issuance from a back-office screen — which is
+ * what the `VoucherLedgerPushService` push contract was actually designed
+ * for. Until such a flow exists, this helper is dead code retained as
+ * scaffolding.
+ *
+ * Idempotency contract (B5-fix audit Minor 3, 2026-05-01):
+ *   The `id` field is a LOCAL primary key for the voucher_ledger mirror
+ *   table. It is NOT persisted as the canonical voucher_ledger.id on the
+ *   server — `VoucherLedgerPushService::push` calls `redeem()` which
+ *   generates a server-controlled UUID. The client-supplied `id`
+ *   round-trips back to the client only as a correlation key in the push
+ *   response (so the client can find which local row the per-entry result
+ *   refers to).
+ *
+ *   The CANONICAL idempotency contract is the natural tuple
+ *   `(voucher_id, receipt_id, event=Redeemed)` — the redemption service's
+ *   duplicate-in-transaction guard at VoucherRedemptionService.php:139-147.
+ *   A replay of the same (voucher, receipt) raises
+ *   `VoucherDuplicateInTransactionException` which the push handler maps
+ *   to `status: 'duplicate'`.
+ *
+ *   Earlier docs claimed the ledger `id` was the natural correlation key
+ *   on the canonical projection — that was incorrect. The correlation
+ *   exists only inside the push response payload.
+ */
+export interface PendingVoucherLedgerWrite {
+  /**
+   * LOCAL UUID for the voucher_ledger mirror row's primary key. NOT
+   * persisted as the canonical voucher_ledger.id on the server — see
+   * idempotency contract on the interface docblock.
+   */
+  id: string;
+  /** FK into local `vouchers.id`. */
+  voucher_id: string;
+  /** Lifecycle event. POS only ever originates `Redeemed` (Phase 1 spec §6.5). */
+  event: VoucherLedgerEvent;
+  /**
+   * Decimal-string amount at currency scale (e.g. '20.00'). The server-side
+   * VoucherRedemptionService stores a SIGNED amount (negative for redemptions),
+   * but the local mirror is unsigned by convention — the push handler signs
+   * server-side. Keep consistent with `LocalVoucherLedgerEntry.amount`.
+   */
+  amount: string;
+  /** ISO 4217 currency code. */
+  currency: string;
+  /**
+   * Server receipt id. For receipt-tied redemptions this is REQUIRED on the
+   * server (`VoucherLedgerPushService::push` rejects null with
+   * `'receipt_id_required_for_redemption'`), which is why Option B moved
+   * the redemption write entirely to the server during ReceiptSyncService.
+   * For potential future non-receipt-tied flows (goodwill issuance, etc.)
+   * receipt_id may be null and the server-side handler accepts that.
+   */
+  receipt_id: string | null;
+  /** FK into local `terminal_state.terminal_id`. */
+  terminal_id: string;
+  /** Cashier user UUID (who originated the redemption). */
+  user_id: string;
+  /** ISO 8601 UTC timestamp the redemption occurred. */
+  occurred_at: string;
+}
+
+/**
+ * Write a single locally-originated voucher_ledger row in the `pending`
+ * sync state.
+ *
+ * B5-fix audit (Option B, 2026-05-01): this helper is NO LONGER called by
+ * `createOfflineReceipt` (the receipt-tied redemption is now
+ * server-authored during sync). It remains for future offline-issued
+ * voucher operations not tied to a synced receipt (e.g. back-office
+ * goodwill issuance) which match the `VoucherLedgerPushService` push
+ * contract. Until such a flow exists, this is dead code retained as
+ * scaffolding.
+ *
+ * Note that even when called, the contract above means a row with
+ * `receipt_id = null` will be REJECTED by the server when pushed
+ * (`VoucherLedgerPushService::push` line 83-85). Callers must populate
+ * receipt_id from the synced receipt's server id BEFORE allowing the row
+ * to enter the push pipeline.
+ *
+ * This deliberately does NOT wrap in its own transaction — when callers
+ * do invoke this, they may want to share a wrapping transaction with
+ * other writes for atomicity.
+ */
+export async function insertPendingVoucherLedgerRow(
+  db: Database,
+  row: PendingVoucherLedgerWrite,
+): Promise<void> {
+  await execute(
+    db,
+    `INSERT INTO voucher_ledger (
+       id, voucher_id, event, amount, currency, receipt_id, terminal_id,
+       user_id, occurred_at, sync_status, synced_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NULL
+     )`,
+    [
+      row.id,
+      row.voucher_id,
+      row.event,
+      row.amount,
+      row.currency,
+      row.receipt_id,
+      row.terminal_id,
+      row.user_id,
+      row.occurred_at,
+    ],
+  );
+}
+
+/**
+ * Codex review B5 (2026-05-01): decrement the local voucher projection's
+ * balance and update its status. Intended to fire inside the same SQLite
+ * transaction as `insertPendingVoucherLedgerRow` so the projection and the
+ * audit trail move together.
+ *
+ * Caller is responsible for computing the new balance with bcsub (string
+ * arithmetic, never parseFloat) and the new status (`'PartiallyRedeemed'` or
+ * `'FullyRedeemed'`). This helper does the SQL UPDATE only.
+ */
+export async function updateVoucherBalanceAndStatus(
+  db: Database,
+  voucherId: string,
+  newBalance: string,
+  newStatus: VoucherStatus,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE vouchers
+        SET current_balance = $1,
+            status = $2,
+            synced_at = datetime('now')
+      WHERE id = $3`,
+    [newBalance, newStatus, voucherId],
   );
 }

@@ -56,6 +56,28 @@ const REDEEMABLE_STATUSES = new Set<LocalVoucher['status']>(['Issued', 'Partiall
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+/**
+ * The payment-method tender code that opened this modal. Phase 1 only fully
+ * wires `'store_voucher'` end-to-end — the canonical PaymentMethod for our
+ * own merchant-issued store credit (refund-issued, exchange-surplus,
+ * goodwill, loyalty-credit). Restaurant tickets and gift cards are Phase 2+
+ * with distinct settlement / GL paths (spec §3.2.1).
+ *
+ * Why the prop exists in Phase 1 even though only one value is supported:
+ *   - The discriminator must be correct end-to-end so the parent's
+ *     AdvancedPaymentLine mapping (`instrument_type: 'store_voucher'`) is
+ *     not hardcoded based on which screen mounted the modal.
+ *   - Phase 2+ will accept restaurant_voucher and gift_card without a
+ *     refactor — only the parent's tap-handler gating + the modal's
+ *     internal kind matrix will change.
+ *
+ * Codex review B5-fix audit Minor 1 (2026-05-01).
+ */
+export type VoucherTenderMethodCode =
+  | 'store_voucher'
+  | 'restaurant_voucher'
+  | 'gift_card';
+
 export interface VoucherTenderModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -78,6 +100,16 @@ export interface VoucherTenderModalProps {
 
   /** Called after a voucher is successfully applied. */
   onApplied: (code: string, amount: string) => void;
+
+  /**
+   * Discriminator: which tender tile opened this modal. Phase 1 only wires
+   * `'store_voucher'`. Restaurant_voucher / gift_card values are accepted
+   * for Phase 2+ readiness but the parent should NOT route those values
+   * through here in Phase 1 (the gate at AdvancedPaymentsModal's
+   * `handleSelectMethod` should surface a "not yet supported" message
+   * BEFORE this modal opens).
+   */
+  methodCode: VoucherTenderMethodCode;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -127,6 +159,11 @@ export function VoucherTenderModal({
   remainingDue,
   currency,
   onApplied,
+  // Phase 1: only 'store_voucher' is fully wired. The parent gates other
+  // values BEFORE opening the modal (Minor 1 fix in AdvancedPaymentsModal).
+  // We accept the prop here so the discriminator is correct end-to-end and
+  // the modal won't need refactoring when Phase 2 lands.
+  methodCode: _methodCode,
 }: VoucherTenderModalProps) {
   const { t } = useTranslation('pos');
   const { appliedVoucherCodes, addVoucherPayment } = usePaymentStore();

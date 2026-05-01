@@ -33,6 +33,17 @@ final class CanonicalPayloadBuilder
      * them as opaque strings; it does NOT round, reformat, or validate scale.
      * Pre-format using `CurrencyScale::bcformat()` at the call site.
      *
+     * Per-payment shape (Codex review B2, 2026-04-30):
+     *   - `method_code` is the case-normalised snapshot of `payment_methods.code`
+     *     (e.g. "cash", "store_voucher"). The caller lower-cases the snapshot
+     *     before populating this field.
+     *   - `instrument_type` is the `PaymentInstrumentKind` enum value as a string
+     *     ("store_voucher" | "restaurant_voucher" | "gift_card") or null when the
+     *     payment row is not instrument-bearing. Bound into `payment_methods_hash`.
+     *   - `instrument_serial` is the actual serial / voucher code that tendered
+     *     this row, or null. Bound into `payment_methods_hash` so a tampered
+     *     receipt cannot reattribute a sealed payment to a different voucher.
+     *
      * @param  array{
      *   receipt_number: string,
      *   posted_at: string,

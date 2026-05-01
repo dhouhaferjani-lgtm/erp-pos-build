@@ -1,18 +1,42 @@
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export type VoucherSource =
-  | 'Refund'
-  | 'ExchangeSurplus'
-  | 'Goodwill'
-  | 'LoyaltyCredit'
-  | 'GiftCard'
-  | 'Promotional'
+  | 'refund'
+  | 'exchange_surplus'
+  | 'goodwill'
+  | 'loyalty_credit'
+  | 'gift_card_purchase'
+  | 'promotional'
 
 export type VoucherStatus = 'Issued' | 'PartiallyRedeemed' | 'FullyRedeemed' | 'Voided' | 'Expired'
 
 export type RedemptionMode = 'Bearer' | 'CustomerBound'
 
+/**
+ * Ledger event values emitted by the backend's `VoucherEvent` enum (lowercase
+ * snake_case storage values). Codex review R3 (2026-04-30) collapsed the
+ * legacy PascalCase TS union onto the wire format so badge / colour / i18n
+ * lookups don't fall through to the grey default on every real backend row.
+ *
+ * Backwards-compatible PascalCase variants are kept so any in-memory test
+ * fixtures or code paths that still emit them continue to type-check while
+ * we migrate consumers; the LedgerHistoryTable colour map keys both casings
+ * to the same class set.
+ */
 export type LedgerEvent =
+  // Canonical lowercase storage values (backend wire format).
+  | 'issued'
+  | 'redeemed'
+  | 'partially_redeemed'
+  | 'expired'
+  | 'voided'
+  | 'reversed'
+  | 'transferred'
+  | 'rounding_adjustment'
+  | 'expiry_extended'
+  // Legacy PascalCase variants — pre-R3 hand-fed test fixtures still emit
+  // these; tolerated so the type is permissive but production rows always
+  // arrive as the lowercase wire values above.
   | 'Issued'
   | 'Redeemed'
   | 'Refunded'

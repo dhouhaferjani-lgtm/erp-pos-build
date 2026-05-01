@@ -73,9 +73,16 @@ final class VoucherController extends Controller
             $sourceValue = $request->query('source');
             if (is_string($sourceValue)) {
                 $source = VoucherSource::tryFrom($sourceValue);
-                if ($source !== null) {
-                    $query->where('source', $source->value);
+                if ($source === null) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'INVALID_SOURCE',
+                            'message' => 'Invalid source value. Must be one of: '
+                                .implode(', ', array_column(VoucherSource::cases(), 'value')),
+                        ],
+                    ], 422);
                 }
+                $query->where('source', $source->value);
             }
         }
 
@@ -415,6 +422,7 @@ final class VoucherController extends Controller
             $voucher->notes = $voucher->notes !== null
                 ? $voucher->notes."\n".$noteEntry
                 : $noteEntry;
+            $voucher->override_reason = $reason;
             $voucher->partner_id = $toPartnerId;
             $voucher->save();
         });
@@ -459,8 +467,31 @@ final class VoucherController extends Controller
         /** @var string $reason */
         $reason = $validated['reason'];
 
-        DB::transaction(function () use ($voucher, $newExpiresAt, $reason): void {
+        DB::transaction(function () use ($voucher, $user, $newExpiresAt, $reason): void {
             $parsedExpiry = Carbon::parse($newExpiresAt);
+
+            // Metadata-only ledger row. amount=0.00000 — no GL impact, no GL journal
+            // entry (gl_journal_entry_id stays null). Symmetrical with the Transferred
+            // event written by transfer() above; both record administrative state
+            // changes that must remain reconstructible from the ledger projection.
+            // Codex review m2 (2026-04-30).
+            VoucherLedger::forceCreate([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $voucher->tenant_id,
+                'company_id' => $voucher->company_id,
+                'voucher_id' => $voucher->id,
+                'event' => VoucherEvent::ExpiryExtended,
+                'amount' => '0.00000',
+                'currency' => $voucher->currency,
+                'receipt_id' => null,
+                'terminal_id' => null,
+                'user_id' => $user->id,
+                'gl_journal_entry_id' => null,
+                'authorized_by_user_id' => null,
+                'policy_trigger' => 'manual_expiry_extension',
+                'reverses_voucher_ledger_id' => null,
+                'occurred_at' => Carbon::now(),
+            ]);
 
             $noteEntry = '[EXPIRY-EXTENDED '.now()->toDateString().' → '.$parsedExpiry->toDateString().'] '.$reason;
             $voucher->notes = $voucher->notes !== null

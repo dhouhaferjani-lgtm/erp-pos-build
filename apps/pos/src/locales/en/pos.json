@@ -125,8 +125,6 @@
   "receiptLocator": {
     "title": "Returns / Exchange",
     "entryButton": "Returns / Exchange",
-    "tabScan": "Scan or type ticket number",
-    "tabCustomer": "Find by customer",
     "scanHint": "Enter the receipt number or scan the QR code on the receipt.",
     "numberPlaceholder": "Receipt number",
     "search": "Search",
@@ -134,11 +132,7 @@
     "found": "Receipt found",
     "notFound": "No receipt found for that number.",
     "wrongTerminal": "This receipt belongs to a different terminal and cannot be refunded here.",
-    "refundThis": "Refund this",
-    "customerHint": "Enter the customer ID to find their recent purchases at this terminal.",
-    "customerPlaceholder": "Customer ID",
-    "noCustomerReceipts": "No receipts found for this customer. Note: customer lookup requires synced receipt data.",
-    "customerResults": "{{count}} receipt(s) found"
+    "refundThis": "Refund this"
   },
   "shift": {
     "number": "Shift #{{number}}",
@@ -579,7 +573,13 @@
     "repositoryRequired": "Select a deposit account",
     "delete": "Remove",
     "orderSummary": "Order Summary",
-    "itemsCount": "{{count}} item(s)"
+    "itemsCount": "{{count}} item(s)",
+    "voucherTenderLabel": "Voucher",
+    "voucherBadge": "Voucher",
+    "voucherTenderFlowRequired": "Voucher tenders use a dedicated scan / lookup flow — please use the voucher button or scan the code rather than adding it as a normal payment line.",
+    "voucherKindNotSupportedInPhase1": "This tender type is not yet supported. Only store vouchers can be redeemed in this version. Restaurant tickets and gift cards are coming in a future update.",
+    "voucherMethodMissing": "Cannot apply voucher tender — store voucher payment method is not configured for this terminal.",
+    "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual payment repository is configured for this terminal. Contact your administrator."
   },
   "consumptionMode": {
     "label": "Consumption Mode",

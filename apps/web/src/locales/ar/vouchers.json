@@ -4,12 +4,12 @@
 
   "sources": {
     "All": "الكل",
-    "Refund": "استرداد",
-    "ExchangeSurplus": "فائض التبادل",
-    "Goodwill": "منحة تقديرية",
-    "LoyaltyCredit": "رصيد الولاء",
-    "GiftCard": "بطاقة هدية",
-    "Promotional": "ترويجي"
+    "refund": "استرداد",
+    "exchange_surplus": "فائض التبادل",
+    "goodwill": "منحة تقديرية",
+    "loyalty_credit": "رصيد الولاء",
+    "gift_card_purchase": "بطاقة هدية",
+    "promotional": "ترويجي"
   },
 
   "statuses": {
@@ -21,6 +21,15 @@
   },
 
   "events": {
+    "issued": "إصدار",
+    "redeemed": "استخدام",
+    "partially_redeemed": "استخدام جزئي",
+    "voided": "إلغاء",
+    "expired": "انتهاء الصلاحية",
+    "reversed": "عكس",
+    "transferred": "تحويل",
+    "rounding_adjustment": "تعديل التقريب",
+    "expiry_extended": "تمديد تاريخ الانتهاء",
     "Issued": "إصدار",
     "Redeemed": "استخدام",
     "Refunded": "استرداد",

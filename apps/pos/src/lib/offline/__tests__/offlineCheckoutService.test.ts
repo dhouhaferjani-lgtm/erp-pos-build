@@ -213,4 +213,109 @@ describe('offlineCheckoutService - executeCheckout', () => {
     expect(result.changeDue).toBe(55);
     expect(result.fiscalHash).toBe('hash-abc');
   });
+
+  /**
+   * B3-followup audit (Minor 1, 2026-05-01): `onlineCheckout()` was extended
+   * in commit 9f7874db to forward `input.payments[]` with instrument fields
+   * rather than hardcoding a single-cash payment.  These two cases lock that
+   * branch so a regression (e.g. reverting the conditional spread back to a
+   * hardcoded single-cash row) fails loudly.
+   */
+  it('online path forwards instrument fields to processReceiptPayments when input carries a voucher payment', async () => {
+    vi.mocked(createReceipt).mockResolvedValue({
+      id: 'receipt-voucher',
+      receipt_number: 'R-VCH-001',
+      total: '75.00',
+      subtotal: '75.00',
+      tax_amount: '7.50',
+      discount_amount: '0.00',
+      currency: 'EUR',
+    });
+    vi.mocked(processReceiptPayments).mockResolvedValue({
+      receipt: { id: 'receipt-voucher', receipt_number: 'R-VCH-001', total: '75.00' },
+      receipt_payments: [
+        { id: 'rp-cash', payment_method_id: 'pm-cash', amount: '25.00' },
+        { id: 'rp-vchr', payment_method_id: 'pm-store-voucher', amount: '50.00' },
+      ],
+      treasury_payments: [],
+      change_due: '0.00',
+    });
+
+    const input = makeInput({
+      payments: [
+        {
+          methodCode: 'CASH',
+          amount: '25.00',
+          paymentMethodId: 'pm-cash',
+          repositoryId: 'repo-cash',
+        },
+        {
+          methodCode: 'store_voucher',
+          amount: '50.00',
+          paymentMethodId: 'pm-store-voucher',
+          repositoryId: 'repo-virtual',
+          instrumentType: 'store_voucher',
+          instrumentSerial: 'SV-2026-9999',
+        },
+      ],
+    });
+
+    const result = await executeCheckout(db, input);
+
+    expect(result.isOffline).toBe(false);
+    expect(result.receiptId).toBe('receipt-voucher');
+
+    expect(processReceiptPayments).toHaveBeenCalledOnce();
+    const [, body] = vi.mocked(processReceiptPayments).mock.calls[0]!;
+    expect(body.payments).toHaveLength(2);
+
+    // Cash row must NOT carry instrument fields.
+    const cashRow = body.payments[0]!;
+    expect(cashRow.payment_method_id).toBe('pm-cash');
+    expect(cashRow.amount).toBe(25);
+    expect(cashRow.repository_id).toBe('repo-cash');
+    expect(cashRow.instrument_type).toBeUndefined();
+    expect(cashRow.instrument_serial).toBeUndefined();
+
+    // Voucher row MUST carry instrument fields verbatim.
+    const voucherRow = body.payments[1]!;
+    expect(voucherRow.payment_method_id).toBe('pm-store-voucher');
+    expect(voucherRow.amount).toBe(50);
+    expect(voucherRow.repository_id).toBe('repo-virtual');
+    expect(voucherRow.instrument_type).toBe('store_voucher');
+    expect(voucherRow.instrument_serial).toBe('SV-2026-9999');
+  });
+
+  it('online path falls back to single-cash payment when input.payments is absent (sanity: conditional spread)', async () => {
+    vi.mocked(createReceipt).mockResolvedValue({
+      id: 'receipt-cash-only',
+      receipt_number: 'R-CASH-001',
+      total: '50.00',
+      subtotal: '50.00',
+      tax_amount: '5.00',
+      discount_amount: '0.00',
+      currency: 'EUR',
+    });
+    vi.mocked(processReceiptPayments).mockResolvedValue({
+      receipt: { id: 'receipt-cash-only', receipt_number: 'R-CASH-001', total: '50.00' },
+      receipt_payments: [{ id: 'rp-1', payment_method_id: 'pm-1', amount: '50.00' }],
+      treasury_payments: [],
+      change_due: '0.00',
+    });
+
+    // Explicitly omit `payments` to hit the fallback branch.
+    const input = makeInput({ payments: undefined });
+
+    await executeCheckout(db, input);
+
+    expect(processReceiptPayments).toHaveBeenCalledOnce();
+    const [, body] = vi.mocked(processReceiptPayments).mock.calls[0]!;
+    expect(body.payments).toHaveLength(1);
+
+    const singleRow = body.payments[0]!;
+    expect(singleRow.payment_method_id).toBe('pm-1');
+    expect(singleRow.amount).toBe(50);   // parseFloat(receipt.total)
+    expect(singleRow.instrument_type).toBeUndefined();
+    expect(singleRow.instrument_serial).toBeUndefined();
+  });
 });
