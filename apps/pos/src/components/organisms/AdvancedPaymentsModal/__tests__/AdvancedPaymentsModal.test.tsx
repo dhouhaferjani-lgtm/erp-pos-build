@@ -420,6 +420,86 @@ describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () =>
     };
     expect(lastProps.db).toBe(mockDb);
   });
+
+  // B5-fix audit Minor 1 (2026-05-01): the modal mount must forward the
+  // tile's methodCode to VoucherTenderModal so the discriminator is correct
+  // end-to-end. Phase 1 only fully wires `store_voucher`. The audit
+  // recommendation: for restaurant_voucher and gift_card tiles, do NOT
+  // open the half-broken modal — surface a Phase-1-not-supported message
+  // at the tap handler instead.
+  it('VoucherTenderModal receives methodCode = "store_voucher" when tapped from the store voucher tile', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    expect(mockVoucherTenderModalProps).toHaveBeenCalled();
+    const calls = mockVoucherTenderModalProps.mock.calls;
+    const lastProps = calls[calls.length - 1]![0] as {
+      methodCode: string;
+    };
+    expect(lastProps.methodCode).toBe('store_voucher');
+  });
+
+  it('tapping restaurant_voucher tile shows a Phase 1 unsupported message — modal does NOT open', () => {
+    const restaurantVoucherMethod: PaymentMethod = {
+      ...cashMethod,
+      id: 'pm-restaurant-voucher',
+      code: 'restaurant_voucher',
+      name: 'Restaurant Voucher',
+      is_physical: false,
+      position: 3,
+    };
+
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, restaurantVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Restaurant Voucher'));
+
+    // VoucherTenderModal must NOT open for restaurant_voucher in Phase 1.
+    // The tile uses the same instrument-bearing routing as store_voucher
+    // (per requiresInstrumentForMethodCode) so we know the tap was caught,
+    // but Phase 1 only supports store_voucher end-to-end.
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
+    // The free-form Add Payment button must remain absent — instrument-
+    // bearing tiles never enter the cash/card config flow.
+    expect(screen.queryByText('advancedPayments.addPayment')).not.toBeInTheDocument();
+    // The cashier must see actionable feedback explaining Phase 1 scope.
+    expect(
+      screen.getByText('advancedPayments.voucherKindNotSupportedInPhase1'),
+    ).toBeInTheDocument();
+  });
+
+  it('tapping gift_card tile shows a Phase 1 unsupported message — modal does NOT open', () => {
+    const giftCardMethod: PaymentMethod = {
+      ...cashMethod,
+      id: 'pm-gift-card',
+      code: 'gift_card',
+      name: 'Gift Card',
+      is_physical: false,
+      position: 4,
+    };
+
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, giftCardMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Gift Card'));
+
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
+    expect(screen.queryByText('advancedPayments.addPayment')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('advancedPayments.voucherKindNotSupportedInPhase1'),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring', () => {

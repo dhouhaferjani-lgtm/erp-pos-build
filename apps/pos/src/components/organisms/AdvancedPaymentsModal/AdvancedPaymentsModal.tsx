@@ -212,17 +212,31 @@ export function AdvancedPaymentsModal({
   // `paymentStore.voucherTenders` with the voucher code as instrument_serial.
   //
   // Codex review B5 (2026-05-01): wire the dedicated VoucherTenderModal
-  // mount. When the cashier taps a `store_voucher` / `restaurant_voucher` /
-  // `gift_card` tile AND the parent supplied a `voucherDb` handle, open
-  // VoucherTenderModal so the cashier can scan/type the voucher code,
-  // see balance + expiry, and apply against the remaining due. The modal
-  // calls `addVoucherPayment(code, amount)` on the store (handled inside
-  // VoucherTenderModal's onApply path), so a tender row appears in this
-  // modal's payment list as soon as the voucher modal closes.
+  // mount. When the cashier taps a `store_voucher` tile AND the parent
+  // supplied a `voucherDb` handle, open VoucherTenderModal so the cashier
+  // can scan/type the voucher code, see balance + expiry, and apply against
+  // the remaining due. The modal calls `addVoucherPayment(code, amount)` on
+  // the store (handled inside VoucherTenderModal's onApply path), so a
+  // tender row appears in this modal's payment list as soon as the voucher
+  // modal closes.
+  //
+  // B5-fix audit Minor 1 (2026-05-01): Phase 1 only fully wires
+  // `store_voucher` end-to-end. Restaurant_voucher and gift_card tiles are
+  // also instrument-bearing per `requiresInstrumentForMethodCode` (so the
+  // tap MUST NOT enter the free-form payment-line flow), but their
+  // settlement / GL paths are Phase 2+. We surface a clear "not yet
+  // supported in Phase 1" message at the tap handler instead of opening
+  // the half-broken VoucherTenderModal (which hardcodes voucher_kind = MPV
+  // — restaurant tickets and gift cards are not in the local `vouchers`
+  // table). This matches the audit recommendation.
   //
   // Fallback: when `voucherDb` is null (rare — pre-shift, no companyId, or
   // a test that doesn't exercise this path), keep the B4 dead-end message
   // so the cashier sees actionable feedback rather than a silent no-op.
+  const [voucherTenderMethodCode, setVoucherTenderMethodCode] = useState<
+    'store_voucher' | 'restaurant_voucher' | 'gift_card'
+  >('store_voucher');
+
   const handleSelectMethod = useCallback(
     (methodId: string) => {
       const tappedMethod = activeMethods.find((m) => m.id === methodId);
@@ -239,8 +253,21 @@ export function AdvancedPaymentsModal({
         setReference('');
         setCardLastFour('');
 
+        const tappedCode = (tappedMethod.code ?? '').toLowerCase();
+
+        // B5-fix audit Minor 1: Phase 1 boundary — only store_voucher is
+        // fully wired. Restaurant tickets and gift cards surface a clear
+        // "not yet supported" message rather than opening a half-broken
+        // modal that would always show "Voucher not found" because those
+        // instruments don't enter the local vouchers table.
+        if (tappedCode !== 'store_voucher') {
+          setValidationError(t('advancedPayments.voucherKindNotSupportedInPhase1'));
+          return;
+        }
+
         if (voucherDb !== null) {
           setValidationError(null);
+          setVoucherTenderMethodCode('store_voucher');
           setIsVoucherTenderModalOpen(true);
         } else {
           setValidationError(t('advancedPayments.voucherTenderFlowRequired'));
@@ -733,6 +760,7 @@ export function AdvancedPaymentsModal({
           remainingDue={remaining.toFixed(decimals)}
           currency={currency}
           onApplied={handleVoucherApplied}
+          methodCode={voucherTenderMethodCode}
         />
       )}
     </div>

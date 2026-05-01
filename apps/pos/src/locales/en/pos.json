@@ -577,6 +577,7 @@
     "voucherTenderLabel": "Voucher",
     "voucherBadge": "Voucher",
     "voucherTenderFlowRequired": "Voucher tenders use a dedicated scan / lookup flow — please use the voucher button or scan the code rather than adding it as a normal payment line.",
+    "voucherKindNotSupportedInPhase1": "This tender type is not yet supported. Only store vouchers can be redeemed in this version. Restaurant tickets and gift cards are coming in a future update.",
     "voucherMethodMissing": "Cannot apply voucher tender — store voucher payment method is not configured for this terminal.",
     "voucherRepositoryMissing": "Cannot apply voucher tender — no virtual payment repository is configured for this terminal. Contact your administrator."
   },
