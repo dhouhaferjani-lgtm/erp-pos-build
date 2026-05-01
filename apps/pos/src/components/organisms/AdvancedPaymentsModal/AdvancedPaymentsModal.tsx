@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import type Database from '@tauri-apps/plugin-sql';
 import {
   Banknote,
   CreditCard,
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { NumPad } from '@/components/molecules/NumPad';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
+import { VoucherTenderModal } from '@/components/pos/VoucherTenderModal';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore, type AdvancedPaymentLine } from '@/stores/paymentStore';
 
@@ -71,6 +73,19 @@ export interface AdvancedPaymentsModalProps {
   onComplete: (payments: AdvancedPaymentLine[]) => Promise<void>;
   isProcessing: boolean;
   error: string | null;
+  /**
+   * Codex review B5 (2026-05-01): SQLite handle for VoucherTenderModal's
+   * local-first lookup. When the cashier taps a `store_voucher` /
+   * `restaurant_voucher` / `gift_card` tile, this modal opens
+   * VoucherTenderModal which calls `findByCode(db, code)` against the
+   * tenant-scoped DB. When omitted (e.g. tests that don't exercise the
+   * voucher mount path, or pre-shift terminals where the DB isn't open
+   * yet), the modal falls back to the B4 dead-end message rather than
+   * silently no-op'ing — that preserves the B4 contract that ANY user
+   * feedback is required on the tap. Mount path: HomePage passes
+   * `getDatabase(companyId)` once `companyId` is non-null.
+   */
+  voucherDb?: Database | null;
 }
 
 export function AdvancedPaymentsModal({
@@ -82,9 +97,15 @@ export function AdvancedPaymentsModal({
   onComplete,
   isProcessing,
   error,
+  voucherDb = null,
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos');
-  const { format, decimals } = useCurrency();
+  const { format, decimals, currency } = useCurrency();
+  // Codex review B5 (2026-05-01): tracks whether the dedicated
+  // VoucherTenderModal scan/lookup overlay is open. Open only when the
+  // cashier taps an instrument-bearing tile (store_voucher, etc.) AND the
+  // parent supplied a DB handle. Re-opening is idempotent.
+  const [isVoucherTenderModalOpen, setIsVoucherTenderModalOpen] = useState(false);
   const [paymentLines, setPaymentLines] = useState<PaymentLineItem[]>([]);
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
@@ -190,9 +211,18 @@ export function AdvancedPaymentsModal({
   // voucher tender flow means voucher tenders ALWAYS land via
   // `paymentStore.voucherTenders` with the voucher code as instrument_serial.
   //
-  // For B4 scope: B5 wires `VoucherTenderModal` mount + scan flow. Until then,
-  // surface a clear cashier message so the cause of "tile is unresponsive"
-  // is unambiguous. A silent no-op was rejected as bad UX.
+  // Codex review B5 (2026-05-01): wire the dedicated VoucherTenderModal
+  // mount. When the cashier taps a `store_voucher` / `restaurant_voucher` /
+  // `gift_card` tile AND the parent supplied a `voucherDb` handle, open
+  // VoucherTenderModal so the cashier can scan/type the voucher code,
+  // see balance + expiry, and apply against the remaining due. The modal
+  // calls `addVoucherPayment(code, amount)` on the store (handled inside
+  // VoucherTenderModal's onApply path), so a tender row appears in this
+  // modal's payment list as soon as the voucher modal closes.
+  //
+  // Fallback: when `voucherDb` is null (rare — pre-shift, no companyId, or
+  // a test that doesn't exercise this path), keep the B4 dead-end message
+  // so the cashier sees actionable feedback rather than a silent no-op.
   const handleSelectMethod = useCallback(
     (methodId: string) => {
       const tappedMethod = activeMethods.find((m) => m.id === methodId);
@@ -208,7 +238,13 @@ export function AdvancedPaymentsModal({
         setRepositoryId('');
         setReference('');
         setCardLastFour('');
-        setValidationError(t('advancedPayments.voucherTenderFlowRequired'));
+
+        if (voucherDb !== null) {
+          setValidationError(null);
+          setIsVoucherTenderModalOpen(true);
+        } else {
+          setValidationError(t('advancedPayments.voucherTenderFlowRequired'));
+        }
 
         return;
       }
@@ -220,7 +256,7 @@ export function AdvancedPaymentsModal({
       setCardLastFour('');
       setValidationError(null);
     },
-    [activeMethods, remaining, decimals, t],
+    [activeMethods, remaining, decimals, t, voucherDb],
   );
 
   const handlePayRemaining = useCallback(() => {
@@ -345,8 +381,24 @@ export function AdvancedPaymentsModal({
     setReference('');
     setCardLastFour('');
     setValidationError(null);
+    setIsVoucherTenderModalOpen(false);
     onClose();
   }, [isProcessing, onClose]);
+
+  // Codex review B5 (2026-05-01): VoucherTenderModal calls onApplied AFTER it
+  // has invoked `addVoucherPayment(code, amount)` on the paymentStore. The
+  // tender row already lives in `paymentStore.voucherTenders` by that point;
+  // this callback only needs to dismiss the voucher overlay so the cashier
+  // sees the row appear in this modal's payment list and can either scan
+  // another voucher (open it again), pay the rest with cash/card, or hit
+  // Complete.
+  const handleVoucherApplied = useCallback(() => {
+    setIsVoucherTenderModalOpen(false);
+  }, []);
+
+  const handleVoucherTenderModalClose = useCallback(() => {
+    setIsVoucherTenderModalOpen(false);
+  }, []);
 
   const showReference = selectedMethod?.has_maturity || selectedMethod?.requires_third_party;
   const showCardLastFour = selectedMethod?.requires_third_party;
@@ -662,6 +714,27 @@ export function AdvancedPaymentsModal({
           </div>
         </div>
       </div>
+
+      {/*
+        Codex review B5 (2026-05-01): VoucherTenderModal mount. Open only when
+        the cashier tapped a `store_voucher` / `restaurant_voucher` /
+        `gift_card` tile AND the parent supplied a voucherDb handle. The
+        modal scans/types the code, looks it up in local SQLite, validates
+        against expiry/balance/customer/duplicate guards, and on apply pushes
+        the tender into `paymentStore.voucherTenders`. We pass the modal a
+        decimal-string `remainingDue` at the currency's scale so the bcmath
+        comparisons inside the modal work correctly (TND scale 3, EUR scale 2).
+      */}
+      {voucherDb !== null && (
+        <VoucherTenderModal
+          isOpen={isVoucherTenderModalOpen}
+          onClose={handleVoucherTenderModalClose}
+          db={voucherDb}
+          remainingDue={remaining.toFixed(decimals)}
+          currency={currency}
+          onApplied={handleVoucherApplied}
+        />
+      )}
     </div>
   );
 }

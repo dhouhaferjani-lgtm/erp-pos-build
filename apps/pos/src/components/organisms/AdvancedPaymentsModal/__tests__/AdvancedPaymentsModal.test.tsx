@@ -29,6 +29,47 @@ vi.mock('@/lib/currency', () => ({
   }),
 }));
 
+/**
+ * Codex review B5 (2026-05-01): VoucherTenderModal is mounted as a child of
+ * AdvancedPaymentsModal. Mock it as a thin probe so the test can assert it
+ * opens AND can simulate the apply-callback that pushes a voucher tender
+ * row into paymentStore. The real-component scan/lookup path is exercised
+ * by VoucherTenderModal's own tests; here we only care about the mount +
+ * onApplied wiring.
+ */
+const mockVoucherTenderModalProps = vi.fn<(props: unknown) => void>();
+vi.mock('@/components/pos/VoucherTenderModal', () => ({
+  VoucherTenderModal: (props: {
+    isOpen: boolean;
+    onClose: () => void;
+    onApplied: (code: string, amount: string) => void;
+    db: unknown;
+    remainingDue: string;
+    currency: string;
+  }) => {
+    mockVoucherTenderModalProps(props);
+    if (!props.isOpen) return null;
+    return (
+      <div data-testid="voucher-tender-modal-mock">
+        <span data-testid="voucher-tender-modal-remaining-due">{props.remainingDue}</span>
+        <span data-testid="voucher-tender-modal-currency">{props.currency}</span>
+        <button
+          data-testid="voucher-tender-modal-mock-apply"
+          onClick={() => props.onApplied('SV-MOCK-001', '20.00')}
+        >
+          Mock Apply
+        </button>
+        <button
+          data-testid="voucher-tender-modal-mock-close"
+          onClick={() => props.onClose()}
+        >
+          Mock Close
+        </button>
+      </div>
+    );
+  },
+}));
+
 vi.mock('@/components/molecules/NumPad', () => ({
   NumPad: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <div>
@@ -120,6 +161,13 @@ function renderModal(overrides: {
   paymentMethods?: PaymentMethod[];
   paymentRepositories?: PaymentRepository[];
   onComplete?: (payments: AdvancedPaymentLine[]) => Promise<void>;
+  /**
+   * Codex review B5 (2026-05-01): when supplied, the modal opens
+   * VoucherTenderModal on instrument-bearing tile taps. When omitted
+   * (default) the modal falls back to the B4 dead-end message — that's
+   * the documented contract for callers that don't yet pass a db handle.
+   */
+  voucherDb?: unknown | null;
 } = {}) {
   const onComplete = overrides.onComplete ?? vi.fn().mockResolvedValue(undefined);
   return {
@@ -134,10 +182,13 @@ function renderModal(overrides: {
         onComplete={onComplete}
         isProcessing={false}
         error={null}
+        voucherDb={overrides.voucherDb as never}
       />,
     ),
   };
 }
+
+const mockDb = {} as unknown;
 
 describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through voucher flow', () => {
   beforeEach(() => {
@@ -172,23 +223,29 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
     expect(screen.queryByText('advancedPayments.addPayment')).not.toBeInTheDocument();
   });
 
-  it('tapping store_voucher method tile shows a clear cashier message about the voucher flow', () => {
+  it('tapping store_voucher method tile WITHOUT a voucherDb falls back to the dead-end cashier message (B4 fallback)', () => {
+    // Codex review B5 (2026-05-01): when the parent doesn't supply a
+    // voucherDb handle (e.g. pre-shift terminals where the SQLite handle
+    // isn't open yet, or a misconfigured mount), the modal cannot open
+    // VoucherTenderModal — but it MUST NOT silently no-op either, or the
+    // cashier will think the tile is broken. The fallback is the original
+    // B4 dead-end message. This guarantees ANY user feedback is shown,
+    // which is the contract B4 nailed down.
     renderModal({
       total: 50,
       paymentMethods: [cashMethod, storeVoucherMethod],
+      // voucherDb omitted on purpose
     });
 
     fireEvent.click(screen.getByText('Store Voucher'));
 
-    // Either the dedicated voucher tender modal is open OR the cashier sees
-    // a documented message explaining the special flow. A silent no-op is
-    // unacceptable: the cashier would be left wondering why the tile did
-    // nothing. This assertion locks the contract that ANY user feedback is
-    // required (the exact wording / mounted modal is out of scope for B4 —
-    // B5 ships the proper mount).
     expect(
       screen.getByText('advancedPayments.voucherTenderFlowRequired'),
     ).toBeInTheDocument();
+
+    // No voucher modal in the tree (would fail because the mock returns
+    // null when isOpen is false; queryByTestId is the safe assertion).
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
   });
 
   it('tapping cash method tile still adds a normal PaymentLineItem (regression guard)', async () => {
@@ -217,6 +274,151 @@ describe('AdvancedPaymentsModal — B4: route instrument-bearing taps through vo
     // Cash rows must continue to land WITHOUT instrument metadata.
     expect(payments[0].instrument_type).toBeUndefined();
     expect(payments[0].instrument_serial).toBeUndefined();
+  });
+});
+
+/**
+ * Codex review B5 (2026-05-01): voucher tender flow now opens
+ * VoucherTenderModal as a child overlay when an instrument-bearing tile is
+ * tapped AND the parent supplied a voucherDb handle. Apply path: the modal
+ * pushes the tender into paymentStore.voucherTenders and calls onApplied,
+ * which closes the overlay so the cashier sees the tender row appear in
+ * AdvancedPaymentsModal's payments list.
+ *
+ * Tests fail on parent commit 5b65cd06 (where the modal is NOT mounted) and
+ * pass after this change.
+ */
+describe('AdvancedPaymentsModal — B5: VoucherTenderModal mount + apply', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+  });
+
+  it('tapping store_voucher tile WITH a voucherDb opens VoucherTenderModal (no dead-end message)', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    expect(screen.getByTestId('voucher-tender-modal-mock')).toBeInTheDocument();
+    // The B4 dead-end message must NOT appear when the modal opens — that
+    // message is reserved for the no-db fallback path.
+    expect(
+      screen.queryByText('advancedPayments.voucherTenderFlowRequired'),
+    ).not.toBeInTheDocument();
+    // The free-form Add Payment button must remain absent — taps on
+    // instrument-bearing tiles never enter the cash/card config flow.
+    expect(screen.queryByText('advancedPayments.addPayment')).not.toBeInTheDocument();
+  });
+
+  it('VoucherTenderModal receives the remaining due (currency-formatted) and currency code', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    // Currency mock fixes EUR with 2 decimals; full 50.00 still due.
+    expect(
+      screen.getByTestId('voucher-tender-modal-remaining-due').textContent,
+    ).toBe('50.00');
+    expect(
+      screen.getByTestId('voucher-tender-modal-currency').textContent,
+    ).toBe('EUR');
+  });
+
+  it('VoucherTenderModal closes after onApplied (cashier sees the tender row appear in this modal)', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+    expect(screen.getByTestId('voucher-tender-modal-mock')).toBeInTheDocument();
+
+    // Simulate the modal applying a voucher.
+    fireEvent.click(screen.getByTestId('voucher-tender-modal-mock-apply'));
+
+    // The modal must close (onApplied → setIsVoucherTenderModalOpen(false)).
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
+  });
+
+  it('tapping store_voucher again (after a voucher was applied) reopens VoucherTenderModal for stacking', () => {
+    // Pre-applied voucher tender already in the store (mocked).
+    mockVoucherTenders = [{ code: 'SV-EXISTING-001', amount: '20.00' }];
+
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    // Existing voucher tender row visible.
+    expect(screen.getByTestId('voucher-tender-row-SV-EXISTING-001')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    // New modal opened for the next voucher.
+    expect(screen.getByTestId('voucher-tender-modal-mock')).toBeInTheDocument();
+  });
+
+  it('VoucherTenderModal mock-close reverts the modal-open flag without breaking the modal', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+    expect(screen.getByTestId('voucher-tender-modal-mock')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('voucher-tender-modal-mock-close'));
+
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
+    // No dead-end message appears either — the cashier just dismissed.
+    expect(
+      screen.queryByText('advancedPayments.voucherTenderFlowRequired'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('tapping cash tile with a voucherDb still adds a free-form payment line (regression guard)', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Cash'));
+
+    // Voucher modal must NOT appear — cash is not instrument-bearing.
+    expect(screen.queryByTestId('voucher-tender-modal-mock')).not.toBeInTheDocument();
+    // Free-form Add Payment button must appear.
+    expect(screen.getByText('advancedPayments.addPayment')).toBeInTheDocument();
+  });
+
+  it('voucherDb prop matches the value forwarded to VoucherTenderModal', () => {
+    renderModal({
+      total: 50,
+      paymentMethods: [cashMethod, storeVoucherMethod],
+      voucherDb: mockDb,
+    });
+
+    fireEvent.click(screen.getByText('Store Voucher'));
+
+    // The mock captures props on every render — the latest call's `db`
+    // must be the same object passed via voucherDb.
+    expect(mockVoucherTenderModalProps).toHaveBeenCalled();
+    const calls = mockVoucherTenderModalProps.mock.calls;
+    const lastProps = calls[calls.length - 1]![0] as {
+      db: unknown;
+    };
+    expect(lastProps.db).toBe(mockDb);
   });
 });
 
