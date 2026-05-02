@@ -19,6 +19,19 @@ status_values:
   - verified
   - deferred
 
+# Cross-references between this strategic-layer YAML and the tactical
+# callsite inventory at docs/superpowers/plans/tenant-isolation-sweep-inventory.yml
+# Each item MAY include:
+#   linked_cluster: "api.pos-stabilization"          # tactical cluster id this item depends on or shadows
+#   blocked_by_cluster: ["api.pos-stabilization"]    # tactical clusters that must be fixed before this item can start
+#   blocked_by_external: "pos_orchestrator_branch"   # non-YAML blocker (matches tactical schema field)
+#   blocked_reason: "<short reason>"
+# A consistency check (php artisan sweep:strategic:check-consistency) verifies
+# every linked_cluster / blocked_by_cluster references an existing tactical cluster
+# id and that the strategic item's status is consistent with the tactical cluster's
+# status (e.g., a strategic item cannot be "in_progress" if its blocked_by_cluster
+# is still "pending").
+
 workstreams:
   - id: "WS-TI"
     name: "Tenant isolation sweep"
@@ -163,10 +176,17 @@ items:
   - id: "POS-001"
     workstream: "WS-POS"
     title: "Include POS fiscal paths in P0 tenant-isolation sweep"
-    status: "proposed"
+    status: "blocked"
     priority: "P0"
     owner: null
     blocks_certification: true
+    linked_cluster: "api.pos-stabilization"
+    blocked_by_cluster:
+      - "tauri.sqlite-cache"
+      - "tauri.sync-envelope"
+      - "api.pos-stabilization"
+    blocked_by_external: "pos_orchestrator_branch"
+    blocked_reason: "POS-specific tenant-isolation work cannot proceed in parallel with the POS orchestrator branch (apps/pos and apps/api/app/Modules/POS) per docs/superpowers/plans/2026-04-30-pos-consolidation-checkpoint.md no-parallel-POS-sessions rule. Unblock when POS orchestrator branch merges OR orchestrator explicitly transfers ownership."
     files:
       read:
         - "apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php"
