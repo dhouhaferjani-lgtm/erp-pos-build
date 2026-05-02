@@ -1,5 +1,22 @@
 # Tenant-Isolation Sweep — Master Plan (API + Web + Tauri + Super-Admin + Module-Gating)
 
+> **STATUS: SUPERSEDED.** This document was the first attempt at the master
+> spec. Codex's adversarial review (`docs/superpowers/reviews/2026-05-02-tenant-isolation-sweep-spec-codex-review.md`)
+> returned verdict REQUIRES-DIFFERENT-APPROACH citing five blockers:
+> incomplete API cluster coverage (missed Catalog/Contact/Compliance/Pricing/
+> Service/Cart/Workshop), broken YAML cluster-id semantics, wrong Tauri
+> application paths (it's `apps/pos/`, not `apps/desktop/`), POS orchestrator
+> conflict, and code-vs-YAML source-of-truth ambiguity. All five are fixed
+> in the unified master plan at:
+>
+>   `docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md`
+>
+> which also integrates Codex's strategic foundation plan
+> (`2026-05-02-tenant-isolation-nf525-database-foundation-plan.md`) and the
+> certification SOT YAML (`2026-05-02-tenant-isolation-certification-sot.yaml`).
+>
+> Do NOT execute against this version — execute against the master plan only.
+
 > **Status:** PROPOSAL — pending Codex adversarial review (verdict required before execution).
 > **Supersedes:** `docs/superpowers/plans/2026-05-01-tenant-isolation-sweep-phase-b.md` (API-only, archived as the original Phase B; its contents are subsumed here and extended).
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Steps use checkbox `- [ ]` syntax. The YAML inventory at `docs/superpowers/plans/tenant-isolation-sweep-inventory.yml` is the coordination contract — claim work via the artisan commands, never edit by hand.

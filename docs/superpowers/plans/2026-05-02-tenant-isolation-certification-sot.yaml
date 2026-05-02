@@ -1,0 +1,358 @@
+metadata:
+  schema_version: "1"
+  created_at: "2026-05-02"
+  created_by: "codex"
+  purpose: "Single source of truth for tenant-isolation, POS NF525 readiness, and French e-invoicing foundation work."
+  companion_plan: "docs/superpowers/plans/2026-05-02-tenant-isolation-nf525-database-foundation-plan.md"
+  related_plans:
+    - "docs/superpowers/plans/2026-05-02-tenant-isolation-sweep.md"
+    - "docs/superpowers/plans/tenant-isolation-sweep-inventory.example.yml"
+    - "docs/superpowers/research/2026-05-01-db-per-tenant-migration-mechanics.md"
+
+status_values:
+  - proposed
+  - accepted
+  - claimed
+  - in_progress
+  - blocked
+  - fixed
+  - verified
+  - deferred
+
+workstreams:
+  - id: "WS-TI"
+    name: "Tenant isolation sweep"
+    goal: "Eliminate application-level cross-tenant/cross-company resource lookup leaks."
+  - id: "WS-DB"
+    name: "Database guardrails"
+    goal: "Add database-level defense-in-depth for shared-DB operation."
+  - id: "WS-POS"
+    name: "POS fiscal certification"
+    goal: "Produce certifier-ready evidence for inalterability, securisation, conservation, and audit."
+  - id: "WS-DESKTOP"
+    name: "Tauri desktop local data"
+    goal: "Ensure offline/local data cannot leak across companies and is protected at rest."
+  - id: "WS-EINV"
+    name: "French e-invoicing"
+    goal: "Complete Factur-X/PDP foundation separately from NF525 POS."
+  - id: "WS-ERP"
+    name: "ERP hard isolation"
+    goal: "Prepare database-per-tenant or schema-per-tenant migration for the complete ERP."
+
+resources:
+  - id: "res.payment_methods"
+    table: "payment_methods"
+    scope: "tenant_and_company"
+    certification_relevance: "high"
+    notes: "POS payments reference this table; cross-company payment method binding is certification-relevant."
+  - id: "res.payment_repositories"
+    table: "payment_repositories"
+    scope: "tenant_and_company"
+    certification_relevance: "high"
+    notes: "Cash/bank repository binding affects payment records and Z reports."
+  - id: "res.pos_receipts"
+    table: "pos_receipts"
+    scope: "tenant_company_location_terminal"
+    certification_relevance: "critical"
+    notes: "Primary NF525 ticket chain."
+  - id: "res.pos_receipt_payments"
+    table: "pos_receipt_payments"
+    scope: "derived_from_receipt_plus_payment_method"
+    certification_relevance: "critical"
+    notes: "Needs DB proof that receipt and payment method are same tenant/company."
+  - id: "res.pos_z_reports"
+    table: "pos_z_reports"
+    scope: "derived_from_terminal"
+    certification_relevance: "critical"
+    notes: "End-of-day closing chain."
+  - id: "res.pos_grandtotal_events"
+    table: "pos_grandtotal_events"
+    scope: "derived_from_terminal"
+    certification_relevance: "critical"
+    notes: "Daily/monthly/yearly grand total chains."
+  - id: "res.vouchers"
+    table: "vouchers"
+    scope: "tenant_and_company"
+    certification_relevance: "high"
+    notes: "Store voucher issuance/redemption must not cross tenants or terminals."
+  - id: "res.voucher_ledger"
+    table: "voucher_ledger"
+    scope: "tenant_and_company_append_only"
+    certification_relevance: "high"
+    notes: "Append-only ledger, needs composite scoping around voucher/receipt references."
+  - id: "res.documents"
+    table: "documents"
+    scope: "tenant_and_company"
+    certification_relevance: "high"
+    notes: "ERP fiscal invoices and Factur-X source."
+
+items:
+  - id: "DB-001"
+    workstream: "WS-DB"
+    title: "Freeze database isolation evidence baseline"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      read:
+        - "apps/api/database/migrations/"
+        - "apps/api/config/tenancy.php"
+      create:
+        - "apps/api/app/Console/Commands/SecurityTenantIsolationDbAuditCommand.php"
+    acceptance:
+      - "Command emits JSON/YAML inventory of schemas, RLS flags, policies, tenant/company columns, fiscal triggers, and FK scope gaps."
+      - "Output committed as a dated artifact under docs/superpowers/audits/."
+    tests:
+      - "php artisan security:tenant-isolation:db-audit --format=json"
+    risk_if_skipped: "The team cannot prove what is enforced by PostgreSQL versus application convention."
+
+  - id: "TI-001"
+    workstream: "WS-TI"
+    title: "Generate real tenant-isolation callsite inventory"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "docs/superpowers/plans/tenant-isolation-sweep-inventory.yml"
+    acceptance:
+      - "Inventory includes API FormRequest exists rules, service find/findOrFail calls, web query keys, desktop cache/sync envelope callsites."
+      - "Every callsite has unique id, status, owner, expected fix, risk, and test path."
+    tests:
+      - "php artisan sweep:inventory:generate"
+      - "php artisan sweep:inventory:status"
+    risk_if_skipped: "Agents will miss callsites and regressions will reappear."
+
+  - id: "TI-002"
+    workstream: "WS-TI"
+    title: "Install presentation-tier scoped-exists CI gate"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "apps/api/tests/Architecture/TenantScopedExistsRulesTest.php"
+        - "apps/api/app/Shared/Presentation/Validation/ScopedExists.php"
+    acceptance:
+      - "Bare exists rules on guarded tenant resources fail CI."
+      - "Helper has tenantAndCompany, tenant, and company variants; no auth/app calls inside helper."
+    tests:
+      - "php artisan test --filter=TenantScopedExistsRulesTest"
+      - "php artisan test --filter=ScopedExistsTest"
+    risk_if_skipped: "Future PRs can reintroduce cross-tenant UUID validation holes."
+
+  - id: "TI-003"
+    workstream: "WS-TI"
+    title: "Install service-layer scoped finder CI gate"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "apps/api/tests/Architecture/TenantScopedFindCallsTest.php"
+    acceptance:
+      - "Guarded Model::find/findOrFail calls without explicit tenant/company scope fail CI unless allowlisted as super-admin/audit context."
+    tests:
+      - "php artisan test --filter=TenantScopedFindCallsTest"
+    risk_if_skipped: "Validation can be fixed while service code still binds cross-tenant rows."
+
+  - id: "POS-001"
+    workstream: "WS-POS"
+    title: "Include POS fiscal paths in P0 tenant-isolation sweep"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      read:
+        - "apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php"
+        - "apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php"
+        - "apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php"
+        - "apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php"
+        - "apps/api/app/Modules/POS/Presentation/Controllers/ZReportSyncController.php"
+    acceptance:
+      - "Receipt creation/sync/payments/Z reports/voucher redemption all scope by terminal or receipt tenant/company."
+      - "Regression tests cover cross-tenant and same-tenant/cross-company rejection."
+    tests:
+      - "php artisan test --filter=POS --exclude-group=slow"
+      - "php artisan test --filter=StoreReceiptPaymentsTenantIsolationTest"
+    risk_if_skipped: "A certification-critical receipt may bind another tenant's payment method, voucher, terminal, or original receipt."
+
+  - id: "DB-010"
+    workstream: "WS-DB"
+    title: "Add composite tenant/company FK guardrails for POS receipt payments"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "apps/api/database/migrations/YYYY_MM_DD_HHMMSS_add_scoped_fk_guardrails_to_pos_receipt_payments.php"
+    acceptance:
+      - "Database rejects a pos_receipt_payment whose receipt and payment_method are not in the same tenant/company."
+      - "Migration backfills tenant_id/company_id on child rows if needed."
+    tests:
+      - "php artisan test --filter=PosReceiptPaymentDatabaseScopeTest"
+    risk_if_skipped: "PostgreSQL can enforce existence but not same-tenant correctness."
+
+  - id: "DB-011"
+    workstream: "WS-DB"
+    title: "Add composite tenant/company FK guardrails for POS receipt parent references"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "apps/api/database/migrations/YYYY_MM_DD_HHMMSS_add_scoped_fk_guardrails_to_pos_receipts.php"
+    acceptance:
+      - "Receipt terminal, location, partner/contact, cashier, original receipt, and void receipt references cannot cross tenant/company where the referenced table has scope columns."
+    tests:
+      - "php artisan test --filter=PosReceiptDatabaseScopeTest"
+    risk_if_skipped: "Receipts can carry a fiscal hash over a mixed-tenant data graph."
+
+  - id: "DB-020"
+    workstream: "WS-DB"
+    title: "Pilot PostgreSQL RLS on POS fiscal tables"
+    status: "proposed"
+    priority: "P1"
+    owner: null
+    blocks_certification: false
+    files:
+      create:
+        - "apps/api/database/migrations/YYYY_MM_DD_HHMMSS_enable_rls_for_pos_fiscal_tables.php"
+        - "apps/api/app/Http/Middleware/SetPostgresTenantContext.php"
+    acceptance:
+      - "Requests set app.tenant_id and app.company_id transaction-local settings."
+      - "Direct SQL select/insert/update fails without matching session context."
+      - "Explicit super-admin/audit escape hatch exists and is tested."
+    tests:
+      - "php artisan test --filter=PostgresRlsTenantIsolationTest"
+    risk_if_skipped: "Shared-DB mode remains dependent on application query discipline only."
+
+  - id: "POS-010"
+    workstream: "WS-POS"
+    title: "Build NF525 evidence pack generator"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      create:
+        - "apps/api/app/Modules/POS/Commands/ExportNf525EvidencePackCommand.php"
+        - "docs/compliance/nf525/evidence-pack-template.md"
+    acceptance:
+      - "Command exports schema/triggers, receipt-chain verification, Z-chain verification, grand-total continuity, reprint logs, training-mode counts, and fixture parity hashes."
+      - "Output is deterministic and suitable for certifier review."
+    tests:
+      - "php artisan test --filter=Nf525EvidencePackTest"
+    risk_if_skipped: "Certification work becomes ad hoc and hard to audit."
+
+  - id: "POS-011"
+    workstream: "WS-POS"
+    title: "Pin fixture parity and hash stability in CI"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      read:
+        - "apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/"
+        - "apps/api/tests/Unit/POS/Fiscal/V3/"
+    acceptance:
+      - "Fixture-01 and Fixture-08 hashes are unchanged unless a deliberate fiscal schema version bump occurs."
+      - "PHP and TypeScript canonical payload builders are tested against the same fixture set."
+    tests:
+      - "php artisan test --filter=CanonicalPayloadBuilderTest"
+      - "pnpm --filter @autoerp/pos test -- fiscal/v3"
+    risk_if_skipped: "Frontend/backend drift can silently change fiscal hashes."
+
+  - id: "DESKTOP-001"
+    workstream: "WS-DESKTOP"
+    title: "Harden SQLite company/tenant cache lifecycle"
+    status: "proposed"
+    priority: "P0"
+    owner: null
+    blocks_certification: true
+    files:
+      read:
+        - "apps/pos/src/lib/db.ts"
+        - "apps/pos/src/lib/db/migrations.ts"
+        - "apps/pos/src/lib/sync/syncService.ts"
+    acceptance:
+      - "SQLite DB naming includes tenant_id and company_id or an equivalent tenant-safe namespace."
+      - "Logout/company switch closes and clears the previous tenant/company cache where appropriate."
+      - "Sync payload rows are rejected when tenant/company context mismatches the active auth context."
+    tests:
+      - "pnpm --filter @autoerp/pos test -- db sync"
+    risk_if_skipped: "A shared desktop install can display or sync another company's cached data."
+
+  - id: "DESKTOP-002"
+    workstream: "WS-DESKTOP"
+    title: "Move SQLCipher from P1 optional to country-gated launch requirement"
+    status: "proposed"
+    priority: "P1"
+    owner: null
+    blocks_certification: false
+    files:
+      read:
+        - "apps/pos/docs/encryption-at-rest-audit.md"
+    acceptance:
+      - "Country launch checklist states whether FDE-only is acceptable or SQLCipher is mandatory."
+      - "SQLCipher integration spike has explicit estimate, key management design, and migration plan."
+    tests:
+      - "Manual encrypted DB smoke test on macOS/Windows/Linux"
+    risk_if_skipped: "FDE-only may be unacceptable in stricter jurisdictions or in powered-on theft scenarios."
+
+  - id: "EINV-001"
+    workstream: "WS-EINV"
+    title: "Separate Factur-X readiness from NF525 readiness"
+    status: "proposed"
+    priority: "P1"
+    owner: null
+    blocks_certification: false
+    files:
+      read:
+        - "apps/api/app/Modules/Document/Application/Services/FacturXService.php"
+        - "apps/api/app/Modules/Document/Infrastructure/External/PdpClientInterface.php"
+    acceptance:
+      - "French e-invoicing plan has its own timeline, tests, validators, PDP/PF integration tasks, and lifecycle states."
+      - "No POS NF525 task is blocked on PDP work."
+    tests:
+      - "php artisan test --filter=FacturX"
+    risk_if_skipped: "NF525 POS certification and e-invoicing get conflated, causing missed deadlines."
+
+  - id: "ERP-001"
+    workstream: "WS-ERP"
+    title: "Decide target isolation architecture for full ERP"
+    status: "proposed"
+    priority: "P1"
+    owner: null
+    blocks_certification: false
+    files:
+      read:
+        - "docs/superpowers/research/2026-05-01-db-per-tenant-migration-mechanics.md"
+        - "apps/api/config/tenancy.php"
+        - "apps/api/app/Modules/Tenant/Domain/Tenant.php"
+    acceptance:
+      - "Decision recorded: database-per-tenant, schema-per-tenant, or hybrid."
+      - "Migration path includes central/tenant table split, tenant provisioning, PgBouncer/connection pooling, backups, and test-suite migration."
+    tests:
+      - "Architecture decision review"
+    risk_if_skipped: "The ERP may scale on a pooled architecture that is difficult to certify and hard to reason about."
+
+progress:
+  total_items: 14
+  by_status:
+    proposed: 14
+    accepted: 0
+    claimed: 0
+    in_progress: 0
+    blocked: 0
+    fixed: 0
+    verified: 0
+    deferred: 0
