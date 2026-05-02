@@ -9,6 +9,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Request validation for processing receipt payments.
@@ -23,6 +24,14 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class StoreReceiptPaymentsRequest extends FormRequest
 {
+    /**
+     * Cached receipt resolved from the route id, used for tenant-scoping
+     * `exists` rules and the withValidator() PaymentMethod lookup.
+     */
+    private ?Receipt $resolvedReceipt = null;
+
+    private bool $receiptResolved = false;
+
     /**
      * Determine if the user is authorized to make this request.
      *
@@ -53,7 +62,7 @@ final class StoreReceiptPaymentsRequest extends FormRequest
             return true;
         }
 
-        $receipt = Receipt::query()->find($receiptId);
+        $receipt = $this->resolveReceipt();
         if ($receipt === null) {
             // Let the controller resolve to a 404; not an authorization concern.
             return true;
@@ -88,11 +97,33 @@ final class StoreReceiptPaymentsRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Tenant-scoping context: derived from the receipt being paid so that
+        // every `exists:` lookup rejects cross-tenant or cross-company UUIDs
+        // even if the attacker is authenticated to the API. If the receipt is
+        // missing, we still emit the scoped rules — the eq-against-null filters
+        // match zero rows (tenant_id / company_id are NOT NULL on these tables),
+        // so the validator fails closed rather than falling back to unscoped.
+        $receipt = $this->resolveReceipt();
+        $tenantId = $receipt?->tenant_id;
+        $companyId = $receipt?->company_id;
+
         return [
             'payments' => ['required', 'array', 'min:1'],
-            'payments.*.payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
+            'payments.*.payment_method_id' => [
+                'required',
+                'uuid',
+                Rule::exists('payment_methods', 'id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId),
+            ],
             'payments.*.amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'payments.*.repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
+            'payments.*.repository_id' => [
+                'required',
+                'uuid',
+                Rule::exists('payment_repositories', 'id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId),
+            ],
             'payments.*.card_last_four' => ['nullable', 'string', 'size:4', 'regex:/^\d{4}$/'],
             'payments.*.transaction_reference' => ['nullable', 'string', 'max:100'],
             'payments.*.authorization_code' => ['nullable', 'string', 'max:50'],
@@ -113,7 +144,13 @@ final class StoreReceiptPaymentsRequest extends FormRequest
                 'string',
                 'max:255',
             ],
-            'customer_id' => ['nullable', 'uuid', 'exists:partners,id'],
+            'customer_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('partners', 'id')
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId),
+            ],
         ];
     }
 
@@ -139,9 +176,15 @@ final class StoreReceiptPaymentsRequest extends FormRequest
 
             // Codex review B4 (2026-04-30): cache PaymentMethod lookups across
             // the per-row loop so a multi-line tender doesn't issue N queries.
-            // Tenant scoping is implicit — the `exists:payment_methods,id` rule
-            // already proved each ID belongs to a real method, and the global
-            // tenant scope on the model filters cross-tenant rows on read.
+            // Tenant-isolation sweep (2026-05-01): the lookup is explicitly
+            // scoped to the receipt's tenant_id and company_id below — there
+            // is no global tenant scope on PaymentMethod (the model only
+            // exposes manual scopeForTenant/scopeForCompany), so the bare
+            // `query()->find()` previously here would have accepted a
+            // cross-tenant ID. The `exists:` rule above also rejects that
+            // shape; this scoping is defense in depth for programmatic flows
+            // that bypass FormRequest validation.
+            $receiptForScope = $this->resolveReceipt();
             /** @var array<string, ?PaymentMethod> $methodCache */
             $methodCache = [];
 
@@ -190,8 +233,14 @@ final class StoreReceiptPaymentsRequest extends FormRequest
                 }
 
                 if (! array_key_exists($paymentMethodId, $methodCache)) {
+                    $methodQuery = PaymentMethod::query();
+                    if ($receiptForScope !== null) {
+                        $methodQuery
+                            ->where('tenant_id', $receiptForScope->tenant_id)
+                            ->where('company_id', $receiptForScope->company_id);
+                    }
                     /** @var ?PaymentMethod $found */
-                    $found = PaymentMethod::query()->find($paymentMethodId);
+                    $found = $methodQuery->find($paymentMethodId);
                     $methodCache[$paymentMethodId] = $found;
                 }
                 $resolvedMethod = $methodCache[$paymentMethodId];
@@ -249,5 +298,28 @@ final class StoreReceiptPaymentsRequest extends FormRequest
             'payments.*.instrument_serial.max' => 'instrument_serial cannot exceed 255 characters',
             'customer_id.exists' => 'Customer does not exist',
         ];
+    }
+
+    /**
+     * Resolve and cache the receipt referenced by the route parameter.
+     *
+     * Used by both authorize() (short-pay tolerance check) and rules()
+     * (tenant-scoping context for `Rule::exists` lookups). Cached so we
+     * don't re-query the receipt twice per request.
+     */
+    private function resolveReceipt(): ?Receipt
+    {
+        if ($this->receiptResolved) {
+            return $this->resolvedReceipt;
+        }
+
+        $this->receiptResolved = true;
+
+        $receiptId = $this->route('id');
+        if (! is_string($receiptId)) {
+            return $this->resolvedReceipt = null;
+        }
+
+        return $this->resolvedReceipt = Receipt::query()->find($receiptId);
     }
 }

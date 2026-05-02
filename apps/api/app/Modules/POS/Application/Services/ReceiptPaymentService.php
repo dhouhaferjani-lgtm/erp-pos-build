@@ -7,6 +7,7 @@ namespace App\Modules\POS\Application\Services;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -79,6 +80,38 @@ final class ReceiptPaymentService
         return DB::transaction(function () use ($receiptId, $payments, $customerId): array {
             $receipt = Receipt::with(['lines', 'vatDetails'])->findOrFail($receiptId);
             $companyId = $this->companyContext->requireCompanyId();
+
+            // Codex review #4 (2026-05-01): receipt and resolved company-context
+            // must agree. If a caller's CompanyContext was set to company X but
+            // they hand in a receipt belonging to company Y, the previous
+            // service did not catch it — it would scope downstream lookups by
+            // X while the receipt itself was from Y, leaking semantics across
+            // companies. Tear down with the same exception type Eloquent uses
+            // for missing rows so the controller renders a clean 404 (not a
+            // 500 leak).
+            if ($companyId !== $receipt->company_id) {
+                throw (new ModelNotFoundException)->setModel(Receipt::class, [$receiptId]);
+            }
+
+            // Codex review #5 (2026-05-01): scope the customer/partner against
+            // the receipt's tenant + company before persisting it as
+            // treasury_payments.partner_id. The HTTP validator
+            // (StoreReceiptPaymentsRequest) rejects a cross-tenant customer_id
+            // with 422, but programmatic callers (queue jobs, internal flows,
+            // future controllers, console commands) bypass FormRequest
+            // validation. Without this guard, a tenant B caller could persist
+            // tenant A's partner onto tenant B's payment row — exactly the
+            // exploit class this sweep closes. ModelNotFoundException trips
+            // the same 404 surface as a missing receipt id.
+            $scopedCustomerId = null;
+            if ($customerId !== null) {
+                Partner::query()
+                    ->where('tenant_id', $receipt->tenant_id)
+                    ->where('company_id', $receipt->company_id)
+                    ->findOrFail($customerId);
+
+                $scopedCustomerId = $customerId;
+            }
 
             // Guard: fiscalized receipts are immutable — payments are already recorded.
             // Guard: voided receipts cannot be paid.
@@ -158,8 +191,18 @@ final class ReceiptPaymentService
             $treasuryPayments = [];
 
             foreach ($payments as $index => $paymentData) {
-                // Get payment repository
-                $repository = PaymentRepository::findOrFail($paymentData['repository_id']);
+                // Tenant-isolation sweep (2026-05-01): scope the lookup to the
+                // receipt's tenant and the resolved company so a programmatic
+                // caller (queue job, internal flow, future controller, or test)
+                // that bypasses StoreReceiptPaymentsRequest cannot bind another
+                // tenant's repository onto this receipt's payment chain. The
+                // request validator's `Rule::exists(...)->where(tenant/company)`
+                // rejects this shape with 422 at the HTTP boundary; this is
+                // defense in depth.
+                $repository = PaymentRepository::query()
+                    ->where('tenant_id', $receipt->tenant_id)
+                    ->where('company_id', $receipt->company_id)
+                    ->findOrFail($paymentData['repository_id']);
 
                 if ($repository->gl_account_id === null) {
                     throw new \RuntimeException(
@@ -170,8 +213,16 @@ final class ReceiptPaymentService
                     );
                 }
 
-                // Get payment method name for receipt payment record
-                $paymentMethod = PaymentMethod::findOrFail($paymentData['payment_method_id']);
+                // Tenant-isolation sweep (2026-05-01): same scoping as the
+                // PaymentRepository lookup above. Without this, a cross-tenant
+                // payment_method_id bypassing the validator would still land
+                // its `code` snapshot into pos_receipt_payments and the v3
+                // fiscal hash would bind another tenant's method semantics
+                // into this tenant's chain.
+                $paymentMethod = PaymentMethod::query()
+                    ->where('tenant_id', $receipt->tenant_id)
+                    ->where('company_id', $receipt->company_id)
+                    ->findOrFail($paymentData['payment_method_id']);
 
                 // Codex review B4 (2026-04-30): defense-in-depth at the writer.
                 // The HTTP request validator (StoreReceiptPaymentsRequest) rejects
@@ -202,7 +253,7 @@ final class ReceiptPaymentService
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $receipt->tenant_id,
                     'company_id' => $companyId,
-                    'partner_id' => $customerId,
+                    'partner_id' => $scopedCustomerId,
                     'payment_method_id' => $paymentData['payment_method_id'],
                     'repository_id' => $paymentData['repository_id'],
                     'amount' => $paymentData['amount'],
@@ -298,7 +349,7 @@ final class ReceiptPaymentService
                         receiptId: $receipt->id,
                         cashierId: (string) $receipt->cashier_id,
                         terminalId: (string) $receipt->terminal_id,
-                        partnerId: $customerId,
+                        partnerId: $scopedCustomerId,
                         instrumentKind: PaymentInstrumentKind::StoreVoucher,
                     ));
                 }
@@ -353,13 +404,16 @@ final class ReceiptPaymentService
             /** @var Receipt $freshReceipt */
             $freshReceipt = $receipt->fresh(['lines', 'vatDetails', 'payments']);
 
-            // Dispatch event for cross-module listeners (loyalty, analytics)
-            DB::afterCommit(function () use ($receipt, $companyId, $customerId): void {
+            // Dispatch event for cross-module listeners (loyalty, analytics).
+            // The scoped customer id is what landed on treasury_payments and
+            // (where applicable) the voucher redemption — emit the same value
+            // here so downstream listeners see a consistent view.
+            DB::afterCommit(function () use ($receipt, $companyId, $scopedCustomerId): void {
                 event(new ReceiptCompleted(
                     receiptId: $receipt->id,
                     tenantId: $receipt->tenant_id,
                     companyId: $companyId,
-                    customerId: $customerId,
+                    customerId: $scopedCustomerId,
                     totalAmount: $receipt->total,
                     currency: $receipt->currency,
                 ));
