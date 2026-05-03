@@ -143,15 +143,29 @@ final class PhpAstFindScanner implements Scanner
     }
 
     /**
-     * @param  array{line: int, model: string, method: string}  $violation
+     * @param  array{line: int, model: string, method: string, enclosing_method: string, start_file_pos: int}  $violation
      */
     private function buildRow(string $absolutePath, array $violation, ?string $classFqn): CallsiteRow
     {
         $relativePath = $this->relativize($absolutePath);
         $clusterId = $this->clusterResolver->resolve($relativePath);
         $surface = 'api';
-        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['method']);
+        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['enclosing_method']);
         $patternType = 'unscoped_eloquent_'.$violation['method'];
+
+        // Per-statement fingerprint hashes (pattern_type, called Eloquent
+        // method, byte offset). Two findOrFail() calls in different methods
+        // (or two on different lines of the same method) get distinct
+        // stable_keys; the same call at the same offset stays stable across
+        // unrelated edits.
+        $statementFingerprint = hash(
+            'sha256',
+            implode("\0", [
+                $patternType,
+                $violation['method'],
+                (string) $violation['start_file_pos'],
+            ]),
+        );
 
         $stableKey = StableKey::fromScannerOutput([
             'surface' => $surface,
@@ -160,9 +174,9 @@ final class PhpAstFindScanner implements Scanner
             'symbol_fqn' => $symbol,
             'ast_node_kind' => $violation['method'],
             'model_or_table' => $violation['model'],
-            'field_or_method' => $violation['method'],
+            'field_or_method' => $violation['enclosing_method'],
             'normalized_argument_name' => '',
-            'statement_fingerprint' => $patternType,
+            'statement_fingerprint' => $statementFingerprint,
         ]);
 
         return new CallsiteRow(
@@ -223,10 +237,19 @@ final class PhpAstFindScanner implements Scanner
         return null;
     }
 
-    private function buildSymbol(?string $classFqn, string $relativePath, string $method): string
+    /**
+     * Builds the canonical symbol identifier used in stable_key + the
+     * inventory's `symbol` column. Uses the enclosing function-like name
+     * (ClassMethod / Function_ / closure sentinel) so symbol identity
+     * tracks the source-code location of the violation, not the Eloquent
+     * call name. A method rename in the enclosing class therefore
+     * invalidates the stable_key, which is the desired rename semantics
+     * per master plan Section 4.
+     */
+    private function buildSymbol(?string $classFqn, string $relativePath, string $enclosingMethod): string
     {
         $cls = $classFqn ?? basename($relativePath, '.php');
 
-        return $cls.'::'.$method;
+        return $cls.'::'.$enclosingMethod;
     }
 }

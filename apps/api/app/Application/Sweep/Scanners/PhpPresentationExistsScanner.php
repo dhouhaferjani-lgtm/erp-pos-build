@@ -150,17 +150,30 @@ final class PhpPresentationExistsScanner implements Scanner
     }
 
     /**
-     * @param  array{line: int, table: string, form: string}  $violation
+     * @param  array{line: int, table: string, form: string, enclosing_method: string, start_file_pos: int}  $violation
      */
     private function buildRow(string $absolutePath, array $violation, ?string $classFqn): CallsiteRow
     {
         $relativePath = $this->relativize($absolutePath);
         $clusterId = $this->clusterResolver->resolve($relativePath);
         $surface = 'api';
-        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['line']);
+        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['enclosing_method']);
         $patternType = $violation['form'] === 'inline_string'
             ? 'bare_exists_validator'
             : 'rule_exists_builder_unscoped';
+
+        // Per-statement fingerprint hashes (pattern_type, AST node form,
+        // byte offset). Two violations on the same line at different file
+        // positions still get distinct keys; same-position violations stay
+        // stable across body refactors that don't move the violation node.
+        $statementFingerprint = hash(
+            'sha256',
+            implode("\0", [
+                $patternType,
+                $violation['form'],
+                (string) $violation['start_file_pos'],
+            ]),
+        );
 
         $stableKey = StableKey::fromScannerOutput([
             'surface' => $surface,
@@ -169,9 +182,9 @@ final class PhpPresentationExistsScanner implements Scanner
             'symbol_fqn' => $symbol,
             'ast_node_kind' => $violation['form'],
             'model_or_table' => $violation['table'],
-            'field_or_method' => 'rules',
+            'field_or_method' => $violation['enclosing_method'],
             'normalized_argument_name' => '',
-            'statement_fingerprint' => $patternType,
+            'statement_fingerprint' => $statementFingerprint,
         ]);
 
         return new CallsiteRow(
@@ -243,12 +256,13 @@ final class PhpPresentationExistsScanner implements Scanner
     /**
      * Builds the canonical symbol identifier used in stable_key + the
      * inventory's `symbol` column. Includes class FQN when available so
-     * a class rename (without file rename) is detected as a symbol move.
+     * a class rename (without file rename) is detected as a symbol move,
+     * and includes the enclosing method so a method rename is visible.
      */
-    private function buildSymbol(?string $classFqn, string $relativePath, int $line): string
+    private function buildSymbol(?string $classFqn, string $relativePath, string $enclosingMethod): string
     {
         $cls = $classFqn ?? basename($relativePath, '.php');
 
-        return $cls.'::rules';
+        return $cls.'::'.$enclosingMethod;
     }
 }

@@ -35,7 +35,13 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class FindCallVisitor extends NodeVisitorAbstract
 {
-    /** @var list<array{line: int, model: string, method: string}> */
+    /**
+     * Sentinel symbol used when a violation occurs outside any function-like
+     * scope (rare in Application tier, but handled defensively).
+     */
+    public const FILE_SCOPE_SYMBOL = '<file-scope>';
+
+    /** @var list<array{line: int, model: string, method: string, enclosing_method: string, start_file_pos: int}> */
     public array $violations = [];
 
     /** @var list<string> */
@@ -70,6 +76,15 @@ final class FindCallVisitor extends NodeVisitorAbstract
     private array $methodCrossTenantSkipStack = [false];
 
     /**
+     * Stack of enclosing function-like names; the top is the active scope.
+     * Pushed/popped in lock-step with $scopedVariablesStack so violations
+     * carry the correct enclosing-method symbol.
+     *
+     * @var list<string>
+     */
+    private array $enclosingMethodStack = [];
+
+    /**
      * @param  list<string>  $guardedModels
      */
     public function __construct(array $guardedModels)
@@ -90,6 +105,7 @@ final class FindCallVisitor extends NodeVisitorAbstract
                     || $this->nodeHasValidCrossTenantAnnotation($node)
                 : false;
             $this->methodCrossTenantSkipStack[] = $methodSkip;
+            $this->enclosingMethodStack[] = $this->nameForFunctionLike($node);
         }
 
         if ($this->shouldSkip()) {
@@ -121,6 +137,7 @@ final class FindCallVisitor extends NodeVisitorAbstract
         if ($this->isFunctionLikeBoundary($node)) {
             array_pop($this->scopedVariablesStack);
             array_pop($this->methodCrossTenantSkipStack);
+            array_pop($this->enclosingMethodStack);
             if ($this->scopedVariablesStack === []) {
                 $this->scopedVariablesStack = [[]];
             }
@@ -134,6 +151,26 @@ final class FindCallVisitor extends NodeVisitorAbstract
         }
 
         return null;
+    }
+
+    private function nameForFunctionLike(Node $node): string
+    {
+        if ($node instanceof ClassMethod) {
+            return $node->name->toString();
+        }
+        if ($node instanceof Function_) {
+            return $node->name->toString();
+        }
+
+        // Closure / ArrowFunction.
+        return '<closure@'.$node->getStartFilePos().'>';
+    }
+
+    private function currentEnclosingMethod(): string
+    {
+        $top = end($this->enclosingMethodStack);
+
+        return is_string($top) ? $top : self::FILE_SCOPE_SYMBOL;
     }
 
     private function isFunctionLikeBoundary(Node $node): bool
@@ -174,6 +211,8 @@ final class FindCallVisitor extends NodeVisitorAbstract
             'line' => $node->getStartLine(),
             'model' => $shortName,
             'method' => $method,
+            'enclosing_method' => $this->currentEnclosingMethod(),
+            'start_file_pos' => $node->getStartFilePos(),
         ];
     }
 
@@ -206,6 +245,8 @@ final class FindCallVisitor extends NodeVisitorAbstract
             'line' => $node->getStartLine(),
             'model' => $model,
             'method' => $method,
+            'enclosing_method' => $this->currentEnclosingMethod(),
+            'start_file_pos' => $node->getStartFilePos(),
         ];
     }
 

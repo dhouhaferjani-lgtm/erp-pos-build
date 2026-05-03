@@ -6,6 +6,8 @@ namespace App\Application\Sweep\Visitors;
 
 use PhpParser\Node;
 use PhpParser\Node\Attribute;
+use PhpParser\Node\Expr\ArrowFunction;
+use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -13,6 +15,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Function_;
 use PhpParser\NodeVisitor\ParentConnectingVisitor;
 use PhpParser\NodeVisitorAbstract;
 
@@ -30,7 +33,13 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class ExistsRuleVisitor extends NodeVisitorAbstract
 {
-    /** @var list<array{line: int, table: string, form: string}> */
+    /**
+     * Sentinel symbol used when a violation occurs outside any function-like
+     * scope (rare in Presentation tier, but possible in top-level files).
+     */
+    public const FILE_SCOPE_SYMBOL = '<file-scope>';
+
+    /** @var list<array{line: int, table: string, form: string, enclosing_method: string, start_file_pos: int}> */
     public array $violations = [];
 
     /** @var list<string> */
@@ -39,6 +48,15 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
     private bool $classCrossTenantSkip = false;
 
     private bool $methodCrossTenantSkip = false;
+
+    /**
+     * Stack of enclosing function-like names; the top is the active scope.
+     * Pushed on enterNode for ClassMethod / Function_ / Closure / ArrowFunction,
+     * popped on leaveNode. Empty means we're at file scope.
+     *
+     * @var list<string>
+     */
+    private array $enclosingMethodStack = [];
 
     /**
      * @param  list<string>  $guardedTables
@@ -56,6 +74,9 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
         if ($node instanceof ClassMethod) {
             $this->methodCrossTenantSkip = $this->methodHasValidCrossTenantRouteAttribute($node)
                 || $this->nodeHasValidCrossTenantAnnotation($node);
+        }
+        if ($this->isFunctionLikeBoundary($node)) {
+            $this->enclosingMethodStack[] = $this->nameForFunctionLike($node);
         }
 
         if ($this->shouldSkip()) {
@@ -75,6 +96,9 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
 
     public function leaveNode(Node $node): null
     {
+        if ($this->isFunctionLikeBoundary($node)) {
+            array_pop($this->enclosingMethodStack);
+        }
         if ($node instanceof ClassMethod) {
             $this->methodCrossTenantSkip = false;
         }
@@ -88,6 +112,36 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
     private function shouldSkip(): bool
     {
         return $this->classCrossTenantSkip || $this->methodCrossTenantSkip;
+    }
+
+    private function isFunctionLikeBoundary(Node $node): bool
+    {
+        return $node instanceof ClassMethod
+            || $node instanceof Function_
+            || $node instanceof Closure
+            || $node instanceof ArrowFunction;
+    }
+
+    private function nameForFunctionLike(Node $node): string
+    {
+        if ($node instanceof ClassMethod) {
+            return $node->name->toString();
+        }
+        if ($node instanceof Function_) {
+            return $node->name->toString();
+        }
+
+        // Closure / ArrowFunction: anonymous functions don't get a name. Use
+        // a stable sentinel that includes the start file pos so two closures
+        // in the same enclosing scope get distinct symbols.
+        return '<closure@'.$node->getStartFilePos().'>';
+    }
+
+    private function currentEnclosingMethod(): string
+    {
+        $top = end($this->enclosingMethodStack);
+
+        return is_string($top) ? $top : self::FILE_SCOPE_SYMBOL;
     }
 
     private function checkInlineString(String_ $node): void
@@ -106,6 +160,8 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
             'line' => $node->getStartLine(),
             'table' => $table,
             'form' => 'inline_string',
+            'enclosing_method' => $this->currentEnclosingMethod(),
+            'start_file_pos' => $node->getStartFilePos(),
         ];
     }
 
@@ -137,6 +193,8 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
             'line' => $node->getStartLine(),
             'table' => $table,
             'form' => 'rule_exists_builder',
+            'enclosing_method' => $this->currentEnclosingMethod(),
+            'start_file_pos' => $node->getStartFilePos(),
         ];
     }
 

@@ -52,15 +52,33 @@ class PhpPresentationExistsScannerTest extends TestCase
 
         $rows = $scanner->scan();
 
-        // The fixture file at Fixtures/exists/Modules/Treasury/Presentation/Requests/BareExistsRequest.php
-        // has exactly two bare-exists rules and zero scoped rules. The
-        // negative fixture (ScopedExistsRequest.php) must not contribute.
-        $this->assertCount(2, $rows);
+        // Positive fixtures contribute:
+        //   - BareExistsRequest.php — 2 distinct-table rules (payment_methods, partners)
+        //   - MultipleExistsInOneMethodRequest.php — 2 same-table rules (payment_methods)
+        // Negative + skip fixtures contribute zero (ScopedExistsRequest, CrossTenantRouteRequest).
+        $this->assertCount(4, $rows);
         $stableKeys = array_map(fn (CallsiteRow $r): string => $r->stableKey, $rows);
         $this->assertSame($stableKeys, array_unique($stableKeys), 'Stable keys must be unique per violation.');
         foreach ($stableKeys as $key) {
             $this->assertMatchesRegularExpression('/^sha256:[0-9a-f]{64}$/', $key);
         }
+    }
+
+    public function test_two_exists_rules_in_one_method_produce_distinct_stable_keys(): void
+    {
+        // Codex Phase 1 review #1: two `exists:` rules over the SAME table in
+        // the SAME method must NOT collapse to one stable_key. The scanner
+        // distinguishes them via per-statement fingerprint (byte offset).
+        $scanner = $this->scanner(['Treasury' => 'api.treasury'], $this->fixtureRoot);
+
+        $rows = array_values(array_filter(
+            $scanner->scan(),
+            static fn (CallsiteRow $r): bool => str_contains($r->relativePath, 'MultipleExistsInOneMethodRequest'),
+        ));
+
+        $this->assertCount(2, $rows, 'MultipleExistsInOneMethodRequest fixture should yield two violations.');
+        $this->assertSame($rows[0]->resource, $rows[1]->resource, 'Both rules target the same table.');
+        $this->assertNotSame($rows[0]->stableKey, $rows[1]->stableKey, 'Same-method same-table violations must have distinct stable_keys.');
     }
 
     public function test_scan_skips_methods_annotated_cross_tenant_route(): void
