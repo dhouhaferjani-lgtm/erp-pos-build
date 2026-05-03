@@ -97,9 +97,13 @@ class ScopedExistsTest extends TestCase
         $this->assertStringContainsString('company_id,"c-1"', $rendered);
     }
 
-    public function test_tenant_and_company_rejects_cross_tenant_value_via_real_validator(): void
+    public function test_tenant_and_company_renders_canonical_validator_string(): void
     {
-        $passingRule = ScopedExists::tenantAndCompany(
+        // String-shape contract test: pins the exact output of Laravel's
+        // formatWheres() so any framework change to the rule's __toString()
+        // surfaces immediately. Behavioral verification (real validator
+        // against a seeded DB) lives in ScopedExistsBehaviorTest.
+        $rule = ScopedExists::tenantAndCompany(
             table: 'fake_resources_for_scoped_exists',
             tenantId: 't-1',
             companyId: 'c-1',
@@ -107,7 +111,7 @@ class ScopedExistsTest extends TestCase
 
         $this->assertSame(
             'exists:fake_resources_for_scoped_exists,id,tenant_id,"t-1",company_id,"c-1"',
-            (string) $passingRule,
+            (string) $rule,
         );
     }
 }
