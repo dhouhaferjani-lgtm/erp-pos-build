@@ -1,0 +1,737 @@
+# Tenant-Isolation Sweep — Live Inventory (schema v2)
+#
+# Source of truth for cluster ownership and per-callsite review state.
+# Mutated ONLY by the sweep:inventory:* artisan commands (Section 5).
+# Hand-edits will be rejected by `sweep:inventory:verify-history` in CI.
+#
+# JSON Schema: apps/api/app/Application/Sweep/InventoryYamlSchema.json
+# Master plan: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
+#
+# Initial seed: clusters from Section 6 catalogue, zero callsites. The
+# first `php artisan sweep:inventory:generate` run populates `callsites`
+# and `progress` from scanner output and recomputes the yaml_sha256.
+
+metadata:
+  schema_version: "2"
+  spec_version: "2026-05-02-master"
+  spec_path: "docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md"
+  branch: "feat/tenant-isolation-sweep-execution"
+  generated_at: "2026-05-03T00:00:00Z"
+  generated_by: "claude"
+  schema_sha256: "e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416"
+  yaml_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+agents:
+  claude:
+    role: "lead, plan, review, complex refactors, reference cluster, security-architecture clusters"
+    can_claim:
+      - "api.treasury"
+      - "api.super-admin-context"
+      - "api.module-gating"
+      - "api.auth-permissions"
+      - "web.super-admin-frontend"
+      - "tactical.foundation.helper"
+      - "tactical.foundation.attribute"
+      - "tactical.foundation.gates"
+    can_review:
+      - "*"
+  codex:
+    role: "mechanical per-cluster sweeps, adversarial review"
+    can_claim:
+      - "api.document"
+      - "api.inventory"
+      - "api.taxation"
+      - "api.loyalty"
+      - "api.accounting"
+      - "api.catalog"
+      - "api.contact"
+      - "api.compliance"
+      - "api.pricing"
+      - "api.service"
+      - "api.cart"
+      - "api.workshop"
+      - "api.identity-company"
+      - "api.platform-integration"
+      - "api.webhooks-incoming"
+      - "api.broadcast-channels"
+      - "api.scheduled-jobs"
+      - "api.console-commands"
+      - "web.tanstack-keys"
+      - "web.form-selectors"
+      - "web.stores-localstorage"
+    can_review:
+      - "*"
+
+statuses_enum:
+  - "pending"
+  - "claimed"
+  - "in_progress"
+  - "under_review"
+  - "fixed"
+  - "blocked"
+  - "deferred"
+  - "needs_recheck"
+  - "stale_orphan"
+
+clusters:
+  - id: "api.treasury"
+    display_name: "Treasury"
+    surface: "api"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: []
+    blocked_by_external: null
+    blocked_reason: null
+    blocks:
+      - "api.document"
+      - "api.inventory"
+      - "api.taxation"
+      - "api.loyalty"
+      - "api.accounting"
+      - "api.catalog"
+      - "api.contact"
+      - "api.compliance"
+      - "api.pricing"
+      - "api.service"
+      - "api.cart"
+      - "api.workshop"
+      - "api.identity-company"
+      - "api.platform-integration"
+      - "api.webhooks-incoming"
+      - "api.broadcast-channels"
+      - "api.scheduled-jobs"
+      - "api.console-commands"
+      - "api.auth-permissions"
+    is_reference: true
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Treasury/TreasuryTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-02-treasury-cluster-codex-review.md"
+      accepted_verdicts:
+        - "APPROVE"
+        - "APPROVE-WITH-MINOR-EDITS-APPLIED"
+      verify_review_commit_linkage: true
+    notes: "Reference cluster. HARD GATE: no other API cluster may begin until this review verdict is in accepted_verdicts AND the review_commit_linkage is verified AND YAML cluster status is fixed."
+
+  - id: "api.document"
+    display_name: "Document"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Document/DocumentTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-document-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.inventory"
+    display_name: "Inventory"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-inventory-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.taxation"
+    display_name: "Taxation"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Taxation/TaxationTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-taxation-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.loyalty"
+    display_name: "Loyalty"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-loyalty-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.accounting"
+    display_name: "Accounting"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Accounting/AccountingTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-accounting-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.catalog"
+    display_name: "Catalog"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-catalog-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.contact"
+    display_name: "Contact"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Contact/ContactTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-contact-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.compliance"
+    display_name: "Compliance"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Compliance/ComplianceTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-compliance-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.pricing"
+    display_name: "Pricing"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Pricing/PricingTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-pricing-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.service"
+    display_name: "Service"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Service/ServiceTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-service-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.cart"
+    display_name: "Cart"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Cart/CartTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-cart-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.workshop"
+    display_name: "Workshop"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Workshop/WorkshopTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-workshop-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.identity-company"
+    display_name: "Identity / Company"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Identity/IdentityCompanyTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-identity-company-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.platform-integration"
+    display_name: "Platform Integration (outbound)"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/PlatformIntegration/PlatformIntegrationTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-platform-integration-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.webhooks-incoming"
+    display_name: "Webhooks (incoming)"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Webhooks/WebhooksIncomingTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-webhooks-incoming-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.broadcast-channels"
+    display_name: "Broadcast channels"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Broadcast/BroadcastChannelsTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-broadcast-channels-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.scheduled-jobs"
+    display_name: "Scheduled jobs"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/ScheduledJobs/ScheduledJobsTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-scheduled-jobs-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.console-commands"
+    display_name: "Console commands"
+    surface: "api"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Console/ConsoleCommandsTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-console-commands-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.auth-permissions"
+    display_name: "Auth + permissions"
+    surface: "api"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Architecture/AuthLifecycleTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-auth-permissions-cluster-codex-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.super-admin-context"
+    display_name: "Super-admin context"
+    surface: "api"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: ["api.module-gating"]
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/SuperAdmin/SuperAdminContextTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-super-admin-context-cluster-codex-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "api.module-gating"
+    display_name: "Module gating (ProgressionService header trust)"
+    surface: "api"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: ["api.super-admin-context"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Progression/ModuleGatingTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-module-gating-cluster-codex-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  # POS surface — BLOCKED on POS orchestrator branch per master plan Section 16.
+  - id: "api.pos-stabilization"
+    display_name: "POS stabilization"
+    surface: "api"
+    owner: null
+    required_owner: null
+    status: "blocked"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: "pos_orchestrator_branch"
+    blocked_reason: "POS orchestrator owns all apps/pos and apps/api/app/Modules/POS work per 2026-04-30-pos-consolidation-checkpoint.md. Unblock when POS branch merges OR orchestrator explicitly transfers ownership."
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-pos-stabilization-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  # Web surface
+  - id: "web.tanstack-keys"
+    display_name: "Web — TanStack Query keys"
+    surface: "web"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by:
+      - "api.treasury"
+      - "api.document"
+      - "api.inventory"
+      - "api.taxation"
+      - "api.loyalty"
+      - "api.accounting"
+      - "api.catalog"
+      - "api.contact"
+      - "api.compliance"
+      - "api.pricing"
+      - "api.service"
+      - "api.cart"
+      - "api.workshop"
+      - "api.identity-company"
+      - "api.platform-integration"
+      - "api.webhooks-incoming"
+      - "api.broadcast-channels"
+      - "api.scheduled-jobs"
+      - "api.console-commands"
+      - "api.auth-permissions"
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: ["web.form-selectors", "web.stores-localstorage"]
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/web/src/__tests__/tenantSwitchCacheInvalidation.test.tsx"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-web-tanstack-keys-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "web.form-selectors"
+    display_name: "Web — form selectors"
+    surface: "web"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["web.tanstack-keys"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/web/src/__tests__/formSelectorsTenantScope.test.tsx"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-web-form-selectors-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "web.stores-localstorage"
+    display_name: "Web — stores + localStorage"
+    surface: "web"
+    owner: null
+    required_owner: "codex"
+    status: "pending"
+    blocked_by: ["web.tanstack-keys"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/web/src/__tests__/storesTenantNamespacing.test.tsx"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-web-stores-localstorage-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "web.super-admin-frontend"
+    display_name: "Web — super-admin frontend"
+    surface: "web"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: ["api.super-admin-context"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/web/src/__tests__/superAdminFrontend.test.tsx"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-web-super-admin-frontend-cluster-codex-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  # Tauri surface — BLOCKED on POS orchestrator branch per master plan Section 16.
+  - id: "tauri.sqlite-cache"
+    display_name: "Tauri — SQLite local cache"
+    surface: "tauri"
+    owner: null
+    required_owner: null
+    status: "blocked"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: "pos_orchestrator_branch"
+    blocked_reason: "POS orchestrator owns apps/pos per 2026-04-30-pos-consolidation-checkpoint.md."
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/pos/src/__tests__/sqliteCacheTenantScope.test.ts"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-tauri-sqlite-cache-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+  - id: "tauri.sync-envelope"
+    display_name: "Tauri — sync envelope"
+    surface: "tauri"
+    owner: null
+    required_owner: null
+    status: "blocked"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: "pos_orchestrator_branch"
+    blocked_reason: "POS orchestrator owns apps/pos per 2026-04-30-pos-consolidation-checkpoint.md."
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/pos/src/__tests__/syncEnvelopeTenantScope.test.ts"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-tauri-sync-envelope-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
+callsites: []
+
+progress:
+  total_callsites: 0
+  total_clusters: 28
+  by_status:
+    pending: 26
+    claimed: 0
+    in_progress: 0
+    under_review: 0
+    fixed: 0
+    blocked: 2
+    deferred: 0
+    needs_recheck: 0
+    stale_orphan: 0
+  by_surface:
+    api:
+      total: 22
+      fixed: 0
+    web:
+      total: 4
+      fixed: 0
+    tauri:
+      total: 2
+      fixed: 0
+  by_owner:
+    claude:
+      claimed: 0
+      fixed: 0
+    codex:
+      claimed: 0
+      fixed: 0
+    unassigned: 28
+  drift:
+    yaml_says_fixed_code_unsafe: 0
+    code_safe_yaml_pending: 0
