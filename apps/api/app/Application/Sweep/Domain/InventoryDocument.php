@@ -215,6 +215,49 @@ final class InventoryDocument
     }
 
     /**
+     * Returns a fresh document where the cluster identified by $clusterId has
+     * been transformed by $mutator. Mirrors the {@see self::withCallsiteUpdate()}
+     * contract exactly:
+     *   - The mutator receives the cluster's raw associative array and must
+     *     return the updated array with `id` unchanged.
+     *   - Modifying `id` inside the mutator throws {@see InvalidArgumentException}.
+     *   - Throws {@see InvalidArgumentException} when $clusterId is not found.
+     *
+     * Used by SweepInventoryClaimCommand (and all subsequent state-machine
+     * commands) to set cluster.status / cluster.owner atomically inside the
+     * InventoryService::mutate() cycle.
+     *
+     * @param  callable(Cluster): Cluster  $mutator
+     */
+    public function withClusterUpdate(string $clusterId, callable $mutator): self
+    {
+        $found = false;
+        $next = $this->data;
+        $clusters = $next['clusters'];
+        foreach ($clusters as $index => $cluster) {
+            if ($cluster['id'] !== $clusterId) {
+                continue;
+            }
+            $found = true;
+            $updated = $mutator($cluster);
+            if ($updated['id'] !== $clusterId) {
+                throw new InvalidArgumentException(
+                    "Mutator changed cluster id for {$clusterId} (found '{$updated['id']}'); ".
+                    'cluster ids are immutable.',
+                );
+            }
+            $clusters[$index] = $updated;
+        }
+
+        if (! $found) {
+            throw new InvalidArgumentException("Cluster id not found in document: {$clusterId}");
+        }
+        $next['clusters'] = $clusters;
+
+        return new self($next);
+    }
+
+    /**
      * Returns a fresh document with the entire callsites list replaced.
      * Used by SweepInventoryGenerateCommand when merging scanner output.
      *
