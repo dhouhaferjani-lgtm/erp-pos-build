@@ -413,6 +413,45 @@ class SweepInventoryReviewCommandTest extends TestCase
         $this->assertNotSame(0, $exit, 'review is callsite-scoped; --cluster must be refused.');
     }
 
+    /**
+     * The schema's review.reviewer enum is `claude|codex` only. Without an
+     * explicit pre-validation the command would write `--actor=human` into the
+     * review block and fail at JSON Schema validation in
+     * InventoryService::mutate() with an opaque error. Surface clearly here.
+     */
+    public function test_review_refuses_when_actor_is_human_or_ci(): void
+    {
+        $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);
+        $reviewFile = $this->writeReviewFile('APPROVE', null, 'actor-human');
+
+        $exitHuman = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'human',
+            '--verdict' => 'APPROVE',
+            '--review-file' => $reviewFile,
+        ]);
+        $this->assertNotSame(0, $exitHuman, '--actor=human must be refused for review (schema review.reviewer accepts claude|codex only).');
+
+        $exitCi = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'ci',
+            '--verdict' => 'APPROVE',
+            '--review-file' => $reviewFile,
+        ]);
+        $this->assertNotSame(0, $exitCi, '--actor=ci must be refused for review (schema review.reviewer accepts claude|codex only).');
+
+        // YAML must remain unchanged after both refusals.
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('under_review', $callsite['status']);
+        /** @var array<string, mixed> $review */
+        $review = $callsite['review'];
+        $this->assertNull($review['reviewer'], 'review.reviewer must remain unset after refusal.');
+    }
+
     public function test_review_approve_with_full_linkage_succeeds_when_review_commit_matches_fix_commit(): void
     {
         $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);

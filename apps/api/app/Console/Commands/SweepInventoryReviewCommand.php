@@ -159,6 +159,19 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
+        // The schema's review.reviewer field accepts only `claude` or `codex`
+        // (not `ci`/`human`). Refuse here so the failure surfaces with a clear
+        // message instead of an opaque JSON Schema validation error from
+        // InventoryService::mutate() at write time.
+        if ($actor !== 'claude' && $actor !== 'codex') {
+            $this->error(
+                "Review refused: --actor '{$actor}' is not a recognized review agent. ".
+                'Only claude or codex may write a review (schema review.reviewer enum).',
+            );
+
+            return self::FAILURE;
+        }
+
         // ── 4. Load + look up callsite + cluster ────────────────────────────
         $service = $this->makeInventoryService();
 

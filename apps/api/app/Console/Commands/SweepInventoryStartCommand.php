@@ -134,15 +134,11 @@ final class SweepInventoryStartCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
-        // Cross-agent enforcement: actor MUST equal the cluster's current owner.
-        $cluster = $this->findCluster($doc, $callsite['cluster_id']);
-        if ($cluster === null) {
-            $this->error("Cluster not found for callsite: {$callsite['cluster_id']}");
-
-            return self::FAILURE;
-        }
-
-        $ownerError = $this->enforceClusterOwnerMatch($cluster, $actor);
+        // Cross-agent enforcement: per-callsite mode reads the CALLSITE's owner
+        // (set by either single-callsite or cluster-mode claim). Cluster-mode
+        // start checks cluster.owner separately; the two modes intentionally
+        // diverge because per-callsite claim does not set cluster.owner.
+        $ownerError = $this->enforceCallsiteOwnerMatch($callsite, $actor);
         if ($ownerError !== null) {
             $this->error($ownerError);
 
@@ -231,12 +227,15 @@ final class SweepInventoryStartCommand extends AbstractSweepInventoryCommand
         ));
 
         // Audit-trail invariant: cluster mutation requires at least one
-        // callsite history event. Refuse explicitly when there are none.
+        // callsite history event. Refuse explicitly when there are none —
+        // covers both "callsites already in_progress" (work has begun
+        // piecemeal) and "callsites in non-claimable states" (out-of-sync).
         if ($claimedCallsiteIds === []) {
             $this->error(
-                "Cluster {$clusterId} is claimed but has no claimed callsites to start. ".
-                'Use --callsite-id on individual callsites, or investigate why the cluster '.
-                'and its callsites are out of sync.',
+                "Cluster {$clusterId} has no claimed callsites remaining ".
+                '(callsites may already be in_progress, fixed, or otherwise advanced). '.
+                'Use --callsite-id on individual callsites if work is partially complete, '.
+                'or investigate why the cluster and its callsites are out of sync.',
             );
 
             return self::FAILURE;
@@ -297,6 +296,9 @@ final class SweepInventoryStartCommand extends AbstractSweepInventoryCommand
     /**
      * Refuse the mutation when --actor differs from the cluster's current owner.
      * Returns null on success, a human-readable error string on mismatch.
+     * Used by cluster-mode start (which mutates cluster.status); single-callsite
+     * mode uses {@see self::enforceCallsiteOwnerMatch} instead because
+     * sweep:inventory:claim --callsite-id does not populate cluster.owner.
      *
      * @param  Cluster  $cluster
      * @param  'claude'|'codex'|'ci'|'human'  $actor
@@ -306,13 +308,38 @@ final class SweepInventoryStartCommand extends AbstractSweepInventoryCommand
         $owner = $cluster['owner'];
         if ($owner === null) {
             return "Cluster '{$cluster['id']}' has no owner set; cannot start. ".
-                'Run sweep:inventory:claim first.';
+                'Run sweep:inventory:claim --cluster first.';
         }
 
         if ($owner !== $actor) {
             return "Cluster '{$cluster['id']}' is owned by '{$owner}' but --actor is '{$actor}'. ".
                 'Start must be invoked by the cluster owner; use sweep:inventory:claim --force '.
                 'to re-assign ownership if the original owner cannot proceed.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse the mutation when --actor differs from the callsite's current owner.
+     * Used by single-callsite-mode start, which is reachable after either
+     * single-callsite claim (sets only callsite.owner) or cluster-mode claim
+     * (sets both cluster.owner and every callsite.owner).
+     *
+     * @param  Callsite  $callsite
+     * @param  'claude'|'codex'|'ci'|'human'  $actor
+     */
+    private function enforceCallsiteOwnerMatch(array $callsite, string $actor): ?string
+    {
+        $owner = $callsite['owner'];
+        if ($owner === null) {
+            return "Callsite '{$callsite['id']}' has no owner set; cannot start. ".
+                'Run sweep:inventory:claim --callsite-id first.';
+        }
+
+        if ($owner !== $actor) {
+            return "Callsite '{$callsite['id']}' is owned by '{$owner}' but --actor is '{$actor}'. ".
+                'Start must be invoked by the callsite owner.';
         }
 
         return null;

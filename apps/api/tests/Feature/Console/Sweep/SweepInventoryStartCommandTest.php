@@ -126,6 +126,71 @@ class SweepInventoryStartCommandTest extends TestCase
         $this->assertSame('claimed', $callsite['status']);
     }
 
+    /**
+     * Closes the per-callsite hand-off gap: sweep:inventory:claim --callsite-id
+     * sets only callsite.owner (not cluster.owner), so per-callsite start MUST
+     * read callsite.owner — not cluster.owner — to allow workers to drive an
+     * individual callsite from claim → start without first running cluster claim.
+     */
+    public function test_start_callsite_succeeds_after_single_callsite_claim_when_actor_matches_callsite_owner(): void
+    {
+        // Single-callsite claim: leaves cluster.owner null, sets callsite.owner=claude.
+        $claimExit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+        ]);
+        $this->assertSame(0, $claimExit, 'preflight: per-callsite claim must succeed.');
+
+        $clusterAfterClaim = $this->clusterById('api.treasury');
+        $this->assertNull($clusterAfterClaim['owner'], 'per-callsite claim must leave cluster.owner null.');
+
+        $startExit = Artisan::call('sweep:inventory:start', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+        ]);
+
+        $this->assertSame(
+            0,
+            $startExit,
+            'per-callsite start must succeed when --actor matches callsite.owner, even when cluster.owner is null.',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('in_progress', $callsite['status']);
+        $this->assertSame('claude', $callsite['owner']);
+    }
+
+    public function test_start_callsite_refuses_when_actor_does_not_match_callsite_owner(): void
+    {
+        // Per-callsite claim sets callsite.owner=claude. Codex tries to start.
+        Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+        ]);
+
+        $exit = Artisan::call('sweep:inventory:start', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            'per-callsite start must refuse when --actor does not match callsite.owner.',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('claimed', $callsite['status'], 'callsite must remain claimed after refusal.');
+    }
+
     public function test_start_refuses_when_callsite_not_claimed(): void
     {
         // Default seed: callsite is pending. Try to start it.
