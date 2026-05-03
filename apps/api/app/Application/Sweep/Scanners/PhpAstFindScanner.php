@@ -6,6 +6,9 @@ namespace App\Application\Sweep\Scanners;
 
 use App\Application\Sweep\Visitors\FindCallVisitor;
 use FilesystemIterator;
+use PhpParser\Node;
+use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\NodeTraverser;
 use PhpParser\ParserFactory;
 use RecursiveDirectoryIterator;
@@ -122,8 +125,10 @@ final class PhpAstFindScanner implements Scanner
             $traverser->addVisitor($visitor);
             $traverser->traverse($stmts);
 
+            $classFqn = $this->resolveClassFqn($stmts);
+
             foreach ($visitor->violations as $violation) {
-                $rows[] = $this->buildRow($path, $violation);
+                $rows[] = $this->buildRow($path, $violation, $classFqn);
             }
         }
 
@@ -140,12 +145,12 @@ final class PhpAstFindScanner implements Scanner
     /**
      * @param  array{line: int, model: string, method: string}  $violation
      */
-    private function buildRow(string $absolutePath, array $violation): CallsiteRow
+    private function buildRow(string $absolutePath, array $violation, ?string $classFqn): CallsiteRow
     {
         $relativePath = $this->relativize($absolutePath);
         $clusterId = $this->clusterResolver->resolve($relativePath);
         $surface = 'api';
-        $symbol = $this->fileSymbol($relativePath, $violation['line'], $violation['method']);
+        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['method']);
         $patternType = 'unscoped_eloquent_'.$violation['method'];
 
         $stableKey = StableKey::fromScannerOutput([
@@ -189,15 +194,39 @@ final class PhpAstFindScanner implements Scanner
     }
 
     /**
-     * Best-effort symbol resolver — Gate B doesn't track the enclosing
-     * class/method per-violation either; we synthesize a stable id from
-     * the file basename + the line number so the stable_key remains
-     * unique per-violation even when two violations live in the same file.
+     * @param  array<int, Node>  $stmts
      */
-    private function fileSymbol(string $relativePath, int $line, string $method): string
+    private function resolveClassFqn(array $stmts): ?string
     {
-        $basename = basename($relativePath, '.php');
+        $namespace = null;
+        $stack = $stmts;
+        while ($stack !== []) {
+            $node = array_shift($stack);
+            if ($node instanceof Namespace_) {
+                $namespace = $node->name?->toString();
+                $stack = array_merge($node->stmts, $stack);
 
-        return $relativePath.':'.$basename.'::'.$method.':line-'.$line;
+                continue;
+            }
+            if ($node instanceof Class_) {
+                $className = $node->name?->toString();
+                if ($className === null) {
+                    continue;
+                }
+
+                return $namespace !== null
+                    ? $namespace.'\\'.$className
+                    : $className;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildSymbol(?string $classFqn, string $relativePath, string $method): string
+    {
+        $cls = $classFqn ?? basename($relativePath, '.php');
+
+        return $cls.'::'.$method;
     }
 }

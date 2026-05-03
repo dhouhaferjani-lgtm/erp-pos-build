@@ -6,13 +6,15 @@ namespace App\Application\Sweep\Scanners;
 
 use App\Application\Sweep\Visitors\ExistsRuleVisitor;
 use FilesystemIterator;
+use PhpParser\Node;
+use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\ParentConnectingVisitor;
 use PhpParser\ParserFactory;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
-use Tests\Architecture\TenantScopedExistsRulesTest;
 
 /**
  * Scanner emitting CallsiteRows for bare `exists:` validator rules in the
@@ -137,8 +139,10 @@ final class PhpPresentationExistsScanner implements Scanner
             $traverser->addVisitor($visitor);
             $traverser->traverse($stmts);
 
+            $classFqn = $this->resolveClassFqn($stmts);
+
             foreach ($visitor->violations as $violation) {
-                $rows[] = $this->buildRow($path, $violation);
+                $rows[] = $this->buildRow($path, $violation, $classFqn);
             }
         }
 
@@ -148,12 +152,12 @@ final class PhpPresentationExistsScanner implements Scanner
     /**
      * @param  array{line: int, table: string, form: string}  $violation
      */
-    private function buildRow(string $absolutePath, array $violation): CallsiteRow
+    private function buildRow(string $absolutePath, array $violation, ?string $classFqn): CallsiteRow
     {
         $relativePath = $this->relativize($absolutePath);
         $clusterId = $this->clusterResolver->resolve($relativePath);
         $surface = 'api';
-        $symbol = $this->fileSymbol($relativePath, $violation['line']);
+        $symbol = $this->buildSymbol($classFqn, $relativePath, $violation['line']);
         $patternType = $violation['form'] === 'inline_string'
             ? 'bare_exists_validator'
             : 'rule_exists_builder_unscoped';
@@ -199,16 +203,52 @@ final class PhpPresentationExistsScanner implements Scanner
     }
 
     /**
-     * Best-effort symbol resolver. We don't run a second AST pass to find
-     * the precise class+method enclosing each line — instead we derive the
-     * class name from the file basename (Laravel convention: one class per
-     * file, name matches filename) and append `::rules` since this scanner
-     * targets FormRequest::rules() callsites.
+     * Resolves a fully-qualified class name from the parsed AST. Walks the
+     * top-level statements once, descending into a single Namespace_ node
+     * if present. Returns null if the file has no class declaration.
+     *
+     * Laravel files conventionally have one namespace + one class. If a
+     * file has more than one class the scanner picks the FIRST — which
+     * matches the FormRequest convention this scanner targets.
+     *
+     * @param  array<int, Node>  $stmts
      */
-    private function fileSymbol(string $relativePath, int $line): string
+    private function resolveClassFqn(array $stmts): ?string
     {
-        $basename = basename($relativePath, '.php');
+        $namespace = null;
+        $stack = $stmts;
+        while ($stack !== []) {
+            $node = array_shift($stack);
+            if ($node instanceof Namespace_) {
+                $namespace = $node->name?->toString();
+                $stack = array_merge($node->stmts, $stack);
 
-        return $relativePath.':'.$basename.'::rules:line-'.$line;
+                continue;
+            }
+            if ($node instanceof Class_) {
+                $className = $node->name?->toString();
+                if ($className === null) {
+                    continue;
+                }
+
+                return $namespace !== null
+                    ? $namespace.'\\'.$className
+                    : $className;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Builds the canonical symbol identifier used in stable_key + the
+     * inventory's `symbol` column. Includes class FQN when available so
+     * a class rename (without file rename) is detected as a symbol move.
+     */
+    private function buildSymbol(?string $classFqn, string $relativePath, int $line): string
+    {
+        $cls = $classFqn ?? basename($relativePath, '.php');
+
+        return $cls.'::rules';
     }
 }
