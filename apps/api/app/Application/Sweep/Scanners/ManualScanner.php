@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Sweep\Scanners;
 
+use App\Application\Sweep\Exceptions\ManualScannerDuplicateKeyException;
 use RuntimeException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -99,6 +100,12 @@ final class ManualScanner implements Scanner
         }
 
         $rows = [];
+        // Tracks which (cluster_id + slug) pairs we've already seen and at
+        // which index, so duplicates can be reported with both offending
+        // indexes (Codex Phase 1 review #4). Must be checked BEFORE any
+        // CallsiteRow is constructed so the malformed stub never reaches
+        // InventoryService schema validation.
+        $seenAtIndex = [];
         $i = 0;
         foreach ($entries as $entry) {
             if (! is_array($entry)) {
@@ -106,11 +113,50 @@ final class ManualScanner implements Scanner
                     "Manual callsites stub at {$this->stubPath}: entry at index {$i} must be a mapping.",
                 );
             }
+            $key = $this->compositeKey($entry, $i);
+            if (isset($seenAtIndex[$key])) {
+                throw new ManualScannerDuplicateKeyException(sprintf(
+                    "Manual callsites stub at %s: duplicate cluster_id+slug '%s' at indexes %d and %d. ".
+                    'Both entries would produce stable_key=manual:%s, silently colliding the inventory.',
+                    $this->stubPath,
+                    $key,
+                    $seenAtIndex[$key],
+                    $i,
+                    $key,
+                ));
+            }
+            $seenAtIndex[$key] = $i;
             $rows[] = $this->buildRow($entry, $i);
             $i++;
         }
 
         return $rows;
+    }
+
+    /**
+     * Build the manual stable_key body (cluster_id + slug) for an entry,
+     * honoring the same required-field rules as buildRow() for those two
+     * specific fields. This runs BEFORE buildRow() so the duplicate check
+     * fires before any other malformed-entry exception.
+     *
+     * @param  array<string, mixed>  $entry
+     */
+    private function compositeKey(array $entry, int $index): string
+    {
+        if (! array_key_exists('cluster_id', $entry)) {
+            throw new RuntimeException(
+                "Manual callsites stub at {$this->stubPath}: entry at index {$index} ".
+                "missing required field 'cluster_id'.",
+            );
+        }
+        if (! array_key_exists('slug', $entry)) {
+            throw new RuntimeException(
+                "Manual callsites stub at {$this->stubPath}: entry at index {$index} ".
+                "missing required field 'slug'.",
+            );
+        }
+
+        return ((string) $entry['cluster_id']).':'.((string) $entry['slug']);
     }
 
     /**

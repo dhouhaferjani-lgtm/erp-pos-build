@@ -180,6 +180,93 @@ class ManualScannerTest extends TestCase
         $this->assertSame('manual', $scanner->name());
     }
 
+    public function test_duplicate_cluster_id_plus_slug_throws_with_both_indexes(): void
+    {
+        // Codex Phase 1 review #4: two entries that share cluster_id + slug
+        // produce identical stable_keys (manual:<cluster>:<slug>). Catching
+        // this at scan time is much friendlier than letting the duplicate
+        // trickle into InventoryService schema validation downstream.
+        $this->writeStub([
+            'manual_callsites' => [
+                [
+                    'cluster_id' => 'api.platform-integration',
+                    'slug' => 'duplicate-slug',
+                    'file' => 'apps/api/app/Modules/Platform/First.php',
+                    'symbol' => 'First::bar',
+                    'pattern_type' => 'outbound_tenant_identity',
+                    'expected_scope' => 'tenant_only',
+                    'severity' => 'high',
+                    'expected_fix' => 'fix it',
+                ],
+                [
+                    'cluster_id' => 'api.platform-integration',
+                    'slug' => 'duplicate-slug',
+                    'file' => 'apps/api/app/Modules/Platform/Second.php',
+                    'symbol' => 'Second::bar',
+                    'pattern_type' => 'outbound_tenant_identity',
+                    'expected_scope' => 'tenant_only',
+                    'severity' => 'high',
+                    'expected_fix' => 'fix it again',
+                ],
+            ],
+        ]);
+
+        $scanner = new ManualScanner($this->tempStub);
+
+        try {
+            $scanner->scan();
+            $this->fail('Expected RuntimeException for duplicate cluster_id+slug.');
+        } catch (\RuntimeException $e) {
+            // Message must enumerate the offending key and BOTH indexes so
+            // the human can find both entries quickly.
+            $this->assertStringContainsString(
+                'api.platform-integration:duplicate-slug',
+                $e->getMessage(),
+                'Exception must name the offending cluster_id:slug pair.',
+            );
+            $this->assertMatchesRegularExpression(
+                '/index(es)? 0[,\s]+(.* )?1/',
+                $e->getMessage(),
+                'Exception must enumerate both offending indexes (0 and 1).',
+            );
+        }
+    }
+
+    public function test_same_slug_different_cluster_is_not_a_duplicate(): void
+    {
+        // Two entries with the same slug but different cluster_id are NOT
+        // a collision (their stable_keys differ). Pin this so the duplicate
+        // check doesn't over-trigger.
+        $this->writeStub([
+            'manual_callsites' => [
+                [
+                    'cluster_id' => 'api.platform-integration',
+                    'slug' => 'shared-slug',
+                    'file' => 'apps/api/app/Modules/Platform/First.php',
+                    'symbol' => 'First::bar',
+                    'pattern_type' => 'outbound_tenant_identity',
+                    'expected_scope' => 'tenant_only',
+                    'severity' => 'high',
+                    'expected_fix' => 'fix',
+                ],
+                [
+                    'cluster_id' => 'api.broadcast-channels',
+                    'slug' => 'shared-slug',
+                    'file' => 'apps/api/routes/channels.php',
+                    'symbol' => 'canAccessFoo',
+                    'pattern_type' => 'broadcast_channel_auth',
+                    'expected_scope' => 'tenant_and_company',
+                    'severity' => 'high',
+                    'expected_fix' => 'fix',
+                ],
+            ],
+        ]);
+
+        $scanner = new ManualScanner($this->tempStub);
+        $rows = $scanner->scan();
+        $this->assertCount(2, $rows);
+    }
+
     /**
      * @param  array<string, mixed>  $document
      */
