@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Architecture;
 
-use PhpParser\Comment\Doc;
 use PhpParser\Node;
+use PhpParser\Node\Attribute;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -20,8 +20,8 @@ use PhpParser\NodeVisitorAbstract;
  * AST visitor for Architecture Gate A. Walks a single Presentation-tier
  * file and records bare `exists:` rules and unscoped `Rule::exists(...)`
  * builder calls for guarded tables. Honors the strict
- * `@cross-tenant-by-design` 4-field docblock annotation (class-level and
- * method-level).
+ * `#[CrossTenantRoute(reason: "...")]` controller-method attribute and the
+ * `@cross-tenant-by-design` 4-field annotation (class-level and method-level).
  *
  * Requires the AST to have parent pointers attached (via
  * {@see ParentConnectingVisitor}) so chained
@@ -51,10 +51,11 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
     public function enterNode(Node $node): null
     {
         if ($node instanceof Class_) {
-            $this->classCrossTenantSkip = $this->docblockHasValidCrossTenantAnnotation($node->getDocComment());
+            $this->classCrossTenantSkip = $this->nodeHasValidCrossTenantAnnotation($node);
         }
         if ($node instanceof ClassMethod) {
-            $this->methodCrossTenantSkip = $this->docblockHasValidCrossTenantAnnotation($node->getDocComment());
+            $this->methodCrossTenantSkip = $this->methodHasValidCrossTenantRouteAttribute($node)
+                || $this->nodeHasValidCrossTenantAnnotation($node);
         }
 
         if ($this->shouldSkip()) {
@@ -164,12 +165,50 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
         return false;
     }
 
-    private function docblockHasValidCrossTenantAnnotation(?Doc $docComment): bool
+    private function methodHasValidCrossTenantRouteAttribute(ClassMethod $method): bool
     {
-        if ($docComment === null) {
+        foreach ($method->getAttrGroups() as $group) {
+            foreach ($group->attrs as $attribute) {
+                if (! $this->isCrossTenantRouteAttribute($attribute)) {
+                    continue;
+                }
+                if ($this->attributeHasNonBlankReason($attribute)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function isCrossTenantRouteAttribute(Attribute $attribute): bool
+    {
+        return $attribute->name->getLast() === 'CrossTenantRoute';
+    }
+
+    private function attributeHasNonBlankReason(Attribute $attribute): bool
+    {
+        foreach ($attribute->args as $index => $arg) {
+            $isReasonArg = $index === 0
+                || ($arg->name instanceof Identifier && $arg->name->toString() === 'reason');
+            if (! $isReasonArg || ! $arg->value instanceof String_) {
+                continue;
+            }
+            if (trim($arg->value->value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function nodeHasValidCrossTenantAnnotation(Node $node): bool
+    {
+        $comments = $node->getComments();
+        if ($comments === []) {
             return false;
         }
-        $text = $docComment->getText();
+        $text = implode("\n", array_map(static fn ($comment): string => $comment->getText(), $comments));
         if (! str_contains($text, '@cross-tenant-by-design')) {
             return false;
         }

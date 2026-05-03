@@ -213,6 +213,65 @@ PHP);
         $this->assertCount(1, $violations);
     }
 
+    public function test_cross_tenant_route_attribute_skips_only_that_method(): void
+    {
+        $violations = $this->scan(<<<'PHP'
+<?php
+use App\Shared\Architecture\CrossTenantRoute;
+use Illuminate\Validation\Rule;
+class MixedController {
+    #[CrossTenantRoute(reason: 'Super-admin validation crosses tenants')]
+    public function crossTenantRules() {
+        return [Rule::exists('partners', 'id')];
+    }
+
+    public function regularRules() {
+        return [Rule::exists('partners', 'id')];
+    }
+}
+PHP);
+
+        // Only regularRules should be flagged.
+        $this->assertCount(1, $violations);
+    }
+
+    public function test_cross_tenant_route_attribute_with_blank_reason_does_not_skip(): void
+    {
+        $violations = $this->scan(<<<'PHP'
+<?php
+use App\Shared\Architecture\CrossTenantRoute;
+use Illuminate\Validation\Rule;
+class InvalidController {
+    #[CrossTenantRoute(reason: '   ')]
+    public function rules() {
+        return [Rule::exists('partners', 'id')];
+    }
+}
+PHP);
+
+        $this->assertCount(1, $violations);
+    }
+
+    public function test_line_comment_cross_tenant_annotation_skips_method(): void
+    {
+        $violations = $this->scan(<<<'PHP'
+<?php
+use Illuminate\Validation\Rule;
+class InlineAnnotatedController {
+    // @cross-tenant-by-design
+    // Reason: Cross-tenant fixture
+    // Audit-id: TEST-LINE-COMMENT-001
+    // Approved-by: Reviewer
+    // Expires: 2099-12-31
+    public function rules() {
+        return [Rule::exists('partners', 'id')];
+    }
+}
+PHP);
+
+        $this->assertSame([], $violations);
+    }
+
     public function test_does_not_flag_non_guarded_table(): void
     {
         $violations = $this->scan(<<<'PHP'
