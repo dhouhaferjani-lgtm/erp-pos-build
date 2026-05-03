@@ -5,16 +5,7 @@ declare(strict_types=1);
 namespace Tests\Architecture;
 
 use FilesystemIterator;
-use PhpParser\Node;
-use PhpParser\Node\Expr\Assign;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
-use PhpParser\Node\Scalar\String_;
 use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\Group;
 use RecursiveDirectoryIterator;
@@ -52,35 +43,43 @@ class TenantScopedFindCallsTest extends TestCase
      * @var list<string>
      */
     private const GUARDED_MODELS = [
-        'PaymentMethod',
-        'PaymentRepository',
-        'Partner',
-        'Contact',
-        'Document',
+        'Account',
+        'Batch',
         'Cart',
         'CartItem',
-        'Product',
         'Category',
-        'ModifierGroup',
-        'Modifier',
-        'ProductVariant',
-        'ServiceCatalogItem',
-        'WorkOrder',
+        'Contact',
         'Coupon',
-        'Voucher',
-        'VoucherLedger',
-        'PricingRule',
-        'PosTerminal',
-        'PosReceipt',
-        'PosLocation',
-        'LoyaltyProgram',
-        'LoyaltyMember',
+        'Document',
+        'ExpenseCategory',
         'FraudAlert',
-        'TaxRate',
-        'WithholdingCertificate',
-        'Batch',
+        'Invoice',
+        'Location',
+        'LoyaltyMember',
+        'LoyaltyProgram',
+        'LoyaltyReward',
+        'Modifier',
+        'ModifierGroup',
+        'Partner',
+        'Payment',
+        'PaymentMethod',
+        'PaymentRepository',
+        'PosLocation',
+        'PosReceipt',
+        'PosTerminal',
+        'PricingRule',
+        'Product',
+        'ProductVariant',
+        'Service',
+        'ServiceCatalogItem',
         'StockLevel',
         'StockMovement',
+        'TaxConfiguration',
+        'TaxRate',
+        'Voucher',
+        'VoucherLedger',
+        'WithholdingCertificate',
+        'WorkOrder',
     ];
 
     public function test_application_tier_find_calls_are_tenant_scoped(): void
@@ -165,149 +164,5 @@ class TenantScopedFindCallsTest extends TestCase
         $root = base_path().'/';
 
         return str_starts_with($absolute, $root) ? substr($absolute, strlen($root)) : $absolute;
-    }
-}
-
-/**
- * @internal
- */
-final class FindCallVisitor extends NodeVisitorAbstract
-{
-    /** @var list<array{line: int, model: string, method: string}> */
-    public array $violations = [];
-
-    /** @var list<string> */
-    private array $guardedShortNames;
-
-    /**
-     * Variables in the current method scope known to carry a tenant/company
-     * scope filter (i.e. `$query = Model::query()->where('tenant_id', ...)`).
-     *
-     * @var array<string, true>
-     */
-    private array $scopedVariables = [];
-
-    /**
-     * @param  list<string>  $guardedModels
-     */
-    public function __construct(array $guardedModels)
-    {
-        $this->guardedShortNames = $guardedModels;
-    }
-
-    public function enterNode(Node $node): null
-    {
-        // Track `$x = $foo->where('tenant_id'|'company_id', ...)` so chained
-        // `$x->find($id)` calls inherit the scope.
-        if ($node instanceof Assign && $node->var instanceof Variable && is_string($node->var->name)) {
-            if ($this->expressionContainsTenantScope($node->expr)) {
-                $this->scopedVariables[$node->var->name] = true;
-            }
-        }
-
-        if ($node instanceof StaticCall) {
-            $this->checkStaticCall($node);
-        }
-
-        if ($node instanceof MethodCall) {
-            $this->checkMethodCall($node);
-        }
-
-        return null;
-    }
-
-    private function checkStaticCall(StaticCall $node): void
-    {
-        if (! $node->name instanceof Identifier) {
-            return;
-        }
-        $method = $node->name->toString();
-        if ($method !== 'find' && $method !== 'findOrFail') {
-            return;
-        }
-        if (! $node->class instanceof Name) {
-            return;
-        }
-        $shortName = $node->class->getLast();
-        if (! in_array($shortName, $this->guardedShortNames, true)) {
-            return;
-        }
-        $this->violations[] = [
-            'line' => $node->getStartLine(),
-            'model' => $shortName,
-            'method' => $method,
-        ];
-    }
-
-    private function checkMethodCall(MethodCall $node): void
-    {
-        if (! $node->name instanceof Identifier) {
-            return;
-        }
-        $method = $node->name->toString();
-        if ($method !== 'find' && $method !== 'findOrFail') {
-            return;
-        }
-
-        // `$scopedVar->find(...)` is OK if the variable was assigned a
-        // scoped query earlier in the method.
-        if ($node->var instanceof Variable
-            && is_string($node->var->name)
-            && isset($this->scopedVariables[$node->var->name])
-        ) {
-            return;
-        }
-
-        // `Model::query()->find(...)` chained directly: walk back through
-        // ->where() chain to detect tenant/company scoping.
-        if ($this->chainContainsTenantScope($node->var)) {
-            return;
-        }
-
-        // Try to recover the originating model class for reporting.
-        $model = $this->modelShortNameFromChain($node->var);
-        if ($model === null || ! in_array($model, $this->guardedShortNames, true)) {
-            return;
-        }
-        $this->violations[] = [
-            'line' => $node->getStartLine(),
-            'model' => $model,
-            'method' => $method,
-        ];
-    }
-
-    private function expressionContainsTenantScope(Node $expr): bool
-    {
-        return $this->chainContainsTenantScope($expr);
-    }
-
-    private function chainContainsTenantScope(Node $expr): bool
-    {
-        $cursor = $expr;
-        while ($cursor instanceof MethodCall) {
-            if ($cursor->name instanceof Identifier && $cursor->name->toString() === 'where') {
-                $first = $cursor->args[0]->value ?? null;
-                if ($first instanceof String_
-                    && in_array($first->value, ['tenant_id', 'company_id'], true)) {
-                    return true;
-                }
-            }
-            $cursor = $cursor->var;
-        }
-
-        return false;
-    }
-
-    private function modelShortNameFromChain(Node $expr): ?string
-    {
-        $cursor = $expr;
-        while ($cursor instanceof MethodCall) {
-            $cursor = $cursor->var;
-        }
-        if ($cursor instanceof StaticCall && $cursor->class instanceof Name) {
-            return $cursor->class->getLast();
-        }
-
-        return null;
     }
 }
