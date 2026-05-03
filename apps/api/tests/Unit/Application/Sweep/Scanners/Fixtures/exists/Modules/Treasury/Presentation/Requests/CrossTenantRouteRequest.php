@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Fixtures\Sweep\Modules\Treasury\Presentation\Requests;
 
+use App\Shared\Architecture\CrossTenantRoute;
+
 /**
  * Scanner fixture (skip case). #[CrossTenantRoute] on the rules() method
  * means the scanner must skip the bare-exists rule inside.
  *
- * The attribute import path is intentionally bogus — the visitor matches
- * on attribute short-name, not on a resolvable class. We don't even need
- * `use App\Shared\Architecture\CrossTenantRoute;` for the visitor to
- * recognize it.
+ * The visitor matches on attribute short-name, but we resolve the import
+ * to the production class so PHPStan doesn't flag attribute.notFound.
  */
 class CrossTenantRouteRequest
 {
     /**
-     * @return array<string, mixed>
+     * @return array<string, list<string>>
      */
-    #[\CrossTenantRoute(reason: 'super-admin route, intentional cross-tenant lookup')]
+    #[CrossTenantRoute(reason: 'super-admin route, intentional cross-tenant lookup')]
     public function rules(): array
     {
         return [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Fixtures\Sweep\Modules\Document\Presentation\Controllers;
 
 use App\Modules\Document\Domain\Document;
+use App\Shared\Architecture\CrossTenantRoute;
 
 /**
  * Scanner fixture (skip case). #[CrossTenantRoute] annotation must cause
@@ -12,7 +13,7 @@ use App\Modules\Document\Domain\Document;
  */
 class CrossTenantController
 {
-    #[\CrossTenantRoute(reason: 'super-admin lookup, no tenant filter applies')]
+    #[CrossTenantRoute(reason: 'super-admin lookup, no tenant filter applies')]
     public function show(int $id): mixed
     {
         return Document::findOrFail($id);
