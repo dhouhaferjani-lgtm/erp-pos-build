@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Architecture;
 
 use FilesystemIterator;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\ParentConnectingVisitor;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\Group;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -12,87 +15,99 @@ use SplFileInfo;
 use Tests\TestCase;
 
 /**
- * Architecture Gate A: bare `exists:` validator strings in Presentation tier.
+ * Architecture Gate A: bare `exists:` validator rules in the Presentation tier.
  *
- * Code is the source of truth (master plan Section 3): if the gate fails, the
- * code is unsafe regardless of YAML status. Skipped today via the
- * `sweep-progress` PHPUnit group while the tactical sweep is in flight; the
- * group exclusion in phpunit.xml lets default `php artisan test` runs stay
- * green. Once Sections 7-15 land per-cluster fixes, Section 17 strips the
- * `@group sweep-progress` annotation and this gate becomes a hard CI block.
+ * Code is the source of truth (master plan Section 3): if the gate flags a
+ * call site, the validator can satisfy a foreign-key check with a row from a
+ * different tenant. Two surface forms are scanned:
  *
- * The scanner here is intentionally minimal — Section 5 refactors it into
- * `app/Application/Sweep/Scanners/PhpPresentationExistsScanner.php` with
- * proper fixture coverage and inventory-row emission.
+ *   1. Inline string rule:  'exists:payment_methods,id'
+ *   2. Builder rule:        Rule::exists('payment_methods', 'id')
+ *
+ * The builder form is flagged only when the wrapping `->where(...)` chain
+ * lacks a `where('tenant_id', ...)` or `where('company_id', ...)` filter.
+ * Already-scoped builder rules pass.
+ *
+ * A class or method whose docblock carries the strict
+ * `@cross-tenant-by-design` 4-field annotation (Reason / Audit-id /
+ * Approved-by / Expires) is skipped. Expired annotations are NOT skipped —
+ * they force periodic re-justification per master plan Section 9.
+ *
+ * Marked `@group sweep-progress`; default-excluded via phpunit.xml.
+ * Section 17 strips the group annotation and the assertion swaps from
+ * `>= 0` (informational) to `=== []` (hard gate).
  */
 #[Group('sweep-progress')]
 class TenantScopedExistsRulesTest extends TestCase
 {
     /**
-     * Tables whose access must always be tenant-or-company-scoped.
-     * Matches the cluster catalogue in master-plan Section 6.
+     * Tables whose validation must be tenant-or-company-scoped.
+     * Drawn from the cluster catalogue in master plan Section 6, plus the
+     * additions Codex 2026-05-03 review identified as missing.
      *
      * @var list<string>
      */
     private const GUARDED_TABLES = [
-        'payment_methods',
-        'payment_repositories',
-        'partners',
-        'contacts',
-        'documents',
+        'accounts',
+        'batches',
         'cart_items',
         'carts',
-        'products',
         'categories',
+        'contacts',
+        'coupons',
+        'documents',
+        'expense_categories',
+        'fraud_alerts',
+        'invoices',
+        'locations',
+        'loyalty_members',
+        'loyalty_programs',
+        'loyalty_rewards',
         'modifier_groups',
         'modifiers',
-        'product_variants',
-        'service_catalog_items',
-        'work_orders',
-        'invoices',
-        'coupons',
-        'vouchers',
-        'voucher_ledger',
-        'pricing_rules',
-        'pos_terminals',
-        'pos_receipts',
+        'partners',
+        'payment_methods',
+        'payment_repositories',
+        'payments',
         'pos_locations',
-        'loyalty_programs',
-        'loyalty_members',
-        'fraud_alerts',
-        'tax_rates',
-        'withholding_certificates',
-        'batches',
+        'pos_receipts',
+        'pos_terminals',
+        'pricing_rules',
+        'product_variants',
+        'products',
+        'service_catalog_items',
+        'services',
         'stock_levels',
         'stock_movements',
+        'tax_configurations',
+        'tax_rates',
+        'voucher_ledger',
+        'vouchers',
+        'withholding_certificates',
+        'work_orders',
     ];
 
-    public function test_presentation_tier_has_no_bare_exists_rules_for_guarded_tables(): void
+    public function test_presentation_tier_has_no_unscoped_exists_rules_for_guarded_tables(): void
     {
         $violations = $this->scanPresentation();
 
-        // Informational baseline while the sweep is in flight. Section 17
-        // swaps the assertion below for `assertEmpty($violations)` once the
-        // tactical sweep completes.
         if ($violations !== []) {
             fwrite(
                 STDERR,
                 sprintf(
-                    "\n[sweep-progress] Gate A — bare exists: rules in Presentation tier: %d\n",
+                    "\n[sweep-progress] Gate A — unscoped exists rules in Presentation tier: %d\n",
                     count($violations),
                 ),
             );
         }
 
-        // Master plan Section 17 step 17.5: this assertion swaps from
-        // `>= 0` (informational) to `=== []` (hard gate) when the sweep
-        // completes. Until then the gate runs only when explicitly
-        // enabled via `--group=sweep-progress`.
+        // Master plan Section 17 step 17.1 swaps the assertion below from
+        // `>= 0` (informational) to `=== []` (hard gate).
         $this->assertGreaterThanOrEqual(0, count($violations));
     }
 
     /**
-     * @return list<array{file: string, line: int, table: string, snippet: string}>
+     * @return list<array{file: string, line: int, table: string, form: string}>
      */
     private function scanPresentation(): array
     {
@@ -101,13 +116,12 @@ class TenantScopedExistsRulesTest extends TestCase
             return [];
         }
 
-        $violations = [];
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS),
         );
 
-        $guardedAlternation = implode('|', array_map('preg_quote', self::GUARDED_TABLES));
-        $pattern = '/[\'"]exists:('.$guardedAlternation.')(?:,[a-zA-Z_]+)?[\'"]/';
+        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+        $violations = [];
 
         foreach ($iterator as $entry) {
             if (! $entry instanceof SplFileInfo || $entry->getExtension() !== 'php') {
@@ -118,22 +132,24 @@ class TenantScopedExistsRulesTest extends TestCase
                 continue;
             }
 
-            $contents = (string) file_get_contents($path);
-            if (preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) === false) {
-                continue;
-            }
-            if (! isset($matches[0]) || $matches[0] === []) {
+            $code = (string) file_get_contents($path);
+            $stmts = $parser->parse($code);
+            if ($stmts === null) {
                 continue;
             }
 
-            foreach ($matches[0] as $i => $match) {
-                $offset = $match[1];
-                $lineNumber = substr_count($contents, "\n", 0, $offset) + 1;
+            $traverser = new NodeTraverser;
+            $traverser->addVisitor(new ParentConnectingVisitor);
+            $visitor = new ExistsRuleVisitor(self::GUARDED_TABLES);
+            $traverser->addVisitor($visitor);
+            $traverser->traverse($stmts);
+
+            foreach ($visitor->violations as $v) {
                 $violations[] = [
                     'file' => $this->relativePath($path),
-                    'line' => $lineNumber,
-                    'table' => $matches[1][$i][0],
-                    'snippet' => $match[0],
+                    'line' => $v['line'],
+                    'table' => $v['table'],
+                    'form' => $v['form'],
                 ];
             }
         }
