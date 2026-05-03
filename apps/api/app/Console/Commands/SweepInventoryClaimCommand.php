@@ -298,15 +298,30 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
             $this->callsitesInCluster($doc, $clusterId),
             static fn (array $cs): bool => $cs['status'] === 'pending',
         );
+        $pendingCallsiteIds = array_values(array_map(
+            static fn (array $cs): string => $cs['id'],
+            $pendingCallsites,
+        ));
+
+        // Audit-trail invariant: every state transition must be discoverable
+        // via callsite history. A cluster-only mutation (status pending →
+        // claimed with zero pending callsites) would flip the cluster's
+        // status without any history event, leaving sweep:inventory:verify-
+        // history blind to the change. Refuse explicitly.
+        if ($pendingCallsiteIds === []) {
+            $this->error(
+                "Cluster {$clusterId} is pending but has no pending callsites to claim. ".
+                'Use --callsite-id on individual callsites, or transition the cluster '.
+                'via sweep:inventory:block / defer if work cannot proceed.',
+            );
+
+            return self::FAILURE;
+        }
 
         // ── Perform mutation ──────────────────────────────────────────────────
         $claimNote = $overrideNote ?? "cluster claimed by {$actor} via sweep:inventory:claim";
         $claimedAt = gmdate('Y-m-d\TH:i:s\Z');
         $context = $this->makeMutationContext($actor);
-        $pendingCallsiteIds = array_values(array_map(
-            static fn (array $cs): string => $cs['id'],
-            $pendingCallsites,
-        ));
 
         try {
             $service->mutate(
@@ -436,15 +451,16 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
 
     /**
      * Parse the first `Verdict: <X>` line from the review file contents.
-     * Returns null if no such line is found.
+     * Tolerant of whitespace variants (`Verdict:\tX`, `Verdict:  X`); rejects
+     * indented/quoted lines so a `> Verdict: …` block-quote of a prior round's
+     * sub-review doesn't get picked up by accident. Returns null if no such
+     * line is found.
      */
     private function parseVerdict(string $contents): ?string
     {
         foreach (explode("\n", $contents) as $line) {
-            if (str_starts_with($line, 'Verdict: ')) {
-                $value = trim(substr($line, strlen('Verdict: ')));
-
-                return $value !== '' ? $value : null;
+            if (preg_match('/^Verdict:\s+(\S.*)$/', $line, $matches) === 1) {
+                return trim($matches[1]);
             }
         }
 
@@ -454,7 +470,8 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
     /**
      * Verify that the review file contains a `Commit reviewed: <SHA>` line
      * whose SHA matches at least one fix_commit in the reference cluster's
-     * callsites.
+     * callsites. Accepts either a full 40-char SHA or a git-conventional short
+     * SHA (>= 7 chars) that uniquely prefixes a stored fix_commit.
      *
      * Returns a non-null error string on failure.
      */
@@ -464,11 +481,10 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
         string $reviewFileContents,
         string $reviewFilePath,
     ): ?string {
-        // Parse the commit SHA from the review file.
         $reviewedCommit = null;
         foreach (explode("\n", $reviewFileContents) as $line) {
-            if (str_starts_with($line, 'Commit reviewed: ')) {
-                $reviewedCommit = trim(substr($line, strlen('Commit reviewed: ')));
+            if (preg_match('/^Commit reviewed:\s+(\S.*)$/', $line, $matches) === 1) {
+                $reviewedCommit = trim($matches[1]);
                 break;
             }
         }
@@ -486,12 +502,45 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
             }
         }
 
-        if (! in_array($reviewedCommit, $fixCommits, true)) {
-            return 'Hard gate: commit linkage check failed — review file references commit '.
-                "'{$reviewedCommit}' but no callsite in reference cluster '{$refClusterId}' ".
-                "has that fix_commit. Review file: {$reviewFilePath}";
+        if ($this->reviewedCommitMatches($reviewedCommit, $fixCommits)) {
+            return null;
         }
 
-        return null;
+        return 'Hard gate: commit linkage check failed — review file references commit '.
+            "'{$reviewedCommit}' but no callsite in reference cluster '{$refClusterId}' ".
+            'has that fix_commit (full 40-char or short >=7-char SHA accepted). '.
+            "Review file: {$reviewFilePath}";
+    }
+
+    /**
+     * Match the reviewed commit against the list of stored fix_commit SHAs.
+     * Exact match wins. Otherwise, if the reviewed commit is a git-style short
+     * SHA (>=7 chars, all-lowercase hex), accept it when it prefix-matches
+     * exactly one stored fix_commit (an ambiguous prefix is treated as no
+     * match — the reviewer should pin the full SHA).
+     *
+     * @param  list<string>  $fixCommits
+     */
+    private function reviewedCommitMatches(string $reviewed, array $fixCommits): bool
+    {
+        if (in_array($reviewed, $fixCommits, true)) {
+            return true;
+        }
+
+        $isShortSha = strlen($reviewed) >= 7
+            && strlen($reviewed) < 40
+            && preg_match('/^[0-9a-f]+$/', $reviewed) === 1;
+        if (! $isShortSha) {
+            return false;
+        }
+
+        $matches = 0;
+        foreach ($fixCommits as $full) {
+            if (str_starts_with($full, $reviewed)) {
+                $matches++;
+            }
+        }
+
+        return $matches === 1;
     }
 }

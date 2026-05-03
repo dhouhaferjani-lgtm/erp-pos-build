@@ -395,4 +395,183 @@ class SweepInventoryClaimCommandTest extends TestCase
         ]);
         $this->assertNotSame(0, $exitBoth, 'Must NOT supply both --callsite-id and --cluster.');
     }
+
+    public function test_hard_gate_passes_when_verify_review_commit_linkage_with_matching_full_sha(): void
+    {
+        // Treasury fixed + review file pinning the full fix_commit SHA + linkage check ENABLED.
+        $reviewSha = 'abcdef0123456789abcdef0123456789abcdef01';
+        $reviewPath = $this->tempDir.'/treasury-review.md';
+        file_put_contents(
+            $reviewPath,
+            "# Treasury cluster Codex review\n\n"
+                ."Verdict: APPROVE\n\n"
+                ."Commit reviewed: {$reviewSha}\n",
+        );
+
+        $this->reseedInventory(function (array $doc) use ($reviewPath, $reviewSha): array {
+            return $this->fixTreasuryWithReview($doc, $reviewPath, $reviewSha, verifyLinkage: true);
+        });
+
+        $exit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.document',
+            '--actor' => 'codex',
+        ]);
+
+        $this->assertSame(
+            0,
+            $exit,
+            'Hard gate must pass when verify_review_commit_linkage=true and Commit reviewed matches a Treasury fix_commit.',
+        );
+    }
+
+    public function test_hard_gate_refuses_when_commit_linkage_required_but_review_file_missing_commit_line(): void
+    {
+        // Review file has APPROVE verdict but no `Commit reviewed:` line — linkage required.
+        $reviewPath = $this->tempDir.'/treasury-review.md';
+        file_put_contents(
+            $reviewPath,
+            "# Treasury cluster Codex review\n\nVerdict: APPROVE\n",
+        );
+
+        $this->reseedInventory(function (array $doc) use ($reviewPath): array {
+            return $this->fixTreasuryWithReview(
+                $doc,
+                $reviewPath,
+                fixCommitSha: 'abcdef0123456789abcdef0123456789abcdef01',
+                verifyLinkage: true,
+            );
+        });
+
+        $exit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.document',
+            '--actor' => 'codex',
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            'Hard gate must refuse when verify_review_commit_linkage=true and `Commit reviewed:` line is absent.',
+        );
+    }
+
+    public function test_hard_gate_refuses_when_commit_linkage_sha_does_not_match_any_fix_commit(): void
+    {
+        // Review file references a SHA that doesn't match any Treasury callsite fix_commit.
+        $reviewPath = $this->tempDir.'/treasury-review.md';
+        file_put_contents(
+            $reviewPath,
+            "# Treasury cluster Codex review\n\n"
+                ."Verdict: APPROVE\n\n"
+                ."Commit reviewed: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n",
+        );
+
+        $this->reseedInventory(function (array $doc) use ($reviewPath): array {
+            return $this->fixTreasuryWithReview(
+                $doc,
+                $reviewPath,
+                fixCommitSha: 'abcdef0123456789abcdef0123456789abcdef01',
+                verifyLinkage: true,
+            );
+        });
+
+        $exit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.document',
+            '--actor' => 'codex',
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            'Hard gate must refuse when reviewed SHA matches no Treasury fix_commit.',
+        );
+    }
+
+    public function test_cluster_claim_with_no_pending_callsites_is_refused_to_preserve_audit_trail(): void
+    {
+        // Cluster status pending but its only callsite is already claimed.
+        // History is callsite-scoped per the schema, so a cluster-only mutation
+        // would leave no audit event. Refuse explicitly.
+        $this->reseedInventory(function (array $doc): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['cluster_id'] ?? null) === 'api.treasury') {
+                    $cs['status'] = 'claimed';
+                    $cs['owner'] = 'claude';
+                    $cs['claimed_at'] = '2026-05-03T00:00:00Z';
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+
+        $exit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.treasury',
+            '--actor' => 'claude',
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            'Cluster claim must refuse when no callsites are pending — otherwise the cluster status flips with no audit-trail history event.',
+        );
+
+        // Cluster status must not have changed.
+        $cluster = $this->clusterById('api.treasury');
+        $this->assertSame('pending', $cluster['status']);
+    }
+
+    /**
+     * Helper: re-seed the inventory so Treasury is fixed + review file pinned.
+     *
+     * @param  array<string, mixed>  $doc
+     * @return array<string, mixed>
+     */
+    private function fixTreasuryWithReview(
+        array $doc,
+        string $reviewPath,
+        string $fixCommitSha,
+        bool $verifyLinkage,
+    ): array {
+        /** @var list<array<string, mixed>> $clusters */
+        $clusters = $doc['clusters'];
+        foreach ($clusters as $idx => $cluster) {
+            if (($cluster['id'] ?? null) === 'api.treasury') {
+                $cluster['status'] = 'fixed';
+                $cluster['owner'] = 'claude';
+                /** @var array<string, mixed> $rg */
+                $rg = $cluster['review_gate'];
+                $rg['review_file'] = $reviewPath;
+                $rg['verify_review_commit_linkage'] = $verifyLinkage;
+                $cluster['review_gate'] = $rg;
+                $clusters[$idx] = $cluster;
+            }
+        }
+        $doc['clusters'] = $clusters;
+
+        /** @var list<array<string, mixed>> $callsites */
+        $callsites = $doc['callsites'];
+        foreach ($callsites as $idx => $cs) {
+            if (($cs['cluster_id'] ?? null) === 'api.treasury') {
+                $cs['status'] = 'fixed';
+                $cs['owner'] = 'claude';
+                $cs['fix_commit'] = $fixCommitSha;
+                $cs['regression_test'] = 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_baseline';
+                $callsites[$idx] = $cs;
+            }
+        }
+        $doc['callsites'] = $callsites;
+
+        return $doc;
+    }
 }
