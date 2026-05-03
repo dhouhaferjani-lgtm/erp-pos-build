@@ -19,6 +19,8 @@ use App\Application\Sweep\Domain\InventoryDocument;
  * {@see StableKey::fromScannerOutput()} (or "manual:<cluster>:<slug>" for
  * the {@see ManualScanner}). It survives renames/moves per the rename
  * semantics in master plan Section 4.
+ *
+ * @phpstan-import-type Callsite from InventoryDocument
  */
 final class CallsiteRow
 {
@@ -65,7 +67,7 @@ final class CallsiteRow
      * @param  string  $callsiteId  full callsite id e.g. "api.treasury.001"
      * @param  string  $generatedAt  ISO 8601 timestamp for the initial history event
      * @param  string  $note  description for the initial history event
-     * @return array<string, mixed>
+     * @return Callsite
      */
     public function toInventoryRow(string $callsiteId, string $generatedAt, string $note = 'initial detection'): array
     {

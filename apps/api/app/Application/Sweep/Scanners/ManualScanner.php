@@ -44,6 +44,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * If the stub file does not exist, the scanner returns an empty result
  * (the inventory generator always invokes all five scanners).
+ *
+ * @phpstan-type ManualEntry array<string, scalar|null>
  */
 final class ManualScanner implements Scanner
 {
@@ -91,7 +93,6 @@ final class ManualScanner implements Scanner
             );
         }
 
-        /** @var array<string, mixed> $parsed */
         $entries = $parsed['manual_callsites'] ?? [];
         if (! is_array($entries)) {
             throw new RuntimeException(
@@ -139,7 +140,7 @@ final class ManualScanner implements Scanner
      * specific fields. This runs BEFORE buildRow() so the duplicate check
      * fires before any other malformed-entry exception.
      *
-     * @param  array<string, mixed>  $entry
+     * @param  ManualEntry  $entry
      */
     private function compositeKey(array $entry, int $index): string
     {
@@ -160,7 +161,7 @@ final class ManualScanner implements Scanner
     }
 
     /**
-     * @param  array<string, mixed>  $entry
+     * @param  ManualEntry  $entry
      */
     private function buildRow(array $entry, int $index): CallsiteRow
     {

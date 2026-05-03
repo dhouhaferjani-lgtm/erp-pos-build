@@ -35,6 +35,9 @@ use Throwable;
  *     stays as-is, new row created `pending`.
  *
  * --dry-run prints the diff to stderr without persisting.
+ *
+ * @phpstan-import-type Callsite from InventoryDocument
+ * @phpstan-import-type HistoryEvent from InventoryDocument
  */
 final class SweepInventoryGenerateCommand extends Command
 {
@@ -141,17 +144,15 @@ final class SweepInventoryGenerateCommand extends Command
     {
         $existingByKey = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $existingByKey[(string) ($callsite['stable_key'] ?? '')] = $callsite;
+            $existingByKey[$callsite['stable_key']] = $callsite;
         }
         $existingByPathSymbol = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $key = $this->pathSymbolKey($callsite);
-            $existingByPathSymbol[$key] = $callsite;
+            $existingByPathSymbol[$this->pathSymbolKey($callsite)] = $callsite;
         }
         $existingByPath = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $key = (string) ($callsite['file'] ?? '');
-            $existingByPath[$key][] = $callsite;
+            $existingByPath[$callsite['file']][] = $callsite;
         }
 
         $new = 0;
@@ -171,7 +172,7 @@ final class SweepInventoryGenerateCommand extends Command
             $candidateKey = $row->relativePath.'::'.$row->symbol.'::'.($row->resource ?? '');
             if (isset($existingByPathSymbol[$candidateKey])) {
                 $needsRecheck++;
-                $matchedExistingKeys[(string) ($existingByPathSymbol[$candidateKey]['stable_key'] ?? '')] = true;
+                $matchedExistingKeys[$existingByPathSymbol[$candidateKey]['stable_key']] = true;
 
                 continue;
             }
@@ -179,7 +180,7 @@ final class SweepInventoryGenerateCommand extends Command
             // becomes stale_orphan, new row is pending. Count both.
             if (isset($existingByPath[$row->relativePath])) {
                 foreach ($existingByPath[$row->relativePath] as $existing) {
-                    $existingKey = (string) ($existing['stable_key'] ?? '');
+                    $existingKey = $existing['stable_key'];
                     if (! isset($matchedExistingKeys[$existingKey])) {
                         $matchedExistingKeys[$existingKey] = 'stale_orphan';
                         $staleOrphan++;
@@ -209,22 +210,21 @@ final class SweepInventoryGenerateCommand extends Command
     {
         $existingByKey = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $existingByKey[(string) ($callsite['stable_key'] ?? '')] = $callsite;
+            $existingByKey[$callsite['stable_key']] = $callsite;
         }
         $existingByPathSymbol = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $key = $this->pathSymbolKey($callsite);
-            $existingByPathSymbol[$key] = $callsite;
+            $existingByPathSymbol[$this->pathSymbolKey($callsite)] = $callsite;
         }
         $existingByPath = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $existingByPath[(string) ($callsite['file'] ?? '')][] = $callsite;
+            $existingByPath[$callsite['file']][] = $callsite;
         }
 
         $generatedAt = gmdate('Y-m-d\TH:i:s\Z');
         $mergedById = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $mergedById[(string) ($callsite['id'] ?? '')] = $callsite;
+            $mergedById[$callsite['id']] = $callsite;
         }
 
         // Per-cluster id counter, seeded from existing rows.
@@ -240,7 +240,7 @@ final class SweepInventoryGenerateCommand extends Command
                 $existing = $existingByKey[$row->stableKey];
                 $existing['line'] = $row->line;
                 $existing['stale_state'] = 'active';
-                $mergedById[(string) ($existing['id'] ?? '')] = $existing;
+                $mergedById[$existing['id']] = $existing;
                 $touchedExistingKeys[$row->stableKey] = true;
 
                 continue;
@@ -251,27 +251,19 @@ final class SweepInventoryGenerateCommand extends Command
             $candidateKey = $row->relativePath.'::'.$row->symbol.'::'.($row->resource ?? '');
             if (isset($existingByPathSymbol[$candidateKey])) {
                 $existing = $existingByPathSymbol[$candidateKey];
+                $previousStatus = $existing['status'];
                 $existing['stable_key'] = $row->stableKey;
                 $existing['status'] = 'needs_recheck';
                 $existing['line'] = $row->line;
-                $existing['history'][] = [
-                    'at' => $generatedAt,
-                    'actor' => null,
-                    'action' => 'stale_mark',
-                    'command' => null,
-                    'previous_yaml_sha256' => null,
-                    'new_yaml_sha256' => null,
-                    'target_ids' => [(string) ($existing['id'] ?? '')],
-                    'from_status' => (string) $existing['status'],
-                    'to_status' => 'needs_recheck',
-                    'commit' => null,
-                    'test' => null,
-                    'review_file' => null,
-                    'review_commit' => null,
-                    'note' => 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.',
-                ];
-                $mergedById[(string) ($existing['id'] ?? '')] = $existing;
-                $touchedExistingKeys[(string) $existing['stable_key']] = true;
+                $existing['history'][] = $this->makeStaleMarkEvent(
+                    generatedAt: $generatedAt,
+                    targetId: $existing['id'],
+                    fromStatus: $previousStatus,
+                    toStatus: 'needs_recheck',
+                    note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.',
+                );
+                $mergedById[$existing['id']] = $existing;
+                $touchedExistingKeys[$existing['stable_key']] = true;
 
                 continue;
             }
@@ -280,28 +272,19 @@ final class SweepInventoryGenerateCommand extends Command
             // that path go stale_orphan; new row is created pending.
             if (isset($existingByPath[$row->relativePath])) {
                 foreach ($existingByPath[$row->relativePath] as $existing) {
-                    $eKey = (string) ($existing['stable_key'] ?? '');
+                    $eKey = $existing['stable_key'];
                     if (isset($touchedExistingKeys[$eKey])) {
                         continue;
                     }
                     $existing['stale_state'] = 'stale_orphan';
-                    $existing['history'][] = [
-                        'at' => $generatedAt,
-                        'actor' => null,
-                        'action' => 'stale_mark',
-                        'command' => null,
-                        'previous_yaml_sha256' => null,
-                        'new_yaml_sha256' => null,
-                        'target_ids' => [(string) ($existing['id'] ?? '')],
-                        'from_status' => (string) $existing['status'],
-                        'to_status' => (string) $existing['status'],
-                        'commit' => null,
-                        'test' => null,
-                        'review_file' => null,
-                        'review_commit' => null,
-                        'note' => 'Symbol moved or renamed; new row created. See sibling pending row at same path.',
-                    ];
-                    $mergedById[(string) ($existing['id'] ?? '')] = $existing;
+                    $existing['history'][] = $this->makeStaleMarkEvent(
+                        generatedAt: $generatedAt,
+                        targetId: $existing['id'],
+                        fromStatus: $existing['status'],
+                        toStatus: $existing['status'],
+                        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.',
+                    );
+                    $mergedById[$existing['id']] = $existing;
                     $touchedExistingKeys[$eKey] = true;
                 }
             }
@@ -317,7 +300,7 @@ final class SweepInventoryGenerateCommand extends Command
         $merged = [];
         $seenIds = [];
         foreach ($beforeDoc->callsites() as $callsite) {
-            $id = (string) ($callsite['id'] ?? '');
+            $id = $callsite['id'];
             if (! isset($mergedById[$id])) {
                 continue;
             }
@@ -337,14 +320,45 @@ final class SweepInventoryGenerateCommand extends Command
     }
 
     /**
-     * @param  list<array<string, mixed>>  $existing
+     * Build a `stale_mark` history event with the canonical defaults the
+     * generate command appends when a stable_key changes or a symbol moves.
+     *
+     * @return HistoryEvent
+     */
+    private function makeStaleMarkEvent(
+        string $generatedAt,
+        string $targetId,
+        string $fromStatus,
+        string $toStatus,
+        string $note,
+    ): array {
+        return [
+            'at' => $generatedAt,
+            'actor' => null,
+            'action' => 'stale_mark',
+            'command' => null,
+            'previous_yaml_sha256' => null,
+            'new_yaml_sha256' => null,
+            'target_ids' => [$targetId],
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'commit' => null,
+            'test' => null,
+            'review_file' => null,
+            'review_commit' => null,
+            'note' => $note,
+        ];
+    }
+
+    /**
+     * @param  list<Callsite>  $existing
      * @return array<string, int>
      */
     private function initClusterCounters(array $existing): array
     {
         $counters = [];
         foreach ($existing as $callsite) {
-            $id = (string) ($callsite['id'] ?? '');
+            $id = $callsite['id'];
             if (preg_match('/^([a-z0-9.-]+)\.(\d+)$/', $id, $match) !== 1) {
                 continue;
             }
@@ -369,13 +383,13 @@ final class SweepInventoryGenerateCommand extends Command
     }
 
     /**
-     * @param  array<string, mixed>  $callsite
+     * @param  Callsite  $callsite
      */
     private function pathSymbolKey(array $callsite): string
     {
-        return (string) ($callsite['file'] ?? '').'::'
-            .(string) ($callsite['symbol'] ?? '').'::'
-            .(string) ($callsite['resource'] ?? '');
+        return $callsite['file'].'::'
+            .$callsite['symbol'].'::'
+            .($callsite['resource'] ?? '');
     }
 
     /**

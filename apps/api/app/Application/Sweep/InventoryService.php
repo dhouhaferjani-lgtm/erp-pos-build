@@ -49,6 +49,10 @@ use Throwable;
  * tempfile-write and atomic rename to verify the original file stays
  * byte-for-byte unchanged and the tempfile is cleaned up. Production code
  * MUST NOT subclass this — the subclass exists only in test scope.
+ *
+ * @phpstan-import-type Callsite from InventoryDocument
+ * @phpstan-import-type DocumentData from InventoryDocument
+ * @phpstan-import-type HistoryEvent from InventoryDocument
  */
 class InventoryService
 {
@@ -94,9 +98,7 @@ class InventoryService
                 throw new RuntimeException('Failed to read inventory file inside lock.');
             }
             $beforeArray = $this->parseYaml($beforeContents);
-            /** @var array<string, mixed> $beforeMetadata */
-            $beforeMetadata = $beforeArray['metadata'];
-            $storedHash = (string) ($beforeMetadata['yaml_sha256'] ?? '');
+            $storedHash = $beforeArray['metadata']['yaml_sha256'];
             $recomputedHash = $this->computeHashOfArray($beforeArray);
 
             if ($storedHash !== $recomputedHash) {
@@ -191,28 +193,26 @@ class InventoryService
         $count = 0;
 
         foreach ($afterCallsites as $index => $callsite) {
-            $id = (string) ($callsite['id'] ?? '');
+            $id = $callsite['id'];
             $beforeLen = $beforeCounts[$id] ?? 0;
-            /** @var list<array<string, mixed>> $history */
-            $history = $callsite['history'] ?? [];
+            $history = $callsite['history'];
             $afterLen = count($history);
             if ($afterLen <= $beforeLen) {
                 continue;
             }
 
             for ($i = $beforeLen; $i < $afterLen; $i++) {
-                /** @var array<string, mixed> $event */
                 $event = $history[$i];
-                if (($event['actor'] ?? null) === null) {
+                if ($event['actor'] === null) {
                     $event['actor'] = $context->actor;
                 }
-                if (($event['action'] ?? null) === null) {
+                if ($event['action'] === null) {
                     $event['action'] = $context->action;
                 }
-                if (($event['command'] ?? null) === null) {
+                if ($event['command'] === null) {
                     $event['command'] = $context->command;
                 }
-                if (($event['commit'] ?? null) === null) {
+                if ($event['commit'] === null) {
                     $event['commit'] = $context->gitCommit;
                 }
                 $history[$i] = $event;
@@ -238,16 +238,14 @@ class InventoryService
         $afterCallsites = $afterDoc->callsites();
 
         foreach ($afterCallsites as $index => $callsite) {
-            $id = (string) ($callsite['id'] ?? '');
+            $id = $callsite['id'];
             $beforeLen = $beforeCounts[$id] ?? 0;
-            /** @var list<array<string, mixed>> $history */
-            $history = $callsite['history'] ?? [];
+            $history = $callsite['history'];
             $afterLen = count($history);
             if ($afterLen <= $beforeLen) {
                 continue;
             }
             for ($i = $beforeLen; $i < $afterLen; $i++) {
-                /** @var array<string, mixed> $event */
                 $event = $history[$i];
                 $event['previous_yaml_sha256'] = $previousHash;
                 $event['new_yaml_sha256'] = $newHash;
@@ -267,10 +265,7 @@ class InventoryService
     {
         $out = [];
         foreach ($doc->callsites() as $callsite) {
-            $id = (string) ($callsite['id'] ?? '');
-            /** @var list<array<string, mixed>> $history */
-            $history = $callsite['history'] ?? [];
-            $out[$id] = count($history);
+            $out[$callsite['id']] = count($callsite['history']);
         }
 
         return $out;
@@ -365,7 +360,7 @@ class InventoryService
     }
 
     /**
-     * @return array<string, mixed>
+     * @return DocumentData
      */
     private function parseYaml(string $contents): array
     {
@@ -373,13 +368,13 @@ class InventoryService
         if (! is_array($parsed)) {
             throw new RuntimeException('Inventory YAML must parse to an associative array.');
         }
-        /** @var array<string, mixed> $parsed */
+        /** @var DocumentData $parsed */
 
         return $parsed;
     }
 
     /**
-     * @param  array<string, mixed>  $document
+     * @param  DocumentData  $document
      */
     private function dumpYaml(array $document): string
     {
@@ -408,7 +403,7 @@ class InventoryService
      * The same algorithm is used at write-time (to fill metadata.yaml_sha256)
      * and at load-time (to verify the on-disk hash matches the content).
      *
-     * @param  array<string, mixed>  $document
+     * @param  DocumentData  $document
      */
     private function computeHashOfArray(array $document): string
     {
@@ -418,28 +413,19 @@ class InventoryService
     /**
      * Returns the document with self-referential fields zeroed for hashing.
      *
-     * @param  array<string, mixed>  $document
-     * @return array<string, mixed>
+     * @param  DocumentData  $document
+     * @return DocumentData
      */
     private function canonicalForHashing(array $document): array
     {
-        /** @var array<string, mixed> $metadata */
-        $metadata = $document['metadata'];
-        $metadata['yaml_sha256'] = self::HASH_ZERO;
-        $document['metadata'] = $metadata;
+        $document['metadata']['yaml_sha256'] = self::HASH_ZERO;
 
-        /** @var list<array<string, mixed>> $callsites */
-        $callsites = $document['callsites'] ?? [];
+        $callsites = $document['callsites'];
         foreach ($callsites as $cIdx => $callsite) {
-            /** @var list<array<string, mixed>> $history */
-            $history = $callsite['history'] ?? [];
+            $history = $callsite['history'];
             foreach ($history as $hIdx => $event) {
-                if (array_key_exists('previous_yaml_sha256', $event)) {
-                    $event['previous_yaml_sha256'] = null;
-                }
-                if (array_key_exists('new_yaml_sha256', $event)) {
-                    $event['new_yaml_sha256'] = null;
-                }
+                $event['previous_yaml_sha256'] = null;
+                $event['new_yaml_sha256'] = null;
                 $history[$hIdx] = $event;
             }
             $callsite['history'] = $history;

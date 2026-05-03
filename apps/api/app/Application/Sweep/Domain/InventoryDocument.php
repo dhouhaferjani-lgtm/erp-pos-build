@@ -18,14 +18,125 @@ use InvalidArgumentException;
  * The document is intentionally kept thin (a typed array view) — it does not
  * understand the schema beyond the locator helpers below. JSON Schema
  * validation is the InventoryService's responsibility.
+ *
+ * Codex Phase 1 review (cross-cutting #3): the `array<string, mixed>` shapes
+ * that previously dominated this file have been replaced with `@phpstan-type`
+ * aliases that pin the well-known YAML keys. Keys whose value is a nested
+ * map (review block, history event payload …) carry their own typed
+ * sub-shapes. Production callers thereby get PHPStan visibility into typos
+ * and missing-field bugs.
+ *
+ * @phpstan-type HistoryEvent array{
+ *     at: string,
+ *     actor: string|null,
+ *     action: string|null,
+ *     command: string|null,
+ *     previous_yaml_sha256: string|null,
+ *     new_yaml_sha256: string|null,
+ *     target_ids: list<string>,
+ *     from_status: string|null,
+ *     to_status: string|null,
+ *     commit: string|null,
+ *     test: string|null,
+ *     review_file: string|null,
+ *     review_commit: string|null,
+ *     note: string|null,
+ * }
+ * @phpstan-type ReviewBlock array{
+ *     reviewer: string|null,
+ *     verdict: string|null,
+ *     reviewed_at: string|null,
+ *     review_file: string|null,
+ *     review_commit: string|null,
+ * }
+ * @phpstan-type Callsite array{
+ *     id: string,
+ *     stable_key: string,
+ *     surface: string,
+ *     cluster_id: string,
+ *     scanner: string,
+ *     file: string,
+ *     line: int|null,
+ *     symbol: string,
+ *     pattern_type: string,
+ *     resource: string|null,
+ *     expected_scope: string,
+ *     expected_fix: string|null,
+ *     severity: string,
+ *     fiscal_path: bool,
+ *     cross_module: bool,
+ *     stale_state: string,
+ *     status: string,
+ *     owner: string|null,
+ *     claimed_at: string|null,
+ *     review: ReviewBlock,
+ *     fix_commit: string|null,
+ *     regression_test: string|null,
+ *     blocked_reason: string|null,
+ *     history: list<HistoryEvent>,
+ * }
+ * @phpstan-type ReviewGate array{
+ *     required: bool,
+ *     reviewer_must_differ_from_owner: bool,
+ *     review_file: string,
+ *     accepted_verdicts: list<string>,
+ *     verify_review_commit_linkage: bool,
+ * }
+ * @phpstan-type Cluster array{
+ *     id: string,
+ *     display_name: string,
+ *     surface: string,
+ *     owner: string|null,
+ *     required_owner: string|null,
+ *     status: string,
+ *     blocked_by: list<string>,
+ *     blocked_by_external: string|null,
+ *     blocked_reason: string|null,
+ *     blocks: list<string>,
+ *     is_reference: bool,
+ *     expected_callsite_count: int|null,
+ *     test_file: string,
+ *     review_gate: ReviewGate,
+ * }
+ * @phpstan-type Metadata array{
+ *     schema_version: string,
+ *     spec_version: string,
+ *     spec_path: string,
+ *     branch: string,
+ *     generated_at: string,
+ *     generated_by: string,
+ *     schema_sha256: string,
+ *     yaml_sha256: string,
+ * }
+ * @phpstan-type AgentEntry array{
+ *     role: string,
+ *     can_claim: list<string>,
+ *     can_review: list<string>,
+ * }
+ * @phpstan-type ProgressBlock array{
+ *     total_callsites: int,
+ *     total_clusters: int,
+ *     by_status: array<string, int>,
+ *     by_surface: array<string, array{total: int, fixed: int}>,
+ *     by_owner: array<string, array{claimed: int, fixed: int}|int>,
+ *     drift: array{yaml_says_fixed_code_unsafe: int, code_safe_yaml_pending: int},
+ * }
+ * @phpstan-type DocumentData array{
+ *     metadata: Metadata,
+ *     agents: array<string, AgentEntry>,
+ *     statuses_enum: list<string>,
+ *     clusters: list<Cluster>,
+ *     callsites: list<Callsite>,
+ *     progress: ProgressBlock,
+ * }
  */
 final class InventoryDocument
 {
-    /** @var array<string, mixed> */
+    /** @var DocumentData */
     private array $data;
 
     /**
-     * @param  array<string, mixed>  $data
+     * @param  DocumentData  $data
      */
     public function __construct(array $data)
     {
@@ -33,7 +144,7 @@ final class InventoryDocument
     }
 
     /**
-     * @return array<string, mixed>
+     * @return DocumentData
      */
     public function toArray(): array
     {
@@ -42,40 +153,28 @@ final class InventoryDocument
 
     public function schemaVersion(): string
     {
-        /** @var array<string, mixed> $metadata */
-        $metadata = $this->data['metadata'];
-
-        return (string) ($metadata['schema_version'] ?? '');
+        return $this->data['metadata']['schema_version'];
     }
 
     public function yamlSha256(): string
     {
-        /** @var array<string, mixed> $metadata */
-        $metadata = $this->data['metadata'];
-
-        return (string) ($metadata['yaml_sha256'] ?? '');
+        return $this->data['metadata']['yaml_sha256'];
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return list<Cluster>
      */
     public function clusters(): array
     {
-        /** @var list<array<string, mixed>> $clusters */
-        $clusters = $this->data['clusters'] ?? [];
-
-        return $clusters;
+        return $this->data['clusters'];
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return list<Callsite>
      */
     public function callsites(): array
     {
-        /** @var list<array<string, mixed>> $callsites */
-        $callsites = $this->data['callsites'] ?? [];
-
-        return $callsites;
+        return $this->data['callsites'];
     }
 
     /**
@@ -84,23 +183,22 @@ final class InventoryDocument
      * raw associative array and must return the updated array (it MUST keep
      * the `id` field; modifying `id` is rejected).
      *
-     * @param  callable(array<string, mixed>): array<string, mixed>  $mutator
+     * @param  callable(Callsite): Callsite  $mutator
      */
     public function withCallsiteUpdate(string $callsiteId, callable $mutator): self
     {
         $found = false;
         $next = $this->data;
-        /** @var list<array<string, mixed>> $callsites */
-        $callsites = $next['callsites'] ?? [];
+        $callsites = $next['callsites'];
         foreach ($callsites as $index => $callsite) {
-            if (($callsite['id'] ?? null) !== $callsiteId) {
+            if ($callsite['id'] !== $callsiteId) {
                 continue;
             }
             $found = true;
             $updated = $mutator($callsite);
-            if (($updated['id'] ?? null) !== $callsiteId) {
+            if ($updated['id'] !== $callsiteId) {
                 throw new InvalidArgumentException(
-                    "Mutator changed callsite id for {$callsiteId} (found '".(string) ($updated['id'] ?? '')."'); ".
+                    "Mutator changed callsite id for {$callsiteId} (found '{$updated['id']}'); ".
                     'callsite ids are immutable.',
                 );
             }
@@ -119,7 +217,7 @@ final class InventoryDocument
      * Returns a fresh document with the entire callsites list replaced.
      * Used by SweepInventoryGenerateCommand when merging scanner output.
      *
-     * @param  list<array<string, mixed>>  $callsites
+     * @param  list<Callsite>  $callsites
      */
     public function withCallsites(array $callsites): self
     {
@@ -136,10 +234,7 @@ final class InventoryDocument
     public function withYamlSha256(string $sha256): self
     {
         $next = $this->data;
-        /** @var array<string, mixed> $metadata */
-        $metadata = $next['metadata'];
-        $metadata['yaml_sha256'] = $sha256;
-        $next['metadata'] = $metadata;
+        $next['metadata']['yaml_sha256'] = $sha256;
 
         return new self($next);
     }
@@ -151,10 +246,7 @@ final class InventoryDocument
     public function withGeneratedAt(string $isoTimestamp): self
     {
         $next = $this->data;
-        /** @var array<string, mixed> $metadata */
-        $metadata = $next['metadata'];
-        $metadata['generated_at'] = $isoTimestamp;
-        $next['metadata'] = $metadata;
+        $next['metadata']['generated_at'] = $isoTimestamp;
 
         return new self($next);
     }
