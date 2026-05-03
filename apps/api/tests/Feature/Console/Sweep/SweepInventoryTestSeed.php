@@ -46,17 +46,29 @@ trait SweepInventoryTestSeed
             unlink($this->inventoryPath);
         }
         if (is_dir($this->tempDir)) {
-            $entries = scandir($this->tempDir);
-            if ($entries !== false) {
-                foreach ($entries as $entry) {
-                    if ($entry === '.' || $entry === '..') {
-                        continue;
-                    }
-                    @unlink($this->tempDir.'/'.$entry);
-                }
-            }
-            rmdir($this->tempDir);
+            $this->removeDirectoryRecursive($this->tempDir);
         }
+    }
+
+    private function removeDirectoryRecursive(string $path): void
+    {
+        $entries = scandir($path);
+        if ($entries === false) {
+            return;
+        }
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $full = $path.'/'.$entry;
+            if (is_dir($full) && ! is_link($full)) {
+                $this->removeDirectoryRecursive($full);
+
+                continue;
+            }
+            @unlink($full);
+        }
+        @rmdir($path);
     }
 
     /**
