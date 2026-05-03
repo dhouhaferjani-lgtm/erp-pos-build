@@ -32,6 +32,8 @@ use Throwable;
  *      mutator's view of the world is stale.
  *
  * Uses a per-test temp directory; never mutates the real seed inventory.
+ *
+ * @phpstan-import-type HistoryEvent from InventoryDocument
  */
 class InventoryServiceTest extends TestCase
 {
@@ -654,7 +656,7 @@ class InventoryServiceTest extends TestCase
 
     /**
      * @param  list<string>  $targetIds
-     * @return array<string, mixed>
+     * @return HistoryEvent
      */
     private function makeHistoryStub(
         ?string $actor,

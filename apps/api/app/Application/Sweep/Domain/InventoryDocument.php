@@ -19,9 +19,10 @@ use InvalidArgumentException;
  * understand the schema beyond the locator helpers below. JSON Schema
  * validation is the InventoryService's responsibility.
  *
- * Codex Phase 1 review (cross-cutting #3): the `array<string, mixed>` shapes
- * that previously dominated this file have been replaced with `@phpstan-type`
- * aliases that pin the well-known YAML keys. Keys whose value is a nested
+ * Codex Phase 1 review (cross-cutting #3): the loosely-typed associative-
+ * array shapes that previously dominated this file have been replaced with
+ * `@phpstan-type` aliases that pin the well-known YAML keys. Keys whose
+ * value is a nested
  * map (review block, history event payload …) carry their own typed
  * sub-shapes. Production callers thereby get PHPStan visibility into typos
  * and missing-field bugs.

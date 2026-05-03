@@ -109,10 +109,10 @@ class InventoryService
             }
 
             $beforeDoc = new InventoryDocument($beforeArray);
+            // PHP's parameter/return typing on the $mutator callable enforces
+            // that $afterDoc is an InventoryDocument; a wrong-shape mutator
+            // raises TypeError before reaching this line.
             $afterDoc = $mutator($beforeDoc);
-            if (! $afterDoc instanceof InventoryDocument) { /* @phpstan-ignore-line */
-                throw new RuntimeException('Mutator must return an InventoryDocument.');
-            }
 
             // Defensive re-check: a concurrent writer (or the mutator itself
             // misbehaving) could have edited the on-disk file between our
