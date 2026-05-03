@@ -43,8 +43,6 @@ abstract class AbstractSweepInventoryCommand extends Command
      * Note: the schema's history.actor enum also permits "generator", but that
      * value is reserved for SweepInventoryGenerateCommand. Workflow commands
      * MUST be invoked by a real actor — claude, codex, ci, or human.
-     *
-     * @var list<string>
      */
     protected const ALLOWED_ACTORS = ['claude', 'codex', 'ci', 'human'];
 
@@ -66,20 +64,19 @@ abstract class AbstractSweepInventoryCommand extends Command
     /**
      * Resolve the actor flag, defaulting to "human" per the master plan.
      *
-     * @return value-of<self::ALLOWED_ACTORS>
+     * @return 'claude'|'codex'|'ci'|'human'
      */
     protected function resolveActor(): string
     {
         $raw = $this->option('actor');
         $value = is_string($raw) && $raw !== '' ? $raw : 'human';
-        if (! in_array($value, self::ALLOWED_ACTORS, true)) {
-            throw new InvalidArgumentException(
-                "Invalid --actor '{$value}'. Allowed values: ".implode(', ', self::ALLOWED_ACTORS).'.',
-            );
-        }
 
-        /** @var value-of<self::ALLOWED_ACTORS> $value */
-        return $value;
+        return match ($value) {
+            'claude', 'codex', 'ci', 'human' => $value,
+            default => throw new InvalidArgumentException(
+                "Invalid --actor '{$value}'. Allowed values: ".implode(', ', self::ALLOWED_ACTORS).'.',
+            ),
+        };
     }
 
     /**
@@ -99,6 +96,8 @@ abstract class AbstractSweepInventoryCommand extends Command
     /**
      * Build a MutationContext using the resolved actor + the subclass action
      * verb / command name + the current git HEAD (best-effort).
+     *
+     * @param  'claude'|'codex'|'ci'|'human'  $actor  Validated by {@see self::resolveActor()}.
      */
     protected function makeMutationContext(string $actor): MutationContext
     {
