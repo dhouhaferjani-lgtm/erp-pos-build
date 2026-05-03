@@ -295,6 +295,203 @@ class InventoryServiceTest extends TestCase
         $this->assertSame('claimed', $chainEvent['to_status']);
     }
 
+    public function test_mutate_with_multiple_callsite_events_stamps_chain_hashes_on_each(): void
+    {
+        // Codex Phase 1 review #5: a mutate() call that appends events to
+        // multiple callsites in one go must stamp every appended event with
+        // the same previous_yaml_sha256/new_yaml_sha256 (the chain advances
+        // once per mutate(), so all sibling events share one transition).
+
+        // Seed a second callsite so we have two to mutate together.
+        $this->writeRawInventory($this->minimalInventoryArrayWithTwoCallsites());
+        $service = new InventoryService($this->inventoryPath, $this->schemaPath);
+        $beforeHash = $this->fieldOnDisk('metadata', 'yaml_sha256');
+
+        $context = new MutationContext('claude', 'sweep:inventory:claim', 'claim', 'def4567');
+
+        $result = $service->mutate(
+            function (InventoryDocument $doc) use ($context): InventoryDocument {
+                $doc = $doc->withCallsiteUpdate(
+                    'api.treasury.001',
+                    function (array $callsite) use ($context): array {
+                        $callsite['status'] = 'claimed';
+                        $callsite['owner'] = 'claude';
+                        $callsite['history'][] = $this->makeHistoryStub(
+                            actor: null,
+                            action: null,
+                            command: $context->command,
+                            fromStatus: 'pending',
+                            toStatus: 'claimed',
+                            targetIds: ['api.treasury.001'],
+                        );
+
+                        return $callsite;
+                    },
+                );
+
+                return $doc->withCallsiteUpdate(
+                    'api.treasury.002',
+                    function (array $callsite) use ($context): array {
+                        $callsite['status'] = 'claimed';
+                        $callsite['owner'] = 'claude';
+                        $callsite['history'][] = $this->makeHistoryStub(
+                            actor: null,
+                            action: null,
+                            command: $context->command,
+                            fromStatus: 'pending',
+                            toStatus: 'claimed',
+                            targetIds: ['api.treasury.002'],
+                        );
+
+                        return $callsite;
+                    },
+                );
+            },
+            $context,
+        );
+
+        $this->assertSame(2, $result->eventsAppended, 'Both new events must be counted.');
+
+        // Re-read and verify both callsites' newest events carry the SAME
+        // previous/new chain hashes (one transition advances everything).
+        /** @var array<string, mixed> $reread */
+        $reread = (array) Yaml::parseFile($this->inventoryPath);
+        /** @var list<array<string, mixed>> $callsites */
+        $callsites = $reread['callsites'];
+        foreach ($callsites as $cs) {
+            /** @var list<array<string, mixed>> $history */
+            $history = $cs['history'];
+            $latest = $history[count($history) - 1];
+            $this->assertSame(
+                $beforeHash,
+                $latest['previous_yaml_sha256'],
+                "Callsite {$cs['id']}: latest event's previous_yaml_sha256 must equal the before-hash.",
+            );
+            $this->assertSame(
+                $result->newYamlSha256,
+                $latest['new_yaml_sha256'],
+                "Callsite {$cs['id']}: latest event's new_yaml_sha256 must equal the post-write hash.",
+            );
+            $this->assertSame('claude', $latest['actor'], 'MutationContext.actor must be stamped.');
+            $this->assertSame('def4567', $latest['commit'], 'MutationContext.gitCommit must be stamped.');
+        }
+    }
+
+    public function test_atomic_write_failure_leaves_original_file_untouched_and_cleans_up_tempfile(): void
+    {
+        // Codex Phase 1 review #5: simulate a write failure between
+        // tempfile-write and the atomic rename. The original file MUST be
+        // byte-for-byte unchanged AND the tempfile MUST be cleaned up (no
+        // leaked .inventory-* files in the directory).
+
+        $beforeContents = (string) file_get_contents($this->inventoryPath);
+        $tempDir = dirname($this->inventoryPath);
+        $beforeTempFiles = $this->countTempFiles($tempDir);
+
+        $service = new InventoryServiceWithBrokenRename($this->inventoryPath, $this->schemaPath);
+
+        $thrown = null;
+        try {
+            $service->mutate(
+                function (InventoryDocument $doc): InventoryDocument {
+                    return $doc->withCallsiteUpdate(
+                        'api.treasury.001',
+                        function (array $callsite): array {
+                            $callsite['status'] = 'claimed';
+                            $callsite['owner'] = 'claude';
+                            $callsite['history'][] = $this->makeHistoryStub(
+                                actor: null,
+                                action: null,
+                                command: 'sweep:inventory:claim',
+                                fromStatus: 'pending',
+                                toStatus: 'claimed',
+                                targetIds: ['api.treasury.001'],
+                            );
+
+                            return $callsite;
+                        },
+                    );
+                },
+                new MutationContext('claude', 'sweep:inventory:claim', 'claim', null),
+            );
+        } catch (Throwable $t) {
+            $thrown = $t;
+        }
+
+        $this->assertNotNull($thrown, 'Broken rename must surface as an exception.');
+        $this->assertStringContainsString('rename failed (test injection)', $thrown->getMessage());
+
+        // Original file is byte-for-byte unchanged.
+        $this->assertSame(
+            $beforeContents,
+            (string) file_get_contents($this->inventoryPath),
+            'Original inventory file must be unchanged when rename fails.',
+        );
+
+        // Tempfile must have been cleaned up.
+        $afterTempFiles = $this->countTempFiles($tempDir);
+        $this->assertSame(
+            $beforeTempFiles,
+            $afterTempFiles,
+            'Failed atomic write must not leak .inventory-* tempfiles in the directory.',
+        );
+    }
+
+    private function countTempFiles(string $dir): int
+    {
+        $count = 0;
+        $handle = opendir($dir);
+        if ($handle === false) {
+            return 0;
+        }
+        while (($entry = readdir($handle)) !== false) {
+            if (str_starts_with($entry, '.inventory-')) {
+                $count++;
+            }
+        }
+        closedir($handle);
+
+        return $count;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function minimalInventoryArrayWithTwoCallsites(): array
+    {
+        $base = $this->minimalInventoryArray();
+        /** @var list<array<string, mixed>> $callsites */
+        $callsites = $base['callsites'];
+        $second = $callsites[0];
+        $second['id'] = 'api.treasury.002';
+        $second['stable_key'] = 'sha256:'.str_repeat('b', 64);
+        $second['symbol'] = 'App\\Modules\\Treasury\\Presentation\\Requests\\Stub::other';
+        /** @var list<array<string, mixed>> $hist */
+        $hist = $second['history'];
+        $hist[0]['target_ids'] = ['api.treasury.002'];
+        $second['history'] = $hist;
+        $callsites[] = $second;
+        $base['callsites'] = $callsites;
+        /** @var array<string, mixed> $progress */
+        $progress = $base['progress'];
+        $progress['total_callsites'] = 2;
+        /** @var array<string, mixed> $byStatus */
+        $byStatus = $progress['by_status'];
+        $byStatus['pending'] = 2;
+        $progress['by_status'] = $byStatus;
+        /** @var array<string, mixed> $bySurface */
+        $bySurface = $progress['by_surface'];
+        $bySurface['api'] = ['total' => 2, 'fixed' => 0];
+        $progress['by_surface'] = $bySurface;
+        /** @var array<string, mixed> $byOwner */
+        $byOwner = $progress['by_owner'];
+        $byOwner['unassigned'] = 2;
+        $progress['by_owner'] = $byOwner;
+        $base['progress'] = $progress;
+
+        return $base;
+    }
+
     /**
      * Read a top-level field from the inventory YAML on disk.
      */
@@ -460,8 +657,8 @@ class InventoryServiceTest extends TestCase
      * @return array<string, mixed>
      */
     private function makeHistoryStub(
-        string $actor,
-        string $action,
+        ?string $actor,
+        ?string $action,
         string $command,
         ?string $fromStatus,
         string $toStatus,
@@ -483,5 +680,19 @@ class InventoryServiceTest extends TestCase
             'review_commit' => null,
             'note' => 'test event',
         ];
+    }
+}
+
+/**
+ * Test subclass overriding the rename step to throw, so we can assert that
+ * the original file remains untouched and the tempfile is cleaned up.
+ */
+final class InventoryServiceWithBrokenRename extends InventoryService
+{
+    protected function renameTempfile(string $tempPath, string $finalPath): bool
+    {
+        // Inject a failure mid-write. The InventoryService catch-all in
+        // atomicWrite() must clean up the tempfile before rethrowing.
+        throw new \RuntimeException('rename failed (test injection)');
     }
 }

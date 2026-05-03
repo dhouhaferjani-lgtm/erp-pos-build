@@ -43,8 +43,14 @@ use Throwable;
  * load() calls within the same process AND against another writer who racily
  * grabbed the file before we did. CI hand-edit detection is a separate concern
  * (see SweepInventoryVerifyHistoryCommand in Phase 2).
+ *
+ * Class is intentionally non-final. The {@see self::renameTempfile()} hook
+ * exists so InventoryServiceTest can simulate a write-failure between
+ * tempfile-write and atomic rename to verify the original file stays
+ * byte-for-byte unchanged and the tempfile is cleaned up. Production code
+ * MUST NOT subclass this — the subclass exists only in test scope.
  */
-final class InventoryService
+class InventoryService
 {
     private const HASH_ZERO = '0000000000000000000000000000000000000000000000000000000000000000';
 
@@ -323,7 +329,7 @@ final class InventoryService
                 }
                 fclose($tempHandle);
             }
-            if (! rename($temp, $this->inventoryAbsolutePath)) {
+            if (! $this->renameTempfile($temp, $this->inventoryAbsolutePath)) {
                 throw new RuntimeException("Failed to atomically rename tempfile to {$this->inventoryAbsolutePath}");
             }
         } catch (Throwable $t) {
@@ -332,6 +338,17 @@ final class InventoryService
             }
             throw $t;
         }
+    }
+
+    /**
+     * Atomic rename hook. Production calls PHP's `rename()` directly; the
+     * Sweep test suite overrides this to simulate a rename failure and
+     * verify the catch-all in atomicWrite() cleans up the tempfile and
+     * leaves the original file unchanged.
+     */
+    protected function renameTempfile(string $tempPath, string $finalPath): bool
+    {
+        return rename($tempPath, $finalPath);
     }
 
     private function readFileOrFail(string $path): string
