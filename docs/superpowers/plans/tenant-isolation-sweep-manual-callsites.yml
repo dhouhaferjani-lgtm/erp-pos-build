@@ -1,0 +1,32 @@
+# Tenant-Isolation Sweep — Manual Callsites Stub
+#
+# Source for the ManualScanner (master plan Section 5.5). Each entry below
+# becomes one row in the live inventory at
+# docs/superpowers/plans/tenant-isolation-sweep-inventory.yml on the next
+# `php artisan sweep:inventory:generate` run.
+#
+# Manual rows have stable_key = `manual:<cluster_id>:<slug>` — never
+# reproducible by a sha256-based scanner, so they survive regeneration.
+# Cluster owners populate this file as they identify non-mechanical
+# tenant-isolation gaps in their cluster (PlatformIntegration outbound
+# payloads, broadcast channels, scheduled jobs, etc.).
+#
+# Required fields per entry:
+#   - cluster_id          canonical id (e.g. "api.platform-integration")
+#   - slug                lowercase-hyphenated identifier; unique per cluster
+#   - file                relative path from repo root
+#   - symbol              fully-qualified PHP symbol or descriptive string
+#   - pattern_type        free-form scanner-pattern label
+#   - expected_scope      one of tenant_and_company | tenant_only |
+#                         company_only | parent_context | cross_tenant
+#   - severity            high | medium | low
+#   - expected_fix        one-sentence remediation guidance
+#
+# Optional fields:
+#   - resource            table or model short name; null if not applicable
+#   - fiscal_path         bool, defaults false
+#   - cross_module        bool, defaults false
+#   - surface             defaults "api"
+#   - line                int line number, defaults null
+
+manual_callsites: []
