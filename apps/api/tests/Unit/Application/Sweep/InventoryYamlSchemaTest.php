@@ -64,7 +64,7 @@ class InventoryYamlSchemaTest extends TestCase
         );
     }
 
-    public function test_seed_inventory_lists_22_api_clusters_per_master_plan_section_6(): void
+    public function test_seed_inventory_lists_23_api_clusters_per_master_plan_section_6(): void
     {
         /** @var array<string, mixed> $inventory */
         $inventory = $this->loadInventory();
@@ -105,6 +105,12 @@ class InventoryYamlSchemaTest extends TestCase
             // branch per master plan Section 16. It counts toward the API
             // surface but is tracked separately.
             'api.pos-stabilization',
+            // api.unmapped is the synthetic catch-all cluster added per
+            // Codex Phase 1 review #2. Callsites whose module isn't in
+            // ClusterResolver's default map land here so triage can
+            // re-classify them in Phase 2 instead of silently joining
+            // api.identity-company.
+            'api.unmapped',
         ];
 
         sort($apiClusterIds);

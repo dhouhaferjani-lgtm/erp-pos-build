@@ -9,18 +9,31 @@ namespace App\Application\Sweep\Scanners;
  *
  * The mapping is data-driven so tests can supply a fixture map and prod can
  * use the master plan Section 6 catalogue. A path that doesn't match any
- * mapping resolves to the configured fallback cluster id (typically
- * `api.identity-company` for unmatched API code, since that cluster is the
- * catch-all for User/Company/Membership lookups per Section 6).
+ * mapping resolves to the configured fallback cluster id.
+ *
+ * Codex Phase 1 review #2: the production fallback is the synthetic
+ * `api.unmapped` cluster, NOT `api.identity-company`. Routing unmatched
+ * paths into identity-company silently misclassified real modules
+ * (BatchExpiry, Expense, Product, Scheduling, Vehicle, …). Those callsites
+ * must instead surface in `api.unmapped` so triage can re-classify them in
+ * Phase 2 and the generate command can warn loudly when the catch-all is
+ * hit.
  */
 final class ClusterResolver
 {
+    /**
+     * Production default fallback cluster. Anything the resolver can't map
+     * to a known module lands here. The seed inventory must declare this
+     * cluster (api.unmapped) so the merge step doesn't fail schema validation.
+     */
+    public const DEFAULT_FALLBACK_CLUSTER_ID = 'api.unmapped';
+
     /**
      * @param  array<string, string>  $moduleToCluster  Map: module short-name (e.g. "Treasury") → cluster id.
      */
     public function __construct(
         private readonly array $moduleToCluster,
-        private readonly string $fallbackClusterId,
+        private readonly string $fallbackClusterId = self::DEFAULT_FALLBACK_CLUSTER_ID,
     ) {}
 
     /**
@@ -41,7 +54,8 @@ final class ClusterResolver
 
     /**
      * Default mapping from the master plan Section 6 catalogue. Modules
-     * not in this map fall back to api.identity-company.
+     * not in this map fall back to {@see self::DEFAULT_FALLBACK_CLUSTER_ID}
+     * (`api.unmapped`).
      *
      * @return array<string, string>
      */

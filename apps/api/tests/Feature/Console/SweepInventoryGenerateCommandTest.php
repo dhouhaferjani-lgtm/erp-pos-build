@@ -119,6 +119,54 @@ class SweepInventoryGenerateCommandTest extends TestCase
         $this->assertSame($beforeContents, $afterContents, 'Dry run must not modify the inventory file.');
     }
 
+    public function test_unmapped_module_is_assigned_to_api_unmapped_cluster_and_warning_is_emitted(): void
+    {
+        // Codex Phase 1 review #2: a callsite in an unmapped module path
+        // (e.g. Modules/UnknownModule/...) used to silently land in
+        // api.identity-company. It must now land in api.unmapped AND the
+        // generate command must emit a stderr warning so triage sees it.
+        $this->seedUnmappedModuleSource();
+
+        // Capture stderr by writing to a temp file via shell redirection.
+        // Artisan::call() doesn't expose stderr directly, so we run the
+        // command through the artisan binary in a subprocess.
+        $apiBase = base_path();
+        $stderrFile = $this->tempRoot.'/stderr.log';
+        $cmd = sprintf(
+            '(cd %s && php artisan sweep:inventory:generate --inventory-path=%s --schema-path=%s --scan-root=%s --manual-stub=%s) 2> %s',
+            escapeshellarg($apiBase),
+            escapeshellarg($this->inventoryPath),
+            escapeshellarg($this->schemaPath),
+            escapeshellarg($this->scanRoot),
+            escapeshellarg($this->manualStubPath),
+            escapeshellarg($stderrFile),
+        );
+        exec($cmd, $output, $exitCode);
+        $this->assertSame(0, $exitCode, 'generate must succeed');
+
+        $callsites = $this->loadCallsites();
+        $unmappedRows = array_values(array_filter(
+            $callsites,
+            static fn (array $c): bool => ($c['cluster_id'] ?? null) === 'api.unmapped',
+        ));
+        $this->assertNotEmpty(
+            $unmappedRows,
+            'A callsite under an unmapped module must be assigned cluster_id=api.unmapped, not api.identity-company.',
+        );
+
+        $stderr = (string) file_get_contents($stderrFile);
+        $this->assertStringContainsString(
+            'api.unmapped',
+            $stderr,
+            'generate must emit a stderr warning naming api.unmapped when any callsite falls into it.',
+        );
+        $this->assertMatchesRegularExpression(
+            '/Modules\/UnknownModule/',
+            $stderr,
+            'The warning must enumerate the offending file paths so triage can re-classify them.',
+        );
+    }
+
     public function test_symbol_rename_marks_old_row_stale_orphan_and_creates_new_pending_row(): void
     {
         Artisan::call('sweep:inventory:generate', [
@@ -267,6 +315,83 @@ class BareFindService
     public function fetch(int $id): mixed { return \Document::find($id); }
 }
 PHP);
+    }
+
+    /**
+     * Seed an additional source file in a module that is NOT in
+     * ClusterResolver::defaultModuleToClusterMap(). This should land in
+     * cluster_id=api.unmapped.
+     */
+    private function seedUnmappedModuleSource(): void
+    {
+        $unknownDir = $this->scanRoot.'/Modules/UnknownModule/Presentation/Requests';
+        mkdir($unknownDir, 0o755, true);
+        file_put_contents($unknownDir.'/UnknownRequest.php', <<<'PHP'
+<?php
+declare(strict_types=1);
+namespace Tests\Synthetic\UnknownModule\Presentation\Requests;
+
+class UnknownRequest
+{
+    public function rules(): array
+    {
+        return [
+            'payment_method_id' => ['required', 'exists:payment_methods,id'],
+        ];
+    }
+}
+PHP);
+
+        // Reseed the inventory clusters list to include both api.treasury and
+        // api.unmapped so the schema accepts our newly-resolved cluster_id.
+        $this->seedInventoryWithUnmappedCluster();
+    }
+
+    private function seedInventoryWithUnmappedCluster(): void
+    {
+        /** @var array<string, mixed> $document */
+        $document = (array) Yaml::parseFile($this->inventoryPath);
+        /** @var list<array<string, mixed>> $clusters */
+        $clusters = $document['clusters'] ?? [];
+        $hasUnmapped = false;
+        foreach ($clusters as $cluster) {
+            if (($cluster['id'] ?? null) === 'api.unmapped') {
+                $hasUnmapped = true;
+                break;
+            }
+        }
+        if (! $hasUnmapped) {
+            $clusters[] = [
+                'id' => 'api.unmapped',
+                'display_name' => 'Unmapped (catch-all)',
+                'surface' => 'api',
+                'owner' => null,
+                'required_owner' => 'claude',
+                'status' => 'pending',
+                'blocked_by' => ['api.treasury'],
+                'blocked_by_external' => null,
+                'blocked_reason' => null,
+                'blocks' => [],
+                'is_reference' => false,
+                'expected_callsite_count' => null,
+                'test_file' => 'apps/api/tests/Feature/Sweep/UnmappedClusterTriageTest.php',
+                'review_gate' => [
+                    'required' => true,
+                    'reviewer_must_differ_from_owner' => true,
+                    'review_file' => 'docs/superpowers/reviews/2026-05-XX-unmapped-cluster-claude-review.md',
+                    'accepted_verdicts' => ['APPROVE', 'APPROVE-WITH-MINOR-EDITS-APPLIED'],
+                    'verify_review_commit_linkage' => true,
+                ],
+            ];
+            $document['clusters'] = $clusters;
+        }
+
+        // Recompute hash like InventoryService does (chain fields zeroed).
+        $canonical = $document;
+        $canonical['metadata']['yaml_sha256'] = str_repeat('0', 64);
+        $hash = hash('sha256', Yaml::dump($canonical, 8, 2, Yaml::DUMP_OBJECT_AS_MAP));
+        $document['metadata']['yaml_sha256'] = $hash;
+        file_put_contents($this->inventoryPath, Yaml::dump($document, 8, 2, Yaml::DUMP_OBJECT_AS_MAP));
     }
 
     /**

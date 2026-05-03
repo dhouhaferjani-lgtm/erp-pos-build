@@ -557,6 +557,31 @@ clusters:
       accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
       verify_review_commit_linkage: true
 
+  # Synthetic catch-all per Codex Phase 1 review #2. Callsites whose module
+  # path can't be matched to an entry in ClusterResolver::defaultModuleToClusterMap()
+  # land here so triage can reclassify them in Phase 2 instead of silently
+  # joining api.identity-company. Blocked by api.treasury (reference cluster)
+  # and gated on Phase 2 triage.
+  - id: "api.unmapped"
+    display_name: "Unmapped (catch-all)"
+    surface: "api"
+    owner: null
+    required_owner: "claude"
+    status: "pending"
+    blocked_by: ["api.treasury"]
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: []
+    is_reference: false
+    expected_callsite_count: null
+    test_file: "apps/api/tests/Feature/Sweep/UnmappedClusterTriageTest.php"
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: "docs/superpowers/reviews/2026-05-XX-unmapped-cluster-claude-review.md"
+      accepted_verdicts: ["APPROVE", "APPROVE-WITH-MINOR-EDITS-APPLIED"]
+      verify_review_commit_linkage: true
+
   # Web surface
   - id: "web.tanstack-keys"
     display_name: "Web — TanStack Query keys"
@@ -703,9 +728,9 @@ callsites: []
 
 progress:
   total_callsites: 0
-  total_clusters: 28
+  total_clusters: 29
   by_status:
-    pending: 26
+    pending: 27
     claimed: 0
     in_progress: 0
     under_review: 0
@@ -716,7 +741,7 @@ progress:
     stale_orphan: 0
   by_surface:
     api:
-      total: 22
+      total: 23
       fixed: 0
     web:
       total: 4
@@ -731,7 +756,7 @@ progress:
     codex:
       claimed: 0
       fixed: 0
-    unassigned: 28
+    unassigned: 29
   drift:
     yaml_says_fixed_code_unsafe: 0
     code_safe_yaml_pending: 0

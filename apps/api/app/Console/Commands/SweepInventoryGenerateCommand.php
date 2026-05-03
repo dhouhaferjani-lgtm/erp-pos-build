@@ -74,7 +74,7 @@ final class SweepInventoryGenerateCommand extends Command
 
         $resolver = new ClusterResolver(
             ClusterResolver::defaultModuleToClusterMap(),
-            'api.identity-company',
+            ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID,
         );
         $scanners = [
             new PhpPresentationExistsScanner($scanRoot, $repoRoot, $resolver),
@@ -91,6 +91,7 @@ final class SweepInventoryGenerateCommand extends Command
         $stats = $this->computeMergeStats($beforeDoc, $rows);
 
         $this->writeSummary($stats, isDryRun: $isDryRun);
+        $this->writeUnmappedWarning($rows);
 
         if ($isDryRun) {
             return self::SUCCESS;
@@ -393,6 +394,51 @@ final class SweepInventoryGenerateCommand extends Command
                 $stats['needs_recheck'],
                 $stats['stale_orphan'],
             ),
+        );
+    }
+
+    /**
+     * Codex Phase 1 review #2: when any callsite falls back to
+     * {@see ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID}, emit a stderr
+     * warning enumerating the offending file paths so the cluster owner
+     * can re-classify them in Phase 2 instead of letting them silently
+     * blend into a real cluster.
+     *
+     * @param  list<CallsiteRow>  $rows
+     */
+    private function writeUnmappedWarning(array $rows): void
+    {
+        $unmappedPaths = [];
+        foreach ($rows as $row) {
+            if ($row->clusterId !== ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID) {
+                continue;
+            }
+            $unmappedPaths[$row->relativePath] = true;
+        }
+        if ($unmappedPaths === []) {
+            return;
+        }
+        $count = count($rows) - count(array_filter(
+            $rows,
+            static fn (CallsiteRow $r): bool => $r->clusterId !== ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID,
+        ));
+        $paths = array_keys($unmappedPaths);
+        sort($paths);
+        fwrite(
+            STDERR,
+            sprintf(
+                "[generate] WARNING: %d callsite(s) assigned to %s — unmapped module paths:\n",
+                $count,
+                ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID,
+            ),
+        );
+        foreach ($paths as $path) {
+            fwrite(STDERR, sprintf("  - %s\n", $path));
+        }
+        fwrite(
+            STDERR,
+            "  Triage these in Phase 2 by adding the module to ClusterResolver::defaultModuleToClusterMap()\n"
+                ."  or re-classifying them under an existing cluster.\n",
         );
     }
 
