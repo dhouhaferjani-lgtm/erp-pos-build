@@ -353,4 +353,30 @@ class SweepInventoryDeferCommandTest extends TestCase
         ]);
         $this->assertNotSame(0, $exitBoth, 'Must NOT supply both --callsite-id and --cluster.');
     }
+
+    /**
+     * Defer means "revisit later." A past --revisit-date is almost always a
+     * typo (wrong year), and silently accepting it would defeat the purpose
+     * of the field. Refuse cleanly with a redirect to sweep:inventory:block.
+     */
+    public function test_defer_refuses_past_revisit_date(): void
+    {
+        $exit = Artisan::call('sweep:inventory:defer', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--reason' => 'Y2020 typo',
+            '--revisit-date' => '2020-01-01',
+            '--actor' => 'claude',
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            'defer must refuse a --revisit-date in the past (catches typos like wrong year).',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('pending', $callsite['status'], 'callsite must remain pending after refusal.');
+    }
 }

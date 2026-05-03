@@ -164,22 +164,45 @@ final class SweepInventoryUnblockCommand extends AbstractSweepInventoryCommand
 
         $this->line("Unblocked callsite {$callsiteId} (actor={$actor}); restored to '{$previousStatus}'.");
 
+        // Re-load and warn about cluster/callsite state divergence — if the
+        // parent cluster is still `blocked` after this individual unblock, the
+        // callsite is now in an incoherent (callsite=<recovered>, cluster=blocked)
+        // state. The operator should manually reconcile the cluster.
+        try {
+            $afterDoc = $service->load();
+            $parentCluster = $this->findCluster($afterDoc, $callsite['cluster_id']);
+            if ($parentCluster !== null && $parentCluster['status'] === 'blocked') {
+                $this->warn(
+                    "Cluster '{$parentCluster['id']}' is still blocked; callsite restored independently. ".
+                    'If the block no longer applies cluster-wide, run sweep:inventory:unblock per affected '.
+                    'callsite or update the cluster status manually.',
+                );
+            }
+        } catch (Throwable) {
+            // Best-effort warning only; do not turn unblock failure on a load problem.
+        }
+
         return self::SUCCESS;
     }
 
     /**
-     * Walk the callsite's history array backwards from the latest event and
-     * return the `from_status` of the first event whose `action` is `block`.
-     * Returns null if no such event exists (malformed YAML defence).
+     * Walk the callsite's history array backwards and return the `from_status`
+     * of the most-recent event whose `to_status` is `blocked` — regardless of
+     * which action transitioned the callsite into that state. Two paths reach
+     * `blocked`:
+     *   - `sweep:inventory:block` (action="block"), and
+     *   - `sweep:inventory:review --verdict=BLOCK` (action="review", to_status="blocked").
+     * Walking by `to_status` covers both, so a review-BLOCK can be undone here
+     * the same way a block can. Returns null if no event ever transitioned the
+     * callsite to `blocked` (malformed YAML defence).
      *
      * @param  list<HistoryEvent>  $history
      */
     private function recoverPreviousStatus(array $history): ?string
     {
-        // Iterate from the end backwards — the "most recent block" wins.
         for ($i = count($history) - 1; $i >= 0; $i--) {
             $event = $history[$i];
-            if ($event['action'] === 'block') {
+            if ($event['to_status'] === 'blocked') {
                 return $event['from_status'];
             }
         }

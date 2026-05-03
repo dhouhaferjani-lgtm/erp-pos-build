@@ -348,4 +348,51 @@ class SweepInventoryBlockCommandTest extends TestCase
         ]);
         $this->assertNotSame(0, $exitBoth, 'Must NOT supply both --callsite-id and --cluster.');
     }
+
+    /**
+     * Master plan Section 4: blocked branches from "any pre-fixed state" =
+     * pending|claimed|in_progress|under_review only. The audit-only states
+     * (deferred, needs_recheck, stale_orphan) require explicit reactivation
+     * before they can be blocked. Refuse here with a clear pre-fixed-only error.
+     */
+    public function test_block_refuses_callsite_in_audit_only_state(): void
+    {
+        foreach (['deferred', 'needs_recheck', 'stale_orphan'] as $auditOnlyStatus) {
+            // Re-seed each iteration so we start from a clean known state.
+            $this->reseedInventory(function (array $doc) use ($auditOnlyStatus): array {
+                /** @var list<array<string, mixed>> $callsites */
+                $callsites = $doc['callsites'];
+                foreach ($callsites as $idx => $cs) {
+                    if (($cs['id'] ?? null) === 'api.treasury.001') {
+                        $cs['status'] = $auditOnlyStatus;
+                        $callsites[$idx] = $cs;
+                    }
+                }
+                $doc['callsites'] = $callsites;
+
+                return $doc;
+            });
+
+            $exit = Artisan::call('sweep:inventory:block', [
+                '--inventory-path' => $this->inventoryPath,
+                '--schema-path' => $this->schemaPath,
+                '--callsite-id' => 'api.treasury.001',
+                '--reason' => "Cannot block from {$auditOnlyStatus}",
+                '--actor' => 'claude',
+            ]);
+
+            $this->assertNotSame(
+                0,
+                $exit,
+                "block must refuse callsite in '{$auditOnlyStatus}' (only pre-fixed states are blockable per master plan Section 4).",
+            );
+
+            $callsite = $this->callsiteById('api.treasury.001');
+            $this->assertSame(
+                $auditOnlyStatus,
+                $callsite['status'],
+                "callsite must remain in '{$auditOnlyStatus}' after refusal.",
+            );
+        }
+    }
 }

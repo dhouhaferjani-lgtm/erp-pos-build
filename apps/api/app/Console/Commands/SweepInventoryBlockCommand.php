@@ -18,8 +18,11 @@ use Throwable;
  * Master plan reference:
  *   Section 4 — workflow state machine (block: any pre-fixed → blocked).
  *
- * Pre-fixed statuses: pending, claimed, in_progress, under_review.
- * `fixed` and `blocked` are refused (fixed = regression, blocked = idempotency).
+ * Pre-fixed statuses: pending, claimed, in_progress, under_review (single
+ * source of truth: {@see self::PRE_FIXED_STATUSES}).
+ * `fixed` (regression guard), `blocked` (idempotency), `deferred` /
+ * `needs_recheck` / `stale_orphan` (require explicit reactivation) are all
+ * refused.
  *
  * Modes:
  *   --callsite-id  Block a single callsite.
@@ -36,6 +39,15 @@ use Throwable;
  */
 final class SweepInventoryBlockCommand extends AbstractSweepInventoryCommand
 {
+    /**
+     * The pre-fixed states a callsite or cluster can transition from to
+     * `blocked`. Per master plan Section 4 (line 231): "blocked, deferred,
+     * needs_recheck, stale_orphan can branch from any pre-fixed state with a
+     * reason." Pre-fixed = the four linear-pipeline statuses; everything else
+     * (fixed, blocked, deferred, needs_recheck, stale_orphan) is refused.
+     */
+    private const PRE_FIXED_STATUSES = ['pending', 'claimed', 'in_progress', 'under_review'];
+
     /** @var string */
     protected $signature = 'sweep:inventory:block
         {--inventory-path= : path to YAML (overrides default for tests)}
@@ -134,7 +146,6 @@ final class SweepInventoryBlockCommand extends AbstractSweepInventoryCommand
 
         $currentStatus = $callsite['status'];
 
-        // Refuse fixed (regression guard) and blocked (idempotency edge).
         if ($currentStatus === 'fixed') {
             $this->error(
                 "Callsite {$callsiteId} has status 'fixed'; blocking a fixed callsite would be a regression. ".
@@ -148,6 +159,15 @@ final class SweepInventoryBlockCommand extends AbstractSweepInventoryCommand
             $this->error(
                 "Callsite {$callsiteId} is already 'blocked'. ".
                 'Use sweep:inventory:unblock first if you need to re-block with a new reason.',
+            );
+
+            return self::FAILURE;
+        }
+
+        if (! in_array($currentStatus, self::PRE_FIXED_STATUSES, true)) {
+            $this->error(
+                "Callsite {$callsiteId} has status '{$currentStatus}'; only pre-fixed callsites ".
+                '('.implode(', ', self::PRE_FIXED_STATUSES).') can be blocked.',
             );
 
             return self::FAILURE;
@@ -210,17 +230,22 @@ final class SweepInventoryBlockCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
-        // Collect eligible callsites: those that are not fixed and not already blocked.
+        // Collect eligible callsites: pre-fixed states only (pending, claimed,
+        // in_progress, under_review). Excludes fixed (regression guard),
+        // blocked (idempotency), and the audit-only states (deferred,
+        // needs_recheck, stale_orphan) that need an explicit unblock-then-block
+        // round-trip if the operator wants to forcibly block them.
         $eligibleCallsites = array_values(array_filter(
             $this->callsitesInCluster($doc, $clusterId),
-            static fn (array $cs): bool => $cs['status'] !== 'fixed' && $cs['status'] !== 'blocked',
+            static fn (array $cs): bool => in_array($cs['status'], self::PRE_FIXED_STATUSES, true),
         ));
 
         // Audit-trail invariant: every cluster-status mutation must be anchored
         // in at least one callsite history event so verify-history can trace it.
         if ($eligibleCallsites === []) {
             $this->error(
-                "Cluster {$clusterId} has no eligible callsites to block (all are 'fixed' or already 'blocked'). ".
+                "Cluster {$clusterId} has no eligible callsites to block (none are in a pre-fixed state: ".
+                implode(', ', self::PRE_FIXED_STATUSES).'). '.
                 'Nothing to do — the cluster status has not been changed.',
             );
 

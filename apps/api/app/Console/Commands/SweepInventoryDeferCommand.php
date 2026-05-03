@@ -117,6 +117,20 @@ final class SweepInventoryDeferCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
+        // Defer means "revisit later"; a date in the past defeats the purpose
+        // and is almost always a typo (e.g. wrong year). Refuse with a clear
+        // message; operators who genuinely want to record an already-elapsed
+        // revisit window should use sweep:inventory:block instead.
+        if ($revisitDate < gmdate('Y-m-d')) {
+            $this->error(
+                "--revisit-date '{$revisitDate}' is in the past. ".
+                'Defer requires a future revisit date; pick today (UTC) or later, '.
+                'or use sweep:inventory:block if the work is no longer eligible to revisit.',
+            );
+
+            return self::FAILURE;
+        }
+
         // ── 5. Load the document ────────────────────────────────────────────
         $service = $this->makeInventoryService();
 
@@ -132,11 +146,11 @@ final class SweepInventoryDeferCommand extends AbstractSweepInventoryCommand
         $note = "{$reason}; revisit by {$revisitDate}";
 
         if ($callsiteId !== null) {
-            return $this->handleCallsiteDefer($doc, $callsiteId, $reason, $note, $actor, $service);
+            return $this->handleCallsiteDefer($doc, $callsiteId, $note, $actor, $service);
         }
 
         /** @var string $clusterId */
-        return $this->handleClusterDefer($doc, $clusterId, $reason, $note, $actor, $service);
+        return $this->handleClusterDefer($doc, $clusterId, $note, $actor, $service);
     }
 
     /**
@@ -148,7 +162,6 @@ final class SweepInventoryDeferCommand extends AbstractSweepInventoryCommand
     private function handleCallsiteDefer(
         InventoryDocument $doc,
         string $callsiteId,
-        string $reason,
         string $note,
         string $actor,
         InventoryService $service,
@@ -216,7 +229,6 @@ final class SweepInventoryDeferCommand extends AbstractSweepInventoryCommand
     private function handleClusterDefer(
         InventoryDocument $doc,
         string $clusterId,
-        string $reason,
         string $note,
         string $actor,
         InventoryService $service,

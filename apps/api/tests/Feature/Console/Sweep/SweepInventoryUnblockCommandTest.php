@@ -244,4 +244,67 @@ class SweepInventoryUnblockCommandTest extends TestCase
         $callsite = $this->callsiteById('api.treasury.001');
         $this->assertSame('blocked', $callsite['status'], 'callsite must remain blocked after actor refusal.');
     }
+
+    /**
+     * Closes the recovery gap surfaced by the 2A.3 audit: review --verdict=BLOCK
+     * appends action='review' (not 'block'). Walking only for action='block'
+     * would leave such callsites unrecoverable. recoverPreviousStatus walks for
+     * to_status='blocked' instead, which catches BOTH paths.
+     */
+    public function test_unblock_recovers_callsite_blocked_via_review_verdict_block(): void
+    {
+        // Seed: callsite under_review, then review writes a `review` event
+        // with from_status=under_review, to_status=blocked. No `block` action.
+        $this->reseedInventory(function (array $doc): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['id'] ?? null) === 'api.treasury.001') {
+                    $cs['status'] = 'blocked';
+                    $cs['blocked_reason'] = 'Reviewer rejected with BLOCK verdict';
+                    $cs['owner'] = 'claude';
+                    /** @var list<array<string, mixed>> $history */
+                    $history = $cs['history'];
+                    $history[] = [
+                        'at' => '2026-05-03T01:30:00Z',
+                        'actor' => 'codex',
+                        'action' => 'review',
+                        'command' => 'sweep:inventory:review',
+                        'previous_yaml_sha256' => null,
+                        'new_yaml_sha256' => null,
+                        'target_ids' => ['api.treasury.001'],
+                        'from_status' => 'under_review',
+                        'to_status' => 'blocked',
+                        'commit' => null,
+                        'test' => null,
+                        'review_file' => 'docs/superpowers/reviews/treasury.md',
+                        'review_commit' => null,
+                        'note' => 'BLOCK verdict from cluster review',
+                    ];
+                    $cs['history'] = $history;
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+
+        $exit = Artisan::call('sweep:inventory:unblock', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+        ]);
+
+        $this->assertSame(
+            0,
+            $exit,
+            'unblock must recover callsites blocked via review BLOCK by walking to_status=blocked, not action=block.',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('under_review', $callsite['status'], 'must restore the pre-review state recorded in the review event.');
+        $this->assertNull($callsite['blocked_reason']);
+    }
 }
