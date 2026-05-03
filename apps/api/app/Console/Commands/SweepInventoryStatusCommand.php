@@ -57,6 +57,7 @@ final class SweepInventoryStatusCommand extends AbstractSweepInventoryCommand
     protected $signature = 'sweep:inventory:status
         {--inventory-path= : path to YAML (overrides default for tests)}
         {--schema-path= : path to JSON Schema (overrides default for tests)}
+        {--actor=human : declared for AbstractSweepInventoryCommand::resolveActor() static-analysis compatibility; not used by this read-only command}
         {--scan-root= : Override the scan root directory (defaults to app/Modules) — only used with --drift}
         {--repo-root= : Override the repo root used to relativize scanner paths (defaults to walking up from base_path) — only used with --drift, primarily for tests}
         {--manual-stub= : Override the manual-callsites stub path (defaults to docs/superpowers/plans/tenant-isolation-sweep-manual-callsites.yml) — only used with --drift}

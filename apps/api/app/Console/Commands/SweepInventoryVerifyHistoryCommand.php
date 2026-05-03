@@ -29,11 +29,27 @@ use Throwable;
  * 4. For events with index > 0 (i.e. not the seed/generate event):
  *    previous_yaml_sha256 MUST be non-null AND MUST equal the previous
  *    event's new_yaml_sha256. The seed event itself may have
- *    previous_yaml_sha256 = null because there is no preceding state.
+ *    previous_yaml_sha256 = null because there is no preceding state. As a
+ *    bounded relaxation, the very first event AFTER the seed (eventIndex==1)
+ *    may declare an arbitrary non-null previous_yaml_sha256 even when the
+ *    seed's new_yaml_sha256 is null — this accommodates the seed inventory
+ *    pattern (live YAML created with zero callsites; the first generate run
+ *    appends events with their own real chain hashes). The relaxation is
+ *    intentionally NOT keyed on the prior event's `action`: an action-based
+ *    predicate would let an attacker splice two events (a fake `regenerate`
+ *    with null new hash + a malicious workflow event with any previous
+ *    hash). Slot-based gating (eventIndex==1 only) closes that splice.
+ *
+ * 5. The file-level metadata.yaml_sha256 MUST equal the recomputed canonical
+ *    hash of the document content (zero-out self-referential hash fields,
+ *    serialise YAML, sha256). This is the defense against a hand-edit that
+ *    only adjusts metadata.yaml_sha256 to its post-edit value: the chain
+ *    check could otherwise be defeated when paired with a metadata bump.
  *
  * Cross-callsite chain ordering is intentionally NOT enforced — the
- * file-level metadata.yaml_sha256 + InventoryService's optimistic-lock
- * check already protect the inventory's overall integrity.
+ * file-level metadata.yaml_sha256 (now verified by check #5) plus
+ * InventoryService's optimistic-lock check already protect the inventory's
+ * overall integrity.
  *
  * Behavior:
  *   - Print one line per failure citing callsite id + history index +
@@ -56,7 +72,8 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
     /** @var string */
     protected $signature = 'sweep:inventory:verify-history
         {--inventory-path= : path to YAML (overrides default for tests)}
-        {--schema-path= : path to JSON Schema (overrides default for tests)}';
+        {--schema-path= : path to JSON Schema (overrides default for tests)}
+        {--actor=human : declared for AbstractSweepInventoryCommand::resolveActor() static-analysis compatibility; not used by this read-only command}';
 
     /** @var string */
     protected $description = 'Walk every callsite history and verify the append-only command-event chain (CI gate).';
@@ -98,11 +115,28 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
         $totalEvents = 0;
         $problems = 0;
 
+        // File-level hand-edit defence: recompute the canonical content hash
+        // and compare to metadata.yaml_sha256. A hand-edit that bumped both
+        // the content AND metadata.yaml_sha256 (so InventoryService::mutate()
+        // would still accept it on the next write) is otherwise invisible to
+        // chain checks. See InventoryService::canonicalHashOf().
+        $storedFileHash = $doc->yamlSha256();
+        $recomputedFileHash = $service->canonicalHashOf($doc);
+        if ($storedFileHash !== $recomputedFileHash) {
+            $this->error(sprintf(
+                '[metadata.yaml_sha256] file-level hash mismatch: stored=%s recomputed=%s. '.
+                'The YAML appears to have been hand-edited; metadata.yaml_sha256 was '.
+                'updated separately from the canonical content hash.',
+                $storedFileHash,
+                $recomputedFileHash,
+            ));
+            $problems++;
+        }
+
         foreach ($callsites as $callsite) {
             $callsiteId = $callsite['id'];
             $history = $callsite['history'];
             $previousNewHash = null;
-            $previousIsGenerator = false;
 
             foreach ($history as $eventIndex => $event) {
                 $totalEvents++;
@@ -113,7 +147,6 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     event: $event,
                     knownIds: $knownIds,
                     previousNewHash: $previousNewHash,
-                    previousIsGenerator: $previousIsGenerator,
                 );
 
                 foreach ($eventProblems as $message) {
@@ -122,7 +155,6 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                 }
 
                 $previousNewHash = $event['new_yaml_sha256'];
-                $previousIsGenerator = self::isGeneratorAction($event['action']);
             }
         }
 
@@ -151,7 +183,6 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
         array $event,
         array $knownIds,
         ?string $previousNewHash,
-        bool $previousIsGenerator,
     ): array {
         $problems = [];
 
@@ -205,16 +236,20 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     $event['previous_yaml_sha256'],
                     $previousNewHash,
                 );
-            } elseif ($previousNewHash === null && ! $previousIsGenerator) {
-                // The prior event had a null new_yaml_sha256 AND was not a
-                // generator/regenerate event. Generator events legitimately
-                // have null chain hashes (their YAML stamping path predates
-                // the optimistic-lock fill); workflow events MUST have
-                // non-null hashes after stamping. A workflow-event prior
-                // with null new_yaml_sha256 is itself the bug — chain is
-                // broken at this boundary.
+            } elseif ($previousNewHash === null && $eventIndex !== 1) {
+                // The prior event had a null new_yaml_sha256, which is only
+                // legitimate when it is the seed event at history[0]. Any
+                // null new_yaml_sha256 on a later event (eventIndex > 1's
+                // predecessor) is itself a hand-edit indicator. The narrower
+                // predicate (gate on `eventIndex !== 1` rather than on the
+                // prior action) closes a splice path: an attacker who could
+                // hand-edit the YAML cannot insert two malicious events —
+                // a fake `regenerate` with new_yaml_sha256: null followed by
+                // a workflow event with arbitrary previous_yaml_sha256 —
+                // because only the slot immediately following history[0] is
+                // relaxed.
                 $problems[] = sprintf(
-                    '[%s history[%d]] chain is broken: previous_yaml_sha256 %s declared but the prior workflow event new_yaml_sha256 was null.',
+                    '[%s history[%d]] chain is broken: previous_yaml_sha256 %s declared but the prior event new_yaml_sha256 was null on a non-seed slot.',
                     $callsiteId,
                     $eventIndex,
                     $event['previous_yaml_sha256'],
@@ -223,18 +258,6 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
         }
 
         return $problems;
-    }
-
-    /**
-     * The schema's history.action enum includes scanner-emitted actions
-     * (generate, regenerate, stale_mark) whose chain hashes legitimately
-     * start as null. Workflow actions (claim, start, submit, review, block,
-     * unblock, defer, edit_applied) MUST always be stamped through
-     * InventoryService::mutate() and therefore have non-null chain hashes.
-     */
-    private static function isGeneratorAction(?string $action): bool
-    {
-        return in_array($action, ['generate', 'regenerate', 'stale_mark'], true);
     }
 
     /**

@@ -392,6 +392,17 @@ class InventoryService
     }
 
     /**
+     * Public canonical hash helper used by SweepInventoryVerifyHistoryCommand
+     * to detect file-level hand-edits (someone updated metadata.yaml_sha256
+     * to match their tampered content). Mirrors the algorithm used by load()
+     * to compute the optimistic-lock baseline.
+     */
+    public function canonicalHashOf(InventoryDocument $doc): string
+    {
+        return $this->computeHashOfDocument($doc);
+    }
+
+    /**
      * Canonical hash: zero-out the self-referential fields (metadata.yaml_sha256
      * and every history event's previous_yaml_sha256 / new_yaml_sha256), dump
      * YAML with stable settings, sha256 the resulting bytes. The chain hash

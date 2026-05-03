@@ -327,4 +327,120 @@ class SweepInventoryVerifyHistoryCommandTest extends TestCase
         $after = file_get_contents($this->inventoryPath);
         $this->assertSame($before, $after, 'sweep:inventory:verify-history MUST be read-only — YAML must be byte-identical.');
     }
+
+    /**
+     * Closes the splice exploit surfaced by the 2A.4 audit. With an action-
+     * based relaxation, an attacker could insert a fake `regenerate` event
+     * with `new_yaml_sha256: null` followed by a malicious workflow event with
+     * any `previous_yaml_sha256`; the action carve-out would short-circuit
+     * the chain check at the boundary. The eventIndex==1 carve-out only
+     * accepts a single arbitrary previous-hash slot (immediately after the
+     * seed), so the splice fails at history[2].
+     */
+    public function test_verify_history_refuses_splice_after_fake_regenerate_event(): void
+    {
+        $this->reseedInventory(function (array $doc): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['id'] ?? null) === 'api.treasury.001') {
+                    /** @var list<array<string, mixed>> $history */
+                    $history = $cs['history'];
+                    // history[1]: a fake regenerate event with null new hash.
+                    // Without the splice fix this would be silently allowed
+                    // (eventIndex==1 may declare arbitrary previous_yaml_sha256).
+                    $history[] = [
+                        'at' => '2026-05-03T00:30:00Z',
+                        'actor' => 'generator',
+                        'action' => 'regenerate',
+                        'command' => 'sweep:inventory:generate',
+                        'previous_yaml_sha256' => str_repeat('a', 64),
+                        'new_yaml_sha256' => null,
+                        'target_ids' => ['api.treasury.001'],
+                        'from_status' => 'pending',
+                        'to_status' => 'pending',
+                        'commit' => null,
+                        'test' => null,
+                        'review_file' => null,
+                        'review_commit' => null,
+                        'note' => 'fake regenerate inserted to splice the chain',
+                    ];
+                    // history[2]: a malicious workflow event with arbitrary
+                    // previous_yaml_sha256. With the eventIndex!=1 fix, this
+                    // slot is checked strictly: previousNewHash is null AND
+                    // eventIndex == 2, so the chain-broken branch fires.
+                    $history[] = [
+                        'at' => '2026-05-03T01:00:00Z',
+                        'actor' => 'claude',
+                        'action' => 'claim',
+                        'command' => 'sweep:inventory:claim',
+                        'previous_yaml_sha256' => str_repeat('b', 64),
+                        'new_yaml_sha256' => str_repeat('c', 64),
+                        'target_ids' => ['api.treasury.001'],
+                        'from_status' => 'pending',
+                        'to_status' => 'claimed',
+                        'commit' => null,
+                        'test' => null,
+                        'review_file' => null,
+                        'review_commit' => null,
+                        'note' => 'malicious workflow event spliced after fake regenerate',
+                    ];
+                    $cs['history'] = $history;
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+
+        $exit = Artisan::call('sweep:inventory:verify-history', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+        ]);
+
+        $output = Artisan::output();
+        $this->assertNotSame(
+            0,
+            $exit,
+            'verify-history must reject a malicious workflow event spliced after a fake regenerate (slot-based gating, not action-based). Output was: '.$output,
+        );
+        $this->assertStringContainsString('chain', $output);
+    }
+
+    /**
+     * File-level hand-edit defence (audit finding #2): a hand-edit that
+     * bumps both content AND metadata.yaml_sha256 to its new value would
+     * otherwise survive verify-history's chain checks unobserved. The
+     * canonical-hash recomputation closes that window.
+     */
+    public function test_verify_history_refuses_when_metadata_yaml_sha256_does_not_match_content(): void
+    {
+        // Hand-edit metadata.yaml_sha256 to a non-canonical value. We can't
+        // use reseedInventory() here because it normalises the hash via the
+        // canonical algorithm — we need to bypass that.
+        $raw = (string) file_get_contents($this->inventoryPath);
+        $tampered = preg_replace(
+            '/^(\s*yaml_sha256:\s*)[\'"]?[a-f0-9]{64}[\'"]?$/m',
+            '$1\''.str_repeat('e', 64).'\'',
+            $raw,
+            1,
+        );
+        $this->assertNotNull($tampered, 'preg_replace must succeed.');
+        $this->assertNotSame($raw, $tampered, 'tampered YAML must differ from original.');
+        file_put_contents($this->inventoryPath, $tampered);
+
+        $exit = Artisan::call('sweep:inventory:verify-history', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+        ]);
+
+        $output = Artisan::output();
+        $this->assertNotSame(
+            0,
+            $exit,
+            'verify-history must reject when metadata.yaml_sha256 does not equal the recomputed canonical hash. Output was: '.$output,
+        );
+        $this->assertStringContainsString('metadata.yaml_sha256', $output);
+    }
 }
