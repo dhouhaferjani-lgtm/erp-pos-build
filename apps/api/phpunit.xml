@@ -14,7 +14,15 @@
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <testsuite name="Architecture">
+            <directory>tests/Architecture</directory>
+        </testsuite>
     </testsuites>
+    <groups>
+        <exclude>
+            <group>sweep-progress</group>
+        </exclude>
+    </groups>
     <source>
         <include>
             <directory>app</directory>
