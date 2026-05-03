@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CompanyContextMiddleware;
+use App\Http\Middleware\CrossTenantContext;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
@@ -44,6 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,
             'scheduling.captcha' => VerifyCaptcha::class,
+            'cross_tenant' => CrossTenantContext::class,
         ]);
 
         // Exclude auth endpoints from CSRF verification for token-based clients
