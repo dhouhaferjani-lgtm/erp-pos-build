@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Shared\Architecture;
 
+use App\Application\Sweep\Visitors\FindCallVisitor;
 use PhpParser\NodeTraverser;
 use PhpParser\ParserFactory;
-use Tests\Architecture\FindCallVisitor;
 use Tests\TestCase;
 
 /**

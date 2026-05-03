@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Architecture;
+namespace App\Application\Sweep\Visitors;
 
 use PhpParser\Node;
 use PhpParser\Node\Attribute;

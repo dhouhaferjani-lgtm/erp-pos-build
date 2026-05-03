@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Shared\Architecture;
 
+use App\Application\Sweep\Visitors\ExistsRuleVisitor;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\ParentConnectingVisitor;
 use PhpParser\ParserFactory;
-use Tests\Architecture\ExistsRuleVisitor;
 use Tests\TestCase;
 
 /**
