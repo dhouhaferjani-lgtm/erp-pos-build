@@ -336,4 +336,80 @@ trait SweepInventoryTestSeed
         }
         $this->fail('Cluster not found in inventory: '.$clusterId);
     }
+
+    /**
+     * Convenience seeder: transition a cluster + every callsite in it from
+     * `pending` to `claimed`, owned by $owner. Used by start/submit/review
+     * tests that need a claimed baseline. Re-uses {@see self::reseedInventory()}
+     * so the canonical YAML hash is recomputed.
+     */
+    private function claimClusterAndCallsites(string $clusterId, string $owner): void
+    {
+        $this->reseedInventory(function (array $doc) use ($clusterId, $owner): array {
+            /** @var list<array<string, mixed>> $clusters */
+            $clusters = $doc['clusters'];
+            foreach ($clusters as $idx => $cluster) {
+                if (($cluster['id'] ?? null) === $clusterId) {
+                    $cluster['status'] = 'claimed';
+                    $cluster['owner'] = $owner;
+                    $clusters[$idx] = $cluster;
+                }
+            }
+            $doc['clusters'] = $clusters;
+
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['cluster_id'] ?? null) === $clusterId) {
+                    $cs['status'] = 'claimed';
+                    $cs['owner'] = $owner;
+                    $cs['claimed_at'] = '2026-05-03T00:00:00Z';
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+    }
+
+    /**
+     * Convenience seeder: drive a single callsite into `under_review` state,
+     * owned by $owner with the given fix commit + a stub regression test.
+     * The owning cluster is also flipped to `in_progress` so the callsite's
+     * state is consistent with the master plan's cluster-rolls-up rule.
+     */
+    private function submitCallsiteForReview(string $callsiteId, string $owner, string $fixCommit): void
+    {
+        $this->reseedInventory(function (array $doc) use ($callsiteId, $owner, $fixCommit): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            $clusterId = null;
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['id'] ?? null) === $callsiteId) {
+                    $cs['status'] = 'under_review';
+                    $cs['owner'] = $owner;
+                    $cs['claimed_at'] = '2026-05-03T00:00:00Z';
+                    $cs['fix_commit'] = $fixCommit;
+                    $cs['regression_test'] = 'tests/Feature/Stub/StubTenantIsolationTest.php::test_baseline';
+                    $callsites[$idx] = $cs;
+                    $clusterId = $cs['cluster_id'] ?? null;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            /** @var list<array<string, mixed>> $clusters */
+            $clusters = $doc['clusters'];
+            foreach ($clusters as $idx => $cluster) {
+                if (($cluster['id'] ?? null) === $clusterId) {
+                    $cluster['status'] = 'in_progress';
+                    $cluster['owner'] = $owner;
+                    $clusters[$idx] = $cluster;
+                }
+            }
+            $doc['clusters'] = $clusters;
+
+            return $doc;
+        });
+    }
 }
