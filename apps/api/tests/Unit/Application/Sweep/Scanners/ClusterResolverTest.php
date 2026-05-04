@@ -54,4 +54,66 @@ class ClusterResolverTest extends TestCase
     {
         $this->assertSame('api.unmapped', ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID);
     }
+
+    /**
+     * Triage round added in 2026-05-04: 5 modules previously routed to the
+     * api.unmapped fallback are now mapped to existing clusters per master
+     * plan Section 6 adjacency rules. Pin each so a regression cannot silently
+     * undo the triage.
+     *
+     * @dataProvider provideTriagedModuleMappings
+     */
+    public function test_triaged_modules_resolve_to_their_assigned_cluster(string $modulePath, string $expectedClusterId): void
+    {
+        $resolver = new ClusterResolver(ClusterResolver::defaultModuleToClusterMap(), 'api.unmapped');
+
+        $this->assertSame($expectedClusterId, $resolver->resolve($modulePath));
+    }
+
+    /**
+     * @return iterable<array{0: string, 1: string}>
+     */
+    public static function provideTriagedModuleMappings(): iterable
+    {
+        yield 'BatchExpiry → api.inventory' => [
+            'apps/api/app/Modules/BatchExpiry/Domain/Services/BatchWriteOffService.php',
+            'api.inventory',
+        ];
+        yield 'Expense → api.accounting' => [
+            'apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseCategoryController.php',
+            'api.accounting',
+        ];
+        yield 'Coupon → api.pricing' => [
+            'apps/api/app/Modules/Coupon/Application/Services/CouponApplicationService.php',
+            'api.pricing',
+        ];
+        yield 'Product → api.catalog' => [
+            'apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php',
+            'api.catalog',
+        ];
+        yield 'Billing → api.super-admin-context (super-admin route group)' => [
+            'apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php',
+            'api.super-admin-context',
+        ];
+    }
+
+    /**
+     * Deliberate negative test: Marketplace is the ONE module triaged this
+     * round that stays unmapped. The pin forces anyone removing the deferral
+     * (by adding a Marketplace mapping) to also justify the cluster choice
+     * and update this test — not silently route it. See
+     * `defaultModuleToClusterMap` docblock for the rationale.
+     */
+    public function test_marketplace_remains_deferred_to_api_unmapped(): void
+    {
+        $resolver = new ClusterResolver(ClusterResolver::defaultModuleToClusterMap(), 'api.unmapped');
+
+        $this->assertSame(
+            'api.unmapped',
+            $resolver->resolve('apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnPriceChange.php'),
+            'Marketplace is not in master plan Section 6 catalogue. Until a cluster owner + scope is decided, '.
+            'its callsites must remain in api.unmapped so the warning surfaces. Anyone updating this mapping '.
+            'must also document the cluster choice in defaultModuleToClusterMap.',
+        );
+    }
 }

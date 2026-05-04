@@ -65,13 +65,32 @@ final class ClusterResolver
             'Treasury' => 'api.treasury',
             'Document' => 'api.document',
             'Inventory' => 'api.inventory',
+            // BatchExpiry handles batch tracking + write-offs + transfer between
+            // stock locations — semantically part of inventory management per
+            // master plan Section 6 ("BatchExpiry, counting, stock reservation/
+            // adjustment" listed under api.inventory).
+            'BatchExpiry' => 'api.inventory',
             'Taxation' => 'api.taxation',
             'Loyalty' => 'api.loyalty',
             'Accounting' => 'api.accounting',
+            // Expense tracking is operational accounting (expense categories,
+            // partner-linked expenses, account postings). Folds into the
+            // accounting cluster's existing scope (ledger, partner balance,
+            // reconciliation per master plan Section 6).
+            'Expense' => 'api.accounting',
             'Catalog' => 'api.catalog',
+            // Product module exposes the product catalog CRUD (categories,
+            // create/update product). The Catalog cluster's scope per master
+            // plan Section 6 is "Modifier groups, modifiers, product catalog
+            // selectors" — Product slots in.
+            'Product' => 'api.catalog',
             'Contact' => 'api.contact',
             'Compliance' => 'api.compliance',
             'Pricing' => 'api.pricing',
+            // Coupon application is a pricing/discount mechanism (margin +
+            // discount calculation at cart time). Folds into api.pricing's
+            // scope (margin checks, pricing rules per master plan Section 6).
+            'Coupon' => 'api.pricing',
             'Service' => 'api.service',
             'Cart' => 'api.cart',
             'Workshop' => 'api.workshop',
@@ -85,11 +104,24 @@ final class ClusterResolver
             'POS' => 'api.pos-stabilization',
             'Pos' => 'api.pos-stabilization',
             'SuperAdmin' => 'api.super-admin-context',
+            // AdminBillingController is mounted under the super-admin route
+            // group (`Route::prefix('admin')->middleware(['auth:sanctum-admin',
+            // 'super_admin', ...])`) — every Billing controller endpoint is
+            // super-admin-only. Map to api.super-admin-context so the cluster
+            // owner (claude) handles it via #[CrossTenantRoute] annotation per
+            // master plan Section 9, not via per-tenant scoping.
+            'Billing' => 'api.super-admin-context',
             'Module' => 'api.module-gating',
             'ModuleGating' => 'api.module-gating',
             'Auth' => 'api.auth-permissions',
             'Permission' => 'api.auth-permissions',
             'Permissions' => 'api.auth-permissions',
+            // Marketplace module (multi-seller listings, sync to external
+            // marketplaces) is intentionally NOT mapped here. It is not
+            // catalogued in master plan Section 6 and the listeners' tenant
+            // scoping pattern needs an explicit cluster-owner + scope decision
+            // before mechanical fixes are safe. Two callsites currently land
+            // in api.unmapped; triage in a follow-up master plan revision.
         ];
     }
 }
