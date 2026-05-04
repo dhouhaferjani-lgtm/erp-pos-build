@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 15948396d6e8b36c9924efe0cd1e285d57ee6f2f32007bc0b16f33bf3d137177
+  yaml_sha256: dfeebb189353723ab11b2f2fa837e2a295d0cdbe564f976876211e4b5b25e0a0
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -11158,6 +11158,24 @@ callsites:
         review_file: null
         review_commit: null
         note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
+      -
+        at: '2026-05-04T16:15:09Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:annotate-structural-guard (one-shot via repin_inventory_treasury_finding8_9.php)'
+        previous_yaml_sha256: 15948396d6e8b36c9924efe0cd1e285d57ee6f2f32007bc0b16f33bf3d137177
+        new_yaml_sha256: dfeebb189353723ab11b2f2fa837e2a295d0cdbe564f976876211e4b5b25e0a0
+        target_ids:
+          - api.treasury.027
+        from_status: under_review
+        to_status: under_review
+        commit: 3d7fd440877edc626da297ff8c2d81c6f787e1fa
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Codex round-2 Treasury Finding 8/9 closure — set structurally_protected_by_upstream_guard from null to [api.treasury.026]. Document::findOrFail at PaymentAllocationService.php:108-112 (inside applyAllocation DB::transaction closure) is structurally protected by api.treasury.026 (Payment::findOrFail at line 87). No caller can reach the document loop without first satisfying the payment guard. The regression_test pin (test_payment_allocation_service_apply_refuses_cross_tenant_payment_id) exercises the upstream guard, not this line; this annotation is the honest signal.'
+    structurally_protected_by_upstream_guard:
+      - api.treasury.026
   -
     id: api.treasury.028
     stable_key: 'sha256:3d0779b24b840ffd9db6d968b214f162ae964b1d1b88467c633529f45260bfb4'
@@ -11268,6 +11286,24 @@ callsites:
         review_file: null
         review_commit: null
         note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
+      -
+        at: '2026-05-04T16:15:09Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:annotate-structural-guard (one-shot via repin_inventory_treasury_finding8_9.php)'
+        previous_yaml_sha256: 15948396d6e8b36c9924efe0cd1e285d57ee6f2f32007bc0b16f33bf3d137177
+        new_yaml_sha256: dfeebb189353723ab11b2f2fa837e2a295d0cdbe564f976876211e4b5b25e0a0
+        target_ids:
+          - api.treasury.028
+        from_status: under_review
+        to_status: under_review
+        commit: 3d7fd440877edc626da297ff8c2d81c6f787e1fa
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Codex round-2 Treasury Finding 8/9 closure — set structurally_protected_by_upstream_guard from null to [api.treasury.026]. Document::find at PaymentAllocationService.php:190-193 (inside applyAllocation GL journal block) is structurally protected by api.treasury.026 (Payment::findOrFail at line 87). No caller can reach the GL block without first satisfying the payment guard. The regression_test pin exercises the upstream guard, not this line; this annotation is the honest signal.'
+    structurally_protected_by_upstream_guard:
+      - api.treasury.026
   -
     id: api.treasury.029
     stable_key: 'sha256:b97fb4e133ebff9f92b5fa62374a705592924c31777aadaf8602f0476e337c00'
@@ -11488,6 +11524,24 @@ callsites:
         review_file: null
         review_commit: null
         note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payments_store_refuses_cross_tenant_payment_method_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_refund_service_scoped_find_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
+      -
+        at: '2026-05-04T16:15:09Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:annotate-structural-guard (one-shot via repin_inventory_treasury_finding8_9.php)'
+        previous_yaml_sha256: 15948396d6e8b36c9924efe0cd1e285d57ee6f2f32007bc0b16f33bf3d137177
+        new_yaml_sha256: dfeebb189353723ab11b2f2fa837e2a295d0cdbe564f976876211e4b5b25e0a0
+        target_ids:
+          - api.treasury.030
+        from_status: under_review
+        to_status: under_review
+        commit: 3d7fd440877edc626da297ff8c2d81c6f787e1fa
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Codex round-2 Treasury Finding 8/9 closure — set structurally_protected_by_upstream_guard from null to [apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:626-633]. PaymentRepository::find at PaymentRefundService.php:420-423 (defense-in-depth scoped find inside the cashier-choice refund flow) is structurally protected by buildCashierChoiceMap() at PaymentRefundService.php:626-633, which validates each cashier-supplied payment id against the already company-scoped $originalPayments collection BEFORE the find. Cross-tenant payment ids are rejected before reaching the scoped find. The regression_test pin (test_payment_refund_service_scoped_find_refuses_cross_tenant_payment_id) reproduces the find pattern but does not invoke refundReceiptPayments; this annotation is the honest signal that the line is unreachable from the public API without first being short-circuited.'
+    structurally_protected_by_upstream_guard:
+      - 'apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:626-633'
   -
     id: api.treasury.031
     stable_key: 'sha256:8fd46f592c945ef54e4257bff1831b0e24cfcdf70887149fecae233a7f9dd02d'
