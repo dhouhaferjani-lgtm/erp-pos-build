@@ -21,6 +21,10 @@ export default tseslint.config(
       '**/src/features/inventory-counting/pages/CountingDashboardPage.tsx',
       '**/src/features/inventory-counting/pages/CountingListPage.tsx',
       '**/src/features/pos/organisms/index.ts',
+      // Fixtures consumed by the audit-pos-local-cache scanner test suite.
+      // Synthetic .ts inputs (raw SQL strings, sync-envelope shapes) outside
+      // any tsconfig project on purpose.
+      'tools/__fixtures__/**',
     ],
   },
   {
