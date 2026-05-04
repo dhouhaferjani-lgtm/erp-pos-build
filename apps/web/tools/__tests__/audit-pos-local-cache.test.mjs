@@ -1,6 +1,7 @@
 // @ts-check
 import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,12 +28,14 @@ const FIXTURES = path.join(TOOLS_ROOT, '__fixtures__', 'audit-pos-local-cache');
 
 /**
  * @param {string[]} args
+ * @param {Record<string, string>} [env]
  * @returns {{ stdout: string, stderr: string, status: number | null }}
  */
-function runCli(args) {
+function runCli(args, env) {
   const result = spawnSync(process.execPath, [SCRIPT, ...args], {
     encoding: 'utf8',
     cwd: TOOLS_ROOT,
+    env: env ? { ...process.env, ...env } : process.env,
   });
   return {
     stdout: result.stdout ?? '',
@@ -84,6 +87,39 @@ describe('Phase 2B.2 — audit-pos-local-cache scanner', () => {
       const violations = scanCode(code, 'edge/sync-envelope-with-tenant-check.ts');
       expect(violations).toEqual([]);
     });
+
+    // Codex round-1 finding #1 regression coverage: a bare reference to
+    // envelope.tenant_id is NOT a guard. The recognizer must accept only
+    // top-level if/throw shapes against the active auth context or
+    // allowlisted synchronous helper-call statements. Capture, read, and
+    // same-statement destructure must all flag.
+
+    it('flags handler that captures envelope.tenant_id in a deferred callback', async () => {
+      const code = await readFixture('edge/sync-envelope-deferred-callback.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-deferred-callback.ts');
+      expect(violations).toHaveLength(1);
+      expect(violations[0].pattern_type).toBe('sync_envelope_without_tenant_check');
+    });
+
+    it('flags handler that reads envelope.tenant_id without comparing it', async () => {
+      const code = await readFixture('edge/sync-envelope-read-only-assignment.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-read-only-assignment.ts');
+      expect(violations).toHaveLength(1);
+      expect(violations[0].pattern_type).toBe('sync_envelope_without_tenant_check');
+    });
+
+    it('flags handler that destructures tenant_id and payload in the same statement', async () => {
+      const code = await readFixture('edge/sync-envelope-destructure-both.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-destructure-both.ts');
+      expect(violations).toHaveLength(1);
+      expect(violations[0].pattern_type).toBe('sync_envelope_without_tenant_check');
+    });
+
+    it('does not flag handler that calls an allowlisted synchronous validator before payload access', async () => {
+      const code = await readFixture('edge/sync-envelope-with-helper-call.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-with-helper-call.ts');
+      expect(violations).toEqual([]);
+    });
   });
 
   describe('CLI: default mode (gate)', () => {
@@ -133,6 +169,37 @@ describe('Phase 2B.2 — audit-pos-local-cache scanner', () => {
     it('exits 0 even when gaps are detected (emit-and-exit semantics)', () => {
       const positiveFixture = path.join(FIXTURES, 'positive/create-table-without-tenant.ts');
       const result = runCli(['--emit-inventory-rows', positiveFixture]);
+      expect(result.status).toBe(0);
+    });
+  });
+
+  describe('CLI: default-target presence (Codex round-1 finding #2)', () => {
+    // No-arg gate mode walks DEFAULT_TARGETS. If a target file is missing
+    // (e.g., a future rename of apps/pos/src/lib/sync/syncService.ts), the
+    // gate must NOT silently skip it — silent skipping would let real POS
+    // surfaces drop out of CI coverage. Default behavior errors with
+    // exit 2; --allow-missing-default-targets opts in to the older silent
+    // skip for branch-portability use cases.
+    //
+    // The scanner reads AUDIT_POS_LOCAL_CACHE_DEFAULT_TARGETS as a comma
+    // separated override so this test can point the walk at non-existent
+    // paths without touching the real POS files on disk.
+
+    it('exits 2 when a default target is missing and --allow-missing-default-targets is not set', () => {
+      const missingPath = path.join(os.tmpdir(), `does-not-exist-${process.pid}.ts`);
+      const result = runCli([], {
+        AUDIT_POS_LOCAL_CACHE_DEFAULT_TARGETS: missingPath,
+      });
+      expect(result.status).toBe(2);
+      expect(result.stderr).toMatch(/cannot read|missing/i);
+      expect(result.stderr).toMatch(/does-not-exist/);
+    });
+
+    it('exits 0 when a default target is missing AND --allow-missing-default-targets is set', () => {
+      const missingPath = path.join(os.tmpdir(), `does-not-exist-${process.pid}.ts`);
+      const result = runCli(['--allow-missing-default-targets'], {
+        AUDIT_POS_LOCAL_CACHE_DEFAULT_TARGETS: missingPath,
+      });
       expect(result.status).toBe(0);
     });
   });

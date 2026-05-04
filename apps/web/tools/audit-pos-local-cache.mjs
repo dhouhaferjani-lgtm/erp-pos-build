@@ -119,11 +119,26 @@ const GUARDED_TABLES = new Set([
   'work_orders',
 ]);
 
-const DEFAULT_TARGETS = [
-  'apps/pos/src/lib/db.ts',
-  'apps/pos/src/lib/db/migrations.ts',
-  'apps/pos/src/lib/sync/syncService.ts',
-];
+/**
+ * Default-walk targets when the CLI is invoked with no positional file
+ * arguments. The list is overridable at runtime via the
+ * `AUDIT_POS_LOCAL_CACHE_DEFAULT_TARGETS` env variable (comma-separated
+ * paths) — used by the CLI test suite to point the walk at synthetic
+ * paths without touching the real POS files on disk.
+ *
+ * @returns {string[]}
+ */
+function defaultTargets() {
+  const envOverride = process.env.AUDIT_POS_LOCAL_CACHE_DEFAULT_TARGETS;
+  if (envOverride && envOverride.length > 0) {
+    return envOverride.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return [
+    'apps/pos/src/lib/db.ts',
+    'apps/pos/src/lib/db/migrations.ts',
+    'apps/pos/src/lib/sync/syncService.ts',
+  ];
+}
 
 /**
  * @typedef {{
@@ -321,16 +336,96 @@ function checkSqlNode(node, text, sourceFile, filePath, out) {
 // ---------------------------------------------------------------------------
 // Sync envelope handler detection
 // ---------------------------------------------------------------------------
+//
+// Codex round-1 finding #1 closure: the recognizer no longer accepts ANY
+// reference to `envelope.tenant_id` as validation. Three real false-negatives
+// it used to wave through are now flagged:
+//
+//   1. setupValidator(() => envelope.tenant_id); const payload = envelope.payload;
+//      A capture inside a deferred callback is not a synchronous guard.
+//   2. const tenantId = envelope.tenant_id; const payload = envelope.payload;
+//      A bare read does not compare against the active auth context.
+//   3. const { tenant_id, payload } = envelope; if (tenant_id !== ...) throw ...
+//      Same-statement destructure cannot retroactively guard the payload.
+//
+// New rule: a top-level statement counts as a tenant guard ONLY IF
+//   (a) it is an `if` whose condition references `envelope.tenant_id` at the
+//       top level (NOT inside a nested function/arrow); OR
+//   (b) it is an expression statement that calls one of the explicit
+//       allowlisted synchronous validator helpers and passes either
+//       `envelope` itself or a top-level reference to `envelope.tenant_id`.
+//
+// Payload access on a statement is checked BEFORE the statement is evaluated
+// for guard status, so a destructure picking both `tenant_id` and `payload`
+// is flagged on its own statement.
 
 /**
- * Recursively check whether a node references `envelope.<propName>` anywhere
- * inside its subtree.
+ * Allowlisted synchronous validator helpers — calls to these at the top
+ * level of a handler body, with `envelope` (or `envelope.tenant_id`) in the
+ * argument list, count as a guard. The list is intentionally narrow:
+ * default-deny on unknown helpers. Extend only by name as real validators
+ * are introduced in apps/pos/src/lib/sync/.
+ *
+ * @type {ReadonlySet<string>}
+ */
+const GUARD_HELPER_NAMES = new Set([
+  'assertEnvelopeTenant',
+  'validateEnvelopeTenant',
+  'requireTenantContext',
+  'throwIfTenantMismatch',
+]);
+
+/**
+ * Top-level reference to `envelope.<propName>` — descends through the node
+ * subtree but stops at any nested function-like node so a deferred callback
+ * capture (`() => envelope.tenant_id`) does not register as a top-level
+ * reference.
  *
  * @param {ts.Node} node
  * @param {string} propName
  * @returns {boolean}
  */
-function subtreeReferencesEnvelopeProp(node, propName) {
+function subtreeReferencesEnvelopePropAtTopLevel(node, propName) {
+  if (
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessor(node) ||
+    ts.isSetAccessor(node)
+  ) {
+    return false;
+  }
+  if (
+    ts.isPropertyAccessExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'envelope' &&
+    ts.isIdentifier(node.name) &&
+    node.name.text === propName
+  ) {
+    return true;
+  }
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (found) return;
+    if (subtreeReferencesEnvelopePropAtTopLevel(child, propName)) found = true;
+  });
+  return found;
+}
+
+/**
+ * Does this top-level statement READ `envelope.<propName>` (via property
+ * access at the top level OR via a `const { <propName>, ... } = envelope`
+ * destructure)? Mirrors the older subtree heuristic for payload-access
+ * detection — payload access doesn't have the function-boundary concern
+ * because reading `envelope.payload` inside a nested callback is still a
+ * read off the live envelope.
+ *
+ * @param {ts.Node} node
+ * @param {string} propName
+ * @returns {boolean}
+ */
+function statementReadsEnvelopeProp(node, propName) {
   if (
     ts.isPropertyAccessExpression(node) &&
     ts.isIdentifier(node.expression) &&
@@ -360,9 +455,41 @@ function subtreeReferencesEnvelopeProp(node, propName) {
   let found = false;
   ts.forEachChild(node, (child) => {
     if (found) return;
-    if (subtreeReferencesEnvelopeProp(child, propName)) found = true;
+    if (statementReadsEnvelopeProp(child, propName)) found = true;
   });
   return found;
+}
+
+/**
+ * Is this top-level statement a tenant guard? See the rule comment above
+ * for the definition; in short: an `if` referencing `envelope.tenant_id`
+ * at the top level, or a top-level call to an allowlisted helper with
+ * `envelope` (or `envelope.tenant_id`) in the args.
+ *
+ * @param {ts.Statement} stmt
+ * @returns {boolean}
+ */
+function isTenantGuardStatement(stmt) {
+  if (ts.isIfStatement(stmt)) {
+    return subtreeReferencesEnvelopePropAtTopLevel(stmt.expression, 'tenant_id');
+  }
+  if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
+    const callee = stmt.expression.expression;
+    /** @type {string | null} */
+    let calleeName = null;
+    if (ts.isIdentifier(callee)) {
+      calleeName = callee.text;
+    } else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.name)) {
+      calleeName = callee.name.text;
+    }
+    if (calleeName && GUARD_HELPER_NAMES.has(calleeName)) {
+      for (const arg of stmt.expression.arguments) {
+        if (ts.isIdentifier(arg) && arg.text === 'envelope') return true;
+        if (subtreeReferencesEnvelopePropAtTopLevel(arg, 'tenant_id')) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -380,15 +507,20 @@ function analyzeEnvelopeHandler(fnNode, sourceFile, filePath, out) {
   let firstUnvalidatedPayloadNode = null;
 
   for (const stmt of body.statements) {
-    if (subtreeReferencesEnvelopeProp(stmt, 'tenant_id')) {
-      tenantValidated = true;
-    }
+    // Check payload access FIRST — same-statement destructures of both
+    // `tenant_id` and `payload` cannot retroactively guard themselves.
     if (
       !tenantValidated &&
       firstUnvalidatedPayloadNode === null &&
-      subtreeReferencesEnvelopeProp(stmt, 'payload')
+      statementReadsEnvelopeProp(stmt, 'payload')
     ) {
       firstUnvalidatedPayloadNode = stmt;
+    }
+    // Then check whether this statement is a guard for downstream
+    // statements (an early `if`/throw, an early-return, or an allowlisted
+    // helper call).
+    if (isTenantGuardStatement(stmt)) {
+      tenantValidated = true;
     }
   }
 
@@ -498,14 +630,19 @@ export function scanCode(code, filename = '<inline>') {
 
 /**
  * @param {string[]} argv
- * @returns {{ files: string[], emitInventoryRows: boolean }}
+ * @returns {{ files: string[], emitInventoryRows: boolean, allowMissingDefaultTargets: boolean }}
  */
 function parseArgs(argv) {
   const files = [];
   let emitInventoryRows = false;
+  let allowMissingDefaultTargets = false;
   for (const arg of argv) {
     if (arg === '--emit-inventory-rows') {
       emitInventoryRows = true;
+      continue;
+    }
+    if (arg === '--allow-missing-default-targets') {
+      allowMissingDefaultTargets = true;
       continue;
     }
     if (arg.startsWith('--')) {
@@ -513,7 +650,7 @@ function parseArgs(argv) {
     }
     files.push(arg);
   }
-  return { files, emitInventoryRows };
+  return { files, emitInventoryRows, allowMissingDefaultTargets };
 }
 
 /**
@@ -542,8 +679,11 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const { files, emitInventoryRows } = parseArgs(process.argv.slice(2));
-  const targets = files.length > 0 ? files : DEFAULT_TARGETS.map((rel) => path.join(REPO_ROOT, rel));
+  const { files, emitInventoryRows, allowMissingDefaultTargets } = parseArgs(process.argv.slice(2));
+  const usingDefaultTargets = files.length === 0;
+  const targets = usingDefaultTargets
+    ? defaultTargets().map((rel) => (path.isAbsolute(rel) ? rel : path.join(REPO_ROOT, rel)))
+    : files;
 
   /** @type {CallsiteRow[]} */
   const allViolations = [];
@@ -552,10 +692,15 @@ if (isMain) {
       const fileViolations = await scanFile(target);
       allViolations.push(...fileViolations);
     } catch (err) {
-      // Missing default target: not a hard error in default-walk mode.
-      // (db.ts / migrations.ts may not yet exist on every branch.)
+      // Codex round-1 finding #2: a silently-skipped missing default target
+      // can hide a renamed POS surface from the gate. Default behavior now
+      // ERRORS on ENOENT in any mode; the older silent-skip is opt-in via
+      // --allow-missing-default-targets for branch-portability use cases.
       if (err && typeof err === 'object' && /** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') {
-        if (files.length === 0) continue;
+        if (usingDefaultTargets && allowMissingDefaultTargets) {
+          process.stderr.write(`audit-pos-local-cache: skipping missing default target ${target}\n`);
+          continue;
+        }
         process.stderr.write(`audit-pos-local-cache: cannot read ${target}\n`);
         process.exit(2);
       }
