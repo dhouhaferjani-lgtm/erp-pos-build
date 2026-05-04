@@ -35,12 +35,17 @@ class SalesWithholdingTrackingController extends Controller
         string $documentId,
         RecordSalesWithholdingRequest $request
     ): JsonResponse {
-        $document = Document::findOrFail($documentId);
-
-        // Verify document belongs to current company
-        if ($document->company_id !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Document does not belong to your company');
-        }
+        // api.taxation.011: pre-fix Document::findOrFail loaded
+        // foreign-tenant document and then 403'd post-load. Per the
+        // cluster invariant, every read whose anchor came from a route
+        // param MUST carry tenant_id + company_id predicates so a
+        // foreign document 404s at the read tier rather than leaking
+        // its existence (and content via eager loads) before a
+        // post-load check.
+        $company = $this->companyContext->requireCompany();
+        $document = Document::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($documentId);
 
         // Verify document is a sales document
         if (! in_array($document->type, [DocumentType::Invoice, DocumentType::CreditNote])) {
@@ -50,8 +55,6 @@ class SalesWithholdingTrackingController extends Controller
         $data = CreateSalesWithholdingTrackingData::fromArray(
             array_merge($request->validated(), ['document_id' => $documentId])
         );
-
-        $company = $this->companyContext->requireCompany();
 
         try {
             $tracking = $this->service->recordWithholding(

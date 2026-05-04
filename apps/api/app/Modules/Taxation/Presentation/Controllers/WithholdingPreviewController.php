@@ -31,15 +31,21 @@ class WithholdingPreviewController extends Controller
      */
     public function preview(CalculateWithholdingRequest $request): JsonResponse
     {
+        // api.taxation.012: tenant-scope Partner lookup. The validator at
+        // CalculateWithholdingRequest also runs ScopedExists::tenantAndCompany
+        // on partner_id (api.taxation.006); this service-tier check is
+        // defense-in-depth so a service-direct caller cannot bypass.
+        $company = $this->companyContext->requireCompany();
+
         /** @var Partner $partner */
-        $partner = Partner::findOrFail($request->input('partner_id'));
+        $partner = Partner::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($request->input('partner_id'));
         $amount = $request->input('amount');
         $currency = $request->input('currency', 'TND');
         $transactionType = $request->input('transaction_type')
             ? TransactionType::from($request->input('transaction_type'))
             : null;
-
-        $company = $this->companyContext->requireCompany();
 
         $preview = $this->calculationService->preview(
             $partner,

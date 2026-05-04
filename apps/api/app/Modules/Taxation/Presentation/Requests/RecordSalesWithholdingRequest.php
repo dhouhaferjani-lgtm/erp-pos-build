@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -13,6 +15,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class RecordSalesWithholdingRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -28,13 +36,24 @@ class RecordSalesWithholdingRequest extends FormRequest
      */
     public function rules(): array
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
+
         return [
-            'customer_id' => ['required', 'uuid', 'exists:partners,id'],
+            'customer_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
             'invoice_amount' => ['required', 'numeric', 'min:0'],
             'withholding_rate' => ['required', 'numeric', 'min:0', 'max:1'],
             'withholding_amount' => ['required', 'numeric', 'min:0'],
             'expected_receivable' => ['required', 'numeric', 'min:0'],
-            'payment_id' => ['nullable', 'uuid', 'exists:payments,id'],
+            'payment_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payments', $tenantId, $companyId),
+            ],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }

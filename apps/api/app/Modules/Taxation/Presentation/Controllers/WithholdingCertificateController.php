@@ -100,10 +100,17 @@ class WithholdingCertificateController extends Controller
      */
     public function store(CreateWithholdingCertificateRequest $request): JsonResponse
     {
-        /** @var Partner $partner */
-        $partner = Partner::findOrFail($request->input('partner_id'));
+        // api.taxation.013: tenant-scope Partner lookup. The validator at
+        // CreateWithholdingCertificateRequest also runs ScopedExists::
+        // tenantAndCompany on partner_id (api.taxation.001); this
+        // controller-tier check is defense-in-depth.
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
+
+        /** @var Partner $partner */
+        $partner = Partner::where('tenant_id', $tenantId)
+            ->where('company_id', $company->id)
+            ->findOrFail($request->input('partner_id'));
 
         $data = CreateWithholdingCertificateData::fromArray(
             array_merge($request->validated(), [
