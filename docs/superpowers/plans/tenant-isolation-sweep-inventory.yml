@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+  yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -10965,7 +10965,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_payment_id'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
     blocked_reason: null
     history:
       -
@@ -11032,6 +11032,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.026
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_payment_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.027
     stable_key: 'sha256:2e55664c636701331b9500a4fcbc614a6f91b7886577a39c1a99091bbecf837c'
@@ -11059,7 +11075,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
     blocked_reason: null
     history:
       -
@@ -11126,6 +11142,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.027
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.028
     stable_key: 'sha256:3d0779b24b840ffd9db6d968b214f162ae964b1d1b88467c633529f45260bfb4'
@@ -11153,7 +11185,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
     blocked_reason: null
     history:
       -
@@ -11220,6 +11252,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.028
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_apply_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.029
     stable_key: 'sha256:b97fb4e133ebff9f92b5fa62374a705592924c31777aadaf8602f0476e337c00'
@@ -11247,7 +11295,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_preview_manual_refuses_cross_tenant_document_id'
     blocked_reason: null
     history:
       -
@@ -11314,6 +11362,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.029
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_preview_manual_refuses_cross_tenant_document_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_smart_payment_apply_refuses_cross_tenant_manual_document_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_allocation_service_preview_manual_refuses_cross_tenant_document_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.030
     stable_key: 'sha256:f22b65a678126b0e955155628ef2e9eb18ae372458bb0e6418a9959417a523e3'
@@ -11341,7 +11405,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payments_store_refuses_cross_tenant_payment_method_id'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_refund_service_scoped_find_refuses_cross_tenant_payment_id'
     blocked_reason: null
     history:
       -
@@ -11408,6 +11472,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.030
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_refund_service_scoped_find_refuses_cross_tenant_payment_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payments_store_refuses_cross_tenant_payment_method_id' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_payment_refund_service_scoped_find_refuses_cross_tenant_payment_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.031
     stable_key: 'sha256:8fd46f592c945ef54e4257bff1831b0e24cfcdf70887149fecae233a7f9dd02d'
@@ -11435,7 +11515,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_refund_prepayment_refuses_cross_tenant_repository_at_service_tier'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_refund_prepayment_refuses_cross_tenant_document_id'
     blocked_reason: null
     history:
       -
@@ -11502,6 +11582,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.031
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_refund_prepayment_refuses_cross_tenant_document_id'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_refund_prepayment_refuses_cross_tenant_repository_at_service_tier' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_refund_prepayment_refuses_cross_tenant_document_id' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.032
     stable_key: 'sha256:4dfcda93fa01339a3289dceb1abd0f362d265d06d252738ec11d8c2106870ec9'
@@ -11529,7 +11625,7 @@ callsites:
       review_file: null
       review_commit: null
     fix_commit: f616d188
-    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_refund_prepayment_refuses_cross_tenant_repository_at_service_tier'
+    regression_test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_repository_lookup_skips_cross_tenant_repository'
     blocked_reason: null
     history:
       -
@@ -11596,6 +11692,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T13:10:23Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:re-pin (one-shot via repin_inventory_treasury_block5.php)'
+        previous_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        new_yaml_sha256: c34f10d513c3b5b60d358c1ad0c0043c66677eec265d9997384d0419d26825ae
+        target_ids:
+          - api.treasury.032
+        from_status: under_review
+        to_status: under_review
+        commit: f616d188
+        test: 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_repository_lookup_skips_cross_tenant_repository'
+        review_file: null
+        review_commit: null
+        note: "re-pin regression_test from 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_refund_prepayment_refuses_cross_tenant_repository_at_service_tier' to service-reaching 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_vendor_refund_service_repository_lookup_skips_cross_tenant_repository' (Codex Treasury Findings 1-3)"
   -
     id: api.treasury.033
     stable_key: 'sha256:10fbd133061fc3f31f2a1d31b95ba1ce19ef72d88b63ebd7fdead23969fac752'
