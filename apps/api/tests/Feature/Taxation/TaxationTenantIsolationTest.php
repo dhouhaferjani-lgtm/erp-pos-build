@@ -14,6 +14,10 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
+use App\Modules\Taxation\Domain\Enums\CertificateStatus;
+use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -147,6 +151,7 @@ final class TaxationTenantIsolationTest extends TestCase
         Permission::findOrCreate('withholding.manage', 'sanctum');
         Permission::findOrCreate('tax-config.view', 'sanctum');
         Permission::findOrCreate('tax-config.manage', 'sanctum');
+        Permission::findOrCreate('taxation.withholding_rules.manage', 'sanctum');
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantB->id);
         $this->seed(RolesAndPermissionsSeeder::class);
@@ -156,6 +161,7 @@ final class TaxationTenantIsolationTest extends TestCase
         Permission::findOrCreate('withholding.manage', 'sanctum');
         Permission::findOrCreate('tax-config.view', 'sanctum');
         Permission::findOrCreate('tax-config.manage', 'sanctum');
+        Permission::findOrCreate('taxation.withholding_rules.manage', 'sanctum');
 
         $this->userA = User::create([
             'tenant_id' => $this->tenantA->id,
@@ -170,6 +176,7 @@ final class TaxationTenantIsolationTest extends TestCase
             'taxation.view', 'taxation.manage',
             'withholding.view', 'withholding.manage',
             'tax-config.view', 'tax-config.manage',
+            'taxation.withholding_rules.manage',
         ]);
 
         UserCompanyMembership::create([
@@ -444,6 +451,12 @@ final class TaxationTenantIsolationTest extends TestCase
         // Validator now scopes partner_id (api.taxation.001), so this hits
         // 422 from the validator tier — the controller findOrFail (line 104)
         // is defense-in-depth.
+        // Round-2 Opus Finding 6 honesty fix: pin error.errors.partner_id so
+        // the test can't pass for an unrelated 422 reason (e.g. service-tier
+        // DomainException for missing rule). Pre-fix the validator did not
+        // catch the cross-tenant partner_id, so the request would 201 (not
+        // 422), failing the assertion. Without this body-pin, a downstream
+        // 422 would silently mask a regression.
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/withholding/certificates', [
                 'direction' => 'outbound',
@@ -452,6 +465,153 @@ final class TaxationTenantIsolationTest extends TestCase
                 'gross_amount' => '100.00',
             ]);
         $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('partner_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Round-2 fixes (Opus Findings 1-4)
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_certificate_rejects_cross_tenant_id(): void
+    {
+        // Opus Finding 2 (CRITICAL): seeded foreign-tenant certificate
+        // must 404 on /api/v1/withholding/certificates/{id}.
+        $foreignCert = WithholdingCertificate::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'partner_id' => $this->partnerB->id,
+            'direction' => WithholdingDirection::PURCHASE,
+            'currency' => 'TND',
+            'gross_amount' => '100.00',
+            'certificate_number' => 'WT-FOREIGN-'.substr(Str::uuid()->toString(), 0, 8),
+            'withholding_rate' => '0.10',
+            'year' => 2026,
+            'withholding_amount' => '10.00',
+            'net_amount' => '90.00',
+            'status' => CertificateStatus::DRAFT,
+            'issued_at' => now(),
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/withholding/certificates/{$foreignCert->id}");
+        $cross->assertStatus(404);
+    }
+
+    public function test_issue_certificate_rejects_cross_tenant_id(): void
+    {
+        // Opus Finding 1 (CRITICAL): fiscal hash chain integrity. Pre-fix
+        // tenant-A admin could POST /issue against tenant-B's draft cert
+        // and bake tenant-B's chain sequence into a tenant-A-attributed
+        // fiscal action. Post-fix: 404.
+        $foreignCert = WithholdingCertificate::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'partner_id' => $this->partnerB->id,
+            'direction' => WithholdingDirection::PURCHASE,
+            'currency' => 'TND',
+            'gross_amount' => '100.00',
+            'certificate_number' => 'WT-FOREIGN-'.substr(Str::uuid()->toString(), 0, 8),
+            'withholding_rate' => '0.10',
+            'year' => 2026,
+            'withholding_amount' => '10.00',
+            'net_amount' => '90.00',
+            'status' => CertificateStatus::DRAFT,
+            'issued_at' => now(),
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/withholding/certificates/{$foreignCert->id}/issue");
+        $cross->assertStatus(404);
+
+        // Post-condition: foreign certificate's status MUST remain Draft
+        // (fiscal chain not entered).
+        $this->assertSame(
+            CertificateStatus::DRAFT,
+            $foreignCert->fresh()?->status,
+            'Cross-tenant certificate status must NOT have advanced to Issued.',
+        );
+    }
+
+    public function test_destroy_certificate_rejects_cross_tenant_id(): void
+    {
+        // Opus Finding 2 (CRITICAL): destroy hard-deleted draft certs.
+        $foreignCert = WithholdingCertificate::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'partner_id' => $this->partnerB->id,
+            'direction' => WithholdingDirection::PURCHASE,
+            'currency' => 'TND',
+            'gross_amount' => '100.00',
+            'certificate_number' => 'WT-FOREIGN-'.substr(Str::uuid()->toString(), 0, 8),
+            'withholding_rate' => '0.10',
+            'year' => 2026,
+            'withholding_amount' => '10.00',
+            'net_amount' => '90.00',
+            'status' => CertificateStatus::DRAFT,
+            'issued_at' => now(),
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/withholding/certificates/{$foreignCert->id}");
+        $cross->assertStatus(404);
+
+        // Post-condition: foreign certificate must still exist.
+        $this->assertNotNull(
+            $foreignCert->fresh(),
+            'Cross-tenant certificate must NOT have been deleted.',
+        );
+    }
+
+    public function test_show_company_specific_withholding_rule_rejects_cross_tenant(): void
+    {
+        // Opus Finding 4 (IMPORTANT): WithholdingTaxRuleController::show.
+        // A foreign-tenant company-specific rule must 404; a global rule
+        // (company_id IS NULL) is by-design shareable.
+        $foreignRule = WithholdingTaxRule::create([
+            'id' => Str::uuid()->toString(),
+            'country_code' => 'TN',
+            'company_id' => $this->companyB->id,
+            'code' => 'PRIVATE_TN_15',
+            'name' => 'Private Tunisia 15%',
+            'rate' => '15.00',
+            'effective_from' => now(),
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/withholding/rules/{$foreignRule->id}");
+        $cross->assertStatus(404);
+    }
+
+    public function test_update_company_specific_withholding_rule_rejects_cross_tenant(): void
+    {
+        $foreignRule = WithholdingTaxRule::create([
+            'id' => Str::uuid()->toString(),
+            'country_code' => 'TN',
+            'company_id' => $this->companyB->id,
+            'code' => 'PRIVATE_TN_15_U',
+            'name' => 'Private Tunisia 15% Updatable',
+            'rate' => '15.00',
+            'effective_from' => now(),
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/withholding/rules/{$foreignRule->id}", [
+                'rate' => '0.99', // valid (0-1 range); test pins tenant scope.
+            ]);
+        $cross->assertStatus(404);
+
+        // Post-condition: foreign rule's rate must NOT have been mutated.
+        $this->assertNotSame(
+            '0.9900',
+            $foreignRule->fresh()?->rate,
+            'Cross-tenant withholding rule rate must NOT have been mutated.',
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────

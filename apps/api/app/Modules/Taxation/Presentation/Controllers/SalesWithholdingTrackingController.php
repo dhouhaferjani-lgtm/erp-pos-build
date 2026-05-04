@@ -103,15 +103,14 @@ class SalesWithholdingTrackingController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        // api.taxation round-2 (Opus Finding 3, IMPORTANT): replace
+        // load-then-403 with read-tier scoping. The api.taxation.011
+        // commit explicitly codified this anti-pattern as forbidden;
+        // sibling methods on the same controller must mirror it.
         $tracking = $this->service->findById($id);
 
-        if (! $tracking) {
+        if (! $tracking || $tracking->companyId !== $this->companyContext->getCompanyId()) {
             abort(404, 'Sales withholding tracking record not found');
-        }
-
-        // Verify tracking record belongs to current company
-        if ($tracking->companyId !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Tracking record does not belong to your company');
         }
 
         return response()->json([
@@ -128,15 +127,11 @@ class SalesWithholdingTrackingController extends Controller
         string $id,
         MarkCertificateReceivedRequest $request
     ): JsonResponse {
+        // api.taxation round-2 (Opus Finding 3, IMPORTANT): same fix as show().
         $tracking = $this->service->findById($id);
 
-        if (! $tracking) {
+        if (! $tracking || $tracking->companyId !== $this->companyContext->getCompanyId()) {
             abort(404, 'Sales withholding tracking record not found');
-        }
-
-        // Verify tracking record belongs to current company
-        if ($tracking->companyId !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Tracking record does not belong to your company');
         }
 
         try {
