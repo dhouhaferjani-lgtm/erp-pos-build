@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 069eccf0dd6ab820515873e859347e57fb7d6c9b24e26534e40cd6ac69666581
+  yaml_sha256: e1480fc406268d68e7128e29c904200ad0c82fddc11b9df0df9961d16feaf55f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -244,7 +244,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -1175,15 +1175,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:01:21Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T19:48:22Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-contact-cluster-opus-review.md
+      review_commit: a2436417
     fix_commit: a2436417
     regression_test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_store_rejects_cross_tenant_party_id'
     blocked_reason: null
@@ -1252,6 +1252,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T19:48:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 069eccf0dd6ab820515873e859347e57fb7d6c9b24e26534e40cd6ac69666581
+        new_yaml_sha256: 8edecf363c2e240c89ccb579b639a79f12e6ca91d40bab40e4c2ca699f33b1ea
+        target_ids:
+          - api.contact.001
+          - api.contact
+        from_status: under_review
+        to_status: fixed
+        commit: 2d7d81d51b410a8d1440b4a842020af41f46c3fd
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-contact-cluster-opus-review.md
+        review_commit: a2436417
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.contact.002
     stable_key: 'sha256:048513f5f49fac06a9e2ed3541db848467d91a5dcd81a466c6682cc9dc0a692a'
@@ -1269,15 +1286,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:01:21Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T19:48:23Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-contact-cluster-opus-review.md
+      review_commit: a2436417
     fix_commit: a2436417
     regression_test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_link_party_rejects_cross_tenant_party_id'
     blocked_reason: null
@@ -1346,6 +1363,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T19:48:23Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8edecf363c2e240c89ccb579b639a79f12e6ca91d40bab40e4c2ca699f33b1ea
+        new_yaml_sha256: e1480fc406268d68e7128e29c904200ad0c82fddc11b9df0df9961d16feaf55f
+        target_ids:
+          - api.contact.002
+          - api.contact
+        from_status: under_review
+        to_status: fixed
+        commit: 2d7d81d51b410a8d1440b4a842020af41f46c3fd
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-contact-cluster-opus-review.md
+        review_commit: a2436417
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.006
     stable_key: 'sha256:fa3939c9ad9b37d674f40304c7ff8a0abf7de4e7ba8cd378b07f876114d4ac44'

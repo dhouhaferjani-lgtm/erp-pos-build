@@ -15,6 +15,7 @@ use App\Modules\Cart\Domain\Models\CatalogCartItem;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Marketplace\Application\DTOs\MarketplaceOrderData;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -87,6 +88,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->with('items')
@@ -107,6 +109,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('user_id', $user->id)
             ->findOrFail($id);
@@ -136,6 +139,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('user_id', $user->id)
             ->findOrFail($id);
@@ -162,6 +166,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->findOrFail($id);
@@ -217,6 +222,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->findOrFail($id);
@@ -246,6 +252,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->findOrFail($id);
@@ -267,6 +274,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->findOrFail($id);
@@ -275,7 +283,13 @@ class CatalogCartController extends Controller
             'item_ids' => ['required', 'array', 'min:1'],
             'item_ids.*' => ['string', 'uuid'],
             'type' => ['required', 'in:purchase_order,sales_order'],
-            'customer_id' => ['required_if:type,sales_order', 'string', 'uuid'],
+            'customer_id' => [
+                'required_if:type,sales_order',
+                'nullable',
+                'string',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
         ]);
 
         try {
@@ -327,6 +341,7 @@ class CatalogCartController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $cart = CatalogCart::query()
+            ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->shared($user->id)
             ->findOrFail($id);
