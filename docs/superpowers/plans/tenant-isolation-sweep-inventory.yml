@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+  yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -150,9 +150,9 @@ clusters:
     id: api.taxation
     display_name: Taxation
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -2480,9 +2480,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2509,6 +2509,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.001
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.002
     stable_key: 'sha256:b42e8f6252c5ddef7979ec10aa442f81d86d52c2aeaff22d9f9c4f1e36b05539'
@@ -2526,9 +2558,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2555,6 +2587,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.002
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.003
     stable_key: 'sha256:e94b042623a127af19c66e7649110d8eb0dd3f1d7ac9d852b7a9d440eb9d075e'
@@ -2572,9 +2636,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2601,6 +2665,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.003
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.004
     stable_key: 'sha256:75fa90fa442fb314074f8786fe667a7a37925a8d688b180cd6a1fb170fc708eb'
@@ -2618,9 +2714,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2647,6 +2743,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.004
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.005
     stable_key: 'sha256:79fea91c91eb16472a36f81e28da79f65e6fa654034c47fce4cdb5e9f8bcbcfe'
@@ -2664,9 +2792,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2693,6 +2821,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.005
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.006
     stable_key: 'sha256:e88319cfec5d67bda38ddc507dc7b0e6384961efdb2f2d88b2a7923d93a9316c'
@@ -2710,9 +2870,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2739,6 +2899,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.006
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.007
     stable_key: 'sha256:2ae10635018c9f81cd82e0d707b7db65a0c5028dab7abb43b25091c2cbcc9b88'
@@ -2756,9 +2948,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -2785,6 +2977,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.007
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.document.001
     stable_key: 'sha256:747409ac7d11e21a4c7ec45453e305b5b0e4d9fa831e30b2d4456a4030fc3e36'
@@ -9710,9 +9934,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9739,6 +9963,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.008
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.009
     stable_key: 'sha256:1ecedd8e39f50d1b93b8804fade90a73dc0a239ce32b96c4f5f309d68307333a'
@@ -9756,9 +10012,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9785,6 +10041,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.009
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.010
     stable_key: 'sha256:4ac40f8aab76d0670eb4d669101cac3b409c566a2c23283add64a05fb9b501be'
@@ -9802,9 +10090,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9831,6 +10119,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.010
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.011
     stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
@@ -9848,9 +10168,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9877,6 +10197,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.011
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.011
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.012
     stable_key: 'sha256:a8691f51eac7bc94258ca86d5e9a87c6921c0c80803cec82f31de043c9e5833a'
@@ -9894,9 +10246,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9923,6 +10275,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.012
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.012
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.taxation.013
     stable_key: 'sha256:959ab0650901d034897837116609b8d6cc99118e83c12557bf581ffcdc4386ba'
@@ -9940,9 +10324,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -9969,6 +10353,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T23:02:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fcddbbe5bab320a599a6ee38e30213c89fd6dc22e87d90434e9d89dde5270ad0
+        new_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        target_ids:
+          - api.taxation.013
+        from_status: pending
+        to_status: claimed
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T23:02:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1a28accb993e9547e5dd22f323d9445d4cf9b9d71c49f673c5a3c0cce7b9762b
+        new_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        target_ids:
+          - api.taxation.013
+        from_status: claimed
+        to_status: in_progress
+        commit: 9f5f60174f79563ae726d10e927b665ec92186da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.document.004
     stable_key: 'sha256:5eaa60d88d9a4feeefcb1660ae2e53af02d0d579457ebf2095d5116f7657ebc4'
