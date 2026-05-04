@@ -5,18 +5,31 @@ declare(strict_types=1);
 namespace App\Modules\Compliance\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
-use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * Tenant isolation (Section 8 / api.compliance round 2):
+ * `company_id` is resolved exclusively from `CompanyContext`. The earlier
+ * `getCompanyId()` helper read `X-Company-Id` directly from the request
+ * header without verifying the user's `UserCompanyMembership` for that
+ * company, fell through to a query-string `company_id`, and finally to
+ * `$user->companyMemberships()->first()` (any membership). That made
+ * cross-tenant audit-event retrieval possible by sending a foreign
+ * X-Company-Id. CompanyContextMiddleware (registered in the global `api`
+ * group) verifies membership on every request before populating the
+ * context, so requireCompanyId() is the safe single source of truth.
+ */
 class AuditController extends Controller
 {
     public function __construct(
         private readonly AuditService $auditService,
-        private readonly AnomalyDetectionService $anomalyService
+        private readonly AnomalyDetectionService $anomalyService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -24,9 +37,7 @@ class AuditController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        /** @var User $user */
-        $user = $request->user();
-        $companyId = $this->getCompanyId($request);
+        $companyId = $this->companyContext->requireCompanyId();
 
         $eventType = $request->query('event_type');
         $aggregateType = $request->query('aggregate_type');
@@ -72,7 +83,7 @@ class AuditController extends Controller
      */
     public function anomalies(Request $request): JsonResponse
     {
-        $companyId = $this->getCompanyId($request);
+        $companyId = $this->companyContext->requireCompanyId();
 
         $from = $request->query('from')
             ? now()->parse((string) $request->query('from'))
@@ -93,35 +104,5 @@ class AuditController extends Controller
                 'details' => $anomaly['details'],
             ]),
         ]);
-    }
-
-    /**
-     * Get the current company ID from request context.
-     * Falls back to first company membership if not specified.
-     */
-    private function getCompanyId(Request $request): string
-    {
-        // Check for company_id in header (set by middleware in Phase 0.5)
-        $companyId = $request->header('X-Company-Id');
-        if ($companyId !== null) {
-            return $companyId;
-        }
-
-        // Check for company_id in query
-        $companyId = $request->query('company_id');
-        if ($companyId !== null) {
-            return (string) $companyId;
-        }
-
-        // Fallback: get from user's first company membership
-        /** @var User $user */
-        $user = $request->user();
-        $membership = $user->companyMemberships()->first();
-
-        if ($membership === null) {
-            throw new \RuntimeException('User has no company membership');
-        }
-
-        return $membership->company_id;
     }
 }

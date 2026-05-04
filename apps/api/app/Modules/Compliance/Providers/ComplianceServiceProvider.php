@@ -16,6 +16,7 @@ use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Compliance\Services\FraudAlertNotificationService;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Shared\Contracts\Company\CompanyVerticalQueryContract;
@@ -91,12 +92,25 @@ class ComplianceServiceProvider extends ServiceProvider
         // Load module routes (routes.php defines its own middleware)
         $this->loadRoutesFrom(base_path('app/Modules/Compliance/Presentation/routes.php'));
 
-        // Legacy audit routes (keeping for backward compatibility)
-        Route::middleware(['api', 'auth:sanctum'])
+        // Legacy audit routes — gated to admins/owners with the
+        // `compliance.view_reprint_log` permission (semantically a fiscal
+        // audit-log read; same set of roles already authorized for the
+        // NF525 audit log). Tenant scope: SetPermissionsTeam pins Spatie
+        // team_id to the user's tenant; CompanyContextMiddleware (in the
+        // global `api` group) verifies the X-Company-Id header against
+        // the user's UserCompanyMembership so AuditController can call
+        // CompanyContext->requireCompanyId() safely.
+        Route::middleware([
+            'api',
+            'auth:sanctum',
+            SetPermissionsTeam::class,
+        ])
             ->prefix('api/v1')
             ->group(function (): void {
-                Route::get('/audit/events', [AuditController::class, 'index']);
-                Route::get('/audit/anomalies', [AuditController::class, 'anomalies']);
+                Route::get('/audit/events', [AuditController::class, 'index'])
+                    ->middleware('can:compliance.view_reprint_log');
+                Route::get('/audit/anomalies', [AuditController::class, 'anomalies'])
+                    ->middleware('can:compliance.view_reprint_log');
             });
     }
 }
