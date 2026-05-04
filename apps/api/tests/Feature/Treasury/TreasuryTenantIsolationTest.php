@@ -1905,7 +1905,7 @@ final class TreasuryTenantIsolationTest extends TestCase
         $partnerQuery = null;
         $documentQuery = null;
         foreach ($log as $entry) {
-            $sql = (string) ($entry['query'] ?? '');
+            $sql = (string) $entry['query'];
             if (str_contains($sql, 'from "partners"') && str_contains($sql, '"id" =')) {
                 $partnerQuery = $sql;
             }
@@ -1927,9 +1927,19 @@ final class TreasuryTenantIsolationTest extends TestCase
             'Partner lookup must filter by tenant_id (Opus round-4 Finding 15). Got SQL: '.$partnerQuery,
         );
         $this->assertStringContainsString(
+            '"company_id"',
+            $partnerQuery,
+            'Partner lookup must also filter by company_id (cluster invariant: BOTH predicates on every read anchored on a route param). Got SQL: '.$partnerQuery,
+        );
+        $this->assertStringContainsString(
             '"tenant_id"',
             $documentQuery,
             'Document read must filter by tenant_id. Got SQL: '.$documentQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $documentQuery,
+            'Document read must also filter by company_id (cluster invariant: BOTH predicates on every read anchored on a route param). Got SQL: '.$documentQuery,
         );
     }
 
@@ -2037,7 +2047,7 @@ final class TreasuryTenantIsolationTest extends TestCase
         // Find the documents-read query (the open-invoices auto-allocation read).
         $openInvoicesQuery = null;
         foreach ($log as $entry) {
-            $sql = (string) ($entry['query'] ?? '');
+            $sql = (string) $entry['query'];
             if (
                 str_contains($sql, 'from "documents"')
                 && str_contains($sql, '"partner_id"')
