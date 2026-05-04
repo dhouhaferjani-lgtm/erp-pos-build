@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -29,6 +30,7 @@ class PaymentAllocationService
         private PaymentToleranceService $toleranceService,
         private GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     private function scale(): int
@@ -75,7 +77,14 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
-        $payment = Payment::with(['company', 'partner', 'repository'])->findOrFail($paymentId);
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $payment = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->with(['company', 'partner', 'repository'])
+            ->findOrFail($paymentId);
 
         // Get preview
         $preview = $this->previewAllocation(
@@ -87,7 +96,7 @@ class PaymentAllocationService
         );
 
         // Use DB transaction with pessimistic locking for financial operations
-        $result = DB::transaction(function () use ($payment, $preview) {
+        $result = DB::transaction(function () use ($payment, $preview, $tenantId, $companyId) {
             $createdAllocations = [];
             $totalAllocated = '0.0000';
             /** @var array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}> $fullyPaidDocuments */
@@ -96,7 +105,11 @@ class PaymentAllocationService
             foreach ($preview['allocations'] as $allocation) {
                 // Lock the document for update to prevent concurrent modifications
                 /** @var Document $document */
-                $document = Document::lockForUpdate()->findOrFail($allocation['document_id']);
+                $document = Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($allocation['document_id']);
 
                 // Create allocation record
                 PaymentAllocation::create([
@@ -174,7 +187,10 @@ class PaymentAllocationService
 
                 foreach ($preview['allocations'] as $allocation) {
                     /** @var Document $doc */
-                    $doc = Document::find($allocation['document_id']);
+                    $doc = Document::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->find($allocation['document_id']);
                     /** @var numeric-string $allocAmount */
                     $allocAmount = $allocation['amount'];
                     if ($doc->type === DocumentType::SalesOrder) {
@@ -460,11 +476,16 @@ class PaymentAllocationService
      */
     private function previewManualAllocation(string $paymentAmount, array $manualAllocations, string $companyId): array
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $allocations = [];
         $totalAllocated = '0.0000';
 
         foreach ($manualAllocations as $manual) {
-            $invoice = Document::findOrFail($manual['document_id']);
+            $invoice = Document::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->findOrFail($manual['document_id']);
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 
             $allocations[] = [

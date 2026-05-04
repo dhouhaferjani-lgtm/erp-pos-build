@@ -25,6 +25,9 @@ class MultiPaymentController extends Controller
      */
     public function createSplitPayment(Request $request, string $documentId): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
             'splits' => 'required|array|min:2',
             'splits.*.payment_method_id' => 'required|exists:payment_methods,id',
@@ -35,7 +38,10 @@ class MultiPaymentController extends Controller
         ]);
 
         /** @var Document $document */
-        $document = Document::findOrFail($documentId);
+        $document = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($documentId);
 
         try {
             /** @var string|null $userId */
@@ -109,15 +115,24 @@ class MultiPaymentController extends Controller
      */
     public function applyDeposit(Request $request, string $paymentId): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
             'document_id' => 'required|exists:documents,id',
             'amount' => 'required|numeric|min:0.01',
         ]);
 
         /** @var Payment $payment */
-        $payment = Payment::findOrFail($paymentId);
+        $payment = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($paymentId);
         /** @var Document $document */
-        $document = Document::findOrFail($request->input('document_id'));
+        $document = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($request->input('document_id'));
 
         try {
             $allocation = $this->multiPaymentService->applyDepositToDocument(

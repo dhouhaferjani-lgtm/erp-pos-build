@@ -163,9 +163,13 @@ class PaymentInstrumentController extends Controller
             ],
         ]);
 
-        // Verify the repository is a bank account
+        // Verify the repository is a bank account. Tenant/company-scope the
+        // lookup as defense-in-depth alongside the ScopedExists validator above.
         /** @var PaymentRepository $repository */
-        $repository = PaymentRepository::findOrFail($validated['repository_id']);
+        $repository = PaymentRepository::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($validated['repository_id']);
         if ($repository->type->value !== 'bank_account') {
             return response()->json([
                 'error' => [

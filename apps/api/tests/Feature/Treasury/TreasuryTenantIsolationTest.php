@@ -27,6 +27,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -805,7 +806,7 @@ final class TreasuryTenantIsolationTest extends TestCase
      * accept the value but the downstream service may still 422 for unrelated
      * domain reasons (e.g. "refund exceeds allocated").
      */
-    private function assertNoValidationErrorFor(\Illuminate\Testing\TestResponse $response, string $key): void
+    private function assertNoValidationErrorFor(TestResponse $response, string $key): void
     {
         $json = $response->json();
         if (! is_array($json) || ! isset($json['error']['errors']) || ! is_array($json['error']['errors'])) {

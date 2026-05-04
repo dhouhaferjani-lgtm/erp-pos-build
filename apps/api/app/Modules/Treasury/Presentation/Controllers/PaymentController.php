@@ -159,7 +159,10 @@ class PaymentController extends Controller
         $adjustedAllocations = [];
         foreach ($allocations as $allocation) {
             /** @var Document $document */
-            $document = Document::findOrFail($allocation['document_id']);
+            $document = Document::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->findOrFail($allocation['document_id']);
 
             /** @var numeric-string $requestedAmount */
             $requestedAmount = (string) $allocation['amount'];
@@ -227,7 +230,10 @@ class PaymentController extends Controller
                 // Get the first document for withholding certificate
                 $firstAllocation = $adjustedAllocations[0];
                 /** @var Document $document */
-                $document = Document::findOrFail($firstAllocation['document_id']);
+                $document = Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->findOrFail($firstAllocation['document_id']);
 
                 try {
                     $certificateData = $this->withholdingService->createFromPayment(
@@ -257,7 +263,11 @@ class PaymentController extends Controller
             // Create allocations and update document balances
             foreach ($adjustedAllocations as $allocationData) {
                 /** @var Document $document */
-                $document = Document::lockForUpdate()->findOrFail($allocationData['document_id']);
+                $document = Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($allocationData['document_id']);
 
                 /** @var numeric-string $allocationAmount */
                 $allocationAmount = (string) $allocationData['amount'];
@@ -312,7 +322,11 @@ class PaymentController extends Controller
 
             if ($repositoryId) {
                 /** @var PaymentRepository|null $repoResult */
-                $repoResult = PaymentRepository::lockForUpdate()->find($repositoryId);
+                $repoResult = PaymentRepository::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->find($repositoryId);
                 $repository = $repoResult;
 
                 if ($repository instanceof PaymentRepository) {
@@ -343,7 +357,10 @@ class PaymentController extends Controller
                 // Ensure repository is loaded if not already
                 if (! $repository instanceof PaymentRepository) {
                     /** @var PaymentRepository|null $repoResult */
-                    $repoResult = PaymentRepository::find($repositoryId);
+                    $repoResult = PaymentRepository::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->find($repositoryId);
                     $repository = $repoResult;
                 }
 
@@ -371,7 +388,10 @@ class PaymentController extends Controller
             if (bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
                 if (! $repository instanceof PaymentRepository) {
                     /** @var PaymentRepository|null $foundRepository */
-                    $foundRepository = PaymentRepository::find($repositoryId);
+                    $foundRepository = PaymentRepository::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->find($repositoryId);
                     $repository = $foundRepository;
                 }
 
@@ -457,7 +477,10 @@ class PaymentController extends Controller
 
         // Get the primary document
         /** @var Document $primaryDocument */
-        $primaryDocument = Document::findOrFail($validated['document_id']);
+        $primaryDocument = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($validated['document_id']);
 
         /** @var numeric-string $documentBalance */
         $documentBalance = $primaryDocument->balance_due ?? $primaryDocument->total;
@@ -595,7 +618,11 @@ class PaymentController extends Controller
                 $repositoryId = $paymentLine['repository_id'] ?? null;
                 if ($repositoryId) {
                     /** @var PaymentRepository|null $repository */
-                    $repository = PaymentRepository::lockForUpdate()->find($repositoryId);
+                    $repository = PaymentRepository::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->lockForUpdate()
+                        ->find($repositoryId);
                     if ($repository) {
                         /** @var numeric-string $currentBalance */
                         $currentBalance = $repository->balance ?? '0.00';
@@ -667,7 +694,10 @@ class PaymentController extends Controller
                     $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
                     if ($repositoryId) {
                         /** @var PaymentRepository|null $repository */
-                        $repository = PaymentRepository::find($repositoryId);
+                        $repository = PaymentRepository::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->find($repositoryId);
                         if ($repository && $repository->account_id) {
                             $this->glService->createCustomerAdvanceJournalEntry(
                                 companyId: $companyId,
@@ -685,7 +715,11 @@ class PaymentController extends Controller
                     // Manual allocation to specified documents
                     foreach ($excessAllocations as $allocation) {
                         /** @var Document $targetDoc */
-                        $targetDoc = Document::lockForUpdate()->findOrFail($allocation['document_id']);
+                        $targetDoc = Document::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->lockForUpdate()
+                            ->findOrFail($allocation['document_id']);
                         /** @var numeric-string $allocAmount */
                         $allocAmount = (string) $allocation['amount'];
 
@@ -745,7 +779,11 @@ class PaymentController extends Controller
                     // Apply allocations
                     foreach ($preview['allocations'] as $allocation) {
                         /** @var Document $targetDoc */
-                        $targetDoc = Document::lockForUpdate()->findOrFail($allocation['document_id']);
+                        $targetDoc = Document::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->lockForUpdate()
+                            ->findOrFail($allocation['document_id']);
                         /** @var numeric-string $allocAmount */
                         $allocAmount = (string) $allocation['amount'];
 
@@ -797,7 +835,10 @@ class PaymentController extends Controller
                         $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
                         if ($repositoryId) {
                             /** @var PaymentRepository|null $repository */
-                            $repository = PaymentRepository::find($repositoryId);
+                            $repository = PaymentRepository::query()
+                                ->where('tenant_id', $tenantId)
+                                ->where('company_id', $companyId)
+                                ->find($repositoryId);
                             if ($repository && $repository->account_id) {
                                 $this->glService->createCustomerAdvanceJournalEntry(
                                     companyId: $companyId,

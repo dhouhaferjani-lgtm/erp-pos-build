@@ -43,9 +43,15 @@ final class VendorRefundService
         }
 
         return DB::transaction(function () use ($po, $amount, $paymentMethodId, $repositoryId, $reason, $userId): Payment {
-            // Lock PO first to serialize concurrent refunds
+            // Lock PO first to serialize concurrent refunds. Tenant/company
+            // scoping defends against caller-supplied $po pointing at a row
+            // that was leaked into the closure from another tenant context.
             /** @var Document $lockedPo */
-            $lockedPo = Document::lockForUpdate()->findOrFail($po->id);
+            $lockedPo = Document::query()
+                ->where('tenant_id', $po->tenant_id)
+                ->where('company_id', $po->company_id)
+                ->lockForUpdate()
+                ->findOrFail($po->id);
 
             if ($lockedPo->status !== DocumentStatus::Confirmed) {
                 throw new \DomainException(
@@ -99,9 +105,16 @@ final class VendorRefundService
             // PO status stays confirmed — never transition to paid
             $lockedPo->save();
 
-            // Update repository balance (money going out)
+            // Update repository balance (money going out). Scope to PO's
+            // tenant/company so a malicious cross-tenant repository_id (which
+            // the controller's bare exists previously accepted) can never be
+            // updated here.
             /** @var PaymentRepository|null $repository */
-            $repository = PaymentRepository::lockForUpdate()->find($repositoryId);
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $lockedPo->tenant_id)
+                ->where('company_id', $lockedPo->company_id)
+                ->lockForUpdate()
+                ->find($repositoryId);
             if ($repository) {
                 /** @var numeric-string $repoBalance */
                 $repoBalance = $repository->balance ?? '0.00';
