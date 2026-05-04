@@ -261,4 +261,40 @@ abstract class AbstractSweepInventoryCommand extends Command
     {
         return (bool) $this->option($name);
     }
+
+    /**
+     * Match a reviewer-supplied commit identifier against a list of stored
+     * fix_commit SHAs. Exact match wins. Otherwise, if the supplied value is a
+     * git-style short SHA (>=7 chars, all-lowercase hex), accept it when it
+     * uniquely prefix-matches exactly one stored commit (an ambiguous prefix
+     * is treated as no match — the reviewer should pin the full SHA).
+     *
+     * Shared by SweepInventoryClaimCommand (Treasury hard-gate linkage check)
+     * and SweepInventoryReviewCommand (per-callsite review-commit check) so
+     * both surfaces honor the same SHA-matching contract.
+     *
+     * @param  list<string>  $storedFullShas
+     */
+    protected function commitIdentifierMatchesStored(string $candidate, array $storedFullShas): bool
+    {
+        if (in_array($candidate, $storedFullShas, true)) {
+            return true;
+        }
+
+        $isShortSha = strlen($candidate) >= 7
+            && strlen($candidate) < 40
+            && preg_match('/^[0-9a-f]+$/', $candidate) === 1;
+        if (! $isShortSha) {
+            return false;
+        }
+
+        $matches = 0;
+        foreach ($storedFullShas as $full) {
+            if (str_starts_with($full, $candidate)) {
+                $matches++;
+            }
+        }
+
+        return $matches === 1;
+    }
 }

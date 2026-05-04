@@ -481,4 +481,242 @@ class SweepInventoryReviewCommandTest extends TestCase
         $latest = $history[count($history) - 1];
         $this->assertSame(self::FIX_COMMIT, $latest['review_commit']);
     }
+
+    /**
+     * Codex BLOCK finding #1: cluster roll-up to `fixed`. When the LAST callsite
+     * in a cluster is reviewed APPROVE-family, the cluster status must also
+     * transition to `fixed` in the same mutate() call. Without this roll-up the
+     * Treasury hard gate would never open via the artisan workflow. The cluster
+     * id is included in history.target_ids so the audit chain captures it.
+     */
+    public function test_review_approve_rolls_up_cluster_to_fixed_when_last_callsite_approved(): void
+    {
+        // Treasury seed has exactly one callsite (api.treasury.001). After it
+        // is reviewed APPROVE the cluster's only callsite is fixed → cluster
+        // must roll up to fixed.
+        $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);
+        $reviewFile = $this->writeReviewFile('APPROVE', self::FIX_COMMIT, 'cluster-rollup');
+
+        $exit = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+            '--verdict' => 'APPROVE',
+            '--review-file' => $reviewFile,
+            '--review-commit' => self::FIX_COMMIT,
+        ]);
+
+        $this->assertSame(0, $exit);
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('fixed', $callsite['status']);
+
+        $cluster = $this->clusterById('api.treasury');
+        $this->assertSame(
+            'fixed',
+            $cluster['status'],
+            'cluster must roll up to `fixed` once every callsite in it is fixed (Codex BLOCK finding #1).',
+        );
+
+        /** @var list<array<string, mixed>> $history */
+        $history = $callsite['history'];
+        $latest = $history[count($history) - 1];
+        $this->assertContains(
+            'api.treasury',
+            $latest['target_ids'],
+            'history.target_ids must include the cluster id when roll-up fires (audit chain captures cluster transition).',
+        );
+        $this->assertContains('api.treasury.001', $latest['target_ids']);
+    }
+
+    /**
+     * Codex BLOCK finding #1: end-to-end Treasury → non-Treasury workflow.
+     * Drives the FULL nine-command workflow against api.treasury (no direct
+     * YAML reseeding for the cluster status), then verifies that the Treasury
+     * hard gate opens for a subsequent api.document claim. This is the test
+     * the prior implementation could not pass because the cluster never rolled
+     * up to fixed via the workflow.
+     */
+    public function test_end_to_end_treasury_workflow_opens_hard_gate_for_non_treasury_claim(): void
+    {
+        // Pre-seed: re-point Treasury's review_gate.review_file to a temp path
+        // the test controls. The seed's default value is a relative path that
+        // doesn't exist on disk, which the hard gate would refuse. The
+        // workflow does NOT mutate review_gate.review_file (it's a per-cluster
+        // SPECIFICATION of where the review is expected); operators set it
+        // when defining the cluster, and the review writer drops the file at
+        // that path. Mirror that in the test.
+        $reviewFile = $this->tempDir.'/treasury-e2e-review.md';
+        $this->reseedInventory(function (array $doc) use ($reviewFile): array {
+            /** @var list<array<string, mixed>> $clusters */
+            $clusters = $doc['clusters'];
+            foreach ($clusters as $idx => $c) {
+                if (($c['id'] ?? null) === 'api.treasury') {
+                    /** @var array<string, mixed> $rg */
+                    $rg = $c['review_gate'];
+                    $rg['review_file'] = $reviewFile;
+                    $c['review_gate'] = $rg;
+                    $clusters[$idx] = $c;
+                }
+            }
+            $doc['clusters'] = $clusters;
+
+            return $doc;
+        });
+
+        // 1. claim Treasury (cluster mode → cluster owner=claude + callsite owner=claude).
+        $this->assertSame(0, Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.treasury',
+            '--actor' => 'claude',
+        ]));
+
+        // 2. start Treasury (cluster mode).
+        $this->assertSame(0, Artisan::call('sweep:inventory:start', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.treasury',
+            '--actor' => 'claude',
+        ]));
+
+        // 3. submit the only Treasury callsite (callsite mode).
+        $this->assertSame(0, Artisan::call('sweep:inventory:submit', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+            '--commit' => self::FIX_COMMIT,
+            '--test' => 'tests/Feature/Treasury/TreasuryTenantIsolationTest.php::test_baseline',
+        ]));
+
+        // 4. Reviewer (codex — different agent than the owner claude) writes
+        //    the review file at the path the cluster's review_gate declares,
+        //    then runs the review command pointing at that same path.
+        file_put_contents(
+            $reviewFile,
+            "# Treasury cluster review (e2e)\n\n"
+                ."Verdict: APPROVE\n\n"
+                .'Commit reviewed: '.self::FIX_COMMIT."\n",
+        );
+        $this->assertSame(0, Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+            '--verdict' => 'APPROVE',
+            '--review-file' => $reviewFile,
+            '--review-commit' => self::FIX_COMMIT,
+        ]));
+
+        // Pre-condition for the hard gate: Treasury must be `fixed` now (cluster roll-up).
+        $treasuryCluster = $this->clusterById('api.treasury');
+        $this->assertSame('fixed', $treasuryCluster['status'], 'Treasury cluster must be fixed after the workflow.');
+
+        // 5. claim api.document (non-Treasury) → Treasury hard gate must now open.
+        $exit = Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--cluster' => 'api.document',
+            '--actor' => 'codex',
+        ]);
+
+        $this->assertSame(
+            0,
+            $exit,
+            'Treasury hard gate must open for non-Treasury claims after the full workflow drives Treasury to fixed.',
+        );
+
+        $documentCluster = $this->clusterById('api.document');
+        $this->assertSame('claimed', $documentCluster['status']);
+    }
+
+    /**
+     * Codex BLOCK finding #3: verdict reconciliation must apply to ALL four
+     * verdicts, not only APPROVE-family. A hostile reviewer must not be able
+     * to flag --verdict=BLOCK against a review file that says
+     * `Verdict: APPROVE`, or vice-versa.
+     */
+    public function test_review_refuses_when_request_changes_flag_does_not_match_file_verdict(): void
+    {
+        $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);
+        // File says APPROVE; flag says REQUEST-CHANGES → mismatch must refuse.
+        $reviewFile = $this->writeReviewFile('APPROVE', null, 'rc-mismatch');
+
+        $exit = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+            '--verdict' => 'REQUEST-CHANGES',
+            '--review-file' => $reviewFile,
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            '--verdict=REQUEST-CHANGES with a file `Verdict: APPROVE` must be refused.',
+        );
+
+        // Status must remain under_review.
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('under_review', $callsite['status']);
+    }
+
+    public function test_review_refuses_when_block_flag_does_not_match_file_verdict(): void
+    {
+        $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);
+        $reviewFile = $this->writeReviewFile('APPROVE', null, 'block-mismatch');
+
+        $exit = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+            '--verdict' => 'BLOCK',
+            '--review-file' => $reviewFile,
+        ]);
+
+        $this->assertNotSame(
+            0,
+            $exit,
+            '--verdict=BLOCK with a file `Verdict: APPROVE` must be refused.',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('under_review', $callsite['status']);
+    }
+
+    /**
+     * Codex BLOCK finding #4: review commit linkage must accept the same
+     * short-SHA contract as the Treasury hard gate (>=7 char unique prefix).
+     * The previously-implemented exact-equality check rejected normal git
+     * abbreviations.
+     */
+    public function test_review_approve_accepts_unique_short_sha_review_commit(): void
+    {
+        $this->submitCallsiteForReview('api.treasury.001', 'claude', self::FIX_COMMIT);
+        $shortSha = substr(self::FIX_COMMIT, 0, 7);
+        $reviewFile = $this->writeReviewFile('APPROVE', $shortSha, 'short-sha');
+
+        $exit = Artisan::call('sweep:inventory:review', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'codex',
+            '--verdict' => 'APPROVE',
+            '--review-file' => $reviewFile,
+            '--review-commit' => $shortSha,
+        ]);
+
+        $this->assertSame(
+            0,
+            $exit,
+            'review APPROVE must accept a unique 7-char short SHA that prefix-matches the callsite fix_commit (Codex BLOCK finding #4).',
+        );
+
+        $callsite = $this->callsiteById('api.treasury.001');
+        $this->assertSame('fixed', $callsite['status']);
+    }
 }

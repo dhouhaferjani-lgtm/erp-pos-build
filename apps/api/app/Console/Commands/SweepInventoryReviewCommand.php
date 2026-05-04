@@ -37,18 +37,24 @@ use Throwable;
  *   review_gate.verify_review_commit_linkage=true AND the verdict is in the
  *   APPROVE family.
  *
- * APPROVE-family checks (in order, all must pass):
- *   1. The file-parsed `Verdict: <X>` line must equal --verdict (file is canonical;
- *      flag is sanity).
- *   2. If verify_review_commit_linkage=true on the owning cluster:
- *      a) --review-commit must be supplied (non-empty), AND
- *      b) the file must contain a `Commit reviewed: <SHA>` line, AND
- *      c) that SHA must equal --review-commit, AND
- *      d) it must equal the callsite's stored fix_commit.
+ * Verdict reconciliation (ALL four verdicts):
+ *   The file-parsed `Verdict: <X>` line MUST equal --verdict. The file is the
+ *   canonical artifact; the flag is a sanity check. A file declaring
+ *   `Verdict: APPROVE` cannot be paired with `--verdict=BLOCK` and vice-versa.
  *
- * REQUEST-CHANGES and BLOCK do not enforce file-verdict matching beyond the
- * --verdict flag, since their authoritative content is the prose of the file
- * itself rather than a structured verdict marker.
+ * Commit linkage (APPROVE family only, when cluster opts in):
+ *   1. --review-commit must be supplied (non-empty), AND
+ *   2. the file must contain a `Commit reviewed: <SHA>` line, AND
+ *   3. --review-commit must identify the callsite's stored fix_commit (full
+ *      40-char SHA OR a unique short >=7-char SHA — same matcher as the
+ *      Treasury hard gate).
+ *
+ * Cluster roll-up to `fixed`:
+ *   On APPROVE-family verdicts, after updating the reviewed callsite, the
+ *   cluster is also rolled up to `fixed` IFF every callsite in that cluster
+ *   is now `fixed`. The cluster id is appended to history.target_ids so the
+ *   audit chain captures the cluster-level transition. Without this roll-up,
+ *   the Treasury hard gate would never open through the artisan workflow.
  *
  * @phpstan-import-type Callsite from InventoryDocument
  * @phpstan-import-type Cluster from InventoryDocument
@@ -218,20 +224,35 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
-        // ── 6. APPROVE-family file checks ───────────────────────────────────
+        // ── 6a. Verdict reconciliation: ALL four verdicts must match the file ─
+        // The file's `Verdict: <X>` line is the canonical artifact; --verdict
+        // is a sanity check. Mismatch → refuse, regardless of verdict family.
+        // Closes the Codex BLOCK gap: previously this was bypassed for
+        // REQUEST-CHANGES and BLOCK, allowing a hostile reviewer to flag any
+        // verdict against any review file.
         $reviewFileContents = (string) file_get_contents($reviewFile);
+        $verdictReconciliationError = $this->enforceVerdictReconciliation(
+            flagVerdict: $verdict,
+            reviewFilePath: $reviewFile,
+            reviewFileContents: $reviewFileContents,
+        );
+        if ($verdictReconciliationError !== null) {
+            $this->error($verdictReconciliationError);
 
+            return self::FAILURE;
+        }
+
+        // ── 6b. APPROVE-family commit-linkage check (cluster opt-in) ──────────
         if (in_array($verdict, self::APPROVE_FAMILY, true)) {
-            $approveError = $this->enforceApproveFamilyChecks(
+            $linkageError = $this->enforceApproveFamilyLinkage(
                 cluster: $cluster,
                 callsite: $callsite,
-                flagVerdict: $verdict,
                 reviewCommitFlag: $reviewCommit,
                 reviewFilePath: $reviewFile,
                 reviewFileContents: $reviewFileContents,
             );
-            if ($approveError !== null) {
-                $this->error($approveError);
+            if ($linkageError !== null) {
+                $this->error($linkageError);
 
                 return self::FAILURE;
             }
@@ -248,18 +269,20 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
 
         // ── 8. Mutation ─────────────────────────────────────────────────────
         $reviewedAt = gmdate('Y-m-d\TH:i:s\Z');
-        $note = "review verdict={$verdict} by {$actor} via sweep:inventory:review";
+        $clusterId = $cluster['id'];
+        $isApproveFamily = in_array($verdict, self::APPROVE_FAMILY, true);
         $context = $this->makeMutationContext($actor);
 
         try {
             $service->mutate(
                 function (InventoryDocument $live) use (
-                    $callsiteId, $actor, $verdict, $reviewedAt, $reviewFile, $reviewCommit, $toStatus, $note
+                    $callsiteId, $clusterId, $actor, $verdict, $reviewedAt, $reviewFile, $reviewCommit, $toStatus, $isApproveFamily
                 ): InventoryDocument {
-                    return $live->withCallsiteUpdate(
+                    // (a) Update the reviewed callsite first.
+                    $live = $live->withCallsiteUpdate(
                         $callsiteId,
                         function (array $cs) use (
-                            $callsiteId, $actor, $verdict, $reviewedAt, $reviewFile, $reviewCommit, $toStatus, $note
+                            $callsiteId, $clusterId, $actor, $verdict, $reviewedAt, $reviewFile, $reviewCommit, $toStatus, $isApproveFamily
                         ): array {
                             $cs['status'] = $toStatus;
                             $cs['review'] = [
@@ -269,17 +292,62 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
                                 'review_file' => $reviewFile,
                                 'review_commit' => $reviewCommit,
                             ];
+
+                            // Cluster roll-up (Codex BLOCK finding #1): on
+                            // APPROVE-family verdicts the cluster id is
+                            // included in target_ids so the audit trail
+                            // captures the cluster-level transition when the
+                            // post-mutation siblings check below promotes it.
+                            $targetIds = $isApproveFamily
+                                ? [$callsiteId, $clusterId]
+                                : [$callsiteId];
+
+                            $note = "review verdict={$verdict} by {$actor} via sweep:inventory:review";
                             $cs['history'][] = $this->makeHistoryEvent(
                                 action: 'review',
                                 fromStatus: 'under_review',
                                 toStatus: $toStatus,
-                                targetIds: [$callsiteId],
+                                targetIds: $targetIds,
                                 note: $note,
                                 reviewFile: $reviewFile,
                                 reviewCommit: $reviewCommit,
                             );
 
                             return $cs;
+                        },
+                    );
+
+                    // (b) Cluster roll-up: on APPROVE-family verdicts, if every
+                    //     callsite in the cluster is now `fixed`, also
+                    //     transition the cluster to `fixed`. The cluster's
+                    //     status update goes into the SAME mutate() call so the
+                    //     audit chain stays anchored on the callsite history
+                    //     event recorded in (a). Without this, the Treasury
+                    //     hard gate would never open via the workflow.
+                    if (! $isApproveFamily || $toStatus !== 'fixed') {
+                        return $live;
+                    }
+
+                    $allCallsitesFixed = true;
+                    foreach ($live->callsites() as $sibling) {
+                        if ($sibling['cluster_id'] === $clusterId
+                            && $sibling['status'] !== 'fixed'
+                        ) {
+                            $allCallsitesFixed = false;
+                            break;
+                        }
+                    }
+
+                    if (! $allCallsitesFixed) {
+                        return $live;
+                    }
+
+                    return $live->withClusterUpdate(
+                        $clusterId,
+                        static function (array $c): array {
+                            $c['status'] = 'fixed';
+
+                            return $c;
                         },
                     );
                 },
@@ -299,25 +367,15 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
     }
 
     /**
-     * Enforce the APPROVE-family checks:
-     *   - file `Verdict:` line matches --verdict
-     *   - if cluster requires linkage: --review-commit supplied + file
-     *     `Commit reviewed:` line matches it + matches callsite fix_commit
-     *
-     * Returns null on success, an error string on failure.
-     *
-     * @param  Cluster  $cluster
-     * @param  Callsite  $callsite
+     * Verdict reconciliation: the file-parsed `Verdict: <X>` line MUST equal
+     * the --verdict flag. Applies uniformly to all four verdicts. Returns null
+     * on success, an error string on failure.
      */
-    private function enforceApproveFamilyChecks(
-        array $cluster,
-        array $callsite,
+    private function enforceVerdictReconciliation(
         string $flagVerdict,
-        ?string $reviewCommitFlag,
         string $reviewFilePath,
         string $reviewFileContents,
     ): ?string {
-        // (a) File-parsed verdict must match --verdict.
         $parsedVerdict = $this->parseVerdictLine($reviewFileContents);
         if ($parsedVerdict === null) {
             return "Review file contains no 'Verdict: <X>' line: {$reviewFilePath}";
@@ -328,7 +386,30 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
                 "the flag. Review file: {$reviewFilePath}";
         }
 
-        // (b) Commit linkage enforcement (cluster opt-in).
+        return null;
+    }
+
+    /**
+     * APPROVE-family commit-linkage check (cluster opt-in via
+     * review_gate.verify_review_commit_linkage). Verifies:
+     *   1. --review-commit is supplied,
+     *   2. the file has a `Commit reviewed: <SHA>` line that identifies the
+     *      same stored fix_commit as --review-commit (full or unique short SHA),
+     *   3. --review-commit identifies the callsite's stored fix_commit.
+     *
+     * Reuses {@see self::commitIdentifierMatchesStored()} from the base class
+     * so the matching contract is shared with the Treasury hard gate.
+     *
+     * @param  Cluster  $cluster
+     * @param  Callsite  $callsite
+     */
+    private function enforceApproveFamilyLinkage(
+        array $cluster,
+        array $callsite,
+        ?string $reviewCommitFlag,
+        string $reviewFilePath,
+        string $reviewFileContents,
+    ): ?string {
         if (! $cluster['review_gate']['verify_review_commit_linkage']) {
             return null;
         }
@@ -344,22 +425,24 @@ final class SweepInventoryReviewCommand extends AbstractSweepInventoryCommand
                 "review file has no 'Commit reviewed: <SHA>' line: {$reviewFilePath}";
         }
 
-        if ($parsedReviewedCommit !== $reviewCommitFlag) {
-            return "Review file 'Commit reviewed' line is '{$parsedReviewedCommit}' but ".
-                "--review-commit is '{$reviewCommitFlag}'. They must match. ".
-                "Review file: {$reviewFilePath}";
-        }
-
         $callsiteFixCommit = $callsite['fix_commit'];
         if ($callsiteFixCommit === null) {
             return "Cluster '{$cluster['id']}' requires verify_review_commit_linkage but ".
                 "callsite '{$callsite['id']}' has no fix_commit recorded. Run sweep:inventory:submit first.";
         }
 
-        if ($reviewCommitFlag !== $callsiteFixCommit) {
+        $storedFixCommits = [$callsiteFixCommit];
+
+        if (! $this->commitIdentifierMatchesStored($reviewCommitFlag, $storedFixCommits)) {
             return "Commit linkage check failed — --review-commit '{$reviewCommitFlag}' does ".
-                "not match callsite fix_commit '{$callsiteFixCommit}'. The reviewer must ".
-                'pin the SHA the worker actually committed.';
+                "not identify callsite fix_commit '{$callsiteFixCommit}' (full 40-char or unique ".
+                'short >=7-char SHA accepted). The reviewer must pin the SHA the worker actually committed.';
+        }
+
+        if (! $this->commitIdentifierMatchesStored($parsedReviewedCommit, $storedFixCommits)) {
+            return "Review file 'Commit reviewed' line is '{$parsedReviewedCommit}' but it does ".
+                "not identify callsite fix_commit '{$callsiteFixCommit}' (full 40-char or unique ".
+                "short >=7-char SHA accepted). Review file: {$reviewFilePath}";
         }
 
         return null;

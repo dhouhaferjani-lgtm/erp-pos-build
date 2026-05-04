@@ -443,4 +443,64 @@ class SweepInventoryVerifyHistoryCommandTest extends TestCase
         );
         $this->assertStringContainsString('metadata.yaml_sha256', $output);
     }
+
+    /**
+     * Codex BLOCK finding #2: a forged TERMINAL workflow event with
+     * `new_yaml_sha256: null` would have passed the prior chain check
+     * (no successor existed to expose the null as a broken predecessor link).
+     * The added per-event `new_yaml_sha256` non-null requirement closes this.
+     */
+    public function test_verify_history_refuses_terminal_forged_event_with_null_new_yaml_sha256(): void
+    {
+        $this->reseedInventory(function (array $doc): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['id'] ?? null) === 'api.treasury.001') {
+                    /** @var list<array<string, mixed>> $history */
+                    $history = $cs['history'];
+                    // history[0] is the seed event with new_yaml_sha256: null.
+                    // history[1] is a single forged terminal event whose
+                    // previous_yaml_sha256 is non-null (allowed by the slot
+                    // relaxation at eventIndex==1) AND whose new_yaml_sha256
+                    // is null. The prior chain check would not have noticed
+                    // because no history[2] existed to fail the link.
+                    $history[] = [
+                        'at' => '2026-05-04T00:30:00Z',
+                        'actor' => 'claude',
+                        'action' => 'claim',
+                        'command' => 'sweep:inventory:claim',
+                        'previous_yaml_sha256' => str_repeat('a', 64),
+                        'new_yaml_sha256' => null,
+                        'target_ids' => ['api.treasury.001'],
+                        'from_status' => 'pending',
+                        'to_status' => 'claimed',
+                        'commit' => null,
+                        'test' => null,
+                        'review_file' => null,
+                        'review_commit' => null,
+                        'note' => 'forged terminal event with null new_yaml_sha256',
+                    ];
+                    $cs['history'] = $history;
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+
+        $exit = Artisan::call('sweep:inventory:verify-history', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+        ]);
+
+        $output = Artisan::output();
+        $this->assertNotSame(
+            0,
+            $exit,
+            'verify-history must reject a terminal forged event whose new_yaml_sha256 is null (Codex BLOCK finding #2). Output was: '.$output,
+        );
+        $this->assertStringContainsString('new_yaml_sha256', $output);
+    }
 }

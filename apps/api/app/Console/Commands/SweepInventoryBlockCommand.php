@@ -230,6 +230,20 @@ final class SweepInventoryBlockCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
+        // Codex BLOCK finding #5: the cluster's OWN status must be in a
+        // pre-fixed state before it can be blocked. Without this an
+        // inconsistent YAML (e.g. cluster=fixed with one pending callsite)
+        // could be moved to blocked, violating the state precondition.
+        $clusterStatus = $cluster['status'];
+        if (! in_array($clusterStatus, self::PRE_FIXED_STATUSES, true)) {
+            $this->error(
+                "Cluster {$clusterId} has status '{$clusterStatus}'; only pre-fixed clusters ".
+                '('.implode(', ', self::PRE_FIXED_STATUSES).') can be blocked.',
+            );
+
+            return self::FAILURE;
+        }
+
         // Collect eligible callsites: pre-fixed states only (pending, claimed,
         // in_progress, under_review). Excludes fixed (regression guard),
         // blocked (idempotency), and the audit-only states (deferred,

@@ -242,17 +242,27 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                 // null new_yaml_sha256 on a later event (eventIndex > 1's
                 // predecessor) is itself a hand-edit indicator. The narrower
                 // predicate (gate on `eventIndex !== 1` rather than on the
-                // prior action) closes a splice path: an attacker who could
-                // hand-edit the YAML cannot insert two malicious events —
-                // a fake `regenerate` with new_yaml_sha256: null followed by
-                // a workflow event with arbitrary previous_yaml_sha256 —
-                // because only the slot immediately following history[0] is
-                // relaxed.
+                // prior action) closes the multi-event splice path.
                 $problems[] = sprintf(
                     '[%s history[%d]] chain is broken: previous_yaml_sha256 %s declared but the prior event new_yaml_sha256 was null on a non-seed slot.',
                     $callsiteId,
                     $eventIndex,
                     $event['previous_yaml_sha256'],
+                );
+            }
+
+            // Codex BLOCK finding #2: every non-seed event MUST itself have a
+            // non-null new_yaml_sha256. Without this, a forged TERMINAL event
+            // with new_yaml_sha256: null passes silently — the chain check
+            // only inspects predecessors via subsequent events, so the last
+            // event's null is invisible. The eventIndex==1 relaxation only
+            // covers `previous_yaml_sha256` (slotted after a null-hashed
+            // seed); `new_yaml_sha256` is never relaxed.
+            if ($event['new_yaml_sha256'] === null) {
+                $problems[] = sprintf(
+                    '[%s history[%d]] new_yaml_sha256 is null on a non-seed event — every workflow / regenerate event must be stamped with the post-mutation hash by InventoryService::mutate(). A null hash here indicates a hand-edit.',
+                    $callsiteId,
+                    $eventIndex,
                 );
             }
         }

@@ -502,45 +502,13 @@ final class SweepInventoryClaimCommand extends AbstractSweepInventoryCommand
             }
         }
 
-        if ($this->reviewedCommitMatches($reviewedCommit, $fixCommits)) {
+        if ($this->commitIdentifierMatchesStored($reviewedCommit, $fixCommits)) {
             return null;
         }
 
         return 'Hard gate: commit linkage check failed — review file references commit '.
             "'{$reviewedCommit}' but no callsite in reference cluster '{$refClusterId}' ".
-            'has that fix_commit (full 40-char or short >=7-char SHA accepted). '.
+            'has that fix_commit (full 40-char or unique short >=7-char SHA accepted). '.
             "Review file: {$reviewFilePath}";
-    }
-
-    /**
-     * Match the reviewed commit against the list of stored fix_commit SHAs.
-     * Exact match wins. Otherwise, if the reviewed commit is a git-style short
-     * SHA (>=7 chars, all-lowercase hex), accept it when it prefix-matches
-     * exactly one stored fix_commit (an ambiguous prefix is treated as no
-     * match — the reviewer should pin the full SHA).
-     *
-     * @param  list<string>  $fixCommits
-     */
-    private function reviewedCommitMatches(string $reviewed, array $fixCommits): bool
-    {
-        if (in_array($reviewed, $fixCommits, true)) {
-            return true;
-        }
-
-        $isShortSha = strlen($reviewed) >= 7
-            && strlen($reviewed) < 40
-            && preg_match('/^[0-9a-f]+$/', $reviewed) === 1;
-        if (! $isShortSha) {
-            return false;
-        }
-
-        $matches = 0;
-        foreach ($fixCommits as $full) {
-            if (str_starts_with($full, $reviewed)) {
-                $matches++;
-            }
-        }
-
-        return $matches === 1;
     }
 }

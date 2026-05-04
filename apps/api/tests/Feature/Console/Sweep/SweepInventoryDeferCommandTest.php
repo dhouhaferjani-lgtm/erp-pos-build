@@ -379,4 +379,51 @@ class SweepInventoryDeferCommandTest extends TestCase
         $callsite = $this->callsiteById('api.treasury.001');
         $this->assertSame('pending', $callsite['status'], 'callsite must remain pending after refusal.');
     }
+
+    /**
+     * Codex BLOCK finding #5: defer --cluster must check the cluster's OWN
+     * status, not just the callsites'. A cluster in any status other than
+     * pending or claimed must not be coerced into `deferred` by virtue of
+     * the eligible-callsite filter.
+     */
+    public function test_defer_cluster_refuses_when_cluster_status_is_not_pending_or_claimed(): void
+    {
+        foreach (['in_progress', 'under_review', 'fixed', 'blocked', 'deferred', 'needs_recheck', 'stale_orphan'] as $disallowedStatus) {
+            $this->reseedInventory(function (array $doc) use ($disallowedStatus): array {
+                /** @var list<array<string, mixed>> $clusters */
+                $clusters = $doc['clusters'];
+                foreach ($clusters as $idx => $c) {
+                    if (($c['id'] ?? null) === 'api.treasury') {
+                        $c['status'] = $disallowedStatus;
+                        $clusters[$idx] = $c;
+                    }
+                }
+                $doc['clusters'] = $clusters;
+
+                return $doc;
+            });
+
+            $exit = Artisan::call('sweep:inventory:defer', [
+                '--inventory-path' => $this->inventoryPath,
+                '--schema-path' => $this->schemaPath,
+                '--cluster' => 'api.treasury',
+                '--reason' => "defer while cluster is {$disallowedStatus}",
+                '--revisit-date' => '2027-01-01',
+                '--actor' => 'claude',
+            ]);
+
+            $this->assertNotSame(
+                0,
+                $exit,
+                "defer --cluster must refuse when cluster status is '{$disallowedStatus}'.",
+            );
+
+            $cluster = $this->clusterById('api.treasury');
+            $this->assertSame(
+                $disallowedStatus,
+                $cluster['status'],
+                "cluster must remain '{$disallowedStatus}' after refusal.",
+            );
+        }
+    }
 }

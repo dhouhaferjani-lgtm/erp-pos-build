@@ -240,6 +240,20 @@ final class SweepInventoryDeferCommand extends AbstractSweepInventoryCommand
             return self::FAILURE;
         }
 
+        // Codex BLOCK finding #5: the cluster's OWN status must be pending or
+        // claimed before it can be deferred. Without this check, a cluster in
+        // a later state (in_progress, fixed, blocked, etc.) with one stray
+        // pending callsite could be moved to deferred.
+        $clusterStatus = $cluster['status'];
+        if ($clusterStatus !== 'pending' && $clusterStatus !== 'claimed') {
+            $this->error(
+                "Cluster {$clusterId} has status '{$clusterStatus}'; only pending or claimed clusters ".
+                'can be deferred. Use sweep:inventory:block for clusters in later stages.',
+            );
+
+            return self::FAILURE;
+        }
+
         // Collect eligible callsites: those that are pending or claimed.
         $eligibleCallsites = array_values(array_filter(
             $this->callsitesInCluster($doc, $clusterId),
