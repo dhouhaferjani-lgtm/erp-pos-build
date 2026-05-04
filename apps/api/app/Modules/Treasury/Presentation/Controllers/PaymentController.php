@@ -109,7 +109,11 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
             ],
-            'instrument_id' => ['nullable', 'uuid', 'exists:payment_instruments,id'],
+            'instrument_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
+            ],
             'repository_id' => [
                 'nullable',
                 'uuid',

@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,12 +30,21 @@ class MultiPaymentController extends Controller
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         $request->validate([
-            'splits' => 'required|array|min:2',
-            'splits.*.payment_method_id' => 'required|exists:payment_methods,id',
-            'splits.*.amount' => 'required|numeric|min:0.01',
-            'splits.*.repository_id' => 'nullable|exists:payment_repositories,id',
-            'splits.*.instrument_id' => 'nullable|exists:payment_instruments,id',
-            'splits.*.reference' => 'nullable|string|max:255',
+            'splits' => ['required', 'array', 'min:2'],
+            'splits.*.payment_method_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'splits.*.amount' => ['required', 'numeric', 'min:0.01'],
+            'splits.*.repository_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
+            'splits.*.instrument_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
+            ],
+            'splits.*.reference' => ['nullable', 'string', 'max:255'],
         ]);
 
         /** @var Document $document */
@@ -71,23 +81,38 @@ class MultiPaymentController extends Controller
      */
     public function recordDeposit(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'partner_id' => 'required|exists:partners,id',
-            'payment_method_id' => 'required|exists:payment_methods,id',
-            'amount' => 'required|numeric|min:0.01',
-            'currency' => 'required|string|size:3',
-            'repository_id' => 'nullable|exists:payment_repositories,id',
-            'instrument_id' => 'nullable|exists:payment_instruments,id',
-            'reference' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:500',
+            'partner_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'payment_method_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency' => ['required', 'string', 'size:3'],
+            'repository_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
+            'instrument_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
+            ],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
             /** @var User $user */
             $user = $request->user();
             $deposit = $this->multiPaymentService->recordDeposit(
-                $user->tenant_id,
-                $this->companyContext->requireCompanyId(),
+                $tenantId,
+                $companyId,
                 $request->input('partner_id'),
                 $request->input('payment_method_id'),
                 (string) $request->input('amount'),
@@ -119,8 +144,11 @@ class MultiPaymentController extends Controller
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         $request->validate([
-            'document_id' => 'required|exists:documents,id',
-            'amount' => 'required|numeric|min:0.01',
+            'document_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
         ]);
 
         /** @var Payment $payment */
@@ -186,20 +214,26 @@ class MultiPaymentController extends Controller
      */
     public function recordPaymentOnAccount(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'partner_id' => 'required|exists:partners,id',
-            'amount' => 'required|numeric|min:0.01',
-            'currency' => 'required|string|size:3',
-            'reference' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:500',
+            'partner_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency' => ['required', 'string', 'size:3'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
             /** @var User $user */
             $user = $request->user();
             $result = $this->multiPaymentService->recordPaymentOnAccount(
-                $user->tenant_id,
-                $this->companyContext->requireCompanyId(),
+                $tenantId,
+                $companyId,
                 $request->input('partner_id'),
                 (string) $request->input('amount'),
                 $request->input('currency'),
