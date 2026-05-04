@@ -29,4 +29,84 @@
 #   - surface             defaults "api"
 #   - line                int line number, defaults null
 
-manual_callsites: []
+manual_callsites:
+  # api.compliance — round-1 Opus Finding 1 (Nf525 fiscal-data leak)
+  - cluster_id: api.compliance
+    slug: nf525-export-jet-body-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 49
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::exportJet'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_terminals_zreports
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator. CompanyContextMiddleware verifies X-Company-Id against UserCompanyMembership."
+
+  - cluster_id: api.compliance
+    slug: nf525-verify-chains-body-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 76
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::verifyChains'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_zreports
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator."
+
+  - cluster_id: api.compliance
+    slug: nf525-reprint-log-query-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 150
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::reprintLog'
+    pattern_type: trusts_request_input_company_id
+    resource: receipt_prints
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body/query company_id from validator."
+
+  # api.compliance — round-1 Opus Finding 2 (AuditController missing middleware/permission/CompanyContext)
+  - cluster_id: api.compliance
+    slug: audit-controller-index-trusts-x-company-id-header
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 25
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::index'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId(); add SetPermissionsTeam middleware + can:compliance.view_reprint_log gate to legacy routes in ComplianceServiceProvider."
+
+  - cluster_id: api.compliance
+    slug: audit-controller-anomalies-trusts-x-company-id-header
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 73
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::anomalies'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId()."
+
+  # api.compliance — round-2 Opus Finding A (AuditService::getEventsForAggregate unscoped)
+  - cluster_id: api.compliance
+    slug: audit-service-get-events-for-aggregate-unscoped
+    file: apps/api/app/Modules/Compliance/Services/AuditService.php
+    line: 80
+    symbol: 'App\Modules\Compliance\Services\AuditService::getEventsForAggregate'
+    pattern_type: service_method_unscoped
+    resource: audit_events
+    expected_scope: company_only
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add required string $companyId arg; lead query with where('company_id', $companyId). Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input."

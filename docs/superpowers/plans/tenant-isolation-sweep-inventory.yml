@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-04T11:42:35Z'
+  generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 7608cfc0486b8a85f43272afaab0f516e633df926a1debdd95cf1557bd627ed4
+  yaml_sha256: 03a13bbf7afd7031a63dd5ded24c6d4f86d4ffb4a90e7de1e1ce9ddf2b35924a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -267,7 +267,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -336,7 +336,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -10284,15 +10284,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:12:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:11:59Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 251c93d2
     fix_commit: 251c93d2
     regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_show_rejects_cross_tenant_alert_id'
     blocked_reason: null
@@ -10361,6 +10361,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:11:59Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        new_yaml_sha256: 04fdf54bf96abe3c4225669b8077003e8932d29e071ef5bf1dd6860c9cd1e55b
+        target_ids:
+          - api.compliance.001
+          - api.compliance
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 251c93d2
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.compliance.002
     stable_key: 'sha256:f306fadf6e5c79c747025d464944d18a5a82efdf78311d812a322d752a2c5502'
@@ -10378,15 +10395,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:12:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:11:59Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 251c93d2
     fix_commit: 251c93d2
     regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_alert_id'
     blocked_reason: null
@@ -10455,6 +10472,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:11:59Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 04fdf54bf96abe3c4225669b8077003e8932d29e071ef5bf1dd6860c9cd1e55b
+        new_yaml_sha256: 9b05be61f09f05e55907194b68cb92dff7fe835d0122172180a494d9dd8032a2
+        target_ids:
+          - api.compliance.002
+          - api.compliance
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 251c93d2
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.compliance.003
     stable_key: 'sha256:dc18fb98a00f6e5b052207975ec3cc7d7b9cfd139f573eba858648f291916ccd'
@@ -10472,15 +10506,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:12:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:12:00Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 251c93d2
     fix_commit: 251c93d2
     regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_dismiss_rejects_cross_tenant_alert_id'
     blocked_reason: null
@@ -10549,6 +10583,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:12:00Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9b05be61f09f05e55907194b68cb92dff7fe835d0122172180a494d9dd8032a2
+        new_yaml_sha256: dd648e0695f91d315c96c97d2b0dfaacc0cf02bd7e6dadaffe81eaffff16ecfb
+        target_ids:
+          - api.compliance.003
+          - api.compliance
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 251c93d2
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.compliance.004
     stable_key: 'sha256:3904b541e780ad56b1ebfb628f879254028486abb82f51ec4f5069aba787a70d'
@@ -10566,15 +10617,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:12:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:12:01Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 251c93d2
     fix_commit: 251c93d2
     regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_resolve_rejects_cross_tenant_alert_id'
     blocked_reason: null
@@ -10643,6 +10694,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:12:01Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: dd648e0695f91d315c96c97d2b0dfaacc0cf02bd7e6dadaffe81eaffff16ecfb
+        new_yaml_sha256: 3bb9816f416a368f32b0b77029fc1548055ea410f21f698124d865083a3fd9b0
+        target_ids:
+          - api.compliance.004
+          - api.compliance
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 251c93d2
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.pos-stabilization.020
     stable_key: 'sha256:b27f080c680859427f218594a5cc46e76ae63886b3f29321b3773b9f4b508737'
@@ -11488,15 +11556,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:22:01Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-04T20:08:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
+      review_commit: 65f291a2
     fix_commit: 65f291a2
     regression_test: 'tests/Feature/Cart/CartTenantIsolationTest.php::test_convert_to_purchase_order_does_not_link_cross_tenant_supplier'
     blocked_reason: null
@@ -11565,6 +11633,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:08:39Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 7608cfc0486b8a85f43272afaab0f516e633df926a1debdd95cf1557bd627ed4
+        new_yaml_sha256: e7bad36ae27dd2b1a3e4f4d6670bd746891667e2dd89741c60a08484282b3d59
+        target_ids:
+          - api.cart.001
+          - api.cart
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
+        review_commit: 65f291a2
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.cart.002
     stable_key: 'sha256:9d29be840e7a684670dd16d36331a324b61dd688bf9094a14f0699831f0f09bf'
@@ -11582,15 +11667,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:22:01Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-04T20:08:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
+      review_commit: 65f291a2
     fix_commit: 65f291a2
     regression_test: 'tests/Feature/Cart/CartTenantIsolationTest.php::test_convert_to_sales_order_rejects_cross_tenant_customer_id'
     blocked_reason: null
@@ -11659,6 +11744,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:08:39Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e7bad36ae27dd2b1a3e4f4d6670bd746891667e2dd89741c60a08484282b3d59
+        new_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        target_ids:
+          - api.cart.002
+          - api.cart
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
+        review_commit: 65f291a2
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.service.001
     stable_key: 'sha256:69dbc453ce2714fb4029783a42c2dacd769f832787b8fdccd564efbb6de5afca'
@@ -16610,15 +16712,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:12:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:12:01Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 251c93d2
     fix_commit: 251c93d2
     regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_assigned_to_user_id'
     blocked_reason: null
@@ -16687,6 +16789,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T20:12:01Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3bb9816f416a368f32b0b77029fc1548055ea410f21f698124d865083a3fd9b0
+        new_yaml_sha256: 03a13bbf7afd7031a63dd5ded24c6d4f86d4ffb4a90e7de1e1ce9ddf2b35924a
+        target_ids:
+          - api.compliance.005
+          - api.compliance
+        from_status: under_review
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 251c93d2
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.pos-stabilization.031
     stable_key: 'sha256:c51f0b35234065a0c36c2b128d93c78f1af31591603176f188520750176615d3'
@@ -18016,6 +18135,384 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+  -
+    id: api.compliance.006
+    stable_key: 'manual:api.compliance:nf525-export-jet-body-company-id'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 49
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::exportJet'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_terminals_zreports
+    expected_scope: tenant_and_company
+    expected_fix: 'Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator. CompanyContextMiddleware verifies X-Company-Id against UserCompanyMembership.'
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+      review_commit: 2d7d81d5
+    fix_commit: 2d7d81d5
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_export_jet_ignores_cross_tenant_body_company_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.006
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.006
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+        review_commit: 2d7d81d5
+        note: "retro-tracked: surface fix landed at 2d7d81d5 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.compliance.007
+    stable_key: 'manual:api.compliance:nf525-verify-chains-body-company-id'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 76
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::verifyChains'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_zreports
+    expected_scope: tenant_and_company
+    expected_fix: 'Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator.'
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+      review_commit: 2d7d81d5
+    fix_commit: 2d7d81d5
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_verify_chains_ignores_cross_tenant_body_company_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.007
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.007
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+        review_commit: 2d7d81d5
+        note: "retro-tracked: surface fix landed at 2d7d81d5 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.compliance.008
+    stable_key: 'manual:api.compliance:nf525-reprint-log-query-company-id'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 150
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::reprintLog'
+    pattern_type: trusts_request_input_company_id
+    resource: receipt_prints
+    expected_scope: tenant_and_company
+    expected_fix: 'Resolve companyId from CompanyContext->requireCompanyId(); drop body/query company_id from validator.'
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+      review_commit: 2d7d81d5
+    fix_commit: 2d7d81d5
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_reprint_log_ignores_cross_tenant_query_company_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.008
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.008
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+        review_commit: 2d7d81d5
+        note: "retro-tracked: surface fix landed at 2d7d81d5 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.compliance.009
+    stable_key: 'manual:api.compliance:audit-controller-index-trusts-x-company-id-header'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 25
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::index'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    expected_fix: 'Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId(); add SetPermissionsTeam middleware + can:compliance.view_reprint_log gate to legacy routes in ComplianceServiceProvider.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+      review_commit: 2d7d81d5
+    fix_commit: 2d7d81d5
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_audit_events_legacy_route_resolves_company_from_context_not_header'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.009
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.009
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+        review_commit: 2d7d81d5
+        note: "retro-tracked: surface fix landed at 2d7d81d5 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.compliance.010
+    stable_key: 'manual:api.compliance:audit-controller-anomalies-trusts-x-company-id-header'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 73
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::anomalies'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    expected_fix: 'Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId().'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+      review_commit: 2d7d81d5
+    fix_commit: 2d7d81d5
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_audit_events_legacy_route_requires_can_compliance_view_reprint_log'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.010
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.010
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round2-review.md
+        review_commit: 2d7d81d5
+        note: "retro-tracked: surface fix landed at 2d7d81d5 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.compliance.011
+    stable_key: 'manual:api.compliance:audit-service-get-events-for-aggregate-unscoped'
+    surface: api
+    cluster_id: api.compliance
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Services/AuditService.php
+    line: 80
+    symbol: 'App\Modules\Compliance\Services\AuditService::getEventsForAggregate'
+    pattern_type: service_method_unscoped
+    resource: audit_events
+    expected_scope: company_only
+    expected_fix: "Add required string $companyId arg; lead query with where('company_id', $companyId). Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: fixed
+    owner: codex
+    claimed_at: null
+    review:
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-04T20:10:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+      review_commit: 009bd760
+    fix_commit: 009bd760
+    regression_test: 'tests/Feature/Compliance/ComplianceCrossTenantHardeningTest.php::test_audit_events_aggregate_branch_scopes_by_company'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T20:09:01Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8f17498f0973f06be8e063b97fc695cf9b40a14bc63da0f097f1141853201b5b
+        new_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        target_ids:
+          - api.compliance.011
+        from_status: null
+        to_status: pending
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T20:10:26Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:retro-track-fixed (one-shot)'
+        previous_yaml_sha256: d55451b12f9144d2b89683c5020a8beb11c5241c781d6b266ec25ab64005198e
+        new_yaml_sha256: c659eb1aef6abed593a2ed12e3a0d52fb74341df1c7eda9eedbbb8c8886f44b9
+        target_ids:
+          - api.compliance.011
+          - api.compliance
+        from_status: pending
+        to_status: fixed
+        commit: 5baa4d56eaa6681c53115eb05e5eb67ac05ab961
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
+        review_commit: 009bd760
+        note: "retro-tracked: surface fix landed at 009bd760 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
 progress:
   total_callsites: 0
   total_clusters: 29
