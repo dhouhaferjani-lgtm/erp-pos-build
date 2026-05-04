@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 529b491e8e4548fce6f6978f3a5c19cdc5527b3070cf2de5a33d2c30b3f8f1a9
+  yaml_sha256: e396c258f8cc2af58a7d798b97bac3ffe885ff5de92964b4c84e05d806545181
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -18479,7 +18479,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -18488,8 +18488,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -18540,6 +18540,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:21:58Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 529b491e8e4548fce6f6978f3a5c19cdc5527b3070cf2de5a33d2c30b3f8f1a9
+        new_yaml_sha256: 9f38360c75ac679f7a1e27622d2e1330ecd75413a35afba4e7e27c9ebeed3593
+        target_ids:
+          - api.pricing.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.002
     stable_key: 'sha256:23d13e47f8d707410355707064d0fca893ed816127b32770753c66951cf208fb'
@@ -18557,7 +18573,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -18566,8 +18582,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -18618,6 +18634,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:21:59Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9f38360c75ac679f7a1e27622d2e1330ecd75413a35afba4e7e27c9ebeed3593
+        new_yaml_sha256: 8e5374ee52690173b77b3c7fbae8c9a88bf2719ba96ac4f914487b0cc7c454cf
+        target_ids:
+          - api.pricing.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.020
     stable_key: 'sha256:27e31d0c19bc52e09c61ef309ec4693f921bdfe52abcae1a90f942ce401b41f0'
@@ -20220,7 +20252,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20229,8 +20261,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20281,6 +20313,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:00Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8e5374ee52690173b77b3c7fbae8c9a88bf2719ba96ac4f914487b0cc7c454cf
+        new_yaml_sha256: 0aa6d61a79c5e9613d46712df2c2d36e485212d4e0d20e9ce24298eeb51be6d3
+        target_ids:
+          - api.pricing.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.004
     stable_key: 'sha256:3763fc1c99355c406d543cf32b4c4885c9bf91628158be430883c3ea1e40f0e0'
@@ -20298,7 +20346,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20307,8 +20355,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20359,6 +20407,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:00Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0aa6d61a79c5e9613d46712df2c2d36e485212d4e0d20e9ce24298eeb51be6d3
+        new_yaml_sha256: e880fc4a10f67fcf957d4c3cc581c3a9ac7ce459e3a1c93295a1b88fbeac45ac
+        target_ids:
+          - api.pricing.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.005
     stable_key: 'sha256:d89f82d22ea984bdfe53a6d2c31ae9ee0bded58ea01b744c427a9dc96f672e60'
@@ -20376,7 +20440,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20385,8 +20449,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20437,6 +20501,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:01Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e880fc4a10f67fcf957d4c3cc581c3a9ac7ce459e3a1c93295a1b88fbeac45ac
+        new_yaml_sha256: 19b3df8dd07ab393832c4cccf3c0f71f862feb32ede73cf984179a424acef254
+        target_ids:
+          - api.pricing.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.006
     stable_key: 'sha256:561ec03b69ed74d97e711d47397271608ef5d47bea5ce4d4db7e14e9f1e3ac56'
@@ -20454,7 +20534,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20463,8 +20543,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20515,6 +20595,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:02Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 19b3df8dd07ab393832c4cccf3c0f71f862feb32ede73cf984179a424acef254
+        new_yaml_sha256: 916d581eaab0f4858145d3007ff05a892bae04dce65ea1bf2e3e3947443ea119
+        target_ids:
+          - api.pricing.006
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.007
     stable_key: 'sha256:5dbfaa73ba46507ed17917d47f3244c56e698474361f07417a08b000b2546b53'
@@ -20532,7 +20628,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20541,8 +20637,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20593,6 +20689,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:02Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 916d581eaab0f4858145d3007ff05a892bae04dce65ea1bf2e3e3947443ea119
+        new_yaml_sha256: e3d42ca909c7b2dc5a825e4d69517c0211e2cec11a6d7da2e8fe4f46d2a328ca
+        target_ids:
+          - api.pricing.007
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.008
     stable_key: 'sha256:5dac59c6322350d6d36f67e9ae2c0d054bc71fd7052c463cb2ae70504f3ef48b'
@@ -20610,7 +20722,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20619,8 +20731,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20671,6 +20783,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:03Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e3d42ca909c7b2dc5a825e4d69517c0211e2cec11a6d7da2e8fe4f46d2a328ca
+        new_yaml_sha256: 013b1913a7e09e2bd6c6b69d717160b446b19144c4e7a3f609d07399650b4e18
+        target_ids:
+          - api.pricing.008
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.009
     stable_key: 'sha256:980b36765544de341383ef5737411503789c4e233928e0dd01bc7ac2dd17616c'
@@ -20688,7 +20816,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20697,8 +20825,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20749,6 +20877,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:03Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 013b1913a7e09e2bd6c6b69d717160b446b19144c4e7a3f609d07399650b4e18
+        new_yaml_sha256: b5af6fbf991d8314b2be0d7cc174e0a84f6deb93e073b0c5f4ba0d09ebe067a2
+        target_ids:
+          - api.pricing.009
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pricing.010
     stable_key: 'sha256:b4df2c11a2ff3ecf9020d5cb72b121da76fe25b9e58e64d0b2bdad4b4b9c6f09'
@@ -20766,7 +20910,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -20775,8 +20919,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12ec1df9
+    regression_test: tests/Feature/Pricing/PricingTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -20827,6 +20971,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T22:22:04Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b5af6fbf991d8314b2be0d7cc174e0a84f6deb93e073b0c5f4ba0d09ebe067a2
+        new_yaml_sha256: e396c258f8cc2af58a7d798b97bac3ffe885ff5de92964b4c84e05d806545181
+        target_ids:
+          - api.pricing.010
+        from_status: in_progress
+        to_status: under_review
+        commit: 12ec1df9
+        test: tests/Feature/Pricing/PricingTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.compliance.005
     stable_key: 'sha256:a4e2f4e0438f42cc634ac676b1729d551de701046c163a658e06e6a1a41c7ced'
