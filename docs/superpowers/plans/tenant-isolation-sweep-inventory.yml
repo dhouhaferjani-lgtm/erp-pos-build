@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
+  yaml_sha256: ada9218f7ea7e1ac7f071d3a5912a070ff738018187c3f97d2cd5e78318c68f5
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -2729,7 +2729,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -2738,8 +2738,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2790,6 +2790,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:48Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
+        new_yaml_sha256: 84e0bcc5e6b294109875d4e10a705fd2b2c545e00e38a0bfb52a27bd64a4116f
+        target_ids:
+          - api.loyalty.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.002
     stable_key: 'sha256:da21fb02f4c0dc67a11cef5eafee822bd9e7b4f2406e1d6bd03410b24d15f6de'
@@ -2807,7 +2823,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -2816,8 +2832,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2868,6 +2884,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:49Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 84e0bcc5e6b294109875d4e10a705fd2b2c545e00e38a0bfb52a27bd64a4116f
+        new_yaml_sha256: 572bd2726206341c1e628381673c927dfed4502cb12eec3f4e26043ad2242a00
+        target_ids:
+          - api.loyalty.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.003
     stable_key: 'sha256:246837d9a7442e4590f708f8bd8f03fc2ac71ead938ad9bf997458a6e907e41a'
@@ -2885,7 +2917,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -2894,8 +2926,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2946,6 +2978,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:50Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 572bd2726206341c1e628381673c927dfed4502cb12eec3f4e26043ad2242a00
+        new_yaml_sha256: 7ace3b153c8e9dd7aa24098a409dc647651c3ad938bae39a9f9c172a49bee1e9
+        target_ids:
+          - api.loyalty.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.004
     stable_key: 'sha256:9f2c35dbda30c2c16e41b0dccce74649d5e95ad79f0cfd8675053469803050e1'
@@ -2963,7 +3011,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -2972,8 +3020,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -3024,6 +3072,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7ace3b153c8e9dd7aa24098a409dc647651c3ad938bae39a9f9c172a49bee1e9
+        new_yaml_sha256: 31bb7879a7d13c8547fd5989635cbdab13c5b5ba55ab1ab1f3fa9bd48178137a
+        target_ids:
+          - api.loyalty.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.005
     stable_key: 'sha256:8f0106e2f9894d937601366d41bf6920d11c2d2ef7f53007a299c8b02d964dc5'
@@ -3041,7 +3105,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -3050,8 +3114,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -3102,6 +3166,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:52Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 31bb7879a7d13c8547fd5989635cbdab13c5b5ba55ab1ab1f3fa9bd48178137a
+        new_yaml_sha256: 0f32837e36927641c849e4b212426673c29363f28e4cf4fb4baaee0cf8d8d0e7
+        target_ids:
+          - api.loyalty.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.011
     stable_key: 'sha256:f03bb9de9b862120d95be08549850dc9c6e283b4d71082c6023d7c583e27971b'
@@ -11804,7 +11884,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -11813,8 +11893,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11865,6 +11945,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:52Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0f32837e36927641c849e4b212426673c29363f28e4cf4fb4baaee0cf8d8d0e7
+        new_yaml_sha256: 6d8d2e3fa4c9411f8666a3be8cae866ecc22982c7bcd997c0acca2d84a4e0dfd
+        target_ids:
+          - api.loyalty.006
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.007
     stable_key: 'sha256:45fc9daa0d1957eb6f52673938d9f9bd2c1cf6f7657e3e57453b70f68b484bb0'
@@ -11882,7 +11978,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -11891,8 +11987,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11943,6 +12039,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6d8d2e3fa4c9411f8666a3be8cae866ecc22982c7bcd997c0acca2d84a4e0dfd
+        new_yaml_sha256: b0c505c4e5d803f14af52df9e1245e1dc71b8d29b06e7eaeb19689f6dee9df8c
+        target_ids:
+          - api.loyalty.007
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.008
     stable_key: 'sha256:cecbe3345cdf1f06b15b839d8cc2f11258ad556c213927794bb3af799650154c'
@@ -11960,7 +12072,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -11969,8 +12081,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12021,6 +12133,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:54Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b0c505c4e5d803f14af52df9e1245e1dc71b8d29b06e7eaeb19689f6dee9df8c
+        new_yaml_sha256: a8b34838691356b9788f98fb0f9febc78f94952c848185b1b2e92c9fc678b53b
+        target_ids:
+          - api.loyalty.008
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.009
     stable_key: 'sha256:b71128e43321e9c6b5137a102241a1400fa2f77cd331efdad541c08823590940'
@@ -12038,7 +12166,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -12047,8 +12175,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12099,6 +12227,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a8b34838691356b9788f98fb0f9febc78f94952c848185b1b2e92c9fc678b53b
+        new_yaml_sha256: 7500100382eb9fffcdb7b7d78d0054d1cf6a5cee5ada07ee73e4c158df44c17f
+        target_ids:
+          - api.loyalty.009
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.loyalty.010
     stable_key: 'sha256:68a403b88ea84a5025656daab95d5e692e05684a6f9527b2ee4e4c1504f371ec'
@@ -12116,7 +12260,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -12125,8 +12269,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12177,6 +12321,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T20:53:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7500100382eb9fffcdb7b7d78d0054d1cf6a5cee5ada07ee73e4c158df44c17f
+        new_yaml_sha256: ada9218f7ea7e1ac7f071d3a5912a070ff738018187c3f97d2cd5e78318c68f5
+        target_ids:
+          - api.loyalty.010
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.017
     stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
