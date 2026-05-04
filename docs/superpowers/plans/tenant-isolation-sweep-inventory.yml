@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+  yaml_sha256: 5ed5c088eb358306207c06ee2f02a5137a306212178bee49677bbfa79e9e8a7c
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -8046,7 +8046,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
@@ -8055,8 +8055,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 148d2703
+    regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
     blocked_reason: null
     history:
       -
@@ -8107,6 +8107,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:35:17Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+        new_yaml_sha256: c272382029cc5854b29bf3b2f2811ae0c5d70263f44de276bbfb26cb6fb4415b
+        target_ids:
+          - api.workshop.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 148d2703
+        test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.workshop.002
     stable_key: 'sha256:f746dc766b5dc6b213fe8106f5c23a4564891e188ced733dd7cc345f87350f64'
@@ -8124,7 +8140,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
@@ -8133,8 +8149,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 148d2703
+    regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
     blocked_reason: null
     history:
       -
@@ -8185,6 +8201,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:35:17Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c272382029cc5854b29bf3b2f2811ae0c5d70263f44de276bbfb26cb6fb4415b
+        new_yaml_sha256: ac160e7a08ffc6729d2faed22c44126a2aa57d43dda100040a1da11839a294c9
+        target_ids:
+          - api.workshop.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 148d2703
+        test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.workshop.003
     stable_key: 'sha256:337a8e7a33e205531a0970b561aac77df1ab8e81cf3c3ee437a46d04ab704417'
@@ -8202,7 +8234,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
@@ -8211,8 +8243,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 148d2703
+    regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_succeeds_with_in_scope_partner'
     blocked_reason: null
     history:
       -
@@ -8263,6 +8295,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:35:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ac160e7a08ffc6729d2faed22c44126a2aa57d43dda100040a1da11839a294c9
+        new_yaml_sha256: 273348d35ae41e5ad1e2a6026e2de570d74382ad23624d00735f3b17c1bb01cf
+        target_ids:
+          - api.workshop.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 148d2703
+        test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_succeeds_with_in_scope_partner'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.workshop.004
     stable_key: 'sha256:518e47de6e47108de03f2081ece1460d92e6b7158faf2860480a9a7050d9152b'
@@ -8280,7 +8328,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
@@ -8289,8 +8337,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 148d2703
+    regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_currency_lookup_query_includes_tenant_predicate'
     blocked_reason: null
     history:
       -
@@ -8341,6 +8389,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:35:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 273348d35ae41e5ad1e2a6026e2de570d74382ad23624d00735f3b17c1bb01cf
+        new_yaml_sha256: 5ed5c088eb358306207c06ee2f02a5137a306212178bee49677bbfa79e9e8a7c
+        target_ids:
+          - api.workshop.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 148d2703
+        test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_currency_lookup_query_includes_tenant_predicate'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.013
     stable_key: 'sha256:9380ebaef3fa1118c1cba4a759245de6fb68f0e59b283362d6d025d292b681c2'
