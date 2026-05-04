@@ -265,6 +265,16 @@
         "fix_commit": { "type": ["string", "null"] },
         "regression_test": { "type": ["string", "null"] },
         "blocked_reason": { "type": ["string", "null"] },
+        "structurally_protected_by_upstream_guard": {
+          "description": "Optional list of sibling callsite ids (or free-text guard locators of the form file:line) that act as upstream guards making this callsite unreachable from any control-flow path that has not first been refused by the named guard. Used when a regression_test pin would be misleading because no caller can reach this callsite without being short-circuited by the upstream guard. Mutually informative with regression_test (NOT exclusive — regression_test may still be set for the upstream guard itself). Mutated only by the sweep:inventory:* artisan commands and one-shot mutate scripts.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            { "type": "null" }
+          ]
+        },
         "history": {
           "type": "array",
           "items": { "$ref": "#/$defs/historyEvent" }
