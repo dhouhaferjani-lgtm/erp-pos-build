@@ -29,6 +29,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Section 7 (Treasury cluster) — tenant-isolation regression coverage for the
@@ -58,6 +59,7 @@ use Tests\TestCase;
  */
 final class TreasuryTenantIsolationTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenantA;
@@ -174,8 +176,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_method_id' => $this->paymentMethodB->id,
                 'repository_id' => $this->repositoryA->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['payment_method_id']);
+        $this->assertApiValidationErrors($crossResponse, ['payment_method_id']);
 
         // Same-tenant control: same call with tenant-A's payment_method_id must NOT trip the validator
         $sameResponse = $this->actingAsForTenant($this->userA, $this->companyA)
@@ -184,13 +185,10 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_method_id' => $this->paymentMethodA->id,
                 'repository_id' => $this->repositoryA->id,
             ]);
-        // Validator must accept; downstream may still 200/422 depending on PO state — the key
-        // assertion is that the validator did NOT flag payment_method_id.
-        $this->assertNotSame(
-            422,
-            $sameResponse->status(),
-            'Same-tenant payment_method_id must pass validation. Got: '.$sameResponse->getContent(),
-        );
+        // Validator must accept; downstream may still 422 for unrelated reasons
+        // (e.g. service-tier "refund exceeds allocated"). The key assertion is
+        // that the FormRequest rule itself did NOT flag payment_method_id.
+        $this->assertNoValidationErrorFor($sameResponse, 'payment_method_id');
     }
 
     public function test_refund_prepayment_refuses_cross_tenant_repository_via_form_request(): void
@@ -201,8 +199,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_method_id' => $this->paymentMethodA->id,
                 'repository_id' => $this->repositoryB->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['repository_id']);
+        $this->assertApiValidationErrors($crossResponse, ['repository_id']);
 
         $sameResponse = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson("/api/v1/documents/{$this->purchaseOrderA->id}/refund-prepayment", [
@@ -210,11 +207,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_method_id' => $this->paymentMethodA->id,
                 'repository_id' => $this->repositoryA->id,
             ]);
-        $this->assertNotSame(
-            422,
-            $sameResponse->status(),
-            'Same-tenant repository_id must pass validation. Got: '.$sameResponse->getContent(),
-        );
+        $this->assertNoValidationErrorFor($sameResponse, 'repository_id');
     }
 
     // =========================================================================
@@ -241,8 +234,7 @@ final class TreasuryTenantIsolationTest extends TestCase
         // exists is currently masked end-to-end but still a defense-in-depth
         // gap (other controllers use the same pattern without a service guard).
         // We assert 422 here so the test goes RED → GREEN as the fix lands.
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['repository_id']);
+        $this->assertApiValidationErrors($crossResponse, ['repository_id']);
 
         $sameResponse = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/bank-reconciliations', [
@@ -269,8 +261,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'name' => 'Test',
                 'default_account_id' => $this->accountB->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['default_account_id']);
+        $this->assertApiValidationErrors($crossResponse, ['default_account_id']);
     }
 
     public function test_payment_method_store_refuses_cross_tenant_fee_account_id(): void
@@ -281,8 +272,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'name' => 'Test',
                 'fee_account_id' => $this->accountB->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['fee_account_id']);
+        $this->assertApiValidationErrors($crossResponse, ['fee_account_id']);
     }
 
     /**
@@ -328,8 +318,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->patchJson("/api/v1/payment-methods/{$method->id}", [
                 'default_account_id' => $this->accountB->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['default_account_id']);
+        $this->assertApiValidationErrors($crossResponse, ['default_account_id']);
     }
 
     public function test_payment_method_update_refuses_cross_tenant_fee_account_id(): void
@@ -353,8 +342,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->patchJson("/api/v1/payment-methods/{$method->id}", [
                 'fee_account_id' => $this->accountB->id,
             ]);
-        $crossResponse->assertStatus(422);
-        $crossResponse->assertJsonValidationErrors(['fee_account_id']);
+        $this->assertApiValidationErrors($crossResponse, ['fee_account_id']);
     }
 
     /**
@@ -366,8 +354,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payments', $this->paymentStorePayload([
                 'partner_id' => $this->partnerB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_payments_store_refuses_cross_tenant_payment_method_id(): void
@@ -376,8 +363,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payments', $this->paymentStorePayload([
                 'payment_method_id' => $this->paymentMethodB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payment_method_id']);
+        $this->assertApiValidationErrors($response, ['payment_method_id']);
     }
 
     public function test_payments_store_refuses_cross_tenant_repository_id(): void
@@ -386,8 +372,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payments', $this->paymentStorePayload([
                 'repository_id' => $this->repositoryB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['repository_id']);
+        $this->assertApiValidationErrors($response, ['repository_id']);
     }
 
     public function test_payments_store_refuses_cross_tenant_allocation_document_id(): void
@@ -399,8 +384,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                     'amount' => '5.00',
                 ]],
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['allocations.0.document_id']);
+        $this->assertApiValidationErrors($response, ['allocations.0.document_id']);
     }
 
     /**
@@ -413,8 +397,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payments', $this->multiPaymentStorePayload([
                 'partner_id' => $this->partnerB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_payments_store_multiple_refuses_cross_tenant_document_id(): void
@@ -423,8 +406,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payments', $this->multiPaymentStorePayload([
                 'document_id' => $this->invoiceB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['document_id']);
+        $this->assertApiValidationErrors($response, ['document_id']);
     }
 
     public function test_payments_store_multiple_refuses_cross_tenant_payment_method_id(): void
@@ -434,8 +416,7 @@ final class TreasuryTenantIsolationTest extends TestCase
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/payments', $payload);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.payment_method_id']);
+        $this->assertApiValidationErrors($response, ['payments.0.payment_method_id']);
     }
 
     public function test_payments_store_multiple_refuses_cross_tenant_repository_id(): void
@@ -445,8 +426,7 @@ final class TreasuryTenantIsolationTest extends TestCase
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/payments', $payload);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payments.0.repository_id']);
+        $this->assertApiValidationErrors($response, ['payments.0.repository_id']);
     }
 
     public function test_payments_store_multiple_refuses_cross_tenant_excess_allocation_document_id(): void
@@ -460,8 +440,7 @@ final class TreasuryTenantIsolationTest extends TestCase
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/payments', $payload);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['excess_allocations.0.document_id']);
+        $this->assertApiValidationErrors($response, ['excess_allocations.0.document_id']);
     }
 
     /**
@@ -475,8 +454,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_amount' => '10.00',
                 'allocation_method' => 'fifo',
             ]);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_smart_payment_preview_refuses_cross_tenant_manual_document_id(): void
@@ -491,8 +469,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                     'amount' => '5.00',
                 ]],
             ]);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['manual_allocations.0.document_id']);
+        $this->assertApiValidationErrors($response, ['manual_allocations.0.document_id']);
     }
 
     public function test_smart_payment_apply_refuses_cross_tenant_payment_id(): void
@@ -502,8 +479,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                 'payment_id' => $this->paymentB->id,
                 'allocation_method' => 'fifo',
             ]);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payment_id']);
+        $this->assertApiValidationErrors($response, ['payment_id']);
     }
 
     public function test_smart_payment_apply_refuses_cross_tenant_manual_document_id(): void
@@ -517,8 +493,7 @@ final class TreasuryTenantIsolationTest extends TestCase
                     'amount' => '5.00',
                 ]],
             ]);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['manual_allocations.0.document_id']);
+        $this->assertApiValidationErrors($response, ['manual_allocations.0.document_id']);
     }
 
     /**
@@ -530,8 +505,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payment-instruments', $this->instrumentStorePayload([
                 'payment_method_id' => $this->paymentMethodB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['payment_method_id']);
+        $this->assertApiValidationErrors($response, ['payment_method_id']);
     }
 
     public function test_payment_instrument_store_refuses_cross_tenant_partner_id(): void
@@ -540,8 +514,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payment-instruments', $this->instrumentStorePayload([
                 'partner_id' => $this->partnerB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['partner_id']);
+        $this->assertApiValidationErrors($response, ['partner_id']);
     }
 
     public function test_payment_instrument_store_refuses_cross_tenant_repository_id(): void
@@ -550,8 +523,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson('/api/v1/payment-instruments', $this->instrumentStorePayload([
                 'repository_id' => $this->repositoryB->id,
             ]));
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['repository_id']);
+        $this->assertApiValidationErrors($response, ['repository_id']);
     }
 
     /**
@@ -577,8 +549,7 @@ final class TreasuryTenantIsolationTest extends TestCase
         // controller's INVALID_REPOSITORY guard does not fire (we deliberately
         // chose a bank_account repository for tenant B), and the deposit
         // succeeds against tenant B's bank repository. That is the leak.
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['repository_id']);
+        $this->assertApiValidationErrors($response, ['repository_id']);
     }
 
     /**
@@ -590,8 +561,7 @@ final class TreasuryTenantIsolationTest extends TestCase
             ->postJson("/api/v1/payment-instruments/{$this->instrumentA->id}/transfer", [
                 'to_repository_id' => $this->repositoryB->id,
             ]);
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['to_repository_id']);
+        $this->assertApiValidationErrors($response, ['to_repository_id']);
     }
 
     // =========================================================================
@@ -824,6 +794,28 @@ final class TreasuryTenantIsolationTest extends TestCase
         ]);
 
         return [$partner, $method, $repository, $instrument, $account, $invoice, $purchaseOrder, $payment];
+    }
+
+    /**
+     * Assert that the response has NO validation error for `$key`. Works against
+     * the project's `{ error: { code, errors: { field: [..] } } }` shape used by
+     * AssertsApiValidation. A non-422 response trivially passes.
+     *
+     * Used by same-tenant control assertions where the FormRequest rule must
+     * accept the value but the downstream service may still 422 for unrelated
+     * domain reasons (e.g. "refund exceeds allocated").
+     */
+    private function assertNoValidationErrorFor(\Illuminate\Testing\TestResponse $response, string $key): void
+    {
+        $json = $response->json();
+        if (! is_array($json) || ! isset($json['error']['errors']) || ! is_array($json['error']['errors'])) {
+            return; // No validation envelope → can't have an error for $key.
+        }
+        $this->assertArrayNotHasKey(
+            $key,
+            $json['error']['errors'],
+            "Same-tenant control failed: validator reported error for '{$key}'. Body: ".$response->getContent(),
+        );
     }
 
     /**
