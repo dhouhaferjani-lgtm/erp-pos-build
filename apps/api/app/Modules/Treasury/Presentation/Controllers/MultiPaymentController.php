@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -189,15 +190,39 @@ class MultiPaymentController extends Controller
      */
     public function getUnallocatedBalance(string $partnerId, string $currency): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Codex round-3 Finding 14 — resolve the partner under the current
+        // tenant + company BEFORE handing the id to the service. The service
+        // will additionally re-scope its Payment query (defense in depth)
+        // but the controller is the primary guard against cross-tenant
+        // partner-id probing.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($partnerId);
+
+        if ($partner === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+            ], 404);
+        }
+
         try {
             $balance = $this->multiPaymentService->getUnallocatedDepositBalance(
-                $partnerId,
+                $tenantId,
+                $companyId,
+                $partner->id,
                 $currency
             );
 
             return response()->json([
                 'data' => [
-                    'partner_id' => $partnerId,
+                    'partner_id' => $partner->id,
                     'currency' => $currency,
                     'unallocated_balance' => $balance,
                 ],
@@ -261,9 +286,33 @@ class MultiPaymentController extends Controller
      */
     public function getPartnerAccountBalance(string $partnerId, string $currency): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Codex round-3 Finding 14 — resolve the partner under the current
+        // tenant + company BEFORE handing the id to the service. The service
+        // will additionally re-scope its Payment query (defense in depth)
+        // but the controller is the primary guard against cross-tenant
+        // partner-id probing.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($partnerId);
+
+        if ($partner === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+            ], 404);
+        }
+
         try {
             $balance = $this->multiPaymentService->getPartnerAccountBalance(
-                $partnerId,
+                $tenantId,
+                $companyId,
+                $partner->id,
                 $currency
             );
 

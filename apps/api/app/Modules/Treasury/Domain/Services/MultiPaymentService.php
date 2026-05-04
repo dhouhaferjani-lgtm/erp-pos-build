@@ -199,11 +199,25 @@ class MultiPaymentService
     }
 
     /**
-     * Get unallocated deposit balance for a partner
+     * Get unallocated deposit balance for a partner.
+     *
+     * Codex round-3 Finding 14 — defense-in-depth tenant/company scoping.
+     * The Payment::where('partner_id', ...) query previously had NO tenant
+     * predicate, so any caller with a partner_id could read foreign-tenant
+     * payments. The controller now resolves the Partner under the current
+     * CompanyContext before invoking, and this service guard re-applies
+     * the same scope to prevent future internal callers from bypassing it.
      */
-    public function getUnallocatedDepositBalance(string $partnerId, string $currency): string
-    {
-        $payments = Payment::where('partner_id', $partnerId)
+    public function getUnallocatedDepositBalance(
+        string $tenantId,
+        string $companyId,
+        string $partnerId,
+        string $currency
+    ): string {
+        $payments = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('partner_id', $partnerId)
             ->where('currency', $currency)
             ->where('status', PaymentStatus::Completed)
             ->with('allocations')
@@ -272,7 +286,7 @@ class MultiPaymentService
             ]);
         });
 
-        $accountBalance = $this->getUnallocatedDepositBalance($partnerId, $currency);
+        $accountBalance = $this->getUnallocatedDepositBalance($tenantId, $companyId, $partnerId, $currency);
 
         return [
             'payment' => $payment,
@@ -283,13 +297,28 @@ class MultiPaymentService
     /**
      * Get partner account balance (unallocated payments).
      *
+     * Codex round-3 Finding 14 — defense-in-depth tenant/company scoping.
+     * The Payment::where('partner_id', ...) query previously had NO tenant
+     * predicate, so any caller with a partner_id could read foreign-tenant
+     * payments + the matching Payment collection. The controller now
+     * resolves the Partner under the current CompanyContext before invoking,
+     * and this service guard re-applies the same scope to prevent future
+     * internal callers from bypassing it.
+     *
      * @return array{partner_id: string, currency: string, unallocated_balance: string, deposit_count: int, deposits: Collection<int, Payment>}
      */
-    public function getPartnerAccountBalance(string $partnerId, string $currency): array
-    {
-        $unallocatedBalance = $this->getUnallocatedDepositBalance($partnerId, $currency);
+    public function getPartnerAccountBalance(
+        string $tenantId,
+        string $companyId,
+        string $partnerId,
+        string $currency
+    ): array {
+        $unallocatedBalance = $this->getUnallocatedDepositBalance($tenantId, $companyId, $partnerId, $currency);
 
-        $deposits = Payment::where('partner_id', $partnerId)
+        $deposits = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('partner_id', $partnerId)
             ->where('currency', $currency)
             ->where('status', PaymentStatus::Completed)
             ->whereRaw('amount > (SELECT COALESCE(SUM(amount), 0) FROM payment_allocations WHERE payment_id = payments.id)')
