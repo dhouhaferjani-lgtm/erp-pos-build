@@ -31,7 +31,7 @@ This is the public-route reachability behind Opus's generic Infrastructure-tier 
 
 **Severity**: CRITICAL (POS-surface attack vector — same module, but POS-blocked cluster)
 
-**Surface**: `apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php` lines 80-99 (previewEarning), 100-148 (earn), 149-158 (redeem); `apps/api/app/Modules/Loyalty/Application/Services/EarningProcessingService.php` line 168; `apps/api/app/Modules/Loyalty/Application/Services/RedemptionProcessingService.php` lines 47, 53; backed by unscoped repositories (`EloquentEnrollmentRepository::findById`, `EloquentRewardRepository::findById`)
+**Surface**: `apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php` lines 80-99 (previewEarning), ~174-200 (earn), 149-158 (redeem); `apps/api/app/Modules/Loyalty/Application/Services/EarningProcessingService.php` line 168; `apps/api/app/Modules/Loyalty/Application/Services/RedemptionProcessingService.php` lines 47, 53; backed by unscoped repositories (`EloquentEnrollmentRepository::findById`, `EloquentRewardRepository::findById`)
 
 **Issue**: `LoyaltyPOSController::previewEarning` passes request `enrollment_id` directly to `EarningProcessingService::previewEarning()`, which calls unscoped `Enrollment::find()` via `EloquentEnrollmentRepository::findById()`. `LoyaltyPOSController::earn` follows the same path and can write transactions/balance changes to a foreign enrollment. `LoyaltyPOSController::redeem` passes raw `enrollment_id` and `reward_id` into `RedemptionProcessingService::redeemReward()`, which resolves both through unscoped repositories.
 
@@ -92,6 +92,7 @@ The bare-exists scanner did not flag this because there is no `exists` rule at a
 Findings A, B, C are deferred per the kickoff brief. The api.loyalty cluster closes with:
 - All 10 inventoried callsites + 1 hostile-grep blind spot (CreateProgramRequest) fixed.
 - Codex round-1 Finding 1 (LoyaltyMemberController::enroll) applied in-cluster as a round-2 remediation (same controller, same surface as inventoried findOrFails).
+- Codex round-2 Finding 1 (LoyaltyMemberController::optOut + reactivate) applied in-cluster as a round-3 remediation (same controller, same route-anchored surface; both methods previously ignored `$memberId` and let tenant-A mutate tenant-B's enrollment state).
 - Findings A-C documented here for follow-up cluster sweeps.
 
-The cluster is otherwise sound and ready to advance to `fixed` after the round-2 remediation lands and a third reviewer pass clears it.
+The cluster is otherwise sound and ready to advance to `fixed` after the round-3 remediation lands and a third reviewer pass clears it.

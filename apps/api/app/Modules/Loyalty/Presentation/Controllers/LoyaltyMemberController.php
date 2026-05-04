@@ -168,7 +168,19 @@ class LoyaltyMemberController extends Controller
      */
     public function optOut(string $memberId, string $enrollmentId): JsonResponse
     {
-        $this->enrollmentService->optOut($enrollmentId);
+        // api.loyalty round-3 (Codex round-2 Finding 1): the original
+        // implementation ignored $memberId entirely and resolved
+        // $enrollmentId via unscoped EloquentEnrollmentRepository::findById,
+        // letting tenant-A mutate tenant-B's enrollment state. Mirror the
+        // transactions/adjust pattern: pre-load tenant-scoped member,
+        // then resolve enrollment chained to that member.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        $this->enrollmentService->optOut($enrollment->id);
 
         return response()->json([
             'message' => 'Member opted out successfully',
@@ -180,7 +192,14 @@ class LoyaltyMemberController extends Controller
      */
     public function reactivate(string $memberId, string $enrollmentId): JsonResponse
     {
-        $this->enrollmentService->reactivate($enrollmentId);
+        // api.loyalty round-3 (Codex round-2 Finding 1): same as optOut.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        $this->enrollmentService->reactivate($enrollment->id);
 
         return response()->json([
             'message' => 'Enrollment reactivated successfully',

@@ -503,6 +503,55 @@ final class LoyaltyTenantIsolationTest extends TestCase
     //   created an Enrollment(program_id=A, member_id=B) row.
     // ──────────────────────────────────────────────────────────────────
 
+    // ──────────────────────────────────────────────────────────────────
+    // LoyaltyMemberController::optOut + reactivate (round-3 Codex Finding 1)
+    //   Both methods ignored $memberId pre-fix and resolved $enrollmentId
+    //   via unscoped repository; tenant-A could mutate tenant-B's enrollment.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_opt_out_rejects_cross_tenant_enrollment(): void
+    {
+        // Pin the bad path: tenant-A user posting with their own memberA in
+        // the URL but tenant-B's enrollmentB id. Pre-fix this returned 200
+        // and flipped tenant-B's enrollment to OptedOut. Post-fix the
+        // enrollment lookup chained on $member->id (tenant A's member)
+        // misses the cross-tenant enrollment id and 404s.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/loyalty/members/{$this->memberA->id}/enrollments/{$this->enrollmentB->id}/opt-out");
+        $cross->assertStatus(404);
+
+        $freshB = $this->enrollmentB->fresh();
+        $this->assertNotNull($freshB, 'Tenant-B enrollment must still exist.');
+        $this->assertSame(
+            EnrollmentStatus::Active,
+            $freshB->status,
+            'Tenant-B enrollment status must NOT have been mutated by tenant-A request.',
+        );
+
+        // Same-tenant control: tenant-A user opting out their own enrollmentA
+        // returns 200 (and flips status); guards against passing-for-the-wrong-reason.
+        $same = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/loyalty/members/{$this->memberA->id}/enrollments/{$this->enrollmentA->id}/opt-out");
+        $same->assertStatus(200);
+    }
+
+    public function test_reactivate_rejects_cross_tenant_enrollment(): void
+    {
+        // Pre-mark tenant-B's enrollment as OptedOut so a successful
+        // (cross-tenant exploit) reactivate would have something to flip.
+        $this->enrollmentB->update(['status' => EnrollmentStatus::OptedOut]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/loyalty/members/{$this->memberA->id}/enrollments/{$this->enrollmentB->id}/reactivate");
+        $cross->assertStatus(404);
+
+        $this->assertSame(
+            EnrollmentStatus::OptedOut,
+            $this->enrollmentB->fresh()?->status,
+            'Tenant-B enrollment status must NOT have been reactivated by tenant-A request.',
+        );
+    }
+
     public function test_enroll_rejects_cross_tenant_member_id(): void
     {
         // memberB belongs to tenant B. Use a NEW tenant-A program (not the
