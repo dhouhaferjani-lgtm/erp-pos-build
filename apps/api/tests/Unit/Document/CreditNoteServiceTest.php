@@ -6,6 +6,7 @@ namespace Tests\Unit\Document;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
@@ -39,7 +40,6 @@ class CreditNoteServiceTest extends TestCase
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
             'slug' => 'test-tenant',
-            'domain' => 'test',
         ]);
 
         // Create country
@@ -67,6 +67,9 @@ class CreditNoteServiceTest extends TestCase
             'name' => 'Test Customer',
             'type' => PartnerType::Customer,
         ]);
+
+        // Pin CompanyContext so service-tier tenant+company scoped reads succeed.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /** @test */

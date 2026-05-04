@@ -128,10 +128,17 @@ final class DocumentData extends Data
             ? array_map('strval', $payload['invoice_ids'])
             : [];
 
-        // Get source document info for navigation back
+        // Get source document info for navigation back.
+        // api.document.004: defense-in-depth — even if a corrupted row carries
+        // a cross-tenant source_document_id, the lookup MUST refuse to surface
+        // the foreign document's number/type. Scope by the parent document's
+        // own tenant + company.
         $sourceDocument = null;
         if ($document->source_document_id !== null) {
-            $sourceDocument = Document::find($document->source_document_id);
+            $sourceDocument = Document::query()
+                ->where('tenant_id', $document->tenant_id)
+                ->where('company_id', $document->company_id)
+                ->find($document->source_document_id);
         }
 
         // Calculate balance and amount paid

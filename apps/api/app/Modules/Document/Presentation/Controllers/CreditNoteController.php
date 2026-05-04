@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -123,7 +124,9 @@ class CreditNoteController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
+        $tenantId = $company->tenant_id;
 
         // Determine credit note mode
         $hasSourceInvoice = $request->filled('source_invoice_id');
@@ -136,7 +139,9 @@ class CreditNoteController extends Controller
 
         if ($hasSourceInvoice) {
             // Invoice-linked mode
-            $rules['source_invoice_id'] = ['required', 'string', 'exists:documents,id'];
+            // api.document.001: tenant+company-scoped exists prevents a cross-tenant
+            // source_invoice_id from satisfying the FK validator.
+            $rules['source_invoice_id'] = ['required', 'string', ScopedExists::tenantAndCompany('documents', $tenantId, $companyId)];
 
             if (! $isLineBased) {
                 // Amount-based
@@ -149,9 +154,11 @@ class CreditNoteController extends Controller
             }
         } else {
             // Standalone mode (customer-based)
-            $rules['partner_id'] = ['required', 'string', 'exists:partners,id'];
+            // api.document.002: scope partner_id by tenant + company.
+            $rules['partner_id'] = ['required', 'string', ScopedExists::tenantAndCompany('partners', $tenantId, $companyId)];
             $rules['lines'] = ['required', 'array', 'min:1'];
-            $rules['lines.*.product_id'] = ['nullable', 'string', 'exists:products,id'];
+            // api.document.003: scope per-line product_id (nullable) by tenant + company.
+            $rules['lines.*.product_id'] = ['nullable', 'string', ScopedExists::tenantAndCompany('products', $tenantId, $companyId)];
             $rules['lines.*.description'] = ['required', 'string', 'max:500'];
             $rules['lines.*.quantity'] = ['required', 'numeric', 'gt:0'];
             $rules['lines.*.unit_price'] = ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'];
