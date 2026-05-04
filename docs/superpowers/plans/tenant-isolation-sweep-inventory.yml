@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 6fb0519f57d4d16e6a180ffbf289e1b4e0ea524769c0a06a3cc81ef890d2d14f
+  yaml_sha256: 1fc6d404a907a07d166aaf3b3cdefbcd691bd7507f8f8144e72520af1d135ed7
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -313,7 +313,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -807,7 +807,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -816,8 +816,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_ledger_index_rejects_cross_tenant_account_id'
     blocked_reason: null
     history:
       -
@@ -868,6 +868,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:17Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: bcbf923996c3278227d9ced18b63c39c06d34f14780eabbca2972fcb191885b1
+        new_yaml_sha256: bdb6f432d1d725c87fe234efe187e6dc331f75eea6178b2e55ea6c827be50ad9
+        target_ids:
+          - api.accounting.001
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_ledger_index_rejects_cross_tenant_account_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.accounting.002
     stable_key: 'sha256:7e8ad2c2113cb04f3601fd9f7b916fec027732ccf6b36ce3ba24ddb359af6bda'
@@ -885,7 +901,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -894,8 +910,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_ledger_index_rejects_cross_tenant_partner_id'
     blocked_reason: null
     history:
       -
@@ -946,6 +962,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: bdb6f432d1d725c87fe234efe187e6dc331f75eea6178b2e55ea6c827be50ad9
+        new_yaml_sha256: ded923c6ee4c8edd342989f57b19067297dfb823591ed35dc85de1775d025e14
+        target_ids:
+          - api.accounting.002
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_ledger_index_rejects_cross_tenant_partner_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.accounting.003
     stable_key: 'sha256:56a7e3eaf0240b9ce2c532432076b1559b83672b73b39c63c2872c7465906060'
@@ -963,7 +995,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -972,8 +1004,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_journal_entry_store_rejects_cross_tenant_account_id_in_lines'
     blocked_reason: null
     history:
       -
@@ -1024,6 +1056,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ded923c6ee4c8edd342989f57b19067297dfb823591ed35dc85de1775d025e14
+        new_yaml_sha256: 4b878c1db1f8342910f57e073f58fceca736f6080784b5eff29544c79c1275ef
+        target_ids:
+          - api.accounting.003
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_journal_entry_store_rejects_cross_tenant_account_id_in_lines'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.001
     stable_key: 'sha256:3bf0313acea1e5190c9f911cff6c0afcb0d446520c19391b08c595c2a22ed439'
@@ -7958,7 +8006,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -7967,8 +8015,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_partner_balance_service_refresh_refuses_cross_tenant_partner'
     blocked_reason: null
     history:
       -
@@ -8019,6 +8067,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:20Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4b878c1db1f8342910f57e073f58fceca736f6080784b5eff29544c79c1275ef
+        new_yaml_sha256: d41e4b70c8db6d08dae8289e26ceeb64e7b191063acbd265c9f9005c81f664cc
+        target_ids:
+          - api.accounting.004
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_partner_balance_service_refresh_refuses_cross_tenant_partner'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.accounting.005
     stable_key: 'sha256:77665a4824240bbfbd731a53ca5dbc21c4ad0ac012109c6ead22d82a9ec75050'
@@ -8036,7 +8100,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -8045,8 +8109,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_partner_balance_service_cached_or_calculate_refuses_cross_tenant_partner'
     blocked_reason: null
     history:
       -
@@ -8097,6 +8161,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:20Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d41e4b70c8db6d08dae8289e26ceeb64e7b191063acbd265c9f9005c81f664cc
+        new_yaml_sha256: fdc2e7bc50bcf73565bc16a6b8e3f1306ba41ac606da452de2c44acbde13c5cc
+        target_ids:
+          - api.accounting.005
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_partner_balance_service_cached_or_calculate_refuses_cross_tenant_partner'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.accounting.006
     stable_key: 'sha256:455afc48b59c66d80d15f25a73948b2727a92d35187df8d5dab97d9d13cd3b3c'
@@ -8114,7 +8194,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -8123,8 +8203,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_get_account_details_returns_null_for_cross_tenant_account'
     blocked_reason: null
     history:
       -
@@ -8175,6 +8255,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fdc2e7bc50bcf73565bc16a6b8e3f1306ba41ac606da452de2c44acbde13c5cc
+        new_yaml_sha256: ab9720003f8dcac50421c50f4e1efd8bcf30dddd62596d1fd68d59196ff1e388
+        target_ids:
+          - api.accounting.006
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_get_account_details_returns_null_for_cross_tenant_account'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.accounting.007
     stable_key: 'sha256:7e5ab9a8ceb8d7a96c48f0b1d40afef2d768de7dc4db70b3c84a38fef4919828'
@@ -8192,7 +8288,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T21:37:17Z'
     review:
@@ -8201,8 +8297,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a1963bbd
+    regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_get_account_details_returns_null_for_cross_tenant_account'
     blocked_reason: null
     history:
       -
@@ -8253,6 +8349,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:47:22Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ab9720003f8dcac50421c50f4e1efd8bcf30dddd62596d1fd68d59196ff1e388
+        new_yaml_sha256: 1fc6d404a907a07d166aaf3b3cdefbcd691bd7507f8f8144e72520af1d135ed7
+        target_ids:
+          - api.accounting.007
+        from_status: in_progress
+        to_status: under_review
+        commit: a1963bbd
+        test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_get_account_details_returns_null_for_cross_tenant_account'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.workshop.001
     stable_key: 'sha256:00f6510fd8fd3c2e640f0131edeb076debd6e0c811672ca4b0d9ed2a62032646'
@@ -14738,15 +14850,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-04T21:44:51Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+      review_commit: '77185828'
     fix_commit: '77185828'
     regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_update_service_refuses_cross_tenant_id'
     blocked_reason: null
@@ -14815,6 +14927,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T21:44:51Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6fb0519f57d4d16e6a180ffbf289e1b4e0ea524769c0a06a3cc81ef890d2d14f
+        new_yaml_sha256: 83d16ce0b68e28949a4e8ca082ac6d3a7a61067d110437e3701ceb64138bda23
+        target_ids:
+          - api.service.001
+          - api.service
+        from_status: under_review
+        to_status: fixed
+        commit: e4906c34be312ce8540e2c3277c0b2d4f7854318
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+        review_commit: '77185828'
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.service.002
     stable_key: 'sha256:3045d4abbef4acedd1911a800e2219b7b5d940c9f95ed41d1674d9ac312038cc'
@@ -14832,15 +14961,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-04T21:44:59Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+      review_commit: '77185828'
     fix_commit: '77185828'
     regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_delete_service_refuses_cross_tenant_id'
     blocked_reason: null
@@ -14909,6 +15038,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T21:44:59Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 83d16ce0b68e28949a4e8ca082ac6d3a7a61067d110437e3701ceb64138bda23
+        new_yaml_sha256: 88d3119e5614c0a77f3af359cbe374e3e73de1b82ef5c3e709d0f57f9b77cc78
+        target_ids:
+          - api.service.002
+          - api.service
+        from_status: under_review
+        to_status: fixed
+        commit: e4906c34be312ce8540e2c3277c0b2d4f7854318
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+        review_commit: '77185828'
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.service.003
     stable_key: 'sha256:41147658536d0ce3c879274c3e2ed204ef126a06b87f2fa56aa3437cc9adf4b6'
@@ -14926,15 +15072,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-04T21:45:05Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+      review_commit: '77185828'
     fix_commit: '77185828'
     regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_get_service_refuses_cross_tenant_id'
     blocked_reason: null
@@ -15003,6 +15149,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-04T21:45:05Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 88d3119e5614c0a77f3af359cbe374e3e73de1b82ef5c3e709d0f57f9b77cc78
+        new_yaml_sha256: bcbf923996c3278227d9ced18b63c39c06d34f14780eabbca2972fcb191885b1
+        target_ids:
+          - api.service.003
+          - api.service
+        from_status: under_review
+        to_status: fixed
+        commit: e4906c34be312ce8540e2c3277c0b2d4f7854318
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-service-cluster-opus-round2-review.md
+        review_commit: '77185828'
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.treasury.026
     stable_key: 'sha256:c5e9c4403e9530f7f9495dc32ae43317be65ad4d56cbc96f67d5a5a7f8758c38'
