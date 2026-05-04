@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: af925c58d25a010dc6f34a3f63a1f1cea936405b52ff71b61e293fbfe2cfa9e6
+  yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -173,9 +173,9 @@ clusters:
     id: api.loyalty
     display_name: Loyalty
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -380,9 +380,9 @@ clusters:
     id: api.identity-company
     display_name: 'Identity / Company'
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: deferred
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -2505,9 +2505,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -2534,6 +2534,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.001
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.002
     stable_key: 'sha256:da21fb02f4c0dc67a11cef5eafee822bd9e7b4f2406e1d6bd03410b24d15f6de'
@@ -2551,9 +2583,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -2580,6 +2612,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.002
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.003
     stable_key: 'sha256:246837d9a7442e4590f708f8bd8f03fc2ac71ead938ad9bf997458a6e907e41a'
@@ -2597,9 +2661,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -2626,6 +2690,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.003
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.004
     stable_key: 'sha256:9f2c35dbda30c2c16e41b0dccce74649d5e95ad79f0cfd8675053469803050e1'
@@ -2643,9 +2739,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -2672,6 +2768,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.004
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.005
     stable_key: 'sha256:8f0106e2f9894d937601366d41bf6920d11c2d2ef7f53007a299c8b02d964dc5'
@@ -2689,9 +2817,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -2718,6 +2846,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.005
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.unmapped.011
     stable_key: 'sha256:f03bb9de9b862120d95be08549850dc9c6e283b4d71082c6023d7c583e27971b'
@@ -7160,9 +7320,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: deferred
+    owner: codex
+    claimed_at: '2026-05-04T20:33:48Z'
     review:
       reviewer: null
       verdict: null
@@ -7189,6 +7349,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:33:48Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: af925c58d25a010dc6f34a3f63a1f1cea936405b52ff71b61e293fbfe2cfa9e6
+        new_yaml_sha256: ec614fc6fad6fdd8b82daaaca719eabe00a9c7adcd59dab63e90452d9e17a908
+        target_ids:
+          - api.identity-company.001
+        from_status: pending
+        to_status: claimed
+        commit: 7f87e26e9a13a871604dccd22abf006c981c4204
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:35:59Z'
+        actor: codex
+        action: defer
+        command: 'sweep:inventory:defer'
+        previous_yaml_sha256: ec614fc6fad6fdd8b82daaaca719eabe00a9c7adcd59dab63e90452d9e17a908
+        new_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        target_ids:
+          - api.identity-company.001
+        from_status: claimed
+        to_status: deferred
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Scanner false-positive: tax_configurations is country-scoped global reference (no tenant_id/company_id). Cross-tenant exfiltration structurally impossible. Cross-cluster scanner gap also affects api.catalog (2), api.taxation (1), api.unmapped (2). See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md for full triage and recommended scanner fix; revisit by 2026-08-01'
   -
     id: api.accounting.004
     stable_key: 'sha256:c8f6f84954fcc903adcacba11e192019040c8c9d5d4216e6faae98fe129ff155'
@@ -11196,9 +11388,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -11225,6 +11417,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.006
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.007
     stable_key: 'sha256:45fc9daa0d1957eb6f52673938d9f9bd2c1cf6f7657e3e57453b70f68b484bb0'
@@ -11242,9 +11466,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -11271,6 +11495,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.007
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.008
     stable_key: 'sha256:cecbe3345cdf1f06b15b839d8cc2f11258ad556c213927794bb3af799650154c'
@@ -11288,9 +11544,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -11317,6 +11573,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.008
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.009
     stable_key: 'sha256:b71128e43321e9c6b5137a102241a1400fa2f77cd331efdad541c08823590940'
@@ -11334,9 +11622,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -11363,6 +11651,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.009
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.loyalty.010
     stable_key: 'sha256:68a403b88ea84a5025656daab95d5e692e05684a6f9527b2ee4e4c1504f371ec'
@@ -11380,9 +11700,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: null
       verdict: null
@@ -11409,6 +11729,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:36:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f0dd9be5d242d30cd8aa37ff1f00a82850dfdc839c751c4e79aa35d739894c03
+        new_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        target_ids:
+          - api.loyalty.010
+        from_status: pending
+        to_status: claimed
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:36:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 01a0c7971eafa5cb400cab41e5c27428aefb894427fe6eb071e7dce0068eb8da
+        new_yaml_sha256: 9fd6a8ed957f86031936855ba8c604ac496bfa9c8d33fd52f769733ffc6c4a54
+        target_ids:
+          - api.loyalty.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 8175d7f24127c3ed07c12ca16900b06f2f9291f4
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.unmapped.017
     stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
