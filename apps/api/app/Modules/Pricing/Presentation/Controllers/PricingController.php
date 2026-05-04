@@ -7,6 +7,7 @@ namespace App\Modules\Pricing\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Pricing\Domain\PartnerPriceList;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
@@ -31,7 +32,19 @@ class PricingController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = PriceList::with(['company', 'items']);
+        // api.pricing round-2 (Opus Finding 1, CRITICAL): pre-fix the listing
+        // ran PriceList::with([...])->paginate() with NO tenant_id/company_id
+        // predicate, leaking every tenant's price-list catalog (code, name,
+        // currency, items, eager-loaded company tax_id) to any user with
+        // pricing.view. Scanner missed it because Gate A only sees `exists:`
+        // rules and Gate B only sees find()/findOrFail() — bare paginate()
+        // listings fall through both. Fix: scope by tenant + company.
+        $company = $this->companyContext->requireCompany();
+
+        $query = PriceList::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['company', 'items']);
 
         if ($request->has('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
@@ -287,12 +300,20 @@ class PricingController extends Controller
      */
     public function removeFromPartner(string $priceListId, string $partnerId): JsonResponse
     {
-        // Hostile-grep blind spot: pre-load tenant-scoped PriceList; the
-        // PartnerPriceList lookup then anchors on a tenant-scoped price_list_id.
+        // api.pricing round-2 (Opus Finding 4): pre-load tenant-scoped
+        // PriceList AND tenant-scoped Partner. Symmetric routes
+        // (assignToPartner) validate partner_id at the validator tier; this
+        // route gets the partner_id via URL segment so we validate by
+        // pre-loading. firstOrFail will then 404 either when the priceList
+        // is foreign-tenant OR when the partner is foreign-tenant OR when
+        // the join row doesn't exist for this same-tenant pair.
         $company = $this->companyContext->requireCompany();
         $priceList = PriceList::where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->findOrFail($priceListId);
+        Partner::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($partnerId);
 
         $assignment = PartnerPriceList::where('price_list_id', $priceList->id)
             ->where('partner_id', $partnerId)

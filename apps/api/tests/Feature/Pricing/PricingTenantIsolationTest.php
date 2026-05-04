@@ -397,6 +397,106 @@ final class PricingTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // Round-2 fixes (Opus Findings 1, 2, 4)
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_index_returns_only_same_tenant_price_lists(): void
+    {
+        // Opus Finding 1 (CRITICAL): pre-fix `index` paginated all tenants'
+        // price-lists. Tenant-A user must see priceListA only, NOT priceListB.
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/price-lists');
+        $response->assertStatus(200);
+
+        $data = $response->json('data') ?? [];
+        $ids = array_column($data, 'id');
+
+        $this->assertContains($this->priceListA->id, $ids, 'Same-tenant price_list must appear in /price-lists.');
+        $this->assertNotContains($this->priceListB->id, $ids, 'Cross-tenant price_list must NOT appear in /price-lists.');
+    }
+
+    public function test_index_query_includes_tenant_and_company_predicates(): void
+    {
+        \DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/price-lists')
+            ->assertStatus(200);
+
+        $log = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        $listingQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "price_lists"')
+                && (str_contains($sql, 'limit 20') || str_contains($sql, '"latest"') || str_contains($sql, 'order by'))
+                && ! str_contains($sql, 'count(*)')
+            ) {
+                $listingQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $listingQuery,
+            'PriceList listing query must be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $listingQuery,
+            'PriceList listing must filter by tenant_id. Got SQL: '.$listingQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $listingQuery,
+            'PriceList listing must filter by company_id. Got SQL: '.$listingQuery,
+        );
+    }
+
+    public function test_remove_from_partner_rejects_cross_tenant_partner_id(): void
+    {
+        // Opus Finding 4: pre-fix the $partnerId route segment was passed
+        // straight into the PartnerPriceList lookup with no Partner tenant
+        // validation. Hitting DELETE /price-lists/{tenantA-priceList}/partners/{tenantB-partner}
+        // should 404 (Partner pre-load fails) — not silently succeed when no
+        // PartnerPriceList row matches.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/price-lists/{$this->priceListA->id}/partners/{$this->partnerB->id}");
+        $cross->assertStatus(404);
+    }
+
+    public function test_get_price_falls_back_to_same_tenant_default_only(): void
+    {
+        // Opus Finding 2 (IMPORTANT): pre-fix getDefaultPriceListPrice could
+        // pick a foreign-tenant default price-list when the same-tenant
+        // didn't have one. Set up: tenant-A has NO default price-list in
+        // EUR; tenant-B has one. A getPrice call from tenant-A for a
+        // tenant-A product in EUR must NOT leak tenant-B's price_list_id.
+        // Pre-fix: response.data.source could be 'default_price_list' with
+        // tenant-B's price_list_id. Post-fix: falls all the way through to
+        // 'base_price' (tenant-A's product.sale_price).
+        $this->priceListB->update(['is_default' => true]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pricing/get-price', [
+                'product_id' => $this->productA->id,
+                'quantity' => '1',
+                'currency' => 'EUR',
+            ]);
+        $response->assertStatus(200);
+
+        $this->assertNotSame(
+            $this->priceListB->id,
+            $response->json('data.price_list_id'),
+            'getPrice must NOT leak a foreign-tenant price_list_id via the default-list fallback.',
+        );
+        // Acceptable values: tenant-A's priceListA (if matched via item) or
+        // null (fall through to base price). NEVER tenant-B's id.
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // Structural-SQL-log invariants (bar-raising pattern)
     // ──────────────────────────────────────────────────────────────────
 
