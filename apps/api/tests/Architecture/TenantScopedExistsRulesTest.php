@@ -60,6 +60,7 @@ class TenantScopedExistsRulesTest extends TestCase
         'expense_categories',
         'fraud_alerts',
         'invoices',
+        'journals', // Accounting cluster — added per Opus Treasury Finding 3
         'locations',
         'loyalty_members',
         'loyalty_programs',
@@ -67,6 +68,7 @@ class TenantScopedExistsRulesTest extends TestCase
         'modifier_groups',
         'modifiers',
         'partners',
+        'payment_instruments', // Treasury cluster — added per Opus Treasury Findings 2 & 3
         'payment_methods',
         'payment_repositories',
         'payments',
@@ -82,6 +84,7 @@ class TenantScopedExistsRulesTest extends TestCase
         'stock_movements',
         'tax_configurations',
         'tax_rates',
+        'users', // Identity cluster — added per Opus Treasury Finding 3
         'voucher_ledger',
         'vouchers',
         'withholding_certificates',

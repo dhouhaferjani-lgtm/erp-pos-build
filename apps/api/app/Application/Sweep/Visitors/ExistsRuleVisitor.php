@@ -146,23 +146,30 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
 
     private function checkInlineString(String_ $node): void
     {
-        $value = $node->value;
-        if (! str_starts_with($value, 'exists:')) {
-            return;
+        // Laravel rule strings can be EITHER a single rule (`exists:foo,id`)
+        // OR a pipe-delimited chain (`required|exists:foo,id|nullable`).
+        // We must inspect every fragment, not just check whether the whole
+        // string starts with `exists:` — Opus Treasury Finding 1 (2026-05-04)
+        // surfaced 9 pipe-form bare exists in MultiPaymentController that the
+        // original `str_starts_with($value, 'exists:')` check missed entirely.
+        foreach (explode('|', $node->value) as $fragment) {
+            if (! str_starts_with($fragment, 'exists:')) {
+                continue;
+            }
+            $rest = substr($fragment, strlen('exists:'));
+            $parts = explode(',', $rest, 3);
+            $table = $parts[0];
+            if ($table === '' || ! in_array($table, $this->guardedTables, true)) {
+                continue;
+            }
+            $this->violations[] = [
+                'line' => $node->getStartLine(),
+                'table' => $table,
+                'form' => 'inline_string',
+                'enclosing_method' => $this->currentEnclosingMethod(),
+                'start_file_pos' => $node->getStartFilePos(),
+            ];
         }
-        $rest = substr($value, strlen('exists:'));
-        $parts = explode(',', $rest, 3);
-        $table = $parts[0];
-        if ($table === '' || ! in_array($table, $this->guardedTables, true)) {
-            return;
-        }
-        $this->violations[] = [
-            'line' => $node->getStartLine(),
-            'table' => $table,
-            'form' => 'inline_string',
-            'enclosing_method' => $this->currentEnclosingMethod(),
-            'start_file_pos' => $node->getStartFilePos(),
-        ];
     }
 
     private function checkRuleExistsBuilder(StaticCall $node): void
