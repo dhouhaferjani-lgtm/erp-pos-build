@@ -190,4 +190,53 @@ final class ExistsRuleVisitorTest extends TestCase
         $this->assertCount(1, $violations);
         $this->assertSame('payment_methods', $violations[0][1]);
     }
+
+    public function test_pipe_form_with_whitespace_around_fragments_is_flagged(): void
+    {
+        // Codex Treasury Finding 13 (2026-05-04) — Laravel's
+        // ValidationRuleParser trims rule names before matching, so
+        // `nullable | exists:partners,id` validates as Exists. The
+        // visitor must trim each fragment before the str_starts_with
+        // check so whitespace-padded pipe-form rules are not invisible.
+        $code = <<<'PHP'
+        <?php
+        class Foo {
+            public function rules(): array {
+                return [
+                    'partner_id' => 'sometimes | nullable | exists:partners,id',
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['partners']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('partners', $violations[0][1]);
+        $this->assertSame('inline_string', $violations[0][2]);
+    }
+
+    public function test_in_rule_containing_exists_substring_is_not_flagged(): void
+    {
+        // Codex Treasury Finding 13 negative case — `in:exists:foo,bar`
+        // is a single Laravel `in:` rule whose allowed-values list happens
+        // to contain the literal token `exists:foo` and `bar`. After
+        // splitting on `|` we get one fragment `in:exists:foo,bar` which
+        // does NOT start with `exists:` (with or without trim) — so it
+        // must NOT trigger a violation, even after the trimming change.
+        $code = <<<'PHP'
+        <?php
+        class Foo {
+            public function rules(): array {
+                return [
+                    'mode' => 'in:exists:foo,bar',
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['foo', 'partners']);
+
+        $this->assertSame([], $violations);
+    }
 }

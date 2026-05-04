@@ -152,7 +152,14 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
         // string starts with `exists:` — Opus Treasury Finding 1 (2026-05-04)
         // surfaced 9 pipe-form bare exists in MultiPaymentController that the
         // original `str_starts_with($value, 'exists:')` check missed entirely.
+        //
+        // Codex Treasury Finding 13 (2026-05-04): Laravel's rule parser
+        // accepts a leading-space rule name — `nullable | exists:partners,id`
+        // validates as Exists. We must trim each fragment before the
+        // `str_starts_with($fragment, 'exists:')` check so the scanner is
+        // not blind to whitespace-padded pipe-form rules.
         foreach (explode('|', $node->value) as $fragment) {
+            $fragment = trim($fragment);
             if (! str_starts_with($fragment, 'exists:')) {
                 continue;
             }
