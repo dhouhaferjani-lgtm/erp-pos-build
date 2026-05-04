@@ -222,6 +222,59 @@ final class ComplianceCrossTenantHardeningTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_audit_events_aggregate_branch_scopes_by_company(): void
+    {
+        // Round-3 hardening (Opus api.compliance round-2 Finding A):
+        // ?aggregate_type=X&aggregate_id=Y dispatches into
+        // AuditService::getEventsForAggregate which previously was
+        // unscoped. The fix adds a required companyId predicate so a
+        // tenant-A user supplying a tenant-B aggregate id cannot
+        // exfiltrate cross-tenant audit events.
+        $sharedAggregateId = '00000000-0000-0000-0000-0000000000aa';
+
+        // Seed identical aggregate id under both tenants. This is the
+        // attack scenario: the IDs collide / the attacker knows or
+        // guesses the foreign aggregate id.
+        AuditEvent::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'event_type' => 'document.created',
+            'aggregate_type' => 'Document',
+            'aggregate_id' => $sharedAggregateId,
+            'payload' => ['ref' => 'doc-A'],
+            'metadata' => [],
+            'event_hash' => hash('sha256', 'docA'),
+            'occurred_at' => now(),
+        ]);
+        AuditEvent::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'event_type' => 'document.created',
+            'aggregate_type' => 'Document',
+            'aggregate_id' => $sharedAggregateId,
+            'payload' => ['ref' => 'doc-B'],
+            'metadata' => [],
+            'event_hash' => hash('sha256', 'docB'),
+            'occurred_at' => now(),
+        ]);
+
+        // Tenant-A admin requests aggregate events with the shared id.
+        // Pre-fix the query was unscoped and returned BOTH events;
+        // post-fix it must return only the tenant-A row.
+        $response = $this->actingAsForTenant($this->adminA, $this->companyA)
+            ->getJson('/api/v1/audit/events?aggregate_type=Document&aggregate_id='.$sharedAggregateId);
+
+        $response->assertStatus(200);
+        $events = $response->json('data');
+        $this->assertIsArray($events);
+        $this->assertCount(
+            1,
+            $events,
+            'Aggregate-branch read must return ONLY tenant-A audit events. Got '.count($events).' events.',
+        );
+        $this->assertSame(['ref' => 'doc-A'], $events[0]['payload']);
+    }
+
     public function test_audit_events_legacy_route_resolves_company_from_context_not_header(): void
     {
         // Seed a tenant-A audit event so we can assert the response

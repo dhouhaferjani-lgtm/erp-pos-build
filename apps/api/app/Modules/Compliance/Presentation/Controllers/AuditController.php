@@ -48,7 +48,8 @@ class AuditController extends Controller
         if ($aggregateType && $aggregateId) {
             $events = $this->auditService->getEventsForAggregate(
                 (string) $aggregateType,
-                (string) $aggregateId
+                (string) $aggregateId,
+                $companyId,
             );
         } elseif ($from && $to) {
             $events = $this->auditService->getEventsInRange(
