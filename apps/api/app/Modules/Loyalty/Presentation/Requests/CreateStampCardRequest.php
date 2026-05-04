@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Presentation\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateStampCardRequest extends FormRequest
 {
@@ -23,6 +24,14 @@ class CreateStampCardRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Route is POST /loyalty/programs/{programId}/stamp-cards. Scoping
+        // reward_id by the route's program_id is tighter than tenant-scoping
+        // and matches the cluster invariant: the reward MUST belong to the
+        // same program the stamp card is being created under. The controller
+        // separately validates the route programId belongs to the current
+        // tenant (StampCardController::validateProgramAccess).
+        $programId = $this->route('programId');
+
         return [
             'name' => ['required', 'string', 'max:100'],
             'stamps_required' => ['required', 'integer', 'min:1', 'max:50'],
@@ -34,7 +43,11 @@ class CreateStampCardRequest extends FormRequest
             'qualifying_items.item_ids.*' => ['uuid'],
             'qualifying_items.category_ids' => ['sometimes', 'array'],
             'qualifying_items.category_ids.*' => ['uuid'],
-            'reward_id' => ['required', 'uuid', 'exists:loyalty_rewards,id'],
+            'reward_id' => [
+                'required',
+                'uuid',
+                Rule::exists('loyalty_rewards', 'id')->where('program_id', $programId),
+            ],
             'max_active_cards' => ['nullable', 'integer', 'min:1'],
             'expiry_days' => ['nullable', 'integer', 'min:1'],
         ];
