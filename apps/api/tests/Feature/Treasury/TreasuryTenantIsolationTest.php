@@ -666,6 +666,475 @@ final class TreasuryTenantIsolationTest extends TestCase
     }
 
     // =========================================================================
+    // Surface 4 — Newly-discovered callsites (Codex+Opus Treasury 2026-05-04 review)
+    //
+    // ExistsRuleVisitor pipe-form fix (Block 1) + GUARDED_TABLES expansion
+    // (payment_instruments, journals, users) surfaced 14 additional Treasury
+    // bare exists callsites the original Section 7 sweep missed:
+    //
+    //   - MultiPaymentController × 9 (lines 33,35,36,75,76,79,80,122,190 — pipe-form)
+    //   - PaymentController.php:112 (instrument_id, payment_instruments table)
+    //   - PaymentMethodController.php × 2 (lines 77,148 — default_journal_id, journals)
+    //   - PaymentRepositoryController.php × 2 (lines 75,131 — responsible_user_id, users)
+    //
+    // Inventory: api.treasury.049..062.
+    // =========================================================================
+
+    /**
+     * Inventory: api.treasury.049 — MultiPaymentController::createSplitPayment
+     * (splits.*.payment_method_id, payment_methods).
+     */
+    public function test_split_payment_refuses_cross_tenant_split_payment_method_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->invoiceA->id}/split-payment", [
+                'splits' => [
+                    [
+                        'payment_method_id' => $this->paymentMethodB->id,
+                        'amount' => '5.00',
+                    ],
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                ],
+            ]);
+        $this->assertApiValidationErrors($response, ['splits.0.payment_method_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.050 — MultiPaymentController::createSplitPayment
+     * (splits.*.repository_id, payment_repositories).
+     */
+    public function test_split_payment_refuses_cross_tenant_split_repository_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->invoiceA->id}/split-payment", [
+                'splits' => [
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                        'repository_id' => $this->repositoryB->id,
+                    ],
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                ],
+            ]);
+        $this->assertApiValidationErrors($response, ['splits.0.repository_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.058 — MultiPaymentController::createSplitPayment
+     * (splits.*.instrument_id, payment_instruments).
+     */
+    public function test_split_payment_refuses_cross_tenant_split_instrument_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->invoiceA->id}/split-payment", [
+                'splits' => [
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                        'instrument_id' => $this->instrumentB->id,
+                    ],
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                ],
+            ]);
+        $this->assertApiValidationErrors($response, ['splits.0.instrument_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.051 — MultiPaymentController::recordDeposit (partner_id, partners).
+     */
+    public function test_record_deposit_refuses_cross_tenant_partner_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/deposit', [
+                'partner_id' => $this->partnerB->id,
+                'payment_method_id' => $this->paymentMethodA->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+            ]);
+        $this->assertApiValidationErrors($response, ['partner_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.052 — MultiPaymentController::recordDeposit
+     * (payment_method_id, payment_methods).
+     */
+    public function test_record_deposit_refuses_cross_tenant_payment_method_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/deposit', [
+                'partner_id' => $this->partnerA->id,
+                'payment_method_id' => $this->paymentMethodB->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+            ]);
+        $this->assertApiValidationErrors($response, ['payment_method_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.053 — MultiPaymentController::recordDeposit
+     * (repository_id, payment_repositories).
+     */
+    public function test_record_deposit_refuses_cross_tenant_repository_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/deposit', [
+                'partner_id' => $this->partnerA->id,
+                'payment_method_id' => $this->paymentMethodA->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+                'repository_id' => $this->repositoryB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['repository_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.059 — MultiPaymentController::recordDeposit
+     * (instrument_id, payment_instruments).
+     */
+    public function test_record_deposit_refuses_cross_tenant_instrument_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/deposit', [
+                'partner_id' => $this->partnerA->id,
+                'payment_method_id' => $this->paymentMethodA->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+                'instrument_id' => $this->instrumentB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['instrument_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.054 — MultiPaymentController::applyDeposit
+     * (document_id, documents — pipe-form bare exists at line 122).
+     *
+     * The applyDeposit endpoint also has a service-tier Document::findOrFail
+     * that's already scoped (api.treasury.035), so the body-validator fires
+     * first and surfaces a structured validation error post-fix.
+     */
+    public function test_apply_deposit_refuses_cross_tenant_document_id_via_validator(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/payments/{$this->paymentA->id}/apply-deposit", [
+                'document_id' => $this->invoiceB->id,
+                'amount' => '5.00',
+            ]);
+        $this->assertApiValidationErrors($response, ['document_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.055 — MultiPaymentController::recordPaymentOnAccount
+     * (partner_id, partners).
+     */
+    public function test_record_payment_on_account_refuses_cross_tenant_partner_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/on-account', [
+                'partner_id' => $this->partnerB->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+            ]);
+        $this->assertApiValidationErrors($response, ['partner_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.062 — PaymentController::store (instrument_id, payment_instruments).
+     */
+    public function test_payments_store_refuses_cross_tenant_instrument_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments', $this->paymentStorePayload([
+                'instrument_id' => $this->instrumentB->id,
+            ]));
+        $this->assertApiValidationErrors($response, ['instrument_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.056 — PaymentRepositoryController::store
+     * (responsible_user_id, users — tenant-scoped only, no company column).
+     */
+    public function test_payment_repository_store_refuses_cross_tenant_responsible_user_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'NEW1',
+                'name' => 'New Repo',
+                'type' => 'cash_register',
+                'responsible_user_id' => $this->userB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['responsible_user_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.057 — PaymentRepositoryController::update
+     * (responsible_user_id, users).
+     */
+    public function test_payment_repository_update_refuses_cross_tenant_responsible_user_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/payment-repositories/{$this->repositoryA->id}", [
+                'responsible_user_id' => $this->userB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['responsible_user_id']);
+    }
+
+    /**
+     * Inventory: api.treasury.060 + 061 — PaymentMethodController::store + ::update
+     * (default_journal_id, journals).
+     *
+     * Important context: there is NO `journals` table in the schema. The
+     * `default_journal_id` column on `payment_methods` is a legacy storage-only
+     * field — no Eloquent model, no migration, no read path. The bare
+     * `exists:journals,id` validator was therefore broken (any value triggers a
+     * 500 SQL error: relation "journals" does not exist).
+     *
+     * The fix REMOVES the broken validator. There's nothing to scope against.
+     * Test asserts: the validator no longer 500s on a bare UUID, AND the column
+     * still accepts any well-formed UUID payload (no validation error). Because
+     * the rule is gone, cross-tenant data binding is moot for this column.
+     */
+    public function test_payment_method_store_default_journal_id_validator_no_longer_500s(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payment-methods', [
+                'code' => 'JNL1',
+                'name' => 'Test',
+                'default_journal_id' => Str::uuid()->toString(),
+            ]);
+        // Pre-fix: 500 (SQLSTATE[42P01] relation "journals" does not exist).
+        // Post-fix: 200/201 — validator no longer hits the missing table.
+        $this->assertNotSame(
+            500,
+            $response->status(),
+            'default_journal_id validator must not 500 on missing journals table. Body: '.$response->getContent(),
+        );
+        $this->assertNoValidationErrorFor($response, 'default_journal_id');
+    }
+
+    public function test_payment_method_update_default_journal_id_validator_no_longer_500s(): void
+    {
+        $method = PaymentMethod::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'code' => 'JNL2',
+            'name' => 'Update target',
+            'is_active' => true,
+            'is_physical' => false,
+            'has_maturity' => false,
+            'requires_third_party' => false,
+            'is_push' => true,
+            'has_deducted_fees' => false,
+            'is_restricted' => false,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/payment-methods/{$method->id}", [
+                'default_journal_id' => Str::uuid()->toString(),
+            ]);
+        $this->assertNotSame(
+            500,
+            $response->status(),
+            'default_journal_id update validator must not 500. Body: '.$response->getContent(),
+        );
+        $this->assertNoValidationErrorFor($response, 'default_journal_id');
+    }
+
+    // =========================================================================
+    // Surface 4 same-tenant controls — proves the routes accept legit ids
+    // (closes Codex Treasury Finding 4: same-tenant controls for newly-found
+    // bare exists fields)
+    // =========================================================================
+
+    /**
+     * Same-tenant control for split-payment validator path (callsites 049/050/058).
+     */
+    public function test_split_payment_accepts_same_tenant_ids(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->invoiceA->id}/split-payment", [
+                'splits' => [
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                        'repository_id' => $this->repositoryA->id,
+                        'instrument_id' => $this->instrumentA->id,
+                    ],
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                ],
+            ]);
+        $this->assertNoValidationErrorFor($response, 'splits.0.payment_method_id');
+        $this->assertNoValidationErrorFor($response, 'splits.0.repository_id');
+        $this->assertNoValidationErrorFor($response, 'splits.0.instrument_id');
+    }
+
+    /**
+     * Same-tenant control for recordDeposit validator path (callsites 051/052/053/059).
+     */
+    public function test_record_deposit_accepts_same_tenant_ids(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/deposit', [
+                'partner_id' => $this->partnerA->id,
+                'payment_method_id' => $this->paymentMethodA->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+                'repository_id' => $this->repositoryA->id,
+                'instrument_id' => $this->instrumentA->id,
+            ]);
+        $this->assertNoValidationErrorFor($response, 'partner_id');
+        $this->assertNoValidationErrorFor($response, 'payment_method_id');
+        $this->assertNoValidationErrorFor($response, 'repository_id');
+        $this->assertNoValidationErrorFor($response, 'instrument_id');
+    }
+
+    /**
+     * Same-tenant control for applyDeposit validator path (callsite 054).
+     */
+    public function test_apply_deposit_accepts_same_tenant_document_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/payments/{$this->paymentA->id}/apply-deposit", [
+                'document_id' => $this->invoiceA->id,
+                'amount' => '5.00',
+            ]);
+        $this->assertNoValidationErrorFor($response, 'document_id');
+    }
+
+    /**
+     * Same-tenant control for recordPaymentOnAccount (callsite 055).
+     */
+    public function test_record_payment_on_account_accepts_same_tenant_partner_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments/on-account', [
+                'partner_id' => $this->partnerA->id,
+                'amount' => '10.00',
+                'currency' => 'EUR',
+            ]);
+        $this->assertNoValidationErrorFor($response, 'partner_id');
+    }
+
+    /**
+     * Same-tenant control for PaymentController::store instrument_id (callsite 062).
+     */
+    public function test_payments_store_accepts_same_tenant_instrument_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payments', $this->paymentStorePayload([
+                'instrument_id' => $this->instrumentA->id,
+            ]));
+        $this->assertNoValidationErrorFor($response, 'instrument_id');
+    }
+
+    /**
+     * Same-tenant control for PaymentRepositoryController::store responsible_user_id (callsite 056).
+     */
+    public function test_payment_repository_store_accepts_same_tenant_responsible_user_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/payment-repositories', [
+                'code' => 'NEWO',
+                'name' => 'New Repo OK',
+                'type' => 'cash_register',
+                'responsible_user_id' => $this->userA->id,
+            ]);
+        $this->assertNoValidationErrorFor($response, 'responsible_user_id');
+    }
+
+    // =========================================================================
+    // Surface 3 same-tenant controls — closes Codex Treasury Finding 4
+    // (the original Surface 3 service-layer tests asserted [403,404,422]
+    // without paired same-tenant 200/201 controls; a route that's broken for
+    // everyone would have passed. Same-tenant controls prove the route
+    // reaches the production operation when properly scoped.)
+    // =========================================================================
+
+    /**
+     * Same-tenant control for MultiPaymentController::createSplitPayment
+     * (paired with test_multi_payment_create_split_refuses_cross_tenant_document_id).
+     */
+    public function test_multi_payment_create_split_accepts_same_tenant_document_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->invoiceA->id}/split-payment", [
+                'splits' => [
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                    [
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'amount' => '5.00',
+                    ],
+                ],
+            ]);
+        // Same-tenant document_id must reach service tier — i.e. NOT 403/404
+        // from a tenant-scoped findOrFail. The service may still reject for
+        // unrelated business reasons (split amounts, partner mismatch, etc.).
+        $this->assertNotContains(
+            $response->status(),
+            [403, 404],
+            'Same-tenant document_id must reach service tier (no 403/404 from scoped findOrFail). '
+            .'Got status '.$response->status().' body: '.$response->getContent(),
+        );
+    }
+
+    /**
+     * Same-tenant control for MultiPaymentController::applyDeposit
+     * (paired with test_multi_payment_apply_deposit_refuses_cross_tenant_payment_id).
+     */
+    public function test_multi_payment_apply_deposit_accepts_same_tenant_payment_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/payments/{$this->paymentA->id}/apply-deposit", [
+                'document_id' => $this->invoiceA->id,
+                'amount' => '5.00',
+            ]);
+        $this->assertNotContains(
+            $response->status(),
+            [403, 404],
+            'Same-tenant payment_id must reach service tier (no 403/404 from scoped findOrFail). '
+            .'Got status '.$response->status().' body: '.$response->getContent(),
+        );
+    }
+
+    /**
+     * Same-tenant control for refund-prepayment service tier
+     * (paired with test_refund_prepayment_refuses_cross_tenant_repository_at_service_tier).
+     */
+    public function test_refund_prepayment_accepts_same_tenant_repository_at_service_tier(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->purchaseOrderA->id}/refund-prepayment", [
+                'amount' => '10.00',
+                'payment_method_id' => $this->paymentMethodA->id,
+                'repository_id' => $this->repositoryA->id,
+            ]);
+        // Same-tenant must NOT 403/404 from scoped find — service may 422
+        // for unrelated reasons (e.g. "no prepayment to refund"). The key is
+        // that we reach the service, not that the operation succeeds.
+        $this->assertNotContains(
+            $response->status(),
+            [403, 404],
+            'Same-tenant repository_id must reach service tier (no 403/404 from scoped find). '
+            .'Got status '.$response->status().' body: '.$response->getContent(),
+        );
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
