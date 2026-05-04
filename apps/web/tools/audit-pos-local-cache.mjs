@@ -377,9 +377,16 @@ const GUARD_HELPER_NAMES = new Set([
 
 /**
  * Top-level reference to `envelope.<propName>` — descends through the node
- * subtree but stops at any nested function-like node so a deferred callback
- * capture (`() => envelope.tenant_id`) does not register as a top-level
- * reference.
+ * subtree but stops at any nested function-like or class-body boundary, so
+ * neither a deferred callback capture (`() => envelope.tenant_id`) nor a
+ * reference hidden inside a class constructor / class body
+ * (`class Hidden { constructor() { void envelope.tenant_id; } }`) registers
+ * as a top-level reference.
+ *
+ * Codex round-2 finding closure: the round-1 stop list missed
+ * ConstructorDeclaration and ClassDeclaration/ClassExpression, so a guard
+ * hidden inside a class body inside an `if` condition was incorrectly
+ * credited as validation.
  *
  * @param {ts.Node} node
  * @param {string} propName
@@ -392,7 +399,10 @@ function subtreeReferencesEnvelopePropAtTopLevel(node, propName) {
     ts.isFunctionDeclaration(node) ||
     ts.isMethodDeclaration(node) ||
     ts.isGetAccessor(node) ||
-    ts.isSetAccessor(node)
+    ts.isSetAccessor(node) ||
+    ts.isConstructorDeclaration(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node)
   ) {
     return false;
   }
@@ -463,8 +473,18 @@ function statementReadsEnvelopeProp(node, propName) {
 /**
  * Is this top-level statement a tenant guard? See the rule comment above
  * for the definition; in short: an `if` referencing `envelope.tenant_id`
- * at the top level, or a top-level call to an allowlisted helper with
- * `envelope` (or `envelope.tenant_id`) in the args.
+ * at the top level, or a top-level call to an allowlisted helper invoked
+ * as a BARE `Identifier` (i.e. imported, not a method on an arbitrary
+ * object) with `envelope` or a top-level reference to `envelope.tenant_id`
+ * in the args.
+ *
+ * Codex round-2 finding closure: the round-1 recognizer pulled the
+ * terminal property name from a `PropertyAccessExpression` callee, so any
+ * object exposing a method whose name happened to match an allowlisted
+ * validator (`tenant.assertEnvelopeTenant(envelope)`) satisfied the gate.
+ * The recognizer now requires the callee to be a bare `Identifier` so the
+ * match resolves through scope to a real import, not an attacker-shaped
+ * method on a local object.
  *
  * @param {ts.Statement} stmt
  * @returns {boolean}
@@ -475,18 +495,11 @@ function isTenantGuardStatement(stmt) {
   }
   if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
     const callee = stmt.expression.expression;
-    /** @type {string | null} */
-    let calleeName = null;
-    if (ts.isIdentifier(callee)) {
-      calleeName = callee.text;
-    } else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.name)) {
-      calleeName = callee.name.text;
-    }
-    if (calleeName && GUARD_HELPER_NAMES.has(calleeName)) {
-      for (const arg of stmt.expression.arguments) {
-        if (ts.isIdentifier(arg) && arg.text === 'envelope') return true;
-        if (subtreeReferencesEnvelopePropAtTopLevel(arg, 'tenant_id')) return true;
-      }
+    if (!ts.isIdentifier(callee)) return false;
+    if (!GUARD_HELPER_NAMES.has(callee.text)) return false;
+    for (const arg of stmt.expression.arguments) {
+      if (ts.isIdentifier(arg) && arg.text === 'envelope') return true;
+      if (subtreeReferencesEnvelopePropAtTopLevel(arg, 'tenant_id')) return true;
     }
   }
   return false;

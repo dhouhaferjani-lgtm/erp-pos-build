@@ -120,6 +120,27 @@ describe('Phase 2B.2 — audit-pos-local-cache scanner', () => {
       const violations = scanCode(code, 'edge/sync-envelope-with-helper-call.ts');
       expect(violations).toEqual([]);
     });
+
+    // Codex round-2 finding regression coverage. The round-1 strict
+    // recognizer still had two bypasses: a guard hidden inside a class
+    // constructor body inside an `if` condition (constructor bodies are
+    // never executed by the `if`), and a member-call helper impostor
+    // (any object exposing a method with an allowlisted name satisfied
+    // the gate). Both must flag.
+
+    it('flags handler with envelope.tenant_id hidden inside a class constructor body', async () => {
+      const code = await readFixture('edge/sync-envelope-constructor-bypass.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-constructor-bypass.ts');
+      expect(violations).toHaveLength(1);
+      expect(violations[0].pattern_type).toBe('sync_envelope_without_tenant_check');
+    });
+
+    it('flags handler that calls a same-named impostor method on an arbitrary object', async () => {
+      const code = await readFixture('edge/sync-envelope-member-call-impostor.ts');
+      const violations = scanCode(code, 'edge/sync-envelope-member-call-impostor.ts');
+      expect(violations).toHaveLength(1);
+      expect(violations[0].pattern_type).toBe('sync_envelope_without_tenant_check');
+    });
   });
 
   describe('CLI: default mode (gate)', () => {
