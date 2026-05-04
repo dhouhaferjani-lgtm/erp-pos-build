@@ -12,6 +12,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -60,13 +61,22 @@ class SmartPaymentController extends Controller
     public function previewAllocation(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         $validated = $request->validate([
-            'partner_id' => ['required', 'string', 'exists:partners,id'],
+            'partner_id' => [
+                'required',
+                'string',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
             'payment_amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'allocation_method' => ['required', new Enum(AllocationMethod::class)],
             'manual_allocations' => ['nullable', 'array'],
-            'manual_allocations.*.document_id' => ['required_with:manual_allocations', 'string', 'exists:documents,id'],
+            'manual_allocations.*.document_id' => [
+                'required_with:manual_allocations',
+                'string',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
         ]);
 
@@ -99,11 +109,22 @@ class SmartPaymentController extends Controller
      */
     public function applyAllocation(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $validated = $request->validate([
-            'payment_id' => ['required', 'string', 'exists:payments,id'],
+            'payment_id' => [
+                'required',
+                'string',
+                ScopedExists::tenantAndCompany('payments', $tenantId, $companyId),
+            ],
             'allocation_method' => ['required', new Enum(AllocationMethod::class)],
             'manual_allocations' => ['nullable', 'array'],
-            'manual_allocations.*.document_id' => ['required_with:manual_allocations', 'string', 'exists:documents,id'],
+            'manual_allocations.*.document_id' => [
+                'required_with:manual_allocations',
+                'string',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
         ]);
 

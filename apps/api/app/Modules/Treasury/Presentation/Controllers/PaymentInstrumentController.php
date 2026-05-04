@@ -13,6 +13,7 @@ use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
 use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -80,16 +81,28 @@ class PaymentInstrumentController extends Controller
         $tenantId = $company->tenant_id;
 
         $validated = $request->validate([
-            'payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
+            'payment_method_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
             'reference' => ['required', 'string', 'max:100'],
-            'partner_id' => ['nullable', 'uuid', 'exists:partners,id'],
+            'partner_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
             'drawer_name' => ['nullable', 'string', 'max:150'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'size:3'],
             'received_date' => ['required', 'date'],
             'maturity_date' => ['nullable', 'date'],
             'expiry_date' => ['nullable', 'date'],
-            'repository_id' => ['nullable', 'uuid', 'exists:payment_repositories,id'],
+            'repository_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'bank_branch' => ['nullable', 'string', 'max:100'],
             'bank_account' => ['nullable', 'string', 'max:50'],
@@ -143,7 +156,11 @@ class PaymentInstrumentController extends Controller
         }
 
         $validated = $request->validate([
-            'repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
+            'repository_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
         ]);
 
         // Verify the repository is a bank account
@@ -290,7 +307,11 @@ class PaymentInstrumentController extends Controller
         }
 
         $validated = $request->validate([
-            'to_repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
+            'to_repository_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
 

@@ -21,6 +21,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -98,17 +99,33 @@ class PaymentController extends Controller
         }
 
         $validated = $request->validate([
-            'partner_id' => ['required', 'uuid', 'exists:partners,id'],
-            'payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
+            'partner_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'payment_method_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
             'instrument_id' => ['nullable', 'uuid', 'exists:payment_instruments,id'],
-            'repository_id' => ['nullable', 'uuid', 'exists:payment_repositories,id'],
+            'repository_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'size:3'],
             'payment_date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string'],
             'allocations' => ['nullable', 'array'],
-            'allocations.*.document_id' => ['required_with:allocations', 'uuid', 'exists:documents,id'],
+            'allocations.*.document_id' => [
+                'required_with:allocations',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'allocations.*.amount' => ['required_with:allocations', 'numeric', 'min:0.01'],
             'withholding_enabled' => ['nullable', 'boolean'],
             'withholding_rate' => ['nullable', 'numeric', 'min:0', 'max:1'],
@@ -399,22 +416,42 @@ class PaymentController extends Controller
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
     {
         $validated = $request->validate([
-            'partner_id' => ['required', 'uuid', 'exists:partners,id'],
-            'document_id' => ['required', 'uuid', 'exists:documents,id'],
+            'partner_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'document_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'currency' => ['nullable', 'string', 'size:3'],
             'payment_date' => ['required', 'date'],
 
             // Multiple payment lines
             'payments' => ['required', 'array', 'min:1'],
-            'payments.*.payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
-            'payments.*.repository_id' => ['nullable', 'uuid', 'exists:payment_repositories,id'],
+            'payments.*.payment_method_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'payments.*.repository_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'payments.*.amount' => ['required', 'numeric', 'min:0.01'],
             'payments.*.reference' => ['nullable', 'string', 'max:100'],
 
             // Excess allocation options
             'excess_allocation_method' => ['nullable', 'string', 'in:fifo,due_date,manual,advance'],
             'excess_allocations' => ['nullable', 'array'],
-            'excess_allocations.*.document_id' => ['required_with:excess_allocations', 'uuid', 'exists:documents,id'],
+            'excess_allocations.*.document_id' => [
+                'required_with:excess_allocations',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'excess_allocations.*.amount' => ['required_with:excess_allocations', 'numeric', 'min:0.01'],
         ]);
 
