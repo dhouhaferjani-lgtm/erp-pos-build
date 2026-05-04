@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 06f8f9c8cb0c999efa1bcc4858e819b5357de9d0e33276e5248cbcaf2a73f1b8
+  yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -311,9 +311,9 @@ clusters:
     id: api.service
     display_name: Service
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -13826,9 +13826,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:41:17Z'
     review:
       reviewer: null
       verdict: null
@@ -13855,6 +13855,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:41:17Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 06f8f9c8cb0c999efa1bcc4858e819b5357de9d0e33276e5248cbcaf2a73f1b8
+        new_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        target_ids:
+          - api.service.001
+        from_status: pending
+        to_status: claimed
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:41:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        new_yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
+        target_ids:
+          - api.service.001
+        from_status: claimed
+        to_status: in_progress
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.service.002
     stable_key: 'sha256:3045d4abbef4acedd1911a800e2219b7b5d940c9f95ed41d1674d9ac312038cc'
@@ -13872,9 +13904,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:41:17Z'
     review:
       reviewer: null
       verdict: null
@@ -13901,6 +13933,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:41:17Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 06f8f9c8cb0c999efa1bcc4858e819b5357de9d0e33276e5248cbcaf2a73f1b8
+        new_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        target_ids:
+          - api.service.002
+        from_status: pending
+        to_status: claimed
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:41:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        new_yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
+        target_ids:
+          - api.service.002
+        from_status: claimed
+        to_status: in_progress
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.service.003
     stable_key: 'sha256:41147658536d0ce3c879274c3e2ed204ef126a06b87f2fa56aa3437cc9adf4b6'
@@ -13918,9 +13982,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T20:41:17Z'
     review:
       reviewer: null
       verdict: null
@@ -13947,6 +14011,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T20:41:17Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 06f8f9c8cb0c999efa1bcc4858e819b5357de9d0e33276e5248cbcaf2a73f1b8
+        new_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        target_ids:
+          - api.service.003
+        from_status: pending
+        to_status: claimed
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T20:41:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7fecae69fb4ab02fcc06063d4b5efaf5a591201e688f9da56597444113c60619
+        new_yaml_sha256: 66d9cb01bea85ff9e411e55970140075c55bf39b694faf3ba63c0b00bc3bb3e3
+        target_ids:
+          - api.service.003
+        from_status: claimed
+        to_status: in_progress
+        commit: ffb9c328a7624132cd01c2c1db2ebda47eac1555
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.treasury.026
     stable_key: 'sha256:c5e9c4403e9530f7f9495dc32ae43317be65ad4d56cbc96f67d5a5a7f8758c38'
