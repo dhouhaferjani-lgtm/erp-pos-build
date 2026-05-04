@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+  yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -357,9 +357,9 @@ clusters:
     id: api.workshop
     display_name: Workshop
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -8046,9 +8046,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T21:21:10Z'
     review:
       reviewer: null
       verdict: null
@@ -8075,6 +8075,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T21:21:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+        new_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        target_ids:
+          - api.workshop.001
+        from_status: pending
+        to_status: claimed
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T21:21:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        new_yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+        target_ids:
+          - api.workshop.001
+        from_status: claimed
+        to_status: in_progress
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.workshop.002
     stable_key: 'sha256:f746dc766b5dc6b213fe8106f5c23a4564891e188ced733dd7cc345f87350f64'
@@ -8092,9 +8124,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T21:21:10Z'
     review:
       reviewer: null
       verdict: null
@@ -8121,6 +8153,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T21:21:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+        new_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        target_ids:
+          - api.workshop.002
+        from_status: pending
+        to_status: claimed
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T21:21:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        new_yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+        target_ids:
+          - api.workshop.002
+        from_status: claimed
+        to_status: in_progress
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.workshop.003
     stable_key: 'sha256:337a8e7a33e205531a0970b561aac77df1ab8e81cf3c3ee437a46d04ab704417'
@@ -8138,9 +8202,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T21:21:10Z'
     review:
       reviewer: null
       verdict: null
@@ -8167,6 +8231,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T21:21:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+        new_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        target_ids:
+          - api.workshop.003
+        from_status: pending
+        to_status: claimed
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T21:21:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        new_yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+        target_ids:
+          - api.workshop.003
+        from_status: claimed
+        to_status: in_progress
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.workshop.004
     stable_key: 'sha256:518e47de6e47108de03f2081ece1460d92e6b7158faf2860480a9a7050d9152b'
@@ -8184,9 +8280,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T21:21:10Z'
     review:
       reviewer: null
       verdict: null
@@ -8213,6 +8309,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T21:21:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+        new_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        target_ids:
+          - api.workshop.004
+        from_status: pending
+        to_status: claimed
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T21:21:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: aa7feeb336f71a0c4252914cc70e65bffc3fdfe4aad2ca4c0ec8f09aafdceb82
+        new_yaml_sha256: 0e25d595c2a6530bf8e127a20b5d2ff97a07cf7f29093591f75b5897d848426d
+        target_ids:
+          - api.workshop.004
+        from_status: claimed
+        to_status: in_progress
+        commit: e62a646684071064470afe34ffceb5ab1a44a5da
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.unmapped.013
     stable_key: 'sha256:9380ebaef3fa1118c1cba4a759245de6fb68f0e59b283362d6d025d292b681c2'
