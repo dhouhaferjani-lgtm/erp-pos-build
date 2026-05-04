@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ada9218f7ea7e1ac7f071d3a5912a070ff738018187c3f97d2cd5e78318c68f5
+  yaml_sha256: 54f377ffa4a5944d371d3ab1edca8891e3f08bc97009781264808bb91f8d7c45
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -1627,7 +1627,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -1636,8 +1636,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -1688,6 +1688,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ada9218f7ea7e1ac7f071d3a5912a070ff738018187c3f97d2cd5e78318c68f5
+        new_yaml_sha256: aa66745cc1bf0852697e27555b490cf33b6463599650fcf2032346927e15db81
+        target_ids:
+          - api.catalog.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.002
     stable_key: 'sha256:1472ec6ff79d4adadde23399cf46f1f669989d0e0db3b0efc5ad5a0a2f54506f'
@@ -1705,7 +1721,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -1714,8 +1730,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -1766,6 +1782,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aa66745cc1bf0852697e27555b490cf33b6463599650fcf2032346927e15db81
+        new_yaml_sha256: add4a5b0aeff3a099fc819d7e219b5397b37b28707dcba851f3388542bba2276
+        target_ids:
+          - api.catalog.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.003
     stable_key: 'sha256:9329ea64c5b5a85d2f6690dc21740e80fd7a5219df465ae57d68e29cfa2acca5'
@@ -1783,7 +1815,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -1792,8 +1824,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -1844,6 +1876,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: add4a5b0aeff3a099fc819d7e219b5397b37b28707dcba851f3388542bba2276
+        new_yaml_sha256: 40cfbb800302563f86c2a034894244fb8fba4c425f29444ac249590beacd6c79
+        target_ids:
+          - api.catalog.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.004
     stable_key: 'sha256:3f516d5f96119ad68b14fc6a9ac0dde4c4a33a89701089944c34efab815300e2'
@@ -1861,7 +1909,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -1870,8 +1918,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -1922,6 +1970,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:38Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 40cfbb800302563f86c2a034894244fb8fba4c425f29444ac249590beacd6c79
+        new_yaml_sha256: e0f54587b03f4d55303898950ebccce6a010aaa11d6d8db04c101fc6db2a38e1
+        target_ids:
+          - api.catalog.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.005
     stable_key: 'sha256:c62aec5cec47de6ec631986a006ac71fcf7da792e091bc00e31df2458bf67664'
@@ -1939,7 +2003,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -1948,8 +2012,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2000,6 +2064,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:38Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e0f54587b03f4d55303898950ebccce6a010aaa11d6d8db04c101fc6db2a38e1
+        new_yaml_sha256: 483dc0768dca00768c035ddfc53594193430dbefcd128d48180ff57fe63600e1
+        target_ids:
+          - api.catalog.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.006
     stable_key: 'sha256:0d5330410c251b2e17ffda1e2447a27f3a0cf66d321fdec650140d8bc21a4471'
@@ -2017,7 +2097,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -2026,8 +2106,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2078,6 +2158,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 483dc0768dca00768c035ddfc53594193430dbefcd128d48180ff57fe63600e1
+        new_yaml_sha256: 7d539fbc3cb3afecf3ddff9f3f9e26176b2c5b4bae7f18b53ec7e6077e8c59cf
+        target_ids:
+          - api.catalog.006
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.007
     stable_key: 'sha256:94da925eac06f6691f6dec5bdc42a09a9b83c42ac3f37b4302042d8b3e4b67c1'
@@ -2095,7 +2191,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -2104,8 +2200,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2156,6 +2252,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:40Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7d539fbc3cb3afecf3ddff9f3f9e26176b2c5b4bae7f18b53ec7e6077e8c59cf
+        new_yaml_sha256: a1586301f2ac96cd83834eff7a654c1936a0d5271600fa3278e4e65695a99aa6
+        target_ids:
+          - api.catalog.007
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.001
     stable_key: 'sha256:47cd6b9d7a87c5280fc2b14dba3ca8a9ad26b25692fbb3353d0e06edbc923439'
@@ -8162,7 +8274,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8171,8 +8283,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8223,6 +8335,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:40Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a1586301f2ac96cd83834eff7a654c1936a0d5271600fa3278e4e65695a99aa6
+        new_yaml_sha256: 8c1e6a2515da8d74c8ea7b7fceb4ea06582b9455800ba4847b914e03e64bf064
+        target_ids:
+          - api.catalog.008
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.009
     stable_key: 'sha256:3dc2767133b47f531e82b9344fd90046d9d354ef3730b0482afa6f50ed4e34cc'
@@ -8240,7 +8368,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8249,8 +8377,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8301,6 +8429,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:41Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8c1e6a2515da8d74c8ea7b7fceb4ea06582b9455800ba4847b914e03e64bf064
+        new_yaml_sha256: 098179aa4534bf75624f3b5680e8a1ec033c3b942511afd0f1f8682ab663a597
+        target_ids:
+          - api.catalog.009
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.010
     stable_key: 'sha256:7d7a07cd83de10824ce54b382e7fe82d07589be24264bc1bd8bf4b9edc713799'
@@ -8318,7 +8462,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8327,8 +8471,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8379,6 +8523,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:42Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 098179aa4534bf75624f3b5680e8a1ec033c3b942511afd0f1f8682ab663a597
+        new_yaml_sha256: b799e0d816a1721a6316182c3c29794b3286b46e3e32b24ba36e19a51d93ec4d
+        target_ids:
+          - api.catalog.010
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.011
     stable_key: 'sha256:7bbcbda63a8c24c169fa3b0af3eb7fc8cc5a1d311592e16ea661eaaeff59765a'
@@ -8396,7 +8556,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8405,8 +8565,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8457,6 +8617,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:42Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b799e0d816a1721a6316182c3c29794b3286b46e3e32b24ba36e19a51d93ec4d
+        new_yaml_sha256: aa8d27a45a6fb649784374f6d9a01fde6038930c044f5f54e6d9f071705163c0
+        target_ids:
+          - api.catalog.011
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.012
     stable_key: 'sha256:3000b7a49dd21167ba2be8fd04c16c25f0e41339aa7daa8453b7cb03af64713d'
@@ -8474,7 +8650,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8483,8 +8659,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8535,6 +8711,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aa8d27a45a6fb649784374f6d9a01fde6038930c044f5f54e6d9f071705163c0
+        new_yaml_sha256: aa137ea1746edd104bb97d20c7e9cd61b80a69d2b4da920913fba2c821979d7a
+        target_ids:
+          - api.catalog.012
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.013
     stable_key: 'sha256:0b4c65fd10c951badf47fc3de4aa2f58c97ab96400b1b6c2809a10eae9ccad7a'
@@ -8552,7 +8744,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -8561,8 +8753,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -8613,6 +8805,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:44Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aa137ea1746edd104bb97d20c7e9cd61b80a69d2b4da920913fba2c821979d7a
+        new_yaml_sha256: 8d64ffd6a91f97c5f0e7330108b9a019282e8fd02d3085d4b610fbe9b0dd90b7
+        target_ids:
+          - api.catalog.013
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
@@ -17659,7 +17867,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -17668,8 +17876,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -17720,6 +17928,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:44Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8d64ffd6a91f97c5f0e7330108b9a019282e8fd02d3085d4b610fbe9b0dd90b7
+        new_yaml_sha256: da72c5a226cc0d82e06a19fdb26afe8b3918b4bf72562b3d011a2a3fc7a47c8a
+        target_ids:
+          - api.catalog.014
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.015
     stable_key: 'sha256:ec27702bfb343951737d03ce257aebb7a88367d0cb747d782c7ba6d10f1a46ea'
@@ -17737,7 +17961,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -17746,8 +17970,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -17798,6 +18022,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: da72c5a226cc0d82e06a19fdb26afe8b3918b4bf72562b3d011a2a3fc7a47c8a
+        new_yaml_sha256: e6406bb21ddad8b19e589e4c365a6d8b254951bf28b6e175f84ae4f599265ad5
+        target_ids:
+          - api.catalog.015
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.016
     stable_key: 'sha256:44db58073152a2f1d323222cc1c1ae0e7779f716d8025ea517c59c53db5854a1'
@@ -17815,7 +18055,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -17824,8 +18064,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -17876,6 +18116,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:46Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e6406bb21ddad8b19e589e4c365a6d8b254951bf28b6e175f84ae4f599265ad5
+        new_yaml_sha256: 2e585a8203d526541a097cc80785e48dff3f258205feb71028f170fff3b3937e
+        target_ids:
+          - api.catalog.016
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.017
     stable_key: 'sha256:afe4d10d85d088786d9b60049b2dba53c2fdc75098ec69d9107892f34e807483'
@@ -17893,7 +18149,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -17902,8 +18158,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 516c6f61
+    regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -17954,6 +18210,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:06:46Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2e585a8203d526541a097cc80785e48dff3f258205feb71028f170fff3b3937e
+        new_yaml_sha256: 54f377ffa4a5944d371d3ab1edca8891e3f08bc97009781264808bb91f8d7c45
+        target_ids:
+          - api.catalog.017
+        from_status: in_progress
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pos-stabilization.029
     stable_key: 'sha256:26c28ae36ada8faafb08e030fe6cb40919558c22fcf9017096af64ab6de97be7'

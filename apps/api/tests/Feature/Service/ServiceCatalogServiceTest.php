@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Service;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Service\Application\DTOs\ServiceCategoryData;
 use App\Modules\Service\Application\DTOs\ServiceData;
 use App\Modules\Service\Application\Services\ServiceCatalogService;
@@ -33,11 +34,16 @@ class ServiceCatalogServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = app(ServiceCatalogService::class);
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->create([
             'tenant_id' => $this->tenant->id,
         ]);
+
+        // ServiceCatalogService now requires CompanyContext to be set.
+        // Pin the active company before resolving the service.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $this->service = app(ServiceCatalogService::class);
     }
 
     // ============================================
