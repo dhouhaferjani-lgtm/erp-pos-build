@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T07:39:40Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+  yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -62,9 +62,9 @@ clusters:
     id: api.treasury
     display_name: Treasury
     surface: api
-    owner: null
+    owner: claude
     required_owner: claude
-    status: pending
+    status: in_progress
     blocked_by: {  }
     blocked_by_external: null
     blocked_reason: null
@@ -3935,9 +3935,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -3964,6 +3964,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.001
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.001
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.002
     stable_key: 'sha256:0b724abd8c367c42be114e78fe0196bb3fa6558efc2e889fba214909466f1129'
@@ -3981,9 +4013,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4010,6 +4042,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.002
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.002
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.003
     stable_key: 'sha256:66b56d88bbb7fcdb1d4c23bf9c34fb56c13a33d7e5a9417505b90bced0fbe83e'
@@ -4027,9 +4091,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4056,6 +4120,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.003
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.003
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.004
     stable_key: 'sha256:3a4e34683a21b30a234c4c21eed671520eb7b40ab5a6f8c4ed522be77c7022c8'
@@ -4073,9 +4169,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4102,6 +4198,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.004
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.004
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.005
     stable_key: 'sha256:92cc705317b322a4f38141bf7c5c20b90cea857bfe96567664e8fbe9d54c2273'
@@ -4119,9 +4247,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4148,6 +4276,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.005
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.005
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.006
     stable_key: 'sha256:f5ed1eeabcebe612da0ef378f5beb38e4b36d74d89d3135860f3a50ed96a3739'
@@ -4165,9 +4325,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4194,6 +4354,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.006
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.006
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.007
     stable_key: 'sha256:09b93ad1c354525e6e6083430562c1a4614be90cf1305dec0fc663ba58a184a8'
@@ -4211,9 +4403,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4240,6 +4432,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.007
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.007
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.008
     stable_key: 'sha256:f324b19524bb5cbb7abc1944d9d26a0a20eec501e94d182805a99e136c6eb48f'
@@ -4257,9 +4481,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4286,6 +4510,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.008
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.008
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.009
     stable_key: 'sha256:8aace2dc269feaa23e5facdc4deba37ae31ce1b604ac7d56a0e47fe5f798751b'
@@ -4303,9 +4559,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4332,6 +4588,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.009
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.009
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.010
     stable_key: 'sha256:409f3d56be59589884d836e1ab0ef6dc1024f2c574e1620e7bca6c870cb3cfae'
@@ -4349,9 +4637,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4378,6 +4666,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.010
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.010
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.011
     stable_key: 'sha256:74a3cbc299d2e6d45a2683f2820b0d20e8ddf2ffaf520effff00830cab5e3719'
@@ -4395,9 +4715,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4424,6 +4744,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.011
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.011
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.012
     stable_key: 'sha256:911ee566e88fd12e1d248a224b6c5c7524c21aaef6358112acc1a78d067d11bc'
@@ -4441,9 +4793,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4470,6 +4822,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.012
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.012
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.013
     stable_key: 'sha256:615a9bc0dee95f1121f39c173fd58acd26e77d9f087ec07529df7f50cf6eb7ed'
@@ -4487,9 +4871,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4516,6 +4900,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.013
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.013
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.014
     stable_key: 'sha256:4725e3bd6b0b680c02ee26c8e1acf5963325307635fdcce25f5801d97cf14859'
@@ -4533,9 +4949,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4562,6 +4978,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.014
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.014
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.015
     stable_key: 'sha256:bd48043cf6c4e5a8540ea2458df3dc821d1ee8cec7a9573d7878a29a99dae5a3'
@@ -4579,9 +5027,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4608,6 +5056,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.015
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.015
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.016
     stable_key: 'sha256:fe54c2a84fdd7a99dbf32ae6a4f8e97e5300a812b7cc7ad41d47206e14e78478'
@@ -4625,9 +5105,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4654,6 +5134,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.016
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.016
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.017
     stable_key: 'sha256:c2f12bd8d3824c1637b4211afaf1eba518aaec937bdfcd40cc1aac0b4a9ecb44'
@@ -4671,9 +5183,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4700,6 +5212,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.017
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.017
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.018
     stable_key: 'sha256:35ae862b17748cdad1c4ea2d7ef75861a194417b5c660b1736d7b5388683d872'
@@ -4717,9 +5261,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4746,6 +5290,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.018
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.018
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.019
     stable_key: 'sha256:cd1b5e9be5ef8f4397959965ea76eb22f00f0565cfb3b92ae696dcafd4bd605a'
@@ -4763,9 +5339,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4792,6 +5368,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.019
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.019
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.020
     stable_key: 'sha256:59c2049952813a5ab3bee41221761d3fb5fefbf5918d7fd7d9d98e2ba0bc2082'
@@ -4809,9 +5417,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4838,6 +5446,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.020
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.020
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.021
     stable_key: 'sha256:5645204efe67d02d31a83bddd53f13c6153c1adaeb5c34451be7ddc8b12da2db'
@@ -4855,9 +5495,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4884,6 +5524,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.021
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.021
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.022
     stable_key: 'sha256:50b8479aeadd4899d0c719dd1ca2a5bee2267ed246737ba2a6396826bc741547'
@@ -4901,9 +5573,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4930,6 +5602,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.022
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.022
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.023
     stable_key: 'sha256:02f2dac2593972d38c986547d5ba8f9950e5a0e14bd432466e22a544bdbdf910'
@@ -4947,9 +5651,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -4976,6 +5680,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.023
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.023
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.024
     stable_key: 'sha256:be8a9cdfcb8ef5e2b617f7c94ab51137fac9d09cc8309e22c86c7b6a92db4724'
@@ -4993,9 +5729,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -5022,6 +5758,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.024
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.024
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.025
     stable_key: 'sha256:863af09d6b57d0a01a38b1d27d97fcd2a9a22ea16b56e2647f048ef61b24e261'
@@ -5039,9 +5807,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -5068,6 +5836,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.025
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.025
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.identity-company.001
     stable_key: 'sha256:f601cd0af397d849b6ea13f6fccb4785ed7ec88c841880be5001b0e9c4d70fd2'
@@ -9547,9 +10347,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9576,6 +10376,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.026
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.026
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.027
     stable_key: 'sha256:2e55664c636701331b9500a4fcbc614a6f91b7886577a39c1a99091bbecf837c'
@@ -9593,9 +10425,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9622,6 +10454,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.027
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.027
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.028
     stable_key: 'sha256:3d0779b24b840ffd9db6d968b214f162ae964b1d1b88467c633529f45260bfb4'
@@ -9639,9 +10503,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9668,6 +10532,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.028
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.028
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.029
     stable_key: 'sha256:b97fb4e133ebff9f92b5fa62374a705592924c31777aadaf8602f0476e337c00'
@@ -9685,9 +10581,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9714,6 +10610,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.029
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.029
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.030
     stable_key: 'sha256:f22b65a678126b0e955155628ef2e9eb18ae372458bb0e6418a9959417a523e3'
@@ -9731,9 +10659,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9760,6 +10688,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.030
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.030
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.031
     stable_key: 'sha256:8fd46f592c945ef54e4257bff1831b0e24cfcdf70887149fecae233a7f9dd02d'
@@ -9777,9 +10737,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9806,6 +10766,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.031
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.031
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.032
     stable_key: 'sha256:4dfcda93fa01339a3289dceb1abd0f362d265d06d252738ec11d8c2106870ec9'
@@ -9823,9 +10815,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9852,6 +10844,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.032
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.032
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.033
     stable_key: 'sha256:10fbd133061fc3f31f2a1d31b95ba1ce19ef72d88b63ebd7fdead23969fac752'
@@ -9869,9 +10893,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9898,6 +10922,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.033
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.033
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.034
     stable_key: 'sha256:66fc90e685c929a09592b8e858c784a6c731bcee103bdbdce57af748ac22ed85'
@@ -9915,9 +10971,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9944,6 +11000,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.034
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.034
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.035
     stable_key: 'sha256:e3733fa8e34f9a363868b10d8618db727c3538c1f0fdd3e7e6dc2abbef7e82c7'
@@ -9961,9 +11049,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -9990,6 +11078,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.035
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.035
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.036
     stable_key: 'sha256:f969bd950d877649df95a7cf18fa496b4abf7903f35bfbde4a35b03a09b0db6b'
@@ -10007,9 +11127,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10036,6 +11156,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.036
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.036
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.037
     stable_key: 'sha256:b92f2369fbc9dbd6402aa3cc4e04158e88261abae7b7ad883185b9105f8ac3c8'
@@ -10053,9 +11205,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10082,6 +11234,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.037
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.037
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.038
     stable_key: 'sha256:516e3df6b6fda5eba68ec47d552fa96b98ae52ed61427be8e5bcceb596e5a011'
@@ -10099,9 +11283,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10128,6 +11312,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.038
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.038
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.039
     stable_key: 'sha256:193cb02d7117bfc6adde793e00a8bb8d2fef72dab0aafcaec5437cb04e49bb9d'
@@ -10145,9 +11361,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10174,6 +11390,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.039
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.039
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.040
     stable_key: 'sha256:bce367b4943e9895ce42535d38168aee67fe7818ea03d413624b5baae778e583'
@@ -10191,9 +11439,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10220,6 +11468,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.040
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.040
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.041
     stable_key: 'sha256:ebca44afb66d5361e8f2eb81513ac48972dc5f0c0e33d87189de8ca687d42244'
@@ -10237,9 +11517,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10266,6 +11546,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.041
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.041
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.042
     stable_key: 'sha256:bda36503b64b227db20988356b8ec3f007b5a2dec8f1472432fafc63a03d68c0'
@@ -10283,9 +11595,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10312,6 +11624,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.042
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.042
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.043
     stable_key: 'sha256:7dc7ecea330b995aa2c04c9b077acaed2b5d951bce1119cb484b2a64685087f8'
@@ -10329,9 +11673,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10358,6 +11702,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.043
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.043
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.044
     stable_key: 'sha256:160ef6b6e7b16bb4481a01bc51f7d5f27aedc682999aa75a30962b7d0c79d542'
@@ -10375,9 +11751,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10404,6 +11780,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.044
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.044
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.045
     stable_key: 'sha256:770d6f2e32a2d78eaebd179b2646bd45dd43324c375bbdefc253c458890a0a89'
@@ -10421,9 +11829,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10450,6 +11858,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.045
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.045
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.046
     stable_key: 'sha256:ab5976260a4f0bcff032fd0a1395851dd7353f669d92394c570bac3a56285b5e'
@@ -10467,9 +11907,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10496,6 +11936,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.046
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.046
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.047
     stable_key: 'sha256:fb6d829106c9a6aa0aebe52c51d57a6d87746fd44803d9b98c5a6992e384a1d8'
@@ -10513,9 +11985,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10542,6 +12014,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.047
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.047
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.048
     stable_key: 'sha256:70ac2c9672e762e43da4c6d2096903ffa5bc4bb2cc83e01702d32281711d861a'
@@ -10559,9 +12063,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T07:44:20Z'
     review:
       reviewer: null
       verdict: null
@@ -10588,6 +12092,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T07:44:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ddaf9f38fce8a86d35a3234936a3cbd4267c90882f45a2a1cbd081bef78733b
+        new_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        target_ids:
+          - api.treasury.048
+        from_status: pending
+        to_status: claimed
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T07:44:25Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 777284f570554ad5deb593cde958a3c1cb61ad011f16f704254243cb304d2efd
+        new_yaml_sha256: 1091a647d193391123b46937082fc730d1ad837132304eb64907e823d8045aa6
+        target_ids:
+          - api.treasury.048
+        from_status: claimed
+        to_status: in_progress
+        commit: c39873851c43d265ac1be429b7e398bbdc5e107d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pricing.001
     stable_key: 'sha256:5e3fff34837d3bac84518abd410dedbfef9ce4ed4847b203628223648b676b92'
