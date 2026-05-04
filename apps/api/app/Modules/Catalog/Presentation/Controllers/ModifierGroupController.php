@@ -9,6 +9,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Presentation\Requests\StoreModifierGroupRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -22,10 +23,11 @@ class ModifierGroupController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         $query = ModifierGroup::query()
-            ->where('company_id', $companyId)
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with('modifiers');
 
         if ($request->has('search')) {
@@ -56,13 +58,14 @@ class ModifierGroupController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $group = ModifierGroup::where('company_id', $companyId)
+        $group = ModifierGroup::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with('modifiers')
             ->findOrFail($id);
 
@@ -84,13 +87,15 @@ class ModifierGroupController extends Controller
 
     public function update(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $group = ModifierGroup::where('company_id', $companyId)->findOrFail($id);
+        $group = ModifierGroup::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
 
         $validated = $request->validate([
             'code' => ['sometimes', 'string', 'max:100'],
@@ -111,13 +116,15 @@ class ModifierGroupController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $group = ModifierGroup::where('company_id', $companyId)->findOrFail($id);
+        $group = ModifierGroup::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
         $group->delete();
 
         return response()->json(null, 204);
@@ -128,18 +135,24 @@ class ModifierGroupController extends Controller
      */
     public function assignToItem(Request $request, string $compositeItemId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
         $validated = $request->validate([
-            'modifier_group_id' => ['required', 'uuid', 'exists:modifier_groups,id'],
+            'modifier_group_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('modifier_groups', $company->tenant_id, $company->id),
+            ],
             'display_order' => ['sometimes', 'integer', 'min:0'],
         ]);
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
 
         $item->modifierGroups()->syncWithoutDetaching([
             $validated['modifier_group_id'] => [
@@ -159,13 +172,15 @@ class ModifierGroupController extends Controller
      */
     public function removeFromItem(string $compositeItemId, string $modifierGroupId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId) || ! Str::isUuid($modifierGroupId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
         $item->modifierGroups()->detach($modifierGroupId);
 
         return response()->json(null, 204);

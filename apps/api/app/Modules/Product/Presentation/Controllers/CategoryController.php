@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\DTOs\CategoryData;
 use App\Modules\Product\Domain\Category;
+use App\Shared\Presentation\Validation\ScopedExists;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +25,7 @@ class CategoryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $params = $this->getPaginationParams($request);
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         $query = Category::query()
             ->where('company_id', $companyId)
@@ -54,7 +55,7 @@ class CategoryController extends Controller
 
     public function tree(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         // Get all categories and build tree in memory
         // More efficient than recursive queries for reasonable category counts
@@ -96,7 +97,7 @@ class CategoryController extends Controller
 
     public function show(Request $request, int $id): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -110,16 +111,16 @@ class CategoryController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+
         $validated = $request->validate([
-            'parent_id' => 'nullable|exists:categories,id',
+            'parent_id' => ['nullable', ScopedExists::company('categories', $companyId)],
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
             'sort_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
         ]);
-
-        $companyId = $this->companyContext->getCompanyId();
 
         // Verify parent belongs to same company
         if (! empty($validated['parent_id'])) {
@@ -150,14 +151,14 @@ class CategoryController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
             ->findOrFail($id);
 
         $validated = $request->validate([
-            'parent_id' => 'nullable|exists:categories,id',
+            'parent_id' => ['nullable', ScopedExists::company('categories', $companyId)],
             'name' => 'sometimes|required|string|max:255',
             'slug' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:1000',
@@ -171,7 +172,7 @@ class CategoryController extends Controller
                 return response()->json(['error' => 'Category cannot be its own parent'], 422);
             }
 
-            $newParent = Category::find($validated['parent_id']);
+            $newParent = Category::where('company_id', $companyId)->find($validated['parent_id']);
             if ($newParent instanceof Category && $category->isAncestorOf($newParent)) {
                 return response()->json(['error' => 'Cannot move category under its own descendant'], 422);
             }
@@ -187,7 +188,7 @@ class CategoryController extends Controller
 
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         $category = Category::query()
             ->where('company_id', $companyId)
@@ -214,14 +215,14 @@ class CategoryController extends Controller
 
     public function reorder(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+
         $validated = $request->validate([
             'categories' => 'required|array',
-            'categories.*.id' => 'required|exists:categories,id',
+            'categories.*.id' => ['required', ScopedExists::company('categories', $companyId)],
             'categories.*.sort_order' => 'required|integer|min:0',
-            'categories.*.parent_id' => 'nullable|exists:categories,id',
+            'categories.*.parent_id' => ['nullable', ScopedExists::company('categories', $companyId)],
         ]);
-
-        $companyId = $this->companyContext->getCompanyId();
 
         foreach ($validated['categories'] as $item) {
             Category::where('id', $item['id'])
@@ -232,12 +233,16 @@ class CategoryController extends Controller
                 ]);
         }
 
-        // Rebuild paths for affected categories
+        // Rebuild paths for affected categories — scope to this company so a
+        // race that snuck a foreign id through could not still reparent
+        // another company's categories.
         $categoryIds = array_column($validated['categories'], 'id');
-        Category::whereIn('id', $categoryIds)->each(function ($cat) {
-            $cat->updatePath();
-            $cat->updateDescendantPaths();
-        });
+        Category::whereIn('id', $categoryIds)
+            ->where('company_id', $companyId)
+            ->each(function ($cat) {
+                $cat->updatePath();
+                $cat->updateDescendantPaths();
+            });
 
         return response()->json(['message' => 'Categories reordered successfully']);
     }
