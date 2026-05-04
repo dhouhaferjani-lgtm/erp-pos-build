@@ -13,6 +13,7 @@ use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Pricing\Domain\Services\PricingService;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -50,7 +51,13 @@ class PricingController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $priceList = PriceList::with(['company', 'items.product', 'partnerPriceLists.partner'])
+        // Hostile-grep blind spot bundled into api.pricing cluster: tenant-scope
+        // PriceList route lookup. price_lists has tenant_id + company_id.
+        $company = $this->companyContext->requireCompany();
+
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['company', 'items.product', 'partnerPriceLists.partner'])
             ->findOrFail($id);
 
         return response()->json(['data' => $priceList]);
@@ -111,7 +118,12 @@ class PricingController extends Controller
             'valid_until' => 'nullable|date|after:valid_from',
         ]);
 
-        $priceList = PriceList::findOrFail($id);
+        // Hostile-grep blind spot: tenant-scope PriceList route lookup.
+        $company = $this->companyContext->requireCompany();
+
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
         $priceList->update($request->only([
             'code', 'name', 'description', 'currency',
             'is_active', 'is_default', 'valid_from', 'valid_until',
@@ -128,7 +140,12 @@ class PricingController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
-        $priceList = PriceList::findOrFail($id);
+        // Hostile-grep blind spot: tenant-scope PriceList route lookup.
+        $company = $this->companyContext->requireCompany();
+
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
         $priceList->delete();
 
         return response()->json([
@@ -141,14 +158,23 @@ class PricingController extends Controller
      */
     public function addItem(Request $request, string $priceListId): JsonResponse
     {
+        // api.pricing.003: tenant-scope products exists validator.
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
-            'product_id' => 'required|exists:products,id',
+            'product_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
             'price' => 'required|numeric|min:0',
             'min_quantity' => 'required|numeric|min:0',
             'max_quantity' => 'nullable|numeric|gt:min_quantity',
         ]);
 
-        $priceList = PriceList::findOrFail($priceListId);
+        // Hostile-grep blind spot: tenant-scope PriceList route lookup.
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($priceListId);
 
         $item = PriceListItem::create([
             'id' => Str::uuid()->toString(),
@@ -176,7 +202,14 @@ class PricingController extends Controller
             'max_quantity' => 'nullable|numeric',
         ]);
 
-        $item = PriceListItem::where('price_list_id', $priceListId)
+        // Hostile-grep blind spot: pre-load tenant-scoped PriceList; the
+        // PriceListItem lookup then anchors on a tenant-scoped price_list_id.
+        $company = $this->companyContext->requireCompany();
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($priceListId);
+
+        $item = PriceListItem::where('price_list_id', $priceList->id)
             ->where('id', $itemId)
             ->firstOrFail();
 
@@ -193,7 +226,13 @@ class PricingController extends Controller
      */
     public function removeItem(string $priceListId, string $itemId): JsonResponse
     {
-        $item = PriceListItem::where('price_list_id', $priceListId)
+        // Hostile-grep blind spot: pre-load tenant-scoped PriceList.
+        $company = $this->companyContext->requireCompany();
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($priceListId);
+
+        $item = PriceListItem::where('price_list_id', $priceList->id)
             ->where('id', $itemId)
             ->firstOrFail();
 
@@ -209,14 +248,23 @@ class PricingController extends Controller
      */
     public function assignToPartner(Request $request, string $priceListId): JsonResponse
     {
+        // api.pricing.004: tenant-scope partners exists validator.
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
-            'partner_id' => 'required|exists:partners,id',
+            'partner_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
             'valid_from' => 'nullable|date',
             'valid_until' => 'nullable|date|after:valid_from',
             'priority' => 'integer|min:0',
         ]);
 
-        $priceList = PriceList::findOrFail($priceListId);
+        // Hostile-grep blind spot: tenant-scope PriceList route lookup.
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($priceListId);
 
         $assignment = PartnerPriceList::create([
             'id' => Str::uuid()->toString(),
@@ -239,7 +287,14 @@ class PricingController extends Controller
      */
     public function removeFromPartner(string $priceListId, string $partnerId): JsonResponse
     {
-        $assignment = PartnerPriceList::where('price_list_id', $priceListId)
+        // Hostile-grep blind spot: pre-load tenant-scoped PriceList; the
+        // PartnerPriceList lookup then anchors on a tenant-scoped price_list_id.
+        $company = $this->companyContext->requireCompany();
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($priceListId);
+
+        $assignment = PartnerPriceList::where('price_list_id', $priceList->id)
             ->where('partner_id', $partnerId)
             ->firstOrFail();
 
@@ -255,9 +310,18 @@ class PricingController extends Controller
      */
     public function getPrice(Request $request): JsonResponse
     {
+        // api.pricing.005 / .006: tenant-scope products + partners validators.
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'partner_id' => 'nullable|exists:partners,id',
+            'product_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
+            'partner_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
             'quantity' => 'required|numeric|min:0.01',
             'currency' => 'required|string|size:3',
             'date' => 'nullable|date',
@@ -289,9 +353,20 @@ class PricingController extends Controller
      */
     public function getQuantityBreaks(Request $request): JsonResponse
     {
+        // api.pricing.007: tenant-scope products validator.
+        // Hostile-grep blind spot bundled in: tenant-scope price_lists validator
+        // (pre-fix bare exists let any tenant's price_list UUID through).
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
-            'price_list_id' => 'required|exists:price_lists,id',
-            'product_id' => 'required|exists:products,id',
+            'price_list_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('price_lists', $company->tenant_id, $company->id),
+            ],
+            'product_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
         ]);
 
         $breaks = $this->pricingService->getQuantityBreaks(
@@ -329,10 +404,19 @@ class PricingController extends Controller
      */
     public function getBulkPrices(Request $request): JsonResponse
     {
+        // api.pricing.008 / .009: tenant-scope products + partners validators.
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
             'product_ids' => 'required|array|min:1',
-            'product_ids.*' => 'required|exists:products,id',
-            'partner_id' => 'nullable|exists:partners,id',
+            'product_ids.*' => [
+                'required',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
+            'partner_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
             'currency' => 'required|string|size:3',
             'date' => 'nullable|date',
         ]);
@@ -362,13 +446,25 @@ class PricingController extends Controller
      */
     public function checkMargin(Request $request): JsonResponse
     {
+        // api.pricing.010: tenant-scope products validator.
+        $company = $this->companyContext->requireCompany();
+
         $validated = $request->validate([
-            'product_id' => 'required|uuid|exists:products,id',
+            'product_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
             'sell_price' => 'required|numeric|min:0',
         ]);
 
+        // api.pricing.002: tenant-scope Product findOrFail (defense-in-depth
+        // alongside the validator above, so a service-direct caller cannot
+        // bypass the validator tier).
         /** @var Product $product */
-        $product = Product::findOrFail($validated['product_id']);
+        $product = Product::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($validated['product_id']);
         $sellPrice = (float) $validated['sell_price'];
 
         /** @var User $user */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Product\Domain\Product;
@@ -15,6 +16,7 @@ class PricingService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     private function scale(): int
@@ -59,7 +61,14 @@ class PricingService
         }
 
         // 3. Fall back to product base price
-        $product = Product::findOrFail($productId);
+        // api.pricing.001: tenant-scope Product fallback. The controller-tier
+        // validator now also rejects cross-tenant product_id with ScopedExists,
+        // but service-direct callers (queue jobs, cross-module orchestrators)
+        // could still hit this path; defense-in-depth.
+        $company = $this->companyContext->requireCompany();
+        $product = Product::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($productId);
 
         return [
             'price' => $product->sale_price ?? '0.00',
