@@ -27,18 +27,33 @@ use Throwable;
  *    indicate the YAML was edited without re-running generate / claim.
  *
  * 4. For events with index > 0 (i.e. not the seed/generate event):
- *    previous_yaml_sha256 MUST be non-null AND MUST equal the previous
- *    event's new_yaml_sha256. The seed event itself may have
- *    previous_yaml_sha256 = null because there is no preceding state. As a
- *    bounded relaxation, the very first event AFTER the seed (eventIndex==1)
- *    may declare an arbitrary non-null previous_yaml_sha256 even when the
- *    seed's new_yaml_sha256 is null — this accommodates the seed inventory
- *    pattern (live YAML created with zero callsites; the first generate run
- *    appends events with their own real chain hashes). The relaxation is
- *    intentionally NOT keyed on the prior event's `action`: an action-based
- *    predicate would let an attacker splice two events (a fake `regenerate`
- *    with null new hash + a malicious workflow event with any previous
- *    hash). Slot-based gating (eventIndex==1 only) closes that splice.
+ *    previous_yaml_sha256 MUST be non-null AND MUST be a canonical 64-char
+ *    lowercase hex hash AND MUST appear as some event's new_yaml_sha256
+ *    somewhere in the document (the GLOBAL-ANCHOR check).
+ *
+ *    The chain is enforced GLOBALLY, not per-callsite. The naive per-callsite
+ *    invariant ("event N's previous on callsite C must equal event N-1's new
+ *    on callsite C") doesn't hold when interleaved single-callsite mutations
+ *    advance the file hash between same-callsite events. Concrete failure case:
+ *    after a cluster-mode `start` stamps every callsite with the SAME finalHash
+ *    H_Y, sequentially submitting each callsite via single-callsite `submit`
+ *    calls produces events with previous_yaml_sha256 = (file hash AT submit
+ *    time) — which advances with every preceding submit. So callsite #2's
+ *    submit.previous != callsite #2's start.new, even though the YAML evolved
+ *    through legitimate mutate() calls. The Treasury sweep's 48 sequential
+ *    submits exposed this concretely.
+ *
+ *    The global-anchor check tolerates the legitimate interleave AND still
+ *    rejects forgeries: any forged event whose previous_yaml_sha256 doesn't
+ *    appear elsewhere as a new_yaml_sha256 is referencing a YAML state that
+ *    was never written, so it must be hand-edited. The chain integrity is
+ *    enforced via the GRAPH of recorded states, not via per-callsite linear
+ *    ordering.
+ *
+ *    Every non-seed event's new_yaml_sha256 MUST also be a canonical
+ *    64-char lowercase hex hash (closes round-2 finding #6: a forged
+ *    terminal event with valid-format-but-fake new_yaml_sha256 is caught
+ *    by the document-level anchor check below).
  *
  * 5. The file-level metadata.yaml_sha256 MUST equal the recomputed canonical
  *    hash of the document content (zero-out self-referential hash fields,
@@ -46,10 +61,16 @@ use Throwable;
  *    only adjusts metadata.yaml_sha256 to its post-edit value: the chain
  *    check could otherwise be defeated when paired with a metadata bump.
  *
+ * 6. The current metadata.yaml_sha256 MUST appear as the new_yaml_sha256 of
+ *    at least one history event (document-level anchor). This catches the
+ *    case where an attacker forges events without bumping metadata. Only
+ *    enforced once at least one mutate() has stamped a non-null new hash
+ *    (a fresh seed-only document is exempt).
+ *
  * Cross-callsite chain ordering is intentionally NOT enforced — the
- * file-level metadata.yaml_sha256 (now verified by check #5) plus
- * InventoryService's optimistic-lock check already protect the inventory's
- * overall integrity.
+ * graph-based check #4, the file-level recompute #5, and the document-level
+ * anchor #6 together cover every cheap forgery surface without requiring a
+ * total ordering across mutations.
  *
  * Behavior:
  *   - Print one line per failure citing callsite id + history index +
@@ -133,19 +154,58 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
             $problems++;
         }
 
-        // Track every non-null new_yaml_sha256 seen across the document so we
-        // can run the document-level anchor check after walking history. The
-        // anchor check (Codex round-2 finding #6) catches a forged terminal
-        // event whose new_yaml_sha256 is a valid-looking hex string but doesn't
-        // correspond to any real mutate() — at least one event in the document
-        // MUST have new_yaml_sha256 == metadata.yaml_sha256 because that's
-        // what the most recent mutate() stamped.
+        // First pass: collect every non-null new_yaml_sha256 seen across the
+        // document plus every non-null previous_yaml_sha256. The chain check
+        // below uses the union of (a) all events' new hashes (the standard
+        // anchor: a previous must reference some prior recorded state) and
+        // (b) the SINGLE BOOTSTRAP hash (the unique "orphan" previous —
+        // the first mutate after bootstrap stamps every new event's previous
+        // with the pre-bootstrap file hash, which never appears as any
+        // event's new because no mutate produced it).
+        //
+        // The bootstrap is recoverable as the unique orphan because every
+        // legitimate non-null previous must EITHER reference an earlier
+        // mutate's finalHash (= some other event's new) OR be the single
+        // bootstrap hash. Multiple orphans = forged events referencing
+        // mutually-self-supporting fabricated states.
+        //
+        // The chain check is GLOBAL, not per-callsite — see the docblock
+        // note about why per-callsite chain continuity does not hold once
+        // interleaved single-callsite mutations (e.g. sequential `submit`
+        // runs across a cluster's 48 callsites) advance the file hash
+        // between same-callsite events.
         $observedNewHashes = [];
+        $observedPreviousHashes = [];
+        foreach ($callsites as $callsite) {
+            foreach ($callsite['history'] as $event) {
+                if ($event['new_yaml_sha256'] !== null) {
+                    $observedNewHashes[$event['new_yaml_sha256']] = true;
+                }
+                if ($event['previous_yaml_sha256'] !== null) {
+                    $observedPreviousHashes[$event['previous_yaml_sha256']] = true;
+                }
+            }
+        }
+        $orphanPreviousHashes = array_diff_key($observedPreviousHashes, $observedNewHashes);
+        if (count($orphanPreviousHashes) > 1) {
+            $this->error(sprintf(
+                '[bootstrap-orphan] %d distinct previous_yaml_sha256 values reference YAML states that were never written (no event has them as new_yaml_sha256). Exactly one such value is legitimate (the bootstrap hash before the first mutate). Multiples indicate forged events: %s',
+                count($orphanPreviousHashes),
+                implode(', ', array_map(static fn (string $h): string => substr($h, 0, 16).'…', array_keys($orphanPreviousHashes))),
+            ));
+            $problems++;
+        }
+        // Accept the orphan(s) as legitimate anchors for the chain check
+        // (multiples already flagged above; we still let the per-event check
+        // run so the report surfaces every event affected by the forgery).
+        foreach ($orphanPreviousHashes as $hash => $_) {
+            $observedNewHashes[$hash] = true;
+        }
 
+        // Second pass: per-event invariants + global-anchor chain check.
         foreach ($callsites as $callsite) {
             $callsiteId = $callsite['id'];
             $history = $callsite['history'];
-            $previousNewHash = null;
 
             foreach ($history as $eventIndex => $event) {
                 $totalEvents++;
@@ -155,19 +215,13 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     eventIndex: $eventIndex,
                     event: $event,
                     knownIds: $knownIds,
-                    previousNewHash: $previousNewHash,
+                    observedNewHashes: $observedNewHashes,
                 );
 
                 foreach ($eventProblems as $message) {
                     $this->error($message);
                     $problems++;
                 }
-
-                if ($event['new_yaml_sha256'] !== null) {
-                    $observedNewHashes[$event['new_yaml_sha256']] = true;
-                }
-
-                $previousNewHash = $event['new_yaml_sha256'];
             }
         }
 
@@ -218,6 +272,7 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
      *
      * @param  HistoryEvent  $event
      * @param  array<string, true>  $knownIds  callsite + cluster ids in the doc
+     * @param  array<string, true>  $observedNewHashes  set of every non-null new_yaml_sha256 in the document, plus accepted bootstrap orphans
      * @return list<string>
      */
     private function verifyEvent(
@@ -225,7 +280,7 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
         int $eventIndex,
         array $event,
         array $knownIds,
-        ?string $previousNewHash,
+        array $observedNewHashes,
     ): array {
         $problems = [];
 
@@ -278,23 +333,29 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     $eventIndex,
                     $event['previous_yaml_sha256'],
                 );
-            } elseif ($previousNewHash !== null && $event['previous_yaml_sha256'] !== $previousNewHash) {
+            } elseif (! isset($observedNewHashes[$event['previous_yaml_sha256']])) {
+                // Global-anchor chain check (replaces the prior per-callsite
+                // check). InventoryService::mutate() stamps each new event's
+                // previous_yaml_sha256 with the file's pre-mutation hash —
+                // which is the most recent prior mutate's finalHash, recorded
+                // somewhere in the document as another event's
+                // new_yaml_sha256. So every legitimate previous_yaml_sha256
+                // must appear as some event's new_yaml_sha256. A previous
+                // hash that doesn't appear anywhere is a forged reference to
+                // a state that was never actually written.
+                //
+                // Per-callsite continuity (event N's previous == event N-1's
+                // new on the SAME callsite) does NOT hold under sequential
+                // single-callsite mutations: cluster-mode start stamps every
+                // callsite with the same new_yaml_sha256; subsequent
+                // submit-per-callsite calls each advance the file hash, so
+                // callsite #2's submit.previous (the file hash AT submit time,
+                // already advanced by callsite #1's submit) doesn't equal
+                // callsite #2's start.new (the cluster-start finalHash). The
+                // global-anchor check tolerates this legitimate interleave
+                // while still rejecting forgeries.
                 $problems[] = sprintf(
-                    '[%s history[%d]] chain is broken: previous_yaml_sha256 %s does not match the prior event new_yaml_sha256 %s.',
-                    $callsiteId,
-                    $eventIndex,
-                    $event['previous_yaml_sha256'],
-                    $previousNewHash,
-                );
-            } elseif ($previousNewHash === null && $eventIndex !== 1) {
-                // The prior event had a null new_yaml_sha256, which is only
-                // legitimate when it is the seed event at history[0]. Any
-                // null new_yaml_sha256 on a later event (eventIndex > 1's
-                // predecessor) is itself a hand-edit indicator. The narrower
-                // predicate (gate on `eventIndex !== 1` rather than on the
-                // prior action) closes the multi-event splice path.
-                $problems[] = sprintf(
-                    '[%s history[%d]] chain is broken: previous_yaml_sha256 %s declared but the prior event new_yaml_sha256 was null on a non-seed slot.',
+                    '[%s history[%d]] chain is broken: previous_yaml_sha256 %s does not appear as any event\'s new_yaml_sha256 in the document — forged reference to a YAML state that was never written.',
                     $callsiteId,
                     $eventIndex,
                     $event['previous_yaml_sha256'],
