@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Pricing\Domain\PartnerPriceList;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Product\Domain\Product;
@@ -457,27 +458,64 @@ final class PricingTenantIsolationTest extends TestCase
 
     public function test_remove_from_partner_rejects_cross_tenant_partner_id(): void
     {
-        // Opus Finding 4: pre-fix the $partnerId route segment was passed
+        // Opus round-1 Finding 4 + round-2 Finding C (test honesty
+        // strengthening): pre-fix the $partnerId route segment was passed
         // straight into the PartnerPriceList lookup with no Partner tenant
-        // validation. Hitting DELETE /price-lists/{tenantA-priceList}/partners/{tenantB-partner}
-        // should 404 (Partner pre-load fails) — not silently succeed when no
-        // PartnerPriceList row matches.
+        // validation. Round-2 fix pre-loads Partner tenant-scoped before
+        // the PartnerPriceList lookup.
+        //
+        // Honest test pin: seed a cross-tenant PartnerPriceList row
+        // (priceListA tenant-A + partnerB tenant-B) so the firstOrFail
+        // would NOT 404 on a missing join row pre-fix. Without this seed
+        // the test "passes for the wrong reason" — firstOrFail returns
+        // 404 anyway because no row exists. The cross-tenant PartnerPriceList
+        // is a structurally-possible legacy/migration corruption scenario
+        // (no FK constraint enforces tenant match across the two FKs).
+        // Pre-fix DELETE would silently succeed and remove the assignment;
+        // post-fix the Partner pre-load 404s before reaching the assignment.
+        PartnerPriceList::create([
+            'id' => Str::uuid()->toString(),
+            'price_list_id' => $this->priceListA->id,
+            'partner_id' => $this->partnerB->id,
+            'is_active' => true,
+            'priority' => 0,
+        ]);
+
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)
             ->deleteJson("/api/v1/price-lists/{$this->priceListA->id}/partners/{$this->partnerB->id}");
         $cross->assertStatus(404);
+
+        // Post-condition: cross-tenant PartnerPriceList row must still exist.
+        $this->assertDatabaseHas('partner_price_lists', [
+            'price_list_id' => $this->priceListA->id,
+            'partner_id' => $this->partnerB->id,
+        ]);
     }
 
     public function test_get_price_falls_back_to_same_tenant_default_only(): void
     {
         // Opus Finding 2 (IMPORTANT): pre-fix getDefaultPriceListPrice could
         // pick a foreign-tenant default price-list when the same-tenant
-        // didn't have one. Set up: tenant-A has NO default price-list in
-        // EUR; tenant-B has one. A getPrice call from tenant-A for a
-        // tenant-A product in EUR must NOT leak tenant-B's price_list_id.
-        // Pre-fix: response.data.source could be 'default_price_list' with
-        // tenant-B's price_list_id. Post-fix: falls all the way through to
-        // 'base_price' (tenant-A's product.sale_price).
+        // didn't have one. Set up: tenant-B has a default EUR price-list
+        // AND a PriceListItem entry linking that default to productA's UUID
+        // (cross-tenant data corruption scenario — productA belongs to
+        // tenant-A but a foreign PriceListItem references its UUID). Pre-fix
+        // getPrice would return tenant-B's price_list_id + price; post-fix
+        // the default-list query rejects priceListB before getPriceFromList
+        // is even called.
+        //
+        // The cross-tenant PriceListItem seed is what makes this test pin
+        // the production path — without it, getPriceFromList returns null
+        // (no item match) and the response.data.price_list_id falls through
+        // to null, which would assertNotSame === priceListB.id even pre-fix.
         $this->priceListB->update(['is_default' => true]);
+        PriceListItem::create([
+            'id' => Str::uuid()->toString(),
+            'price_list_id' => $this->priceListB->id,
+            'product_id' => $this->productA->id, // cross-tenant FK on UUID; no DB constraint enforces tenant match
+            'price' => '99.00', // distinct from priceListA's 15.00
+            'min_quantity' => '1',
+        ]);
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pricing/get-price', [
@@ -492,8 +530,59 @@ final class PricingTenantIsolationTest extends TestCase
             $response->json('data.price_list_id'),
             'getPrice must NOT leak a foreign-tenant price_list_id via the default-list fallback.',
         );
-        // Acceptable values: tenant-A's priceListA (if matched via item) or
-        // null (fall through to base price). NEVER tenant-B's id.
+        $this->assertNotSame(
+            '99.00',
+            $response->json('data.price'),
+            'getPrice must NOT return a foreign-tenant price via the default-list fallback.',
+        );
+    }
+
+    public function test_get_partner_price_join_filters_price_lists_by_tenant(): void
+    {
+        // Opus round-2 Finding B (NICE-TO-HAVE): the getPartnerPrice DB::table
+        // join now filters price_lists.tenant_id + price_lists.company_id.
+        // Capture the SQL emitted under a same-tenant partner_id and assert
+        // BOTH literals appear. Pre-fix the join was tenant-blind.
+        \DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pricing/get-price', [
+                'product_id' => $this->productA->id,
+                'partner_id' => $this->partnerA->id,
+                'quantity' => '1',
+                'currency' => 'EUR',
+            ])
+            ->assertStatus(200);
+
+        $log = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        $partnerJoinQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "partner_price_lists"')
+                && str_contains($sql, 'inner join "price_lists"')
+            ) {
+                $partnerJoinQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $partnerJoinQuery,
+            'partner_price_lists -> price_lists join query must be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"price_lists"."tenant_id"',
+            $partnerJoinQuery,
+            'getPartnerPrice join must filter price_lists by tenant_id. Got SQL: '.$partnerJoinQuery,
+        );
+        $this->assertStringContainsString(
+            '"price_lists"."company_id"',
+            $partnerJoinQuery,
+            'getPartnerPrice join must filter price_lists by company_id. Got SQL: '.$partnerJoinQuery,
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────
