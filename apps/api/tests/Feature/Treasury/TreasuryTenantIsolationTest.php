@@ -1770,6 +1770,304 @@ final class TreasuryTenantIsolationTest extends TestCase
     }
 
     // =========================================================================
+    // Opus round-4 Finding 15 — SmartPaymentController::getOpenInvoices and
+    // PaymentAllocationService::getOpenInvoices must scope partner + document
+    // reads by BOTH tenant_id AND company_id (same structural class as
+    // Codex round-3 Finding 14).
+    //
+    // GET /api/v1/partners/{partner}/open-invoices accepts a raw {partner}
+    // route id and runs Partner::where('company_id', ...)->where('id', ...)
+    // followed by Document::where('company_id', ...)->where('partner_id', ...)
+    // with NO tenant_id predicate. UUID uniqueness keeps it from being an
+    // exploitable cross-tenant leak today, but it violates the cluster
+    // invariant established in Finding 14: BOTH tenant_id AND company_id on
+    // every read whose anchor came from a route param.
+    //
+    // The fix scopes the partner+document under tenant+company at the
+    // controller layer (returns 404 if not visible to the current tenant)
+    // AND propagates tenantId into the private getOpenInvoices() service
+    // helper for defense in depth.
+    // =========================================================================
+
+    /**
+     * Cross-tenant: tenant-A authenticated user, tenant-B partner uuid in
+     * route → 404 (preferred) or 403, AND no invoice data leaked in response
+     * body. Pins Finding 15 controller surface for getOpenInvoices.
+     */
+    public function test_get_open_invoices_refuses_cross_tenant_partner_id(): void
+    {
+        // Seed a real posted invoice for tenant-B's partner with a leak-bait
+        // total + document number that would surface in the response body if
+        // scoping is missing.
+        Document::factory()
+            ->posted()
+            ->for($this->companyB, 'company')
+            ->create([
+                'tenant_id' => $this->tenantB->id,
+                'company_id' => $this->companyB->id,
+                'partner_id' => $this->partnerB->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => 'INV-LEAK-OPEN',
+                'total' => '888.88',
+                'balance_due' => '888.88',
+            ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerB->id}/open-invoices");
+
+        $this->assertContains(
+            $response->status(),
+            [403, 404],
+            'Cross-tenant partner_id must NOT be readable. Got status '
+            .$response->status().' body: '.$response->getContent(),
+        );
+        $body = (string) $response->getContent();
+        $this->assertStringNotContainsString(
+            '888.88',
+            $body,
+            'Cross-tenant invoice total must not appear in response body.',
+        );
+        $this->assertStringNotContainsString(
+            'INV-LEAK-OPEN',
+            $body,
+            'Cross-tenant document_number must not appear in response body.',
+        );
+    }
+
+    /**
+     * Same-tenant control: same-tenant partner uuid → 200, response includes
+     * the partner's actual open invoices.
+     */
+    public function test_get_open_invoices_accepts_same_tenant_partner_id(): void
+    {
+        // Seed a posted invoice with non-zero balance under tenant-A.
+        $sameTenantInvoice = Document::factory()
+            ->posted()
+            ->for($this->companyA, 'company')
+            ->create([
+                'tenant_id' => $this->tenantA->id,
+                'company_id' => $this->companyA->id,
+                'partner_id' => $this->partnerA->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => 'INV-SAME-OPEN',
+                'total' => '123.45',
+                'balance_due' => '123.45',
+            ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerA->id}/open-invoices");
+
+        $response->assertStatus(200);
+        $json = $response->json('data');
+        $this->assertIsArray($json);
+        // Same-tenant control must surface the seeded invoice.
+        $ids = array_map(static fn (array $row): string => (string) $row['id'], $json);
+        $this->assertContains(
+            $sameTenantInvoice->id,
+            $ids,
+            'Same-tenant open invoice must appear in response data.',
+        );
+    }
+
+    /**
+     * Structural invariant: the controller-tier Partner + Document reads in
+     * SmartPaymentController::getOpenInvoices() must filter by tenant_id
+     * (not just company_id). Pins the route-handler half of Finding 15.
+     */
+    public function test_get_open_invoices_filters_partner_and_document_by_tenant_id(): void
+    {
+        Document::factory()
+            ->posted()
+            ->for($this->companyA, 'company')
+            ->create([
+                'tenant_id' => $this->tenantA->id,
+                'company_id' => $this->companyA->id,
+                'partner_id' => $this->partnerA->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => 'INV-CTRL-STRUCT',
+                'total' => '100.00',
+                'balance_due' => '100.00',
+            ]);
+
+        \DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerA->id}/open-invoices")
+            ->assertStatus(200);
+
+        $log = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        // Locate the Partner lookup and the Document read.
+        $partnerQuery = null;
+        $documentQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) ($entry['query'] ?? '');
+            if (str_contains($sql, 'from "partners"') && str_contains($sql, '"id" =')) {
+                $partnerQuery = $sql;
+            }
+            if (
+                str_contains($sql, 'from "documents"')
+                && str_contains($sql, '"partner_id"')
+                && str_contains($sql, '"type"')
+            ) {
+                $documentQuery = $sql;
+            }
+        }
+
+        $this->assertNotNull($partnerQuery, 'Partner lookup query must be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)));
+        $this->assertNotNull($documentQuery, 'Document read query must be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)));
+
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $partnerQuery,
+            'Partner lookup must filter by tenant_id (Opus round-4 Finding 15). Got SQL: '.$partnerQuery,
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $documentQuery,
+            'Document read must filter by tenant_id. Got SQL: '.$documentQuery,
+        );
+    }
+
+    /**
+     * Service-tier coverage for the private PaymentAllocationService::getOpenInvoices
+     * helper, which is reached through previewAllocation() with FIFO method.
+     *
+     * Cross-tenant: a forged previewAllocation() call passing tenant-A's
+     * companyId/tenantId but tenant-B's partnerId must NOT include any of
+     * tenant-B's open invoices in the auto-allocation preview (the inner
+     * Document::where chain refuses).
+     *
+     * This pins the service-tier defense-in-depth that the controller fix
+     * relies on. The service signature now requires tenantId; passing the
+     * caller's tenant + a foreign partner returns an empty allocation.
+     */
+    public function test_payment_allocation_service_get_open_invoices_refuses_cross_tenant_partner_id(): void
+    {
+        // Seed a real posted invoice with non-zero balance for tenant-B's partner.
+        Document::factory()
+            ->posted()
+            ->for($this->companyB, 'company')
+            ->create([
+                'tenant_id' => $this->tenantB->id,
+                'company_id' => $this->companyB->id,
+                'partner_id' => $this->partnerB->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => 'INV-SERVICE-LEAK',
+                'total' => '500.00',
+                'balance_due' => '500.00',
+            ]);
+
+        $this->actingAs($this->userA, 'sanctum');
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantA->id);
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+        $service = app(PaymentAllocationService::class);
+
+        // Forged call: tenant-A scope, tenant-B partner. After the fix, the
+        // private getOpenInvoices() helper applies tenant_id filtering, so
+        // tenant-B's invoice never enters the allocation set.
+        $preview = $service->previewAllocation(
+            companyId: $this->companyA->id,
+            partnerId: $this->partnerB->id,
+            paymentAmount: '500.00',
+            allocationMethod: AllocationMethod::FIFO,
+        );
+
+        $this->assertSame(
+            [],
+            $preview['allocations'],
+            'Service-tier auto-allocation must NOT surface cross-tenant invoices.',
+        );
+        // The full payment amount falls through to excess (no invoices found).
+        // Format echoes the input string (no allocations decrement remaining).
+        $this->assertSame('500.00', $preview['excess_amount']);
+    }
+
+    /**
+     * Structural invariant: the auto-allocation read inside
+     * PaymentAllocationService::getOpenInvoices() must filter by tenant_id
+     * (not just company_id). This locks the cluster invariant Codex
+     * established in round-3 Finding 14: BOTH tenant_id AND company_id on
+     * every read whose anchor came from a route param.
+     *
+     * Inspect the captured SQL log for the auto-allocation read and assert
+     * the WHERE clause carries tenant_id.
+     */
+    public function test_payment_allocation_service_get_open_invoices_filters_by_tenant_id(): void
+    {
+        // Seed a same-tenant invoice so the read at least executes.
+        Document::factory()
+            ->posted()
+            ->for($this->companyA, 'company')
+            ->create([
+                'tenant_id' => $this->tenantA->id,
+                'company_id' => $this->companyA->id,
+                'partner_id' => $this->partnerA->id,
+                'type' => DocumentType::Invoice,
+                'status' => DocumentStatus::Posted,
+                'document_number' => 'INV-STRUCT',
+                'total' => '50.00',
+                'balance_due' => '50.00',
+            ]);
+
+        $this->actingAs($this->userA, 'sanctum');
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantA->id);
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+        $service = app(PaymentAllocationService::class);
+
+        \DB::enableQueryLog();
+
+        $service->previewAllocation(
+            companyId: $this->companyA->id,
+            partnerId: $this->partnerA->id,
+            paymentAmount: '50.00',
+            allocationMethod: AllocationMethod::FIFO,
+        );
+
+        $log = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        // Find the documents-read query (the open-invoices auto-allocation read).
+        $openInvoicesQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) ($entry['query'] ?? '');
+            if (
+                str_contains($sql, 'from "documents"')
+                && str_contains($sql, '"partner_id"')
+                && str_contains($sql, 'payment_allocations')
+            ) {
+                $openInvoicesQuery = $entry;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $openInvoicesQuery,
+            'Expected the auto-allocation Document read query to be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+
+        // The WHERE clause must include "tenant_id" — without this predicate
+        // the cluster invariant (Codex Finding 14) is violated.
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            (string) $openInvoicesQuery['query'],
+            'getOpenInvoices() must filter by tenant_id (Opus round-4 Finding 15). Got SQL: '.$openInvoicesQuery['query'],
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            (string) $openInvoicesQuery['query'],
+            'getOpenInvoices() must also filter by company_id. Got SQL: '.$openInvoicesQuery['query'],
+        );
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

@@ -6,6 +6,7 @@ namespace Tests\Unit\Treasury;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -86,6 +87,11 @@ class PaymentAllocationServiceTest extends TestCase
             'name' => 'Cash',
             'code' => 'CASH',
         ]);
+
+        // Pin CompanyContext so PaymentAllocationService::previewAllocation
+        // (Opus round-4 Finding 15 fix) and ::applyAllocation can resolve
+        // tenantId via $this->companyContext->requireCompany()->tenant_id.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     /** @test */

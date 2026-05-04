@@ -56,8 +56,16 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
+        // Opus round-4 Finding 15 — resolve tenantId from CompanyContext for
+        // defense-in-depth scoping inside the private getOpenInvoices() helper.
+        // The controller-tier ScopedExists::tenantAndCompany() already guards
+        // partner_id; this re-scoping enforces the cluster invariant (BOTH
+        // tenant_id AND company_id on every read whose anchor came from a
+        // route param) at the service layer too.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         // Get open invoices for partner
-        $openInvoices = $this->getOpenInvoices($companyId, $partnerId, $allocationMethod);
+        $openInvoices = $this->getOpenInvoices($tenantId, $companyId, $partnerId, $allocationMethod);
 
         if ($allocationMethod === AllocationMethod::MANUAL && $manualAllocations !== null) {
             return $this->previewManualAllocation($paymentAmount, $manualAllocations, $companyId);
@@ -318,11 +326,20 @@ class PaymentAllocationService
     /**
      * Get open documents for a partner (invoices and sales orders)
      *
+     * Opus round-4 Finding 15 — signature now requires tenantId and applies
+     * BOTH tenant_id AND company_id predicates on the Document read. This
+     * is the service-tier defense-in-depth pair to the controller fix in
+     * SmartPaymentController::getOpenInvoices(); the cluster invariant
+     * Codex established in round-3 Finding 14 demands both predicates on
+     * every read whose anchor came from a route param.
+     *
      * @return Collection<int, Document>
      */
-    private function getOpenInvoices(string $companyId, string $partnerId, AllocationMethod $method): Collection
+    private function getOpenInvoices(string $tenantId, string $companyId, string $partnerId, AllocationMethod $method): Collection
     {
-        $query = Document::where('company_id', $companyId)
+        $query = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             // Allow both posted invoices AND confirmed sales orders
             ->where(function ($q) {

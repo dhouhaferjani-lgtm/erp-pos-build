@@ -150,9 +150,17 @@ class SmartPaymentController extends Controller
     public function getOpenInvoices(string $partnerId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
-        // Validate partner belongs to the company
-        $partner = Partner::where('company_id', $companyId)
+        // Opus round-4 Finding 15 — resolve the partner under BOTH tenant_id
+        // AND company_id (cluster invariant Codex established in round-3
+        // Finding 14: BOTH tenant_id AND company_id on every read whose
+        // anchor came from a route param). The service-tier read in
+        // PaymentAllocationService::getOpenInvoices is similarly hardened
+        // for defense in depth.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('id', $partnerId)
             ->first();
 
@@ -166,7 +174,9 @@ class SmartPaymentController extends Controller
         }
 
         // Get invoices with outstanding balance (posted, not fully paid)
-        $openInvoices = Document::where('company_id', $companyId)
+        $openInvoices = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
