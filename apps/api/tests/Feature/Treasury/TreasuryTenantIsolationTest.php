@@ -1600,6 +1600,176 @@ final class TreasuryTenantIsolationTest extends TestCase
     }
 
     // =========================================================================
+    // Codex round-3 Finding 14 — MultiPayment partner-balance GET endpoints
+    // must refuse cross-tenant partner ids.
+    //
+    // GET /api/v1/partners/{partner}/unallocated-balance/{currency} and
+    // GET /api/v1/partners/{partner}/account-balance/{currency} both accept a
+    // raw {partner} route id and forward it to MultiPaymentService methods
+    // that run Payment::where('partner_id', $partnerId) with NO tenant or
+    // company predicate. A tenant-A user with `payments.view` who knows a
+    // tenant-B partner UUID can therefore read tenant-B's unallocated
+    // payment balance + the matching Payment collection.
+    //
+    // The fix scopes the partner under the controller's CompanyContext
+    // (returns 404 if not visible to the current tenant) AND also re-scopes
+    // the Payment::where(...) inside the service for defense in depth.
+    // =========================================================================
+
+    /**
+     * Cross-tenant: tenant-A authenticated user, tenant-B partner uuid in
+     * route → 404 (preferred) or 403, AND no payment balance leaked in
+     * response body. Pins Finding 14 controller surface for unallocated
+     * balance.
+     */
+    public function test_get_unallocated_balance_refuses_cross_tenant_partner_id(): void
+    {
+        // Seed a real Payment row for tenant-B's partner so we have a
+        // non-zero balance that *would* leak if scoping is missing. The
+        // test then asserts the response either denies the request OR, if
+        // it returns 200, must NOT contain that balance figure.
+        Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'partner_id' => $this->partnerB->id,
+            'payment_method_id' => $this->paymentMethodB->id,
+            'amount' => '777.77',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'leak-bait-unallocated',
+            'notes' => 'Advance payment/deposit [UNALLOCATED]',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerB->id}/unallocated-balance/EUR");
+
+        $this->assertContains(
+            $response->status(),
+            [403, 404],
+            'Cross-tenant partner_id must NOT be readable. Got status '
+            .$response->status().' body: '.$response->getContent(),
+        );
+        $this->assertStringNotContainsString(
+            '777.77',
+            (string) $response->getContent(),
+            'Cross-tenant unallocated balance must not appear in response body.',
+        );
+    }
+
+    /**
+     * Cross-tenant: tenant-A user, tenant-B partner uuid in route → 404/403,
+     * AND no payment data leaked in response body. Pins Finding 14
+     * controller surface for account balance (which also returns the
+     * Payment collection, so the leak is wider here).
+     */
+    public function test_get_account_balance_refuses_cross_tenant_partner_id(): void
+    {
+        $leak = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'partner_id' => $this->partnerB->id,
+            'payment_method_id' => $this->paymentMethodB->id,
+            'amount' => '999.99',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'leak-bait-account',
+            'notes' => 'Payment on account - credit balance [ON_ACCOUNT]',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerB->id}/account-balance/EUR");
+
+        $this->assertContains(
+            $response->status(),
+            [403, 404],
+            'Cross-tenant partner_id must NOT be readable. Got status '
+            .$response->status().' body: '.$response->getContent(),
+        );
+        $body = (string) $response->getContent();
+        $this->assertStringNotContainsString(
+            '999.99',
+            $body,
+            'Cross-tenant account balance must not appear in response body.',
+        );
+        $this->assertStringNotContainsString(
+            $leak->id,
+            $body,
+            'Cross-tenant Payment id must not appear in response body.',
+        );
+    }
+
+    /**
+     * Same-tenant control: same-tenant partner uuid → 200, response includes
+     * the partner's actual unallocated balance.
+     */
+    public function test_get_unallocated_balance_accepts_same_tenant_partner_id(): void
+    {
+        Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'partner_id' => $this->partnerA->id,
+            'payment_method_id' => $this->paymentMethodA->id,
+            'amount' => '42.00',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'same-tenant-control',
+            'notes' => 'Advance payment/deposit [UNALLOCATED]',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerA->id}/unallocated-balance/EUR");
+
+        $response->assertStatus(200);
+        $json = $response->json('data');
+        $this->assertIsArray($json);
+        $this->assertSame($this->partnerA->id, $json['partner_id']);
+        $this->assertSame('EUR', $json['currency']);
+        // 42.00 from this test's bait + 20.00 from seedTenantResources()'s
+        // baseline paymentA (also unallocated, completed, EUR).
+        $this->assertSame('62.00', $json['unallocated_balance']);
+    }
+
+    /**
+     * Same-tenant control: same-tenant partner uuid → 200, response includes
+     * the partner's actual account balance.
+     */
+    public function test_get_account_balance_accepts_same_tenant_partner_id(): void
+    {
+        Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'partner_id' => $this->partnerA->id,
+            'payment_method_id' => $this->paymentMethodA->id,
+            'amount' => '55.55',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'reference' => 'same-tenant-account',
+            'notes' => 'Payment on account - credit balance [ON_ACCOUNT]',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/partners/{$this->partnerA->id}/account-balance/EUR");
+
+        $response->assertStatus(200);
+        $json = $response->json('data');
+        $this->assertIsArray($json);
+        $this->assertSame($this->partnerA->id, $json['partner_id']);
+        $this->assertSame('EUR', $json['currency']);
+        // 55.55 from this test's bait + 20.00 from seedTenantResources()'s
+        // baseline paymentA (also unallocated, completed, EUR).
+        $this->assertSame('75.55', $json['unallocated_balance']);
+        $this->assertSame(2, $json['deposit_count']);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
