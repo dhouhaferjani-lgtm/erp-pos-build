@@ -53,6 +53,7 @@ final class PhpPresentationExistsScanner implements Scanner
         'expense_categories',
         'fraud_alerts',
         'invoices',
+        'journals', // Accounting cluster — added per Opus Treasury Finding 3
         'locations',
         'loyalty_members',
         'loyalty_programs',
@@ -60,6 +61,7 @@ final class PhpPresentationExistsScanner implements Scanner
         'modifier_groups',
         'modifiers',
         'partners',
+        'payment_instruments', // Treasury cluster — added per Opus Treasury Findings 2 & 3
         'payment_methods',
         'payment_repositories',
         'payments',
@@ -75,6 +77,7 @@ final class PhpPresentationExistsScanner implements Scanner
         'stock_movements',
         'tax_configurations',
         'tax_rates',
+        'users', // Identity cluster — added per Opus Treasury Finding 3
         'voucher_ledger',
         'vouchers',
         'withholding_certificates',

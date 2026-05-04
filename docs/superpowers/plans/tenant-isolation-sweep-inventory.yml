@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-04T07:39:40Z'
+  generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+  yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -4216,7 +4216,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4294,6 +4294,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.004
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.005
     stable_key: 'sha256:92cc705317b322a4f38141bf7c5c20b90cea857bfe96567664e8fbe9d54c2273'
@@ -4310,7 +4326,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4388,6 +4404,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.005
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.006
     stable_key: 'sha256:f5ed1eeabcebe612da0ef378f5beb38e4b36d74d89d3135860f3a50ed96a3739'
@@ -4404,7 +4436,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4482,6 +4514,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.006
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.007
     stable_key: 'sha256:09b93ad1c354525e6e6083430562c1a4614be90cf1305dec0fc663ba58a184a8'
@@ -4498,7 +4546,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4576,6 +4624,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.007
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.008
     stable_key: 'sha256:f324b19524bb5cbb7abc1944d9d26a0a20eec501e94d182805a99e136c6eb48f'
@@ -4592,7 +4656,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4670,6 +4734,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.008
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.009
     stable_key: 'sha256:8aace2dc269feaa23e5facdc4deba37ae31ce1b604ac7d56a0e47fe5f798751b'
@@ -4686,7 +4766,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4764,6 +4844,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.009
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.010
     stable_key: 'sha256:409f3d56be59589884d836e1ab0ef6dc1024f2c574e1620e7bca6c870cb3cfae'
@@ -4780,7 +4876,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4858,6 +4954,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.010
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.011
     stable_key: 'sha256:74a3cbc299d2e6d45a2683f2820b0d20e8ddf2ffaf520effff00830cab5e3719'
@@ -4874,7 +4986,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -4952,6 +5064,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.011
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.012
     stable_key: 'sha256:911ee566e88fd12e1d248a224b6c5c7524c21aaef6358112acc1a78d067d11bc'
@@ -4968,7 +5096,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -5046,6 +5174,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.012
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.013
     stable_key: 'sha256:615a9bc0dee95f1121f39c173fd58acd26e77d9f087ec07529df7f50cf6eb7ed'
@@ -5062,7 +5206,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -5140,6 +5284,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.013
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.014
     stable_key: 'sha256:4725e3bd6b0b680c02ee26c8e1acf5963325307635fdcce25f5801d97cf14859'
@@ -5156,7 +5316,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -5234,6 +5394,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.014
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.015
     stable_key: 'sha256:bd48043cf6c4e5a8540ea2458df3dc821d1ee8cec7a9573d7878a29a99dae5a3'
@@ -5250,7 +5426,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -5328,6 +5504,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.015
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.016
     stable_key: 'sha256:fe54c2a84fdd7a99dbf32ae6a4f8e97e5300a812b7cc7ad41d47206e14e78478'
@@ -5344,7 +5536,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -5422,6 +5614,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.016
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.017
     stable_key: 'sha256:c2f12bd8d3824c1637b4211afaf1eba518aaec937bdfcd40cc1aac0b4a9ecb44'
@@ -11404,7 +11612,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11482,6 +11690,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.033
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.033
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.034
     stable_key: 'sha256:66fc90e685c929a09592b8e858c784a6c731bcee103bdbdce57af748ac22ed85'
@@ -11498,7 +11738,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11576,6 +11816,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.034
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.034
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.035
     stable_key: 'sha256:e3733fa8e34f9a363868b10d8618db727c3538c1f0fdd3e7e6dc2abbef7e82c7'
@@ -11592,7 +11864,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11670,6 +11942,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.035
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.035
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.036
     stable_key: 'sha256:f969bd950d877649df95a7cf18fa496b4abf7903f35bfbde4a35b03a09b0db6b'
@@ -11686,7 +11990,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11764,6 +12068,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.036
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.037
     stable_key: 'sha256:b92f2369fbc9dbd6402aa3cc4e04158e88261abae7b7ad883185b9105f8ac3c8'
@@ -11780,7 +12100,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11858,6 +12178,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.037
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.038
     stable_key: 'sha256:516e3df6b6fda5eba68ec47d552fa96b98ae52ed61427be8e5bcceb596e5a011'
@@ -11874,7 +12210,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -11952,6 +12288,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.038
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.039
     stable_key: 'sha256:193cb02d7117bfc6adde793e00a8bb8d2fef72dab0aafcaec5437cb04e49bb9d'
@@ -11968,7 +12320,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12046,6 +12398,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.039
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.040
     stable_key: 'sha256:bce367b4943e9895ce42535d38168aee67fe7818ea03d413624b5baae778e583'
@@ -12062,7 +12430,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12140,6 +12508,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.040
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.041
     stable_key: 'sha256:ebca44afb66d5361e8f2eb81513ac48972dc5f0c0e33d87189de8ca687d42244'
@@ -12156,7 +12540,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12234,6 +12618,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.041
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.042
     stable_key: 'sha256:bda36503b64b227db20988356b8ec3f007b5a2dec8f1472432fafc63a03d68c0'
@@ -12250,7 +12650,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12328,6 +12728,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.042
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.043
     stable_key: 'sha256:7dc7ecea330b995aa2c04c9b077acaed2b5d951bce1119cb484b2a64685087f8'
@@ -12344,7 +12760,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12422,6 +12838,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.043
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.044
     stable_key: 'sha256:160ef6b6e7b16bb4481a01bc51f7d5f27aedc682999aa75a30962b7d0c79d542'
@@ -12438,7 +12870,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12516,6 +12948,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.044
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.045
     stable_key: 'sha256:770d6f2e32a2d78eaebd179b2646bd45dd43324c375bbdefc253c458890a0a89'
@@ -12532,7 +12980,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12610,6 +13058,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.045
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.046
     stable_key: 'sha256:ab5976260a4f0bcff032fd0a1395851dd7353f669d92394c570bac3a56285b5e'
@@ -12626,7 +13090,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12704,6 +13168,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.046
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.047
     stable_key: 'sha256:fb6d829106c9a6aa0aebe52c51d57a6d87746fd44803d9b98c5a6992e384a1d8'
@@ -12720,7 +13200,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -12798,6 +13278,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.047
+        from_status: under_review
+        to_status: under_review
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.048
     stable_key: 'sha256:70ac2c9672e762e43da4c6d2096903ffa5bc4bb2cc83e01702d32281711d861a'
@@ -13168,6 +13664,2432 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+  -
+    id: api.document.041
+    stable_key: 'sha256:ff140d8ccd9402107a969e8b0a913ee3c1bd7076b19ed4599d72e7c23d5649d5'
+    surface: api
+    cluster_id: api.document
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Document/Presentation/Controllers/DocumentConversionController.php
+    line: 235
+    symbol: 'App\Modules\Document\Presentation\Controllers\DocumentConversionController::createInvoiceFromDeliveryNotes'
+    pattern_type: bare_exists_validator
+    resource: documents
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.document.041
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.042
+    stable_key: 'sha256:0c76fb93ad41c60e45e9e7533a4bd4e56e1a646ff67d6fc74108d4b01f01e768'
+    surface: api
+    cluster_id: api.document
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Document/Presentation/Controllers/RefundController.php
+    line: 114
+    symbol: 'App\Modules\Document\Presentation\Controllers\RefundController::createPartialCreditNote'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.document.042
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.014
+    stable_key: 'sha256:587bd04a044eee518992bc8c584f6b3faa8945545c6b5a3382713f623a579888'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 114
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::store'
+    pattern_type: bare_exists_validator
+    resource: categories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.catalog.014
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.015
+    stable_key: 'sha256:ec27702bfb343951737d03ce257aebb7a88367d0cb747d782c7ba6d10f1a46ea'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 160
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::update'
+    pattern_type: bare_exists_validator
+    resource: categories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.catalog.015
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.016
+    stable_key: 'sha256:44db58073152a2f1d323222cc1c1ae0e7779f716d8025ea517c59c53db5854a1'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 219
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::reorder'
+    pattern_type: bare_exists_validator
+    resource: categories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.catalog.016
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.017
+    stable_key: 'sha256:afe4d10d85d088786d9b60049b2dba53c2fdc75098ec69d9107892f34e807483'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 221
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::reorder'
+    pattern_type: bare_exists_validator
+    resource: categories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.catalog.017
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.029
+    stable_key: 'sha256:26c28ae36ada8faafb08e030fe6cb40919558c22fcf9017096af64ab6de97be7'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/GenerateZReportRequest.php
+    line: 46
+    symbol: 'App\Modules\POS\Presentation\Requests\GenerateZReportRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: payment_methods
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pos-stabilization.029
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.030
+    stable_key: 'sha256:f141ce638e2af717ae2a17474ffeeb3137cc1dc223bf41b9f0042814a47b8404'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/StoreReturnRequest.php
+    line: 34
+    symbol: 'App\Modules\POS\Presentation\Requests\StoreReturnRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: pos_terminals
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pos-stabilization.030
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.049
+    stable_key: 'sha256:3402118217d1e7044d5b5f90c34a8e19f86edf0fd1c38a93a08b62b33eeb7b05'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 33
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::createSplitPayment'
+    pattern_type: bare_exists_validator
+    resource: payment_methods
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:44Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.049
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:44Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        new_yaml_sha256: 1f8c64a847660a1299542fde96792e1f6d42e16a37406461a5f546072ffa92cb
+        target_ids:
+          - api.treasury.049
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:09Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 6573d36c4418543a12e0d44bb49d6dc8c1ebdb6c8bbe88b3132c8b9ff6fbb3a0
+        new_yaml_sha256: 10bc77a615561d5d8af443ba4845d0f6b2c10806df9a03c125d542502e8d3144
+        target_ids:
+          - api.treasury.049
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.050
+    stable_key: 'sha256:7fda86508618448eef69f16047cf7d2cb24936c2f1dcf8cd420dd097895c81a3'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 35
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::createSplitPayment'
+    pattern_type: bare_exists_validator
+    resource: payment_repositories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:57Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.050
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:57Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1f8c64a847660a1299542fde96792e1f6d42e16a37406461a5f546072ffa92cb
+        new_yaml_sha256: e40fd5a6c14ea7ccbf92ce4c19ab3ae4a222344871ed1086fd02877d4a9c6e7c
+        target_ids:
+          - api.treasury.050
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:09Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 10bc77a615561d5d8af443ba4845d0f6b2c10806df9a03c125d542502e8d3144
+        new_yaml_sha256: effc90d98d8324b891a595b4d65a5f99a7b6af52b11aaf7512652469cace13fb
+        target_ids:
+          - api.treasury.050
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.051
+    stable_key: 'sha256:4d675f9aab4746291c58976d6b211e1d40fb82a736f4710228e8435bb89e3213'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 75
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::recordDeposit'
+    pattern_type: bare_exists_validator
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:58Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.051
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:58Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e40fd5a6c14ea7ccbf92ce4c19ab3ae4a222344871ed1086fd02877d4a9c6e7c
+        new_yaml_sha256: d204f86ce12d6d44a573aa460ac0574a2d81ccc13fc68d8f9e2e526951f463fe
+        target_ids:
+          - api.treasury.051
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:10Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: effc90d98d8324b891a595b4d65a5f99a7b6af52b11aaf7512652469cace13fb
+        new_yaml_sha256: caef8e2a0857227cab18ae3425f8a7240b2da86966e3ea86b36c091b70df1859
+        target_ids:
+          - api.treasury.051
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.052
+    stable_key: 'sha256:cda092601b7bb63936d7a99cbffc99b85ddf04584f0355aeaee5af3afa16cf9c'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 76
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::recordDeposit'
+    pattern_type: bare_exists_validator
+    resource: payment_methods
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:58Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.052
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:58Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: d204f86ce12d6d44a573aa460ac0574a2d81ccc13fc68d8f9e2e526951f463fe
+        new_yaml_sha256: b559fb5a13fdbb5adeafaba538ce73886e0612509857c381b4172cb6c9f06089
+        target_ids:
+          - api.treasury.052
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:10Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: caef8e2a0857227cab18ae3425f8a7240b2da86966e3ea86b36c091b70df1859
+        new_yaml_sha256: 12fadf63b35b651fad82bbcd15a026377e88601270aa52c556b9977352f7adc3
+        target_ids:
+          - api.treasury.052
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.053
+    stable_key: 'sha256:b17b580051d79df8a2a50e199a49e1190f9aed6af52baafc5d315e0ed01d0a66'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 79
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::recordDeposit'
+    pattern_type: bare_exists_validator
+    resource: payment_repositories
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:59Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.053
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:59Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b559fb5a13fdbb5adeafaba538ce73886e0612509857c381b4172cb6c9f06089
+        new_yaml_sha256: ddae60a89452ce8d8f23c7b32d193c2cb692f9123a9445edf9c433f1b9f013a6
+        target_ids:
+          - api.treasury.053
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:11Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 12fadf63b35b651fad82bbcd15a026377e88601270aa52c556b9977352f7adc3
+        new_yaml_sha256: 195a12a9c4d46cafd25aaee973f4d76130dfd0c6734a44c4da64545d707bf8ed
+        target_ids:
+          - api.treasury.053
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.054
+    stable_key: 'sha256:703a714045be249315140111017b1e446939ccd153c797d255fe48dd8f390d4a'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 122
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::applyDeposit'
+    pattern_type: bare_exists_validator
+    resource: documents
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:43:59Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.054
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:43:59Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ddae60a89452ce8d8f23c7b32d193c2cb692f9123a9445edf9c433f1b9f013a6
+        new_yaml_sha256: fc60006060be0f89a5d2a8e5a704070d80208bed08818e4d08bd566efc0d1011
+        target_ids:
+          - api.treasury.054
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:11Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 195a12a9c4d46cafd25aaee973f4d76130dfd0c6734a44c4da64545d707bf8ed
+        new_yaml_sha256: 00012902e0feff4ceb3502522a5f055f799b9dc8c358d3eec8a79bb24be98395
+        target_ids:
+          - api.treasury.054
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.055
+    stable_key: 'sha256:be62981753b35480bc6c30e03e1e66d88f8aefdb41cf1131e488be9cd246d6fb'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 190
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::recordPaymentOnAccount'
+    pattern_type: bare_exists_validator
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:00Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.treasury.055
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:00Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fc60006060be0f89a5d2a8e5a704070d80208bed08818e4d08bd566efc0d1011
+        new_yaml_sha256: 21a48b332a7625fdc52dcbab3198c8b64c1d966284322b558aef5a36f5dddcbb
+        target_ids:
+          - api.treasury.055
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:12Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 00012902e0feff4ceb3502522a5f055f799b9dc8c358d3eec8a79bb24be98395
+        new_yaml_sha256: 70b6021dc07d35a2de28f3df945b13b690775e06194cf26c6ebf3ac893c3ba2f
+        target_ids:
+          - api.treasury.055
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.pricing.003
+    stable_key: 'sha256:e3dcf9aa3229542555874c3a0da43e365a090696742bc6f5b8fccf980f4ced8f'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 145
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::addItem'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.003
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.004
+    stable_key: 'sha256:3763fc1c99355c406d543cf32b4c4885c9bf91628158be430883c3ea1e40f0e0'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 213
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::assignToPartner'
+    pattern_type: bare_exists_validator
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.004
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.005
+    stable_key: 'sha256:d89f82d22ea984bdfe53a6d2c31ae9ee0bded58ea01b744c427a9dc96f672e60'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 259
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::getPrice'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.005
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.006
+    stable_key: 'sha256:561ec03b69ed74d97e711d47397271608ef5d47bea5ce4d4db7e14e9f1e3ac56'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 260
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::getPrice'
+    pattern_type: bare_exists_validator
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.006
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.007
+    stable_key: 'sha256:5dbfaa73ba46507ed17917d47f3244c56e698474361f07417a08b000b2546b53'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 294
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::getQuantityBreaks'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.007
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.008
+    stable_key: 'sha256:5dac59c6322350d6d36f67e9ae2c0d054bc71fd7052c463cb2ae70504f3ef48b'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 334
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::getBulkPrices'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.008
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.009
+    stable_key: 'sha256:980b36765544de341383ef5737411503789c4e233928e0dd01bc7ac2dd17616c'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 335
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::getBulkPrices'
+    pattern_type: bare_exists_validator
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.009
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.010
+    stable_key: 'sha256:b4df2c11a2ff3ecf9020d5cb72b121da76fe25b9e58e64d0b2bdad4b4b9c6f09'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 366
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::checkMargin'
+    pattern_type: bare_exists_validator
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:40:23Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 410d2811662c43a5609c95b378317488de040344bad825df24099d358f7b26da
+        new_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        target_ids:
+          - api.pricing.010
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.compliance.005
+    stable_key: 'sha256:a4e2f4e0438f42cc634ac676b1729d551de701046c163a658e06e6a1a41c7ced'
+    surface: api
+    cluster_id: api.compliance
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/FraudAlertController.php
+    line: 105
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\FraudAlertController::assign'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.compliance.005
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.031
+    stable_key: 'sha256:c51f0b35234065a0c36c2b128d93c78f1af31591603176f188520750176615d3'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/VerifyManagerPinRequest.php
+    line: 22
+    symbol: 'App\Modules\POS\Presentation\Requests\VerifyManagerPinRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.pos-stabilization.031
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.032
+    stable_key: 'sha256:07daf9fcc4e1fd38732e5fe7b8a4d25f91bd46bfb935c378e49d63c66a1172b5'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/GenerateZReportRequest.php
+    line: 51
+    symbol: 'App\Modules\POS\Presentation\Requests\GenerateZReportRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.pos-stabilization.032
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.033
+    stable_key: 'sha256:47edb25c456ba44a90e6c1778645b8b6f24ce87f21404323e8f5a8faf4337f90'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/OpenShiftRequest.php
+    line: 32
+    symbol: 'App\Modules\POS\Presentation\Requests\OpenShiftRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.pos-stabilization.033
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.020
+    stable_key: 'sha256:7ce99d6c1492f36f9195a3ba3acb3fe7a8f5993fcb22c4ad2c75cefe58dad6f9'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateCountingRequest.php
+    line: 48
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.020
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.021
+    stable_key: 'sha256:6a0c90e14f4ffb686f0780a42be742ab0dc14aaca8a8f6c24ff31cf64ec4f2c4'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateCountingRequest.php
+    line: 49
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.021
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.022
+    stable_key: 'sha256:a657c0eaac57a19edfa478bb130f1503a2c8b16b1c3c01e174de57de739f3213'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateCountingRequest.php
+    line: 50
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.022
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.023
+    stable_key: 'sha256:f84ac666f3a1fa47bdf5bb643f9761ca0ffc9ffaa022f159eb0246a1cb3e16b3'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateDraftCountingRequest.php
+    line: 46
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.023
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.024
+    stable_key: 'sha256:8fad2cba2691ae8c8bd3bc312ad89559995fa1acf2e98c7c4c5a9b2869378be5'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateDraftCountingRequest.php
+    line: 47
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.024
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.025
+    stable_key: 'sha256:d623bf08e2a3f9d4923293d50d2e7205471c84f9865727d278afba3229a897c9'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/CreateDraftCountingRequest.php
+    line: 48
+    symbol: 'App\Modules\Inventory\Presentation\Requests\CreateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.025
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.026
+    stable_key: 'sha256:8b5e9f8fe5255e9021bbaafae42807477baae1ce4356aba9f5ea2788e95cb9ed'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/UpdateDraftCountingRequest.php
+    line: 37
+    symbol: 'App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.026
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.027
+    stable_key: 'sha256:8b907e5a3535e7d59e351233bc5a825175604c62a5dc772d7a9470a31f07ea3e'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/UpdateDraftCountingRequest.php
+    line: 38
+    symbol: 'App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.027
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.028
+    stable_key: 'sha256:1f8523a6449f20f8fe46bafad293e6b479915ffa5488ceb52317dec6b5e92c99'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Inventory/Presentation/Requests/UpdateDraftCountingRequest.php
+    line: 39
+    symbol: 'App\Modules\Inventory\Presentation\Requests\UpdateDraftCountingRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.inventory.028
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.056
+    stable_key: 'sha256:a528753f8a8a413667d47af15c4133713d73a6ce79856c81d42f7094ccb358b6'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 75
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::store'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:00Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.056
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:01Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 21a48b332a7625fdc52dcbab3198c8b64c1d966284322b558aef5a36f5dddcbb
+        new_yaml_sha256: 43ecbef3d2475e176f35fe0887deccc57d4a921ae8daa79c5ae53534bc2efd24
+        target_ids:
+          - api.treasury.056
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:12Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 70b6021dc07d35a2de28f3df945b13b690775e06194cf26c6ebf3ac893c3ba2f
+        new_yaml_sha256: 876eb173311e8f69339986d078b14722f72dd77f06b53541b870b6ae240b90c7
+        target_ids:
+          - api.treasury.056
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.057
+    stable_key: 'sha256:1f9de0c40e697282e9e69315613de62762c7ede41ae56febdd560b2a2ee24499'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 131
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::update'
+    pattern_type: bare_exists_validator
+    resource: users
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:01Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.057
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:01Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 43ecbef3d2475e176f35fe0887deccc57d4a921ae8daa79c5ae53534bc2efd24
+        new_yaml_sha256: 053490be1f433abea29c08407bcd88a23a3b363dd1c34475f1f934503040fc04
+        target_ids:
+          - api.treasury.057
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:13Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 876eb173311e8f69339986d078b14722f72dd77f06b53541b870b6ae240b90c7
+        new_yaml_sha256: 3a187f330df1083d6604bc925c33d0954718261dc4de7c566433d439c4c81b02
+        target_ids:
+          - api.treasury.057
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.058
+    stable_key: 'sha256:0684fcf53dab039fcb2f4bbf331d5961b0790c278bf839babc7f5b192e56b9c3'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 36
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::createSplitPayment'
+    pattern_type: bare_exists_validator
+    resource: payment_instruments
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:02Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.058
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:02Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 053490be1f433abea29c08407bcd88a23a3b363dd1c34475f1f934503040fc04
+        new_yaml_sha256: 7e5a94d81e5052a2c32baafc3c20f4c534a6ee4694627f399f87eda2e27bb52b
+        target_ids:
+          - api.treasury.058
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:14Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3a187f330df1083d6604bc925c33d0954718261dc4de7c566433d439c4c81b02
+        new_yaml_sha256: b06f1d0f74f0c20c42f61a21f6c21eea685f86e13c6e1f8350beb972992d51a4
+        target_ids:
+          - api.treasury.058
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.059
+    stable_key: 'sha256:4076ca7ab8da2296546dab5aa29513f61ed23229b06a041692037eda40a01b88'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/MultiPaymentController.php
+    line: 80
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\MultiPaymentController::recordDeposit'
+    pattern_type: bare_exists_validator
+    resource: payment_instruments
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:02Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.059
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:02Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7e5a94d81e5052a2c32baafc3c20f4c534a6ee4694627f399f87eda2e27bb52b
+        new_yaml_sha256: ccd13f1c28e6f449cf785d53f5127feec31c9d9ee732353e39bb998dcc20be4e
+        target_ids:
+          - api.treasury.059
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:14Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b06f1d0f74f0c20c42f61a21f6c21eea685f86e13c6e1f8350beb972992d51a4
+        new_yaml_sha256: f0ff951472eadcaeea024ca340fe4d3c1fe00041fedf6e82f2d6cd4409592185
+        target_ids:
+          - api.treasury.059
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.060
+    stable_key: 'sha256:03b352f928db650e1c661e2f467e5874e339e1baeb27012413850cf60bd405d5'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentMethodController.php
+    line: 77
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentMethodController::store'
+    pattern_type: bare_exists_validator
+    resource: journals
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:03Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.060
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:03Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ccd13f1c28e6f449cf785d53f5127feec31c9d9ee732353e39bb998dcc20be4e
+        new_yaml_sha256: 36bd004d71ee386d53a26eb0a22dde5823d7ebd0202ee2951d19c413a4600f7d
+        target_ids:
+          - api.treasury.060
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:15Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: f0ff951472eadcaeea024ca340fe4d3c1fe00041fedf6e82f2d6cd4409592185
+        new_yaml_sha256: 69114077afcde29deacddc8af04c5ecaa4c42e95a8ff09841010426a7adcefda
+        target_ids:
+          - api.treasury.060
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.061
+    stable_key: 'sha256:4e18dc67a136bcc37895a3a20dd38512273ab88cc5bdbb109ca1ef94c6fc2f26'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentMethodController.php
+    line: 148
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentMethodController::update'
+    pattern_type: bare_exists_validator
+    resource: journals
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:03Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.061
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:03Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 36bd004d71ee386d53a26eb0a22dde5823d7ebd0202ee2951d19c413a4600f7d
+        new_yaml_sha256: e2846dc7ad37c24b434f4bf5ccd5a95887f3bbbf239305291c37924f3ecac093
+        target_ids:
+          - api.treasury.061
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:15Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 69114077afcde29deacddc8af04c5ecaa4c42e95a8ff09841010426a7adcefda
+        new_yaml_sha256: 0d0724866099f84dce32087052ab990b20f25d5868f33c88ee671aef70db4b8c
+        target_ids:
+          - api.treasury.061
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: api.treasury.062
+    stable_key: 'sha256:2732163d5a72ecb46d15a3752b180910ea281588c34e8e9c1c022953b02e3acc'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_presentation_exists
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php
+    line: 112
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentController::store'
+    pattern_type: bare_exists_validator
+    resource: payment_instruments
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare exists with ScopedExists::tenantAndCompany or chain ->where('tenant_id') / ->where('company_id')."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-04T11:44:04Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-04T11:42:35Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 963b3b1f0d19618772d471046a6bdffcd51b84a7015b1a4c777714805f8d562d
+        new_yaml_sha256: 55dd3ebfef47d8a36656330928937e4faf03dc5cc19cd1fbb91d475e8875b3fc
+        target_ids:
+          - api.treasury.062
+        from_status: null
+        to_status: pending
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-04T11:44:04Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e2846dc7ad37c24b434f4bf5ccd5a95887f3bbbf239305291c37924f3ecac093
+        new_yaml_sha256: 6573d36c4418543a12e0d44bb49d6dc8c1ebdb6c8bbe88b3132c8b9ff6fbb3a0
+        target_ids:
+          - api.treasury.062
+        from_status: pending
+        to_status: claimed
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-04T11:44:16Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 0d0724866099f84dce32087052ab990b20f25d5868f33c88ee671aef70db4b8c
+        new_yaml_sha256: d23637e762145e074bf9212c7199fc6ad891ee21c9d89eb806af872c4093b1dc
+        target_ids:
+          - api.treasury.062
+        from_status: claimed
+        to_status: in_progress
+        commit: 4cab8fb27c76b26269ef90329f7e197635cbf03a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29
