@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+  yaml_sha256: 7b0e5abe1dfab5b8d53fd1b2ab73ed28bd34485a663ad905f852f27384d7e6bf
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -265,9 +265,9 @@ clusters:
     id: api.compliance
     display_name: Compliance
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -10234,17 +10234,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-04T19:12:56Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 251c93d2
+    regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_show_rejects_cross_tenant_alert_id'
     blocked_reason: null
     history:
       -
@@ -10263,6 +10263,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:12:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        new_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        target_ids:
+          - api.compliance.001
+        from_status: pending
+        to_status: claimed
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:12:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        new_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        target_ids:
+          - api.compliance.001
+        from_status: claimed
+        to_status: in_progress
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:18:12Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        new_yaml_sha256: 63978beb828bf349ce2cc8a1b25369ae48895402d1249504fd23f9d67c73f5bd
+        target_ids:
+          - api.compliance.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 251c93d2
+        test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_show_rejects_cross_tenant_alert_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.compliance.002
     stable_key: 'sha256:f306fadf6e5c79c747025d464944d18a5a82efdf78311d812a322d752a2c5502'
@@ -10280,17 +10328,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-04T19:12:56Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 251c93d2
+    regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_alert_id'
     blocked_reason: null
     history:
       -
@@ -10309,6 +10357,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:12:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        new_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        target_ids:
+          - api.compliance.002
+        from_status: pending
+        to_status: claimed
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:12:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        new_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        target_ids:
+          - api.compliance.002
+        from_status: claimed
+        to_status: in_progress
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:18:12Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 63978beb828bf349ce2cc8a1b25369ae48895402d1249504fd23f9d67c73f5bd
+        new_yaml_sha256: eabbbdcc9d24c60b9c2820a045743ea2d9311fd14fccfaea37b74219519d94a2
+        target_ids:
+          - api.compliance.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 251c93d2
+        test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_alert_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.compliance.003
     stable_key: 'sha256:dc18fb98a00f6e5b052207975ec3cc7d7b9cfd139f573eba858648f291916ccd'
@@ -10326,17 +10422,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-04T19:12:56Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 251c93d2
+    regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_dismiss_rejects_cross_tenant_alert_id'
     blocked_reason: null
     history:
       -
@@ -10355,6 +10451,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:12:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        new_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        target_ids:
+          - api.compliance.003
+        from_status: pending
+        to_status: claimed
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:12:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        new_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        target_ids:
+          - api.compliance.003
+        from_status: claimed
+        to_status: in_progress
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:18:13Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: eabbbdcc9d24c60b9c2820a045743ea2d9311fd14fccfaea37b74219519d94a2
+        new_yaml_sha256: 7deb05af2b6ef5f2f7dabefc6c5f6ed031649029810ff2bfc2f942757d266286
+        target_ids:
+          - api.compliance.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 251c93d2
+        test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_dismiss_rejects_cross_tenant_alert_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.compliance.004
     stable_key: 'sha256:3904b541e780ad56b1ebfb628f879254028486abb82f51ec4f5069aba787a70d'
@@ -10372,17 +10516,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-04T19:12:56Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 251c93d2
+    regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_resolve_rejects_cross_tenant_alert_id'
     blocked_reason: null
     history:
       -
@@ -10401,6 +10545,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:12:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        new_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        target_ids:
+          - api.compliance.004
+        from_status: pending
+        to_status: claimed
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:12:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        new_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        target_ids:
+          - api.compliance.004
+        from_status: claimed
+        to_status: in_progress
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:18:13Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7deb05af2b6ef5f2f7dabefc6c5f6ed031649029810ff2bfc2f942757d266286
+        new_yaml_sha256: 6f978e2568e47bbe6139e596e684bc93ff6695bee6960dc64b203bb29b3a1113
+        target_ids:
+          - api.compliance.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 251c93d2
+        test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_resolve_rejects_cross_tenant_alert_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pos-stabilization.020
     stable_key: 'sha256:b27f080c680859427f218594a5cc46e76ae63886b3f29321b3773b9f4b508737'
@@ -16272,17 +16464,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-04T19:12:56Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 251c93d2
+    regression_test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_assigned_to_user_id'
     blocked_reason: null
     history:
       -
@@ -16301,6 +16493,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:12:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        new_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        target_ids:
+          - api.compliance.005
+        from_status: pending
+        to_status: claimed
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:12:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c710d4e428299b13da4e926f7e6fe0d7cfea851207bab3b82eb9385446f6e309
+        new_yaml_sha256: c0c04a9a6e12466e8ffb114ce2a7297b49d4dac33e7d775c1d543ac0d5560808
+        target_ids:
+          - api.compliance.005
+        from_status: claimed
+        to_status: in_progress
+        commit: e7c5dfd10da3e812a0f3b16ce5f74ad06dd98182
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:18:14Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6f978e2568e47bbe6139e596e684bc93ff6695bee6960dc64b203bb29b3a1113
+        new_yaml_sha256: 7b0e5abe1dfab5b8d53fd1b2ab73ed28bd34485a663ad905f852f27384d7e6bf
+        target_ids:
+          - api.compliance.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 251c93d2
+        test: 'tests/Feature/Compliance/FraudAlertTenantIsolationTest.php::test_assign_rejects_cross_tenant_assigned_to_user_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pos-stabilization.031
     stable_key: 'sha256:c51f0b35234065a0c36c2b128d93c78f1af31591603176f188520750176615d3'
