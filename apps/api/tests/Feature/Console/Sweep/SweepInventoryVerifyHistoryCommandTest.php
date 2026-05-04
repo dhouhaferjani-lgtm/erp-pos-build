@@ -503,4 +503,149 @@ class SweepInventoryVerifyHistoryCommandTest extends TestCase
         );
         $this->assertStringContainsString('new_yaml_sha256', $output);
     }
+
+    /**
+     * Codex round-2 finding #6 (CRITICAL): the round-1 fix only checked
+     * `new_yaml_sha256 !== null`. An attacker can supply any non-null value
+     * including a bogus 64-char string. Format validation + the document-level
+     * anchor check catch the forgery: even if the hash is well-formed, it
+     * doesn't match the stored metadata.yaml_sha256 (which was not updated
+     * because canonicalForHashing zeroes chain fields before computing).
+     */
+    public function test_verify_history_refuses_terminal_forged_event_with_fake_non_null_new_yaml_sha256(): void
+    {
+        $fakeHash = str_repeat('f', 64); // valid 64-char hex but not a real document hash
+        $this->reseedInventory(function (array $doc) use ($fakeHash): array {
+            /** @var list<array<string, mixed>> $callsites */
+            $callsites = $doc['callsites'];
+            foreach ($callsites as $idx => $cs) {
+                if (($cs['id'] ?? null) === 'api.treasury.001') {
+                    /** @var list<array<string, mixed>> $history */
+                    $history = $cs['history'];
+                    // Forged terminal event: previous_yaml_sha256 set to a
+                    // matching value (the seed's null is bridged by the
+                    // eventIndex==1 relaxation), new_yaml_sha256 set to a
+                    // valid-format hex string that doesn't anchor to metadata.
+                    $history[] = [
+                        'at' => '2026-05-04T01:00:00Z',
+                        'actor' => 'claude',
+                        'action' => 'claim',
+                        'command' => 'sweep:inventory:claim',
+                        'previous_yaml_sha256' => str_repeat('a', 64),
+                        'new_yaml_sha256' => $fakeHash,
+                        'target_ids' => ['api.treasury.001'],
+                        'from_status' => 'pending',
+                        'to_status' => 'claimed',
+                        'commit' => null,
+                        'test' => null,
+                        'review_file' => null,
+                        'review_commit' => null,
+                        'note' => 'forged terminal event with non-null fake new_yaml_sha256',
+                    ];
+                    $cs['history'] = $history;
+                    $callsites[$idx] = $cs;
+                }
+            }
+            $doc['callsites'] = $callsites;
+
+            return $doc;
+        });
+
+        $exit = Artisan::call('sweep:inventory:verify-history', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+        ]);
+
+        $output = Artisan::output();
+        $this->assertNotSame(
+            0,
+            $exit,
+            'verify-history must reject a terminal forged event whose new_yaml_sha256 is a valid-looking hex string that does not anchor to metadata.yaml_sha256 (Codex round-2 finding #6). Output was: '.$output,
+        );
+        $this->assertStringContainsString('anchor', $output);
+    }
+
+    /**
+     * Format validation: a non-seed event with a malformed new_yaml_sha256
+     * (wrong length, uppercase, non-hex characters) must be rejected even
+     * before the anchor check fires.
+     */
+    public function test_verify_history_refuses_event_with_malformed_new_yaml_sha256(): void
+    {
+        foreach (['too-short', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg!'] as $malformed) {
+            $this->reseedInventory(function (array $doc) use ($malformed): array {
+                /** @var list<array<string, mixed>> $callsites */
+                $callsites = $doc['callsites'];
+                foreach ($callsites as $idx => $cs) {
+                    if (($cs['id'] ?? null) === 'api.treasury.001') {
+                        /** @var list<array<string, mixed>> $history */
+                        $history = $cs['history'];
+                        $history[] = [
+                            'at' => '2026-05-04T01:00:00Z',
+                            'actor' => 'claude',
+                            'action' => 'claim',
+                            'command' => 'sweep:inventory:claim',
+                            'previous_yaml_sha256' => str_repeat('a', 64),
+                            'new_yaml_sha256' => $malformed,
+                            'target_ids' => ['api.treasury.001'],
+                            'from_status' => 'pending',
+                            'to_status' => 'claimed',
+                            'commit' => null,
+                            'test' => null,
+                            'review_file' => null,
+                            'review_commit' => null,
+                            'note' => "forged terminal with malformed hash: {$malformed}",
+                        ];
+                        $cs['history'] = $history;
+                        $callsites[$idx] = $cs;
+                    }
+                }
+                $doc['callsites'] = $callsites;
+
+                return $doc;
+            });
+
+            $exit = Artisan::call('sweep:inventory:verify-history', [
+                '--inventory-path' => $this->inventoryPath,
+                '--schema-path' => $this->schemaPath,
+            ]);
+
+            $output = Artisan::output();
+            $this->assertNotSame(
+                0,
+                $exit,
+                "verify-history must reject malformed new_yaml_sha256 '{$malformed}'. Output was: ".$output,
+            );
+        }
+    }
+
+    /**
+     * Negative control: the legitimate happy-path workflow (claim through real
+     * artisan commands) MUST continue to pass verify-history after the
+     * format + anchor checks land. Catches accidental over-rejection.
+     */
+    public function test_verify_history_passes_after_real_workflow_with_anchor_check_active(): void
+    {
+        // Drive a real claim through the artisan command. mutate() will stamp
+        // the post-mutation hash on the new event AND set metadata.yaml_sha256
+        // to the same value, so the anchor check trivially passes.
+        $this->assertSame(0, Artisan::call('sweep:inventory:claim', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+            '--callsite-id' => 'api.treasury.001',
+            '--actor' => 'claude',
+        ]));
+
+        $exit = Artisan::call('sweep:inventory:verify-history', [
+            '--inventory-path' => $this->inventoryPath,
+            '--schema-path' => $this->schemaPath,
+        ]);
+
+        $output = Artisan::output();
+        $this->assertSame(
+            0,
+            $exit,
+            'verify-history must pass after a legitimate claim — the anchor check is satisfied because mutate() stamps metadata.yaml_sha256 onto the new event. Output was: '.$output,
+        );
+    }
 }

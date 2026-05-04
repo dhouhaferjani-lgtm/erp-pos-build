@@ -133,6 +133,15 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
             $problems++;
         }
 
+        // Track every non-null new_yaml_sha256 seen across the document so we
+        // can run the document-level anchor check after walking history. The
+        // anchor check (Codex round-2 finding #6) catches a forged terminal
+        // event whose new_yaml_sha256 is a valid-looking hex string but doesn't
+        // correspond to any real mutate() — at least one event in the document
+        // MUST have new_yaml_sha256 == metadata.yaml_sha256 because that's
+        // what the most recent mutate() stamped.
+        $observedNewHashes = [];
+
         foreach ($callsites as $callsite) {
             $callsiteId = $callsite['id'];
             $history = $callsite['history'];
@@ -154,8 +163,42 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     $problems++;
                 }
 
+                if ($event['new_yaml_sha256'] !== null) {
+                    $observedNewHashes[$event['new_yaml_sha256']] = true;
+                }
+
                 $previousNewHash = $event['new_yaml_sha256'];
             }
+        }
+
+        // Document-level anchor check: the current metadata.yaml_sha256 MUST
+        // appear as the new_yaml_sha256 of at least one history event. After
+        // every legitimate mutate(), the freshly-stamped events carry exactly
+        // that value. A forged event without a matching metadata bump (or
+        // vice-versa) breaks the invariant. Combined with the file-level hash
+        // recompute above (which catches metadata-only edits) and the per-event
+        // chain + format checks, this closes the cheap forgery surfaces.
+        // RESIDUAL GAP: a fully self-consistent forgery (where the attacker
+        // recomputes canonicalForHashing, sets chain hashes correctly, and
+        // updates metadata.yaml_sha256 to match) is NOT catchable by this
+        // command alone. The master plan's Section 4 line 362 envisions a CI
+        // gate that runs verify-history alongside a git-diff against the PR
+        // base; the diff-based check is the layer that catches self-consistent
+        // forgeries by requiring every new event to have been added by an
+        // artisan-CLI invocation in the CI pipeline. Tracked separately.
+        // The anchor check only applies once at least one mutate() has run
+        // (i.e. at least one event has non-null new_yaml_sha256). On a fresh
+        // seed-only document — every history is just the generator event with
+        // null hashes — no anchor is expected; the file-level recompute above
+        // is the only integrity check that fires.
+        if ($observedNewHashes !== [] && ! isset($observedNewHashes[$storedFileHash])) {
+            $this->error(sprintf(
+                '[document-level anchor] metadata.yaml_sha256 (%s) does not appear as the new_yaml_sha256 of any history event. '.
+                'Every legitimate mutate() stamps the freshly-computed file hash on the events it appends; '.
+                'a missing anchor indicates a hand-edit (Codex round-2 finding #6).',
+                $storedFileHash,
+            ));
+            $problems++;
         }
 
         $this->line(sprintf(
@@ -228,6 +271,13 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                     $callsiteId,
                     $eventIndex,
                 );
+            } elseif (! $this->isCanonicalHashFormat($event['previous_yaml_sha256'])) {
+                $problems[] = sprintf(
+                    '[%s history[%d]] previous_yaml_sha256 %s is not a canonical 64-char lowercase hex hash — hand-edit indicator.',
+                    $callsiteId,
+                    $eventIndex,
+                    $event['previous_yaml_sha256'],
+                );
             } elseif ($previousNewHash !== null && $event['previous_yaml_sha256'] !== $previousNewHash) {
                 $problems[] = sprintf(
                     '[%s history[%d]] chain is broken: previous_yaml_sha256 %s does not match the prior event new_yaml_sha256 %s.',
@@ -251,23 +301,46 @@ final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCom
                 );
             }
 
-            // Codex BLOCK finding #2: every non-seed event MUST itself have a
-            // non-null new_yaml_sha256. Without this, a forged TERMINAL event
-            // with new_yaml_sha256: null passes silently — the chain check
-            // only inspects predecessors via subsequent events, so the last
-            // event's null is invisible. The eventIndex==1 relaxation only
-            // covers `previous_yaml_sha256` (slotted after a null-hashed
-            // seed); `new_yaml_sha256` is never relaxed.
+            // Every non-seed event MUST have a canonical 64-char lowercase hex
+            // new_yaml_sha256. Without this, a forged terminal event can survive
+            // by either:
+            //   - leaving new_yaml_sha256 = null (round-1 finding #2, fixed),
+            //   - or supplying a malformed/short value that no successor checks
+            //     because the forged event is terminal (round-2 finding #6).
+            // Format validation against the schema's regex closes both surfaces;
+            // the document-level anchor check below catches a fully-valid hex
+            // value that doesn't correspond to any real mutate().
             if ($event['new_yaml_sha256'] === null) {
                 $problems[] = sprintf(
                     '[%s history[%d]] new_yaml_sha256 is null on a non-seed event — every workflow / regenerate event must be stamped with the post-mutation hash by InventoryService::mutate(). A null hash here indicates a hand-edit.',
                     $callsiteId,
                     $eventIndex,
                 );
+            } elseif (! $this->isCanonicalHashFormat($event['new_yaml_sha256'])) {
+                $problems[] = sprintf(
+                    '[%s history[%d]] new_yaml_sha256 %s is not a canonical 64-char lowercase hex hash — hand-edit indicator (Codex round-2 finding #6).',
+                    $callsiteId,
+                    $eventIndex,
+                    $event['new_yaml_sha256'],
+                );
             }
         }
 
         return $problems;
+    }
+
+    /**
+     * The schema declares chain hashes as `^[0-9a-f]{64}$|null`. Replicate the
+     * pattern check here so verify-history rejects malformed hashes without
+     * paying the cost of full JSON-Schema validation on every load.
+     */
+    private function isCanonicalHashFormat(?string $candidate): bool
+    {
+        if ($candidate === null) {
+            return false;
+        }
+
+        return preg_match('/^[0-9a-f]{64}$/', $candidate) === 1;
     }
 
     /**
