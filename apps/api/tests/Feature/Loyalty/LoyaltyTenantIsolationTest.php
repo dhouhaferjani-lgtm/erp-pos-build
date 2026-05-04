@@ -497,6 +497,39 @@ final class LoyaltyTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // LoyaltyMemberController::enroll route param (round-2 Codex Finding 1)
+    //   The original inventory enumerated 5 LoyaltyMember findOrFail
+    //   callsites but missed `enroll`. Cross-tenant enroll would have
+    //   created an Enrollment(program_id=A, member_id=B) row.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_enroll_rejects_cross_tenant_member_id(): void
+    {
+        // memberB belongs to tenant B. Use a NEW tenant-A program (not the
+        // pre-enrolled programA) so the program_id validator passes — we
+        // want the enrollment-creation attempt to actually reach the
+        // service; the route lookup must reject it first.
+        $newProgramA = LoyaltyProgram::create([
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Program A New',
+            'program_type' => ProgramType::Points,
+            'currency' => 'EUR',
+            'status' => ProgramStatus::Active,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/loyalty/members/{$this->memberB->id}/enroll", [
+                'program_id' => $newProgramA->id,
+            ]);
+        $cross->assertStatus(404);
+
+        $this->assertDatabaseMissing('loyalty_enrollments', [
+            'member_id' => $this->memberB->id,
+            'program_id' => $newProgramA->id,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // Structural-SQL-log invariants
     //   Bar-raising pattern from Treasury round-5: pin SQL shape, not
     //   just behavior. UUID uniqueness can mask data-level leaks.

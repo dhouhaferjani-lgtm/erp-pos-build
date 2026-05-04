@@ -135,6 +135,20 @@ class LoyaltyMemberController extends Controller
      */
     public function enroll(EnrollMemberRequest $request, string $id): JsonResponse
     {
+        // api.loyalty round-2 (Codex Finding 1): the inventory enumerated
+        // 5 LoyaltyMember controller findOrFail callsites (show / update /
+        // enrollments / transactions / adjust) but missed `enroll`. The
+        // service path then resolves $id via unscoped LoyaltyMember::find
+        // in EloquentLoyaltyMemberRepository, so without this pre-check
+        // tenant-A could POST /loyalty/members/{tenantB-id}/enroll with a
+        // tenant-A program_id and create an Enrollment row linking
+        // tenant-B's member to tenant-A's program (loyalty_enrollments
+        // has no tenant column). Resolve the route id under tenant scope
+        // before delegating; ModelNotFoundException → 404 mirrors the
+        // sibling controller methods.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($id);
+
         $data = $request->validated();
 
         $enrollment = $this->enrollmentService->enroll(
