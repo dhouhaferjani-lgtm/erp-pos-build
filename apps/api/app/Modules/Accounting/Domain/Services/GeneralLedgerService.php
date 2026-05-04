@@ -1268,7 +1268,17 @@ final class GeneralLedgerService
             // Determine expense account (from category or default to GeneralExpense)
             $expenseAccountPurpose = SystemAccountPurpose::GeneralExpense;
             if ($metadata?->category?->account_id !== null) {
-                $expenseAccount = Account::findOrFail($metadata->category->account_id);
+                // api.accounting.007: tenant+company-scoped Account lookup.
+                // The expense object is already tenant-scoped at the caller
+                // (createFromExpense receives a fully-loaded Document). Pinning
+                // the Account by both tenant_id + company_id of the source
+                // expense refuses any cross-tenant account_id smuggled into
+                // metadata.category.account_id.
+                $expenseAccount = Account::query()
+                    ->where('tenant_id', $expense->tenant_id)
+                    ->where('company_id', $expense->company_id)
+                    ->whereKey($metadata->category->account_id)
+                    ->firstOrFail();
             } else {
                 $expenseAccount = $this->getAccountByPurpose($companyId, $expenseAccountPurpose);
             }

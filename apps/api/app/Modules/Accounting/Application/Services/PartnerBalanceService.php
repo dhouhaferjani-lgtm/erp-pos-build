@@ -287,7 +287,16 @@ class PartnerBalanceService
      */
     public function refreshPartnerBalance(string $companyId, string $partnerId): void
     {
-        $partner = Partner::findOrFail($partnerId);
+        // api.accounting.004: scope the Partner load by company_id so a
+        // foreign tenant's partner UUID cannot be silently picked up. The
+        // company_id parameter is the controller's route-bound tenant
+        // boundary; pinning the FK against it makes cross-tenant exfiltration
+        // structurally impossible (companies are globally unique UUIDs and
+        // are themselves tenant-owned).
+        $partner = Partner::query()
+            ->where('company_id', $companyId)
+            ->whereKey($partnerId)
+            ->firstOrFail();
 
         // Calculate receivable balance (customer: what they owe us)
         $receivableResult = $this->getPartnerBalance(
@@ -360,7 +369,12 @@ class PartnerBalanceService
         bool $refreshIfStale = true,
         int $staleMinutes = 60
     ): array {
-        $partner = Partner::findOrFail($partnerId);
+        // api.accounting.005: scope the Partner load by company_id (same
+        // structural-protection argument as api.accounting.004 above).
+        $partner = Partner::query()
+            ->where('company_id', $companyId)
+            ->whereKey($partnerId)
+            ->firstOrFail();
 
         if ($refreshIfStale && $partner->isBalanceStale($staleMinutes)) {
             $this->refreshPartnerBalance($companyId, $partnerId);
