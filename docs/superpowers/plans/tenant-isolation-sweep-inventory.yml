@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ffd672ef13b5e6b0437b6518bbc6a1849338ed86977609c23573aa573ed3a4f2
+  yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -1175,7 +1175,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T19:01:21Z'
     review:
@@ -1184,8 +1184,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a2436417
+    regression_test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_store_rejects_cross_tenant_party_id'
     blocked_reason: null
     history:
       -
@@ -1236,6 +1236,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:10:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ffd672ef13b5e6b0437b6518bbc6a1849338ed86977609c23573aa573ed3a4f2
+        new_yaml_sha256: d48b2dab6e57bd8c965a27d48cb1aec643abae3bdb0e989b4eda0a49fa8d51ae
+        target_ids:
+          - api.contact.001
+        from_status: in_progress
+        to_status: under_review
+        commit: a2436417
+        test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_store_rejects_cross_tenant_party_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.contact.002
     stable_key: 'sha256:048513f5f49fac06a9e2ed3541db848467d91a5dcd81a466c6682cc9dc0a692a'
@@ -1253,7 +1269,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T19:01:21Z'
     review:
@@ -1262,8 +1278,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: a2436417
+    regression_test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_link_party_rejects_cross_tenant_party_id'
     blocked_reason: null
     history:
       -
@@ -1314,6 +1330,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T19:10:35Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d48b2dab6e57bd8c965a27d48cb1aec643abae3bdb0e989b4eda0a49fa8d51ae
+        new_yaml_sha256: 2fa7f04395d9a7516639620db24d9f3dc47326305bae94e4ca1608ed7e5b817a
+        target_ids:
+          - api.contact.002
+        from_status: in_progress
+        to_status: under_review
+        commit: a2436417
+        test: 'tests/Feature/Contact/ContactTenantIsolationTest.php::test_link_party_rejects_cross_tenant_party_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.006
     stable_key: 'sha256:fa3939c9ad9b37d674f40304c7ff8a0abf7de4e7ba8cd378b07f876114d4ac44'
