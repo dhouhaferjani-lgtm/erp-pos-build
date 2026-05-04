@@ -1413,17 +1413,22 @@ final class TreasuryTenantIsolationTest extends TestCase
     /**
      * Pins api.treasury.032 — VendorRefundService::refundPrepayment
      * (PaymentRepository::lockForUpdate()->find on line 113-117 — now
-     * scoped to tenant + company). The service is invoked with a same-tenant
-     * PO + repositoryB. The locked-find must return null and the GL reversal
-     * must skip — no journal entry against tenant-B's repository.
+     * scoped to tenant + company). After Codex round-2 Finding 12 the
+     * service refuses cross-tenant repository ids BEFORE Payment::create,
+     * so the cross-tenant attempt now throws ModelNotFoundException AND
+     * leaves no Payment row pointing at tenant-B's repository.
+     *
+     * Pre-fix behaviour was "balance unchanged but a tenant-A Payment row
+     * with tenant-B repository_id was persisted" (cross-tenant data binding
+     * leak). The hardened service resolves the repository under the
+     * locked PO's tenant_id/company_id BEFORE Payment::create, so the
+     * caller sees ModelNotFoundException and zero rows are created.
      *
      * To exercise the line-113 find without short-circuiting on the
      * "exceeds total allocated" guard, we first seed a same-tenant
      * allocation against purchaseOrderA. Then refundPrepayment(repositoryB)
-     * — the locked-find on line 113 returns null (repositoryB is in
-     * tenant B), so balance updates + GL reversal are skipped and the
-     * Payment+PaymentAllocation rows still create. The assertion is that
-     * tenant B's repository balance is UNCHANGED (no cross-tenant write).
+     * — the scoped pre-resolve refuses, transaction rolls back, balance is
+     * unchanged AND no foreign-id Payment row exists.
      */
     public function test_vendor_refund_service_repository_lookup_skips_cross_tenant_repository(): void
     {
@@ -1441,14 +1446,19 @@ final class TreasuryTenantIsolationTest extends TestCase
         $beforeFresh = $this->repositoryB->fresh();
         $balanceBefore = $beforeFresh->balance;
 
-        $service->refundPrepayment(
-            po: $this->purchaseOrderA,
-            amount: '5.00',
-            paymentMethodId: $this->paymentMethodA->id,
-            repositoryId: $this->repositoryB->id, // cross-tenant
-            reason: 'Service-reach test for cross-tenant repository lookup',
-            userId: $this->userA->id,
-        );
+        try {
+            $service->refundPrepayment(
+                po: $this->purchaseOrderA,
+                amount: '5.00',
+                paymentMethodId: $this->paymentMethodA->id,
+                repositoryId: $this->repositoryB->id, // cross-tenant
+                reason: 'Service-reach test for cross-tenant repository lookup',
+                userId: $this->userA->id,
+            );
+            $this->fail('Expected ModelNotFoundException for cross-tenant repository_id, none thrown.');
+        } catch (ModelNotFoundException $e) {
+            // Expected — cross-tenant repository pre-resolve refuses.
+        }
 
         /** @var PaymentRepository $afterFresh */
         $afterFresh = $this->repositoryB->fresh();
@@ -1458,6 +1468,134 @@ final class TreasuryTenantIsolationTest extends TestCase
             $balanceBefore,
             $balanceAfter,
             'Cross-tenant repository balance must be unchanged after refundPrepayment().',
+        );
+
+        // Codex Finding 12 — no tenant-A Payment row may reference tenant-B's repository_id.
+        $this->assertFalse(
+            Payment::query()
+                ->where('tenant_id', $this->tenantA->id)
+                ->where('repository_id', $this->repositoryB->id)
+                ->exists(),
+            'Cross-tenant Payment row must not be persisted when repository_id is cross-tenant.',
+        );
+    }
+
+    /**
+     * Codex round-2 Finding 12 — IMPORTANT.
+     *
+     * VendorRefundService::refundPrepayment must resolve the
+     * caller-supplied repository_id under the PO's tenant_id/company_id
+     * BEFORE Payment::create. Otherwise tenant-A's payments.repository_id
+     * column ends up pointing at tenant-B's repository (real cross-tenant
+     * data binding leak even though the balance update is correctly
+     * skipped). The Payment::repository() relation is an unscoped
+     * belongsTo, so a foreign id stored in this column resolves cross-tenant
+     * on read.
+     *
+     * Test asserts: throws ModelNotFoundException AND no tenant-A Payment
+     * row was persisted carrying tenant-B's repository_id.
+     */
+    public function test_vendor_refund_service_refuses_cross_tenant_repository_before_payment_create(): void
+    {
+        // Seed a real allocation against purchaseOrderA so the "exceeds
+        // total allocated" guard does not short-circuit before reaching
+        // the repository pre-resolve.
+        PaymentAllocation::create([
+            'payment_id' => $this->paymentA->id,
+            'document_id' => $this->purchaseOrderA->id,
+            'amount' => '10.00',
+        ]);
+
+        $service = app(VendorRefundService::class);
+
+        $countBefore = Payment::query()
+            ->where('tenant_id', $this->tenantA->id)
+            ->count();
+
+        try {
+            $service->refundPrepayment(
+                po: $this->purchaseOrderA,
+                amount: '5.00',
+                paymentMethodId: $this->paymentMethodA->id,
+                repositoryId: $this->repositoryB->id, // cross-tenant
+                reason: 'Cross-tenant repository pre-resolve test',
+                userId: $this->userA->id,
+            );
+            $this->fail('Expected ModelNotFoundException for cross-tenant repository_id, none thrown.');
+        } catch (ModelNotFoundException $e) {
+            // Expected.
+        }
+
+        $this->assertFalse(
+            Payment::query()
+                ->where('tenant_id', $this->tenantA->id)
+                ->where('repository_id', $this->repositoryB->id)
+                ->exists(),
+            'No tenant-A Payment row may carry tenant-B repository_id (cross-tenant data binding leak).',
+        );
+
+        $this->assertSame(
+            $countBefore,
+            Payment::query()->where('tenant_id', $this->tenantA->id)->count(),
+            'Tenant-A Payment row count must be unchanged after a refused cross-tenant refund.',
+        );
+    }
+
+    /**
+     * Codex round-2 Finding 12 — IMPORTANT.
+     *
+     * Same root cause as the repository_id case but for payment_method_id.
+     * The caller-supplied payment_method_id is currently written into the
+     * Payment row at line 79 with no service-layer scoped lookup. The
+     * hardened service resolves the payment method under the locked PO's
+     * tenant_id/company_id BEFORE Payment::create.
+     *
+     * Test asserts: throws ModelNotFoundException AND no tenant-A Payment
+     * row was persisted carrying tenant-B's payment_method_id.
+     */
+    public function test_vendor_refund_service_refuses_cross_tenant_payment_method_before_payment_create(): void
+    {
+        // Seed a real allocation against purchaseOrderA so the "exceeds
+        // total allocated" guard does not short-circuit before reaching
+        // the payment-method pre-resolve.
+        PaymentAllocation::create([
+            'payment_id' => $this->paymentA->id,
+            'document_id' => $this->purchaseOrderA->id,
+            'amount' => '10.00',
+        ]);
+
+        $service = app(VendorRefundService::class);
+
+        $countBefore = Payment::query()
+            ->where('tenant_id', $this->tenantA->id)
+            ->count();
+
+        try {
+            $service->refundPrepayment(
+                po: $this->purchaseOrderA,
+                amount: '5.00',
+                paymentMethodId: $this->paymentMethodB->id, // cross-tenant
+                repositoryId: $this->repositoryA->id,
+                reason: 'Cross-tenant payment_method pre-resolve test',
+                userId: $this->userA->id,
+            );
+            $this->fail('Expected ModelNotFoundException for cross-tenant payment_method_id, none thrown.');
+        } catch (ModelNotFoundException $e) {
+            // Expected.
+        }
+
+        $this->assertFalse(
+            Payment::query()
+                ->where('tenant_id', $this->tenantA->id)
+                ->where('payment_method_id', $this->paymentMethodB->id)
+                ->exists(),
+            'No tenant-A Payment row may carry tenant-B payment_method_id (cross-tenant data binding leak).',
+        );
+
+        $this->assertSame(
+            $countBefore,
+            Payment::query()->where('tenant_id', $this->tenantA->id)->count(),
+            'Tenant-A Payment row count must be unchanged after a refused cross-tenant refund.',
         );
     }
 
