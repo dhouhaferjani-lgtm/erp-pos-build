@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T11:42:35Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 7b0e5abe1dfab5b8d53fd1b2ab73ed28bd34485a663ad905f852f27384d7e6bf
+  yaml_sha256: 069eccf0dd6ab820515873e859347e57fb7d6c9b24e26534e40cd6ac69666581
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -334,9 +334,9 @@ clusters:
     id: api.cart
     display_name: Cart
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -1209,7 +1209,7 @@ callsites:
         actor: codex
         action: claim
         command: 'sweep:inventory:claim'
-        previous_yaml_sha256: c5739ab558edd2d367d687d56b595e01162e2774730fa7516b9c765e94a6ffd1
+        previous_yaml_sha256: 874f7bf66e6c6978ea3699565873d805ddb5262cc7a9705814988ecaaf034053
         new_yaml_sha256: 8f55d9b98b891251e42d213c371179fff0be1c835ea2a30d2a09fa72f3faeb1a
         target_ids:
           - api.contact.001
@@ -1303,7 +1303,7 @@ callsites:
         actor: codex
         action: claim
         command: 'sweep:inventory:claim'
-        previous_yaml_sha256: c5739ab558edd2d367d687d56b595e01162e2774730fa7516b9c765e94a6ffd1
+        previous_yaml_sha256: 874f7bf66e6c6978ea3699565873d805ddb5262cc7a9705814988ecaaf034053
         new_yaml_sha256: 8f55d9b98b891251e42d213c371179fff0be1c835ea2a30d2a09fa72f3faeb1a
         target_ids:
           - api.contact.002
@@ -4125,6 +4125,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-04T19:35:41Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:repair-chain-orphan (one-shot)'
+        previous_yaml_sha256: 473424092eff3b36dcdce483a429068e54e348d414533410348b5636ee2a3e5e
+        new_yaml_sha256: 069eccf0dd6ab820515873e859347e57fb7d6c9b24e26534e40cd6ac69666581
+        target_ids:
+          - api.treasury.001
+        from_status: fixed
+        to_status: fixed
+        commit: cc9cda38c50f61e0bec6ef8235fef525a6332a98
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'chain-orphan repair: rewrote previous_yaml_sha256 references from c5739ab5... → 874f7bf6... to skip the orphan introduced by repoint_treasury_review_file.php (which mutated cluster.review_gate.review_file without appending history events). Codex round-1 api.contact REQUEST-CHANGES Finding 1.'
   -
     id: api.treasury.002
     stable_key: 'sha256:0b724abd8c367c42be114e78fe0196bb3fa6558efc2e889fba214909466f1129'
@@ -11438,9 +11454,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T19:22:01Z'
     review:
       reviewer: null
       verdict: null
@@ -11467,6 +11483,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:22:01Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7b0e5abe1dfab5b8d53fd1b2ab73ed28bd34485a663ad905f852f27384d7e6bf
+        new_yaml_sha256: db34c349ff9ecfb507080f08c34ba21fbdc1f497ef490dc2f64c8b6b14d624ea
+        target_ids:
+          - api.cart.001
+        from_status: pending
+        to_status: claimed
+        commit: cc9cda38c50f61e0bec6ef8235fef525a6332a98
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:22:02Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: db34c349ff9ecfb507080f08c34ba21fbdc1f497ef490dc2f64c8b6b14d624ea
+        new_yaml_sha256: 473424092eff3b36dcdce483a429068e54e348d414533410348b5636ee2a3e5e
+        target_ids:
+          - api.cart.001
+        from_status: claimed
+        to_status: in_progress
+        commit: cc9cda38c50f61e0bec6ef8235fef525a6332a98
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.cart.002
     stable_key: 'sha256:9d29be840e7a684670dd16d36331a324b61dd688bf9094a14f0699831f0f09bf'
@@ -11484,9 +11532,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-04T19:22:01Z'
     review:
       reviewer: null
       verdict: null
@@ -11513,6 +11561,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-04T19:22:01Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7b0e5abe1dfab5b8d53fd1b2ab73ed28bd34485a663ad905f852f27384d7e6bf
+        new_yaml_sha256: db34c349ff9ecfb507080f08c34ba21fbdc1f497ef490dc2f64c8b6b14d624ea
+        target_ids:
+          - api.cart.002
+        from_status: pending
+        to_status: claimed
+        commit: cc9cda38c50f61e0bec6ef8235fef525a6332a98
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-04T19:22:02Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: db34c349ff9ecfb507080f08c34ba21fbdc1f497ef490dc2f64c8b6b14d624ea
+        new_yaml_sha256: 473424092eff3b36dcdce483a429068e54e348d414533410348b5636ee2a3e5e
+        target_ids:
+          - api.cart.002
+        from_status: claimed
+        to_status: in_progress
+        commit: cc9cda38c50f61e0bec6ef8235fef525a6332a98
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
   -
     id: api.service.001
     stable_key: 'sha256:69dbc453ce2714fb4029783a42c2dacd769f832787b8fdccd564efbb6de5afca'
