@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Service\Application\Services;
 
-use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Service\Application\DTOs\ServiceCategoryData;
 use App\Modules\Service\Application\DTOs\ServiceData;
 use App\Modules\Service\Domain\Enums\PricingType;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Service\Domain\ServiceCategory;
 use Illuminate\Support\Collection;
-use InvalidArgumentException;
 
 class ServiceCatalogService
 {
-    public function __construct(
-        private readonly CompanyContext $companyContext,
-    ) {}
-
     // ============================================
     // Service CRUD Operations
     // ============================================
@@ -30,22 +25,20 @@ class ServiceCatalogService
      */
     public function createService(string $companyId, array $data): ServiceData
     {
-        $company = $this->companyContext->requireCompany();
-        $this->assertCompanyMatchesContext($companyId, $company->id);
+        $company = Company::findOrFail($companyId);
 
-        $existingCode = Service::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        // Check for duplicate code
+        $existingCode = Service::where('company_id', $companyId)
             ->where('code', $data['code'])
             ->exists();
 
         if ($existingCode) {
-            throw new InvalidArgumentException('Service code already exists');
+            throw new \InvalidArgumentException('Service code already exists');
         }
 
         $service = Service::create([
             'tenant_id' => $company->tenant_id,
-            'company_id' => $company->id,
+            'company_id' => $companyId,
             'code' => $data['code'],
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
@@ -69,25 +62,17 @@ class ServiceCatalogService
      */
     public function updateService(string $serviceId, array $data): ServiceData
     {
-        $company = $this->companyContext->requireCompany();
+        $service = Service::findOrFail($serviceId);
 
-        // api.service.001 — tenant+company scoped findOrFail.
-        $service = Service::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $serviceId)
-            ->firstOrFail();
-
+        // If code is being changed, check for duplicates
         if (isset($data['code']) && $data['code'] !== $service->code) {
-            $existingCode = Service::query()
-                ->where('tenant_id', $company->tenant_id)
-                ->where('company_id', $company->id)
+            $existingCode = Service::where('company_id', $service->company_id)
                 ->where('code', $data['code'])
                 ->where('id', '!=', $serviceId)
                 ->exists();
 
             if ($existingCode) {
-                throw new InvalidArgumentException('Service code already exists');
+                throw new \InvalidArgumentException('Service code already exists');
             }
         }
 
@@ -102,15 +87,7 @@ class ServiceCatalogService
      */
     public function deleteService(string $serviceId): bool
     {
-        $company = $this->companyContext->requireCompany();
-
-        // api.service.002 — tenant+company scoped findOrFail.
-        $service = Service::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $serviceId)
-            ->firstOrFail();
-
+        $service = Service::findOrFail($serviceId);
         $service->delete();
 
         return true;
@@ -121,15 +98,7 @@ class ServiceCatalogService
      */
     public function getService(string $serviceId): ServiceData
     {
-        $company = $this->companyContext->requireCompany();
-
-        // api.service.003 — tenant+company scoped findOrFail.
-        $service = Service::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $serviceId)
-            ->with('category')
-            ->firstOrFail();
+        $service = Service::with('category')->findOrFail($serviceId);
 
         return ServiceData::fromModel($service);
     }
@@ -142,12 +111,7 @@ class ServiceCatalogService
      */
     public function listServices(string $companyId, array $filters = []): Collection
     {
-        $company = $this->companyContext->requireCompany();
-        $this->assertCompanyMatchesContext($companyId, $company->id);
-
-        $query = Service::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $query = Service::where('company_id', $companyId)
             ->with('category');
 
         // Filter by active status
@@ -194,22 +158,20 @@ class ServiceCatalogService
      */
     public function createCategory(string $companyId, array $data): ServiceCategoryData
     {
-        $company = $this->companyContext->requireCompany();
-        $this->assertCompanyMatchesContext($companyId, $company->id);
+        $company = Company::findOrFail($companyId);
 
-        $existingName = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        // Check for duplicate name within company
+        $existingName = ServiceCategory::where('company_id', $companyId)
             ->where('name', $data['name'])
             ->exists();
 
         if ($existingName) {
-            throw new InvalidArgumentException('Category name already exists');
+            throw new \InvalidArgumentException('Category name already exists');
         }
 
         $category = ServiceCategory::create([
             'tenant_id' => $company->tenant_id,
-            'company_id' => $company->id,
+            'company_id' => $companyId,
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'parent_id' => $data['parent_id'] ?? null,
@@ -227,24 +189,17 @@ class ServiceCatalogService
      */
     public function updateCategory(string $categoryId, array $data): ServiceCategoryData
     {
-        $company = $this->companyContext->requireCompany();
+        $category = ServiceCategory::findOrFail($categoryId);
 
-        $category = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $categoryId)
-            ->firstOrFail();
-
+        // If name is being changed, check for duplicates
         if (isset($data['name']) && $data['name'] !== $category->name) {
-            $existingName = ServiceCategory::query()
-                ->where('tenant_id', $company->tenant_id)
-                ->where('company_id', $company->id)
+            $existingName = ServiceCategory::where('company_id', $category->company_id)
                 ->where('name', $data['name'])
                 ->where('id', '!=', $categoryId)
                 ->exists();
 
             if ($existingName) {
-                throw new InvalidArgumentException('Category name already exists');
+                throw new \InvalidArgumentException('Category name already exists');
             }
         }
 
@@ -259,29 +214,16 @@ class ServiceCatalogService
      */
     public function deleteCategory(string $categoryId): bool
     {
-        $company = $this->companyContext->requireCompany();
-
-        $category = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $categoryId)
-            ->withCount('services')
-            ->firstOrFail();
+        $category = ServiceCategory::withCount('services')->findOrFail($categoryId);
 
         if ($category->services_count > 0) {
-            throw new InvalidArgumentException('Cannot delete category with existing services');
+            throw new \InvalidArgumentException('Cannot delete category with existing services');
         }
 
-        // Child-categories check is anchored on $categoryId, which has just
-        // been verified to belong to the active tenant+company above —
-        // structurally protected by the upstream guard.
-        $hasChildren = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('parent_id', $categoryId)
-            ->exists();
+        // Also check for child categories
+        $hasChildren = ServiceCategory::where('parent_id', $categoryId)->exists();
         if ($hasChildren) {
-            throw new InvalidArgumentException('Cannot delete category with child categories');
+            throw new \InvalidArgumentException('Cannot delete category with child categories');
         }
 
         $category->delete();
@@ -294,14 +236,7 @@ class ServiceCatalogService
      */
     public function getCategory(string $categoryId): ServiceCategoryData
     {
-        $company = $this->companyContext->requireCompany();
-
-        $category = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('id', $categoryId)
-            ->withCount('services')
-            ->firstOrFail();
+        $category = ServiceCategory::withCount('services')->findOrFail($categoryId);
 
         return ServiceCategoryData::fromModel($category);
     }
@@ -314,12 +249,7 @@ class ServiceCatalogService
      */
     public function listCategories(string $companyId, array $filters = []): Collection
     {
-        $company = $this->companyContext->requireCompany();
-        $this->assertCompanyMatchesContext($companyId, $company->id);
-
-        $query = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $query = ServiceCategory::where('company_id', $companyId)
             ->withCount('services');
 
         // Filter to root categories only
@@ -345,12 +275,7 @@ class ServiceCatalogService
      */
     public function getCategoryTree(string $companyId): array
     {
-        $company = $this->companyContext->requireCompany();
-        $this->assertCompanyMatchesContext($companyId, $company->id);
-
-        $categories = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $categories = ServiceCategory::where('company_id', $companyId)
             ->withCount('services')
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -385,22 +310,5 @@ class ServiceCatalogService
         }
 
         return $tree;
-    }
-
-    /**
-     * Defense-in-depth: every public method that accepts a $companyId parameter
-     * verifies it matches the tenant-validated CompanyContext. The middleware
-     * pins context from the X-Company-Id header (or the user's first
-     * membership) — any drift between the parameter and context indicates
-     * either a controller bug or an attempt to call this service with a
-     * cross-tenant company id.
-     */
-    private function assertCompanyMatchesContext(string $passedCompanyId, string $contextCompanyId): void
-    {
-        if ($passedCompanyId !== $contextCompanyId) {
-            throw new InvalidArgumentException(
-                "Passed companyId={$passedCompanyId} does not match active CompanyContext company_id={$contextCompanyId}.",
-            );
-        }
     }
 }

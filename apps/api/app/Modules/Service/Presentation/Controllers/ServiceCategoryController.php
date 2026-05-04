@@ -74,11 +74,9 @@ class ServiceCategoryController extends Controller
      */
     public function show(Request $request, string $category): JsonResponse
     {
-        $company = $this->companyContext->requireCompany();
+        $companyId = $this->companyContext->requireCompanyId();
 
-        $categoryModel = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $categoryModel = ServiceCategory::where('company_id', $companyId)
             ->where('id', $category)
             ->withCount('services')
             ->first();
@@ -131,11 +129,9 @@ class ServiceCategoryController extends Controller
      */
     public function update(UpdateServiceCategoryRequest $request, string $category): JsonResponse
     {
-        $company = $this->companyContext->requireCompany();
+        $companyId = $this->companyContext->requireCompanyId();
 
-        $categoryModel = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $categoryModel = ServiceCategory::where('company_id', $companyId)
             ->where('id', $category)
             ->first();
 
@@ -155,7 +151,7 @@ class ServiceCategoryController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        $categoryData = $this->serviceCatalog->updateCategory($categoryModel->id, $validated);
+        $categoryData = $this->serviceCatalog->updateCategory($category, $validated);
 
         return response()->json([
             'data' => $categoryData,
@@ -171,11 +167,9 @@ class ServiceCategoryController extends Controller
      */
     public function destroy(Request $request, string $category): JsonResponse
     {
-        $company = $this->companyContext->requireCompany();
+        $companyId = $this->companyContext->requireCompanyId();
 
-        $categoryModel = ServiceCategory::query()
-            ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
+        $categoryModel = ServiceCategory::where('company_id', $companyId)
             ->where('id', $category)
             ->withCount(['services', 'children'])
             ->first();
@@ -221,7 +215,7 @@ class ServiceCategoryController extends Controller
             ], 422);
         }
 
-        $this->serviceCatalog->deleteCategory($categoryModel->id);
+        $this->serviceCatalog->deleteCategory($category);
 
         return response()->json(null, 204);
     }
