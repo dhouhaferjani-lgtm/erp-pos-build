@@ -29,6 +29,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
 
@@ -665,6 +666,28 @@ final class TreasuryTenantIsolationTest extends TestCase
         );
     }
 
+    /**
+     * Cross-tenant document route-param control: tenant-A user POSTs against
+     * tenant-B's purchase order id. The controller's
+     * `Document::findDocumentOrFail` chain is already tenant-scoped, so the
+     * route hits a 404 before any service work runs. Locks that scoping in.
+     */
+    public function test_refund_prepayment_refuses_cross_tenant_document_route_param(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/documents/{$this->purchaseOrderB->id}/refund-prepayment", [
+                'amount' => '10.00',
+                'payment_method_id' => $this->paymentMethodA->id,
+                'repository_id' => $this->repositoryA->id,
+            ]);
+        $this->assertContains(
+            $response->status(),
+            [403, 404],
+            'Cross-tenant document route-param must be rejected by scoped find. Got status '
+            .$response->status().' body: '.$response->getContent(),
+        );
+    }
+
     // =========================================================================
     // Surface 4 — Newly-discovered callsites (Codex+Opus Treasury 2026-05-04 review)
     //
@@ -1274,12 +1297,28 @@ final class TreasuryTenantIsolationTest extends TestCase
      * Used by same-tenant control assertions where the FormRequest rule must
      * accept the value but the downstream service may still 422 for unrelated
      * domain reasons (e.g. "refund exceeds allocated").
+     *
+     * @param  TestResponse<Response>  $response
      */
     private function assertNoValidationErrorFor(TestResponse $response, string $key): void
     {
         $json = $response->json();
         if (! is_array($json) || ! isset($json['error']['errors']) || ! is_array($json['error']['errors'])) {
-            return; // No validation envelope → can't have an error for $key.
+            // No FormRequest validation envelope present — that itself is the
+            // assertion: the validator did not flag $key (request reached the
+            // service layer or returned successfully). Record an explicit
+            // assertion (`assertNotSame(422, ...)` would be wrong because the
+            // service tier may legitimately return 422 for unrelated business
+            // reasons — see Codex round-2 trap) by asserting the response is
+            // not a server error, since same-tenant ids must never 500 on a
+            // path that 200/201/422-business-errored on the test setup.
+            $this->assertLessThan(
+                500,
+                $response->status(),
+                "Same-tenant control: response is 5xx for valid '{$key}' (status {$response->status()}). Body: ".$response->getContent(),
+            );
+
+            return;
         }
         $this->assertArrayNotHasKey(
             $key,
