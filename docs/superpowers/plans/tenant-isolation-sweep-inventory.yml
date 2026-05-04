@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+  yaml_sha256: d23c98514e0907f3c2ef13e0f53f53a2da5ffd857763485b3366c37773f0fd2e
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -2480,7 +2480,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2489,8 +2489,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2541,6 +2541,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:33Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c3d59e1d523b2bbe00c5d15d4f086ba0ce5e94cd66db2b98800cee4523b64515
+        new_yaml_sha256: f316c59802f6a791f6bdc57db7dba9f458e2a0598aa3a67bba13c097fee7636a
+        target_ids:
+          - api.taxation.001
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.002
     stable_key: 'sha256:b42e8f6252c5ddef7979ec10aa442f81d86d52c2aeaff22d9f9c4f1e36b05539'
@@ -2558,7 +2574,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2567,8 +2583,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2619,6 +2635,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:33Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f316c59802f6a791f6bdc57db7dba9f458e2a0598aa3a67bba13c097fee7636a
+        new_yaml_sha256: c4aec3bd6788c22fedccb55092f411efa2f1823e0d666b5662055e86265c3b29
+        target_ids:
+          - api.taxation.002
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.003
     stable_key: 'sha256:e94b042623a127af19c66e7649110d8eb0dd3f1d7ac9d852b7a9d440eb9d075e'
@@ -2636,7 +2668,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2645,8 +2677,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2697,6 +2729,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c4aec3bd6788c22fedccb55092f411efa2f1823e0d666b5662055e86265c3b29
+        new_yaml_sha256: 4b60144bba72cc5a737848c2d3b6d152d75be1b7f46b4a43a436375dbd2f5ac1
+        target_ids:
+          - api.taxation.003
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.004
     stable_key: 'sha256:75fa90fa442fb314074f8786fe667a7a37925a8d688b180cd6a1fb170fc708eb'
@@ -2714,7 +2762,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2723,8 +2771,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2775,6 +2823,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:35Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4b60144bba72cc5a737848c2d3b6d152d75be1b7f46b4a43a436375dbd2f5ac1
+        new_yaml_sha256: 0f038b0035fa8536f8a4947fe6822638f9321d6bfdecde0de34db735bd44621c
+        target_ids:
+          - api.taxation.004
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.005
     stable_key: 'sha256:79fea91c91eb16472a36f81e28da79f65e6fa654034c47fce4cdb5e9f8bcbcfe'
@@ -2792,7 +2856,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2801,8 +2865,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2853,6 +2917,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:35Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0f038b0035fa8536f8a4947fe6822638f9321d6bfdecde0de34db735bd44621c
+        new_yaml_sha256: 0d1fe90db9cf1c760c692a38fd5ac7889052fdf3d10d83202887afe41c86770a
+        target_ids:
+          - api.taxation.005
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.006
     stable_key: 'sha256:e88319cfec5d67bda38ddc507dc7b0e6384961efdb2f2d88b2a7923d93a9316c'
@@ -2870,7 +2950,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2879,8 +2959,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -2931,6 +3011,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0d1fe90db9cf1c760c692a38fd5ac7889052fdf3d10d83202887afe41c86770a
+        new_yaml_sha256: 1325952ee8528aac80003987cfbb6389c5aec526a623b33ec229615a95c8e624
+        target_ids:
+          - api.taxation.006
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.007
     stable_key: 'sha256:2ae10635018c9f81cd82e0d707b7db65a0c5028dab7abb43b25091c2cbcc9b88'
@@ -2948,7 +3044,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -2957,8 +3053,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -3009,6 +3105,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1325952ee8528aac80003987cfbb6389c5aec526a623b33ec229615a95c8e624
+        new_yaml_sha256: 82b42712ed8f63ecfde7630c128f5491ae9c3aa697590759c14aa5940a75c94b
+        target_ids:
+          - api.taxation.007
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.001
     stable_key: 'sha256:747409ac7d11e21a4c7ec45453e305b5b0e4d9fa831e30b2d4456a4030fc3e36'
@@ -9934,7 +10046,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -9943,8 +10055,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -9995,6 +10107,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 82b42712ed8f63ecfde7630c128f5491ae9c3aa697590759c14aa5940a75c94b
+        new_yaml_sha256: dde7b404d7e985d65006ed6ecb46a84972be7daa3b285b191e7829a498a022e8
+        target_ids:
+          - api.taxation.008
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.009
     stable_key: 'sha256:1ecedd8e39f50d1b93b8804fade90a73dc0a239ce32b96c4f5f309d68307333a'
@@ -10012,7 +10140,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -10021,8 +10149,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -10073,6 +10201,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:38Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dde7b404d7e985d65006ed6ecb46a84972be7daa3b285b191e7829a498a022e8
+        new_yaml_sha256: 319c8e4776938b3dd4baddd76cbc410089790d03e5e8d63f616bd06f3dbd8bda
+        target_ids:
+          - api.taxation.009
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.010
     stable_key: 'sha256:4ac40f8aab76d0670eb4d669101cac3b409c566a2c23283add64a05fb9b501be'
@@ -10090,7 +10234,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -10099,8 +10243,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -10151,6 +10295,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 319c8e4776938b3dd4baddd76cbc410089790d03e5e8d63f616bd06f3dbd8bda
+        new_yaml_sha256: 051c89f231065e2e7716e1c4f3da6a8df18651d69be7cda43e391b37ada1e090
+        target_ids:
+          - api.taxation.010
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.011
     stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
@@ -10168,7 +10328,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -10177,8 +10337,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -10229,6 +10389,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 051c89f231065e2e7716e1c4f3da6a8df18651d69be7cda43e391b37ada1e090
+        new_yaml_sha256: eb2ac0b18346f8708ff58a2da4aedae3b2caead1add5c8826a8bafc7e0e68ffc
+        target_ids:
+          - api.taxation.011
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.012
     stable_key: 'sha256:a8691f51eac7bc94258ca86d5e9a87c6921c0c80803cec82f31de043c9e5833a'
@@ -10246,7 +10422,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -10255,8 +10431,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -10307,6 +10483,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:40Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: eb2ac0b18346f8708ff58a2da4aedae3b2caead1add5c8826a8bafc7e0e68ffc
+        new_yaml_sha256: 4fc9bdff360c33e4d59583192f40633e94ceef23208a16431806a6d141a97aeb
+        target_ids:
+          - api.taxation.012
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.taxation.013
     stable_key: 'sha256:959ab0650901d034897837116609b8d6cc99118e83c12557bf581ffcdc4386ba'
@@ -10324,7 +10516,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -10333,8 +10525,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e7a2f543
+    regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -10385,6 +10577,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T23:17:41Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4fc9bdff360c33e4d59583192f40633e94ceef23208a16431806a6d141a97aeb
+        new_yaml_sha256: d23c98514e0907f3c2ef13e0f53f53a2da5ffd857763485b3366c37773f0fd2e
+        target_ids:
+          - api.taxation.013
+        from_status: in_progress
+        to_status: under_review
+        commit: e7a2f543
+        test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.004
     stable_key: 'sha256:5eaa60d88d9a4feeefcb1660ae2e53af02d0d579457ebf2095d5116f7657ebc4'
