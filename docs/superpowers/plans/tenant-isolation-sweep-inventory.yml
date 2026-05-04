@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 00940f47f15f1ec9c1f5cbd98c12bb2080c901ab2bc378080b06bca7b43171c8
+  yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -14322,7 +14322,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
@@ -14331,8 +14331,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '77185828'
+    regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_update_service_refuses_cross_tenant_id'
     blocked_reason: null
     history:
       -
@@ -14383,6 +14383,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:14:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 00940f47f15f1ec9c1f5cbd98c12bb2080c901ab2bc378080b06bca7b43171c8
+        new_yaml_sha256: 1a2463214a2d5b47623af2068804b9c5a9fb0fd26623de6129234f86512313bc
+        target_ids:
+          - api.service.001
+        from_status: in_progress
+        to_status: under_review
+        commit: '77185828'
+        test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_update_service_refuses_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.service.002
     stable_key: 'sha256:3045d4abbef4acedd1911a800e2219b7b5d940c9f95ed41d1674d9ac312038cc'
@@ -14400,7 +14416,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
@@ -14409,8 +14425,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '77185828'
+    regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_delete_service_refuses_cross_tenant_id'
     blocked_reason: null
     history:
       -
@@ -14461,6 +14477,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:14:35Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1a2463214a2d5b47623af2068804b9c5a9fb0fd26623de6129234f86512313bc
+        new_yaml_sha256: 56afd5382cffdd79eb7af9c228f9dff99073562952f7ca32e90457c91ee469a9
+        target_ids:
+          - api.service.002
+        from_status: in_progress
+        to_status: under_review
+        commit: '77185828'
+        test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_delete_service_refuses_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.service.003
     stable_key: 'sha256:41147658536d0ce3c879274c3e2ed204ef126a06b87f2fa56aa3437cc9adf4b6'
@@ -14478,7 +14510,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:41:17Z'
     review:
@@ -14487,8 +14519,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '77185828'
+    regression_test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_get_service_refuses_cross_tenant_id'
     blocked_reason: null
     history:
       -
@@ -14539,6 +14571,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-04T21:14:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 56afd5382cffdd79eb7af9c228f9dff99073562952f7ca32e90457c91ee469a9
+        new_yaml_sha256: 6f3fc74590fdd143c508df3bec5763979e095fff317ca2cd14a3d661efe2fc51
+        target_ids:
+          - api.service.003
+        from_status: in_progress
+        to_status: under_review
+        commit: '77185828'
+        test: 'tests/Feature/Service/ServiceTenantIsolationTest.php::test_service_catalog_get_service_refuses_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.treasury.026
     stable_key: 'sha256:c5e9c4403e9530f7f9495dc32ae43317be65ad4d56cbc96f67d5a5a7f8758c38'
