@@ -31,6 +31,7 @@ use App\Modules\POS\Application\Services\VoucherLedgerPushService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\SyncStatus;
+use App\Modules\POS\Domain\Enums\TableStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Floor;
 use App\Modules\POS\Domain\Receipt;
@@ -1581,6 +1582,111 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         // Tenant-B's row must remain unchanged on disk.
         $tenantBReceipt->refresh();
         $this->assertSame($tenantBFiscalHash, $tenantBReceipt->fiscal_hash);
+    }
+
+    // =========================================================================
+    // Round-3 Codex Finding 3 — Table release route bypasses tenant scope
+    // =========================================================================
+    //
+    // Path: POST /api/v1/pos/tables/{id}/release
+    // Pre-fix: TableManagementService::releaseTable does
+    //   Table::lockForUpdate()->findOrFail($tableId)
+    // and updates the row without tenant/company predicates. A tenant-A
+    // operator can release a tenant-B occupied table and read back the
+    // foreign resource. assignOrderToTable has the same unscoped pattern.
+    // Fix: anchor the locked-row SELECT on authenticated tenant_id +
+    // company_id; cross-tenant ids surface as 404 with no mutation.
+    // =========================================================================
+
+    public function test_release_table_refuses_cross_tenant_table_id(): void
+    {
+        // Seed an occupied tenant-B table.
+        $floorB = $this->seedPosFloor($this->tenantB->id, $this->companyB->id, 'F3-B');
+        $tableB = Table::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'floor_id' => $floorB->id,
+            'table_number' => 'F3-B-1',
+            'seats' => 4,
+            'status' => TableStatus::Occupied,
+            'current_order_id' => Str::uuid()->toString(),
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/tables/{$tableB->id}/release");
+
+        // Pre-fix would return 200 with the foreign table resource. Post-fix:
+        // 404 (Laravel's default ModelNotFoundException handler) — never 200.
+        $this->assertNotSame(
+            200,
+            $response->status(),
+            'Cross-tenant table_id on /pos/tables/{id}/release must NOT return 200. Body: '.$response->getContent(),
+        );
+        $this->assertSame(404, $response->status());
+
+        // Tenant-B's table state is unchanged on disk.
+        $tableB->refresh();
+        $this->assertSame(
+            TableStatus::Occupied,
+            $tableB->status,
+        );
+        $this->assertNotNull($tableB->current_order_id);
+    }
+
+    public function test_release_table_table_lookup_includes_tenant_and_company_predicates(): void
+    {
+        // Seed an occupied tenant-A table so the same-tenant control passes.
+        $floorA = $this->seedPosFloor($this->tenantA->id, $this->companyA->id, 'F3-A');
+        $tableA = Table::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'floor_id' => $floorA->id,
+            'table_number' => 'F3-A-1',
+            'seats' => 4,
+            'status' => TableStatus::Occupied,
+            'current_order_id' => Str::uuid()->toString(),
+        ]);
+
+        DB::enableQueryLog();
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/tables/{$tableA->id}/release");
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertSame(200, $response->status(), 'Same-tenant control must succeed. Body: '.$response->getContent());
+
+        // The locked-row SELECT against `pos_tables` must carry both
+        // tenant_id and company_id predicates (post-fix). Pre-fix: bare
+        // where("id" = ?) only. We scan the FIRST select against pos_tables
+        // emitted by the release path (subsequent selects via `fresh()` may
+        // have a different shape).
+        $tableSelects = collect($queries)->filter(
+            fn (array $q): bool => str_contains($q['query'], 'pos_tables')
+                && str_contains($q['query'], 'select')
+                && ! str_contains($q['query'], 'count(')
+        )->values();
+
+        $this->assertNotEmpty(
+            $tableSelects,
+            'Expected at least one SELECT against pos_tables during release. Queries: '.
+                collect($queries)->pluck('query')->implode(' || '),
+        );
+
+        // The locked-row lookup is the FIRST pos_tables SELECT — must
+        // include tenant_id + company_id predicates.
+        $first = $tableSelects->first();
+        $this->assertNotNull($first);
+        $sql = $first['query'];
+        $this->assertStringContainsString(
+            'tenant_id',
+            $sql,
+            'pos_tables locked-row SELECT must scope by tenant_id. Query: '.$sql,
+        );
+        $this->assertStringContainsString(
+            'company_id',
+            $sql,
+            'pos_tables locked-row SELECT must scope by company_id. Query: '.$sql,
+        );
     }
 
     public function test_setup_creates_per_tenant_resources_correctly(): void

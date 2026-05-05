@@ -164,9 +164,21 @@ final class TableManagementService
 
     public function assignOrderToTable(string $tableId, string $orderId): Table
     {
-        return DB::transaction(function () use ($tableId, $orderId): Table {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->resolveTenantId($companyId);
+
+        return DB::transaction(function () use ($tableId, $orderId, $tenantId, $companyId): Table {
+            // Round-3 Codex Finding 3 — anchor the locked-row SELECT on
+            // authenticated tenant + company predicates. Pre-fix:
+            // Table::lockForUpdate()->findOrFail($tableId) would mutate a
+            // foreign tenant's table.
             /** @var Table $table */
-            $table = Table::lockForUpdate()->findOrFail($tableId);
+            $table = Table::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $tableId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $table->isAvailable()) {
                 throw new \RuntimeException('Table is not available for assignment.');
@@ -183,9 +195,21 @@ final class TableManagementService
 
     public function releaseTable(string $tableId): Table
     {
-        return DB::transaction(function () use ($tableId): Table {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->resolveTenantId($companyId);
+
+        return DB::transaction(function () use ($tableId, $tenantId, $companyId): Table {
+            // Round-3 Codex Finding 3 — anchor the locked-row SELECT on
+            // authenticated tenant + company predicates. Pre-fix a tenant-A
+            // operator could release tenant-B's occupied table via
+            // POST /api/v1/pos/tables/{id}/release.
             /** @var Table $table */
-            $table = Table::lockForUpdate()->findOrFail($tableId);
+            $table = Table::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $tableId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $table->update([
                 'status' => TableStatus::Available,
