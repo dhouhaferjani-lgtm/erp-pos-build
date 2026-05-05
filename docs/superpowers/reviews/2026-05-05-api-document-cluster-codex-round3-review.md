@@ -1,5 +1,7 @@
 Verdict: APPROVE
 
+Commit reviewed: 8aabee0d
+
 Round-3 second-layer review for the api.document cluster after remediation commits:
 
 - `8aabee0d` — `DraftPersistenceService::addLine` / `addLinesBatch` persist scoped lookup results instead of raw request product/service UUIDs.
