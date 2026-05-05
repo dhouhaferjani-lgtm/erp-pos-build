@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+  yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -129,7 +129,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: fixed
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -198,7 +198,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: fixed
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -221,7 +221,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: fixed
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -290,7 +290,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: fixed
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -543,7 +543,7 @@ clusters:
     surface: api
     owner: null
     required_owner: claude
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -613,7 +613,7 @@ clusters:
     surface: api
     owner: null
     required_owner: claude
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -1127,7 +1127,7 @@ callsites:
     id: api.unmapped.001
     stable_key: 'sha256:3bf0313acea1e5190c9f911cff6c0afcb0d446520c19391b08c595c2a22ed439'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Expense/Presentation/Requests/ExpenseRequest.php
     line: 36
@@ -1169,11 +1169,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.001
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.001 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.002
     stable_key: 'sha256:72350b9cf2c178afe921713d9487b0d0870caba304cee6cc89bca5cc449782f8'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Expense/Presentation/Requests/ExpenseRequest.php
     line: 40
@@ -1215,11 +1233,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.002
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.002 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.003
     stable_key: 'sha256:173eee51df286927b592146a15c6423b4b69d27c6cd1b4cbaa30c95034dee8b2'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Expense/Presentation/Requests/ExpenseRequest.php
     line: 44
@@ -1261,11 +1297,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.003
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.003 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.004
     stable_key: 'sha256:5080abc2b13c6b4f9ed62e0fcf52fa4fac9bfb330688c363fdfb1378da69c496'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Expense/Presentation/Requests/ExpenseCategoryRequest.php
     line: 36
@@ -1307,11 +1361,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.004
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.004 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.005
     stable_key: 'sha256:394858fe87ceb9f4d0e576c09df8903a6d59a126b6557fc88ebfc21ed1c0dd4a'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Expense/Presentation/Requests/ExpenseCategoryRequest.php
     line: 40
@@ -1353,6 +1425,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.005
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.005 to keep the audit chain's target_ids references valid."
   -
     id: api.contact.001
     stable_key: 'sha256:62ee1ee7b86adaffcd5cf6e845d741b7e63bcdc5adc242a947389b9d2ce8717b'
@@ -1579,7 +1669,7 @@ callsites:
     id: api.unmapped.006
     stable_key: 'sha256:fa3939c9ad9b37d674f40304c7ff8a0abf7de4e7ba8cd378b07f876114d4ac44'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_presentation_exists
     file: apps/api/app/Modules/BatchExpiry/Presentation/Requests/CreateBatchRequest.php
     line: 20
@@ -1621,11 +1711,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.006
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.006 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.007
     stable_key: 'sha256:58f1fd3210463ab65a9bcb43e9411ee9170ec907b18f68a57adf74316d4b8dfb'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_presentation_exists
     file: apps/api/app/Modules/BatchExpiry/Presentation/Requests/WriteOffBatchRequest.php
     line: 23
@@ -1667,11 +1775,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.007
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.007 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.008
     stable_key: 'sha256:2f60e568caa255ef9fce2d033cbed3e6022eba94d58c83bb104ec9bfe75666af'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_presentation_exists
     file: apps/api/app/Modules/BatchExpiry/Presentation/Requests/TransferBatchStockRequest.php
     line: 22
@@ -1713,11 +1839,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.008
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.008 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.009
     stable_key: 'sha256:bd05ab8e21b49ff1b7b6ec00842b3963067f8371ddaacc1c9d86a2db0df7663b'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_presentation_exists
     file: apps/api/app/Modules/BatchExpiry/Presentation/Requests/TransferBatchStockRequest.php
     line: 23
@@ -1759,11 +1903,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.009
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.009 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.010
     stable_key: 'sha256:a40504b7c04b5244ebc0d2334c7aab383fe07b56dbd57eedb7c7268c58f43812'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_presentation_exists
     file: apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php
     line: 249
@@ -1805,6 +1967,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.010
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.010 to keep the audit chain's target_ids references valid."
   -
     id: api.catalog.001
     stable_key: 'sha256:909854966f7f8b457568049dad900e0544810cdc7ace6388b5c95ae7b05500b3'
@@ -4251,7 +4431,7 @@ callsites:
     id: api.unmapped.011
     stable_key: 'sha256:f03bb9de9b862120d95be08549850dc9c6e283b4d71082c6023d7c583e27971b'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Product/Presentation/Requests/UpdateProductRequest.php
     line: 55
@@ -4293,11 +4473,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.011
+          - api.unmapped
+          - api.catalog
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.011 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.012
     stable_key: 'sha256:63995f5bb688382354449e114b6aa1432635cd6e0c723e0af82e65833c63b456'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Product/Presentation/Requests/CreateProductRequest.php
     line: 53
@@ -4339,6 +4537,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.012
+          - api.unmapped
+          - api.catalog
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.012 to keep the audit chain's target_ids references valid."
   -
     id: api.pos-stabilization.001
     stable_key: 'sha256:a17880df79993c0917b03ab9ae0de97f5821cdc521a9863790631e4a4340afb6'
@@ -10292,7 +10508,7 @@ callsites:
     id: api.unmapped.013
     stable_key: 'sha256:9380ebaef3fa1118c1cba4a759245de6fb68f0e59b283362d6d025d292b681c2'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.accounting
     scanner: php_ast_find
     file: apps/api/app/Modules/Expense/Presentation/Controllers/ExpenseCategoryController.php
     line: 166
@@ -10334,11 +10550,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.013
+          - api.unmapped
+          - api.accounting
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.accounting. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.accounting, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.013 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.014
     stable_key: 'sha256:0317818b70152c33922658704cf0e8f0a58318d0e6cbf0db17f5e749c11bc467'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/BatchExpiry/Domain/Services/BatchWriteOffService.php
     line: 110
@@ -10380,6 +10614,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.014
+          - api.unmapped
+          - api.inventory
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.014 to keep the audit chain's target_ids references valid."
   -
     id: api.catalog.008
     stable_key: 'sha256:d5c67a4a690ed720d4c87921cf9235ab7c952d7ea27fb22c459fc60d7cfae7ae'
@@ -16470,7 +16722,7 @@ callsites:
     id: api.unmapped.017
     stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.pricing
     scanner: php_ast_find
     file: apps/api/app/Modules/Coupon/Application/Services/CouponApplicationService.php
     line: 51
@@ -16512,11 +16764,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.017
+          - api.unmapped
+          - api.pricing
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.pricing. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.pricing, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.017 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.018
     stable_key: 'sha256:102aae677cdd57c130173c3346d7a743a0887243b1268821beda6b8e08180f73'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
     line: 126
@@ -16558,11 +16828,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.018
+          - api.unmapped
+          - api.catalog
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.018 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.019
     stable_key: 'sha256:18277095aed0a56ae35ad878d6e4c0c4f5b40ec2e5946be3ac8fe3aa72256b4c'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
     line: 174
@@ -16604,6 +16892,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.019
+          - api.unmapped
+          - api.catalog
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.019 to keep the audit chain's target_ids references valid."
   -
     id: api.compliance.001
     stable_key: 'sha256:f783b2d1725bd0b9b116e53122affd578ad73d150fdf2e378af4096886991572'
@@ -22249,7 +22555,7 @@ callsites:
     id: api.unmapped.020
     stable_key: 'sha256:27e31d0c19bc52e09c61ef309ec4693f921bdfe52abcae1a90f942ce401b41f0'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.super-admin-context
     scanner: php_ast_find
     file: apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php
     line: 136
@@ -22291,11 +22597,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.020
+          - api.unmapped
+          - api.super-admin-context
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.020 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.021
     stable_key: 'sha256:8d0f0284f2fbbd660fd9f6f59f885310f207d87824ec24e28ef18ba00b230b4d'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.super-admin-context
     scanner: php_ast_find
     file: apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php
     line: 147
@@ -22337,11 +22661,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.021
+          - api.unmapped
+          - api.super-admin-context
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.021 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.022
     stable_key: 'sha256:46ddfe308a4e8cc5582911ac6401489788f49ccbc93b330859fb27c9404e53aa'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.super-admin-context
     scanner: php_ast_find
     file: apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php
     line: 215
@@ -22383,11 +22725,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.022
+          - api.unmapped
+          - api.super-admin-context
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.022 to keep the audit chain's target_ids references valid."
   -
     id: api.unmapped.023
     stable_key: 'sha256:d1fe2d63d248bb26e65342495e3dd8a09e6d2a407d6cd880224381c89b0f9e88'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.super-admin-context
     scanner: php_ast_find
     file: apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php
     line: 279
@@ -22429,6 +22789,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:13:47Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot)'
+        previous_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        new_yaml_sha256: 9d574ee2c313efe006d1a5e4f3df148bcf1afb24318b235945ec1eb87fed7fe6
+        target_ids:
+          - api.unmapped.023
+          - api.unmapped
+          - api.super-admin-context
+        from_status: pending
+        to_status: pending
+        commit: b23e09dbb7ce9bbd3b9183018ccd0cf6540efe53
+        test: null
+        review_file: null
+        review_commit: null
+        note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.023 to keep the audit chain's target_ids references valid."
   -
     id: api.document.041
     stable_key: 'sha256:ff140d8ccd9402107a969e8b0a913ee3c1bd7076b19ed4599d72e7c23d5649d5'
