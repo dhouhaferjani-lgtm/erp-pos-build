@@ -11,8 +11,11 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -497,6 +500,227 @@ final class InventoryTenantIsolationTest extends TestCase
             '"tenant_id"',
             $usersValidationQuery,
             'CreateCounting count_user_id validator must filter by tenant_id (users has no company_id). Got SQL: '.$usersValidationQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Same-tenant cross-company read leak (Codex round-1 Finding 1)
+    // StockLevelController + StockMovementController scoped only by
+    // tenant_id, leaking same-tenant cross-company stock data when a
+    // user with multi-company membership selects company A.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_stock_levels_index_excludes_same_tenant_cross_company_rows(): void
+    {
+        // Two companies under the SAME tenant.
+        $companyA2 = Company::create([
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Company A2',
+            'legal_name' => 'Company A2 LLC',
+            'tax_id' => 'TAX-A2-INV',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->userA->id,
+            'company_id' => $companyA2->id,
+            'role' => 'admin',
+        ]);
+        $locationA2 = Location::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $companyA2->id,
+            'name' => 'Loc A2',
+            'type' => 'warehouse',
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => '5.0',
+            'reserved' => '0.0',
+        ]);
+        $foreignLevel = StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $companyA2->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $locationA2->id,
+            'quantity' => '99.0',
+            'reserved' => '0.0',
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-levels');
+        $response->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = $response->json('data') ?? [];
+        $ids = array_column($rows, 'id');
+        $this->assertNotContains(
+            $foreignLevel->id,
+            $ids,
+            'Same-tenant cross-company stock level must NOT leak into Company A response.',
+        );
+    }
+
+    public function test_stock_movements_index_excludes_same_tenant_cross_company_rows(): void
+    {
+        $companyA2 = Company::create([
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Company A2 Mvt',
+            'legal_name' => 'Company A2 Mvt LLC',
+            'tax_id' => 'TAX-A2-MVT',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->userA->id,
+            'company_id' => $companyA2->id,
+            'role' => 'admin',
+        ]);
+
+        StockMovement::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'movement_type' => 'receipt',
+            'quantity' => '1.0',
+            'quantity_before' => '0.0',
+            'quantity_after' => '1.0',
+            'reference' => 'ref-A',
+            'user_id' => (string) $this->userA->id,
+        ]);
+        $foreignMovement = StockMovement::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $companyA2->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'movement_type' => 'receipt',
+            'quantity' => '99.0',
+            'quantity_before' => '0.0',
+            'quantity_after' => '99.0',
+            'reference' => 'ref-A2',
+            'user_id' => (string) $this->userA->id,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-movements');
+        $response->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = $response->json('data') ?? [];
+        $ids = array_column($rows, 'id');
+        $this->assertNotContains(
+            $foreignMovement->id,
+            $ids,
+            'Same-tenant cross-company stock movement must NOT leak into Company A response.',
+        );
+    }
+
+    /**
+     * Codex round-1 Finding 2 — WAC service-tier scope is not pinned by
+     * regression tests. Pin the SQL shape of recordPurchase's product
+     * lockForUpdate so reverting api.inventory.012 (line 83-87) breaks
+     * this test.
+     */
+    public function test_wac_record_purchase_locks_product_with_tenant_and_company_predicates(): void
+    {
+        /** @var WeightedAverageCostService $wac */
+        $wac = app(WeightedAverageCostService::class);
+
+        DB::enableQueryLog();
+
+        $wac->recordPurchase(
+            product: $this->productA,
+            location: $this->locationA,
+            quantity: 1.0,
+            landedUnitCost: 10.0,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Locate the products lockForUpdate query — the scoped product
+        // re-read added at WeightedAverageCostService.php:83-87. SQLite
+        // (default test DB) elides `for update`, so we match on the
+        // tenant_id + company_id + id predicates instead.
+        $productLockQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "products"')
+                && str_contains($sql, 'tenant_id')
+                && str_contains($sql, 'company_id')
+                && str_contains($sql, '"id" =')
+            ) {
+                $productLockQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $productLockQuery,
+            'WAC product lockForUpdate query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $productLockQuery,
+            'WAC recordPurchase product lock must filter by tenant_id. Got SQL: '.$productLockQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $productLockQuery,
+            'WAC recordPurchase product lock must filter by company_id. Got SQL: '.$productLockQuery,
+        );
+    }
+
+    public function test_stock_levels_index_query_includes_tenant_and_company_predicates(): void
+    {
+        DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/stock-levels')
+            ->assertStatus(200);
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $stockLevelQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (str_contains($sql, 'from "stock_levels"')) {
+                $stockLevelQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $stockLevelQuery,
+            'StockLevel index query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $stockLevelQuery,
+            'StockLevel index must filter by tenant_id. Got SQL: '.$stockLevelQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $stockLevelQuery,
+            'StockLevel index must filter by company_id. Got SQL: '.$stockLevelQuery,
         );
     }
 

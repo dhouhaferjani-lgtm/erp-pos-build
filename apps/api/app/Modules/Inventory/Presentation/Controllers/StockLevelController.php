@@ -20,10 +20,15 @@ class StockLevelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
 
+        // Both predicates required: tenant_id alone leaks same-tenant
+        // cross-company stock data when a user with multi-company
+        // membership selects company A but the query returns company B
+        // rows that share the tenant. (api.inventory Codex round-1
+        // Finding 1.)
         $query = StockLevel::query()
-            ->where('tenant_id', $tenantId)
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with(['product', 'location']);
 
         if ($request->has('product_id')) {
@@ -53,10 +58,11 @@ class StockLevelController extends Controller
     public function show(Request $request, string $productId, string $locationId): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
 
+        // Both predicates required (see index() comment).
         $stockLevel = StockLevel::query()
-            ->where('tenant_id', $tenantId)
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
             ->with(['product', 'location'])
