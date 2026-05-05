@@ -124,21 +124,33 @@ final class ReceiptSyncService
      */
     private function syncSingleReceipt(SyncReceiptPayload $payload): SyncReceiptResult
     {
-        // 1. Idempotency check: if receipt with this key already exists, return duplicate
-        $existing = Receipt::where('idempotency_key', $payload->idempotencyKey)->first();
+        // 1. Idempotency check: if receipt with this key already exists, return duplicate.
+        //    Round-3 Codex Finding 2 — the SELECT MUST be scoped by authenticated
+        //    tenant_id + company_id from CompanyContext. Pre-fix this lookup ran
+        //    BEFORE company context was applied, so a tenant-A submitter could
+        //    collide on a tenant-B idempotency_key and receive the foreign
+        //    receipt id, fiscal_hash, and terminal hash state through the
+        //    duplicate-response branch (a live fiscal-data leak).
+        $company = $this->companyContext->requireCompany();
+        $existing = Receipt::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('idempotency_key', $payload->idempotencyKey)
+            ->first();
         if ($existing !== null) {
-            // Refresh the terminal so the echo reflects the current persisted state
-            // (not the idempotency-hit terminal's pre-modification state).
-            //
-            // KNOWN GAP (Opus round-1 review of api.pos-stabilization, Finding 4,
-            // 2026-05-04): this Terminal::where lookup is unscoped — the
-            // anchoring `$existing->terminal_id` field comes from a Receipt row
-            // already persisted under company-scoped lock-for-update, so the
-            // attack surface is structurally protected. Pre-existing, NOT
-            // introduced by the api.pos-stabilization sweep. Tracked for a
-            // future scanner-blind-spot follow-up; see
-            // docs/superpowers/audits/2026-05-04-bare-where-scanner-gap.md.
-            $terminalForEcho = Terminal::where('id', $existing->terminal_id)->first();
+            // Refresh the terminal so the echo reflects the current persisted
+            // state. Anchor the Terminal SELECT on the company-scoped
+            // $existing row's tenant + company so the echo cannot reach a
+            // foreign Terminal even if the persisted receipt's terminal_id
+            // is somehow stale or cross-tenant. (Round-3 Finding 4 closure
+            // — F2 scoping above means `$existing` is already same-company,
+            // but the explicit predicates below are defense-in-depth and
+            // unblock the scanner-blind-spot tracker.)
+            $terminalForEcho = Terminal::query()
+                ->where('tenant_id', $existing->tenant_id)
+                ->where('company_id', $existing->company_id)
+                ->where('id', $existing->terminal_id)
+                ->first();
 
             return SyncReceiptResult::duplicate(
                 $payload->idempotencyKey,
