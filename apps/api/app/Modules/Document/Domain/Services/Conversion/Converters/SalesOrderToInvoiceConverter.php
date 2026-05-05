@@ -258,7 +258,14 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 continue;
             }
 
-            $product = Product::find($line->product_id);
+            // api.document.014/015/016: scope Product lookup by the source
+            // document's tenant + company so a corrupted line.product_id
+            // pointing across tenants surfaces as null and the line is
+            // treated defensively as a service.
+            $product = Product::query()
+                ->where('tenant_id', $order->tenant_id)
+                ->where('company_id', $order->company_id)
+                ->find($line->product_id);
             if ($product === null) {
                 // Product not found, treat as service for safety
                 $hasNonPhysical = true;
@@ -312,7 +319,14 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 continue;
             }
 
-            $product = Product::find($line->product_id);
+            // api.document.014/015/016: scope Product lookup by the source
+            // document's tenant + company so a corrupted line.product_id
+            // pointing across tenants surfaces as null and the line is
+            // treated defensively as a service.
+            $product = Product::query()
+                ->where('tenant_id', $order->tenant_id)
+                ->where('company_id', $order->company_id)
+                ->find($line->product_id);
             if ($product === null || ! $product->isPhysical()) {
                 continue;
             }
@@ -506,7 +520,14 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             // Skip non-physical products
             $product = null;
             if ($line->product_id !== null) {
-                $product = Product::find($line->product_id);
+                // api.document.014/015/016: scope Product lookup by the source
+                // document's tenant + company so a corrupted line.product_id
+                // pointing across tenants surfaces as null and the line is
+                // treated defensively as a service.
+                $product = Product::query()
+                    ->where('tenant_id', $order->tenant_id)
+                    ->where('company_id', $order->company_id)
+                    ->find($line->product_id);
                 if ($product !== null && ! $product->isPhysical()) {
                     continue; // Skip services
                 }
