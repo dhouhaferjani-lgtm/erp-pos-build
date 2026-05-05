@@ -27,6 +27,8 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
 use App\Modules\POS\Application\Services\VoucherLedgerPushService;
 use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Floor;
+use App\Modules\POS\Domain\Table;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -782,6 +784,53 @@ final class PosStabilizationTenantIsolationTest extends TestCase
                 'pin' => '1234',
             ]);
         $this->assertApiValidationErrors($response, ['user_id']);
+    }
+
+    // =========================================================================
+    // Round-2 Opus Finding 3 — pos_floors in Create/UpdateTableRequest
+    // =========================================================================
+
+    public function test_create_table_refuses_cross_tenant_floor_id(): void
+    {
+        $floorB = $this->seedPosFloor($this->tenantB->id, $this->companyB->id, 'FloorB');
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/tables', [
+                'floor_id' => $floorB->id,
+                'table_number' => 'T-1',
+                'seats' => 4,
+            ]);
+        $this->assertApiValidationErrors($response, ['floor_id']);
+    }
+
+    public function test_update_table_refuses_cross_tenant_floor_id(): void
+    {
+        $floorA = $this->seedPosFloor($this->tenantA->id, $this->companyA->id, 'FloorA');
+        $floorB = $this->seedPosFloor($this->tenantB->id, $this->companyB->id, 'FloorB');
+        $tableA = Table::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'floor_id' => $floorA->id,
+            'table_number' => 'T-A1',
+            'seats' => 4,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/pos/tables/{$tableA->id}", [
+                'floor_id' => $floorB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['floor_id']);
+    }
+
+    private function seedPosFloor(string $tenantId, string $companyId, string $name): Floor
+    {
+        return Floor::create([
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'name' => $name.'-'.Str::random(4),
+            'position' => 0,
+            'is_active' => true,
+        ]);
     }
 
     // =========================================================================
