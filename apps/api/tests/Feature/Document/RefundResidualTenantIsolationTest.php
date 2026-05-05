@@ -526,6 +526,44 @@ final class RefundResidualTenantIsolationTest extends TestCase
         );
     }
 
+    /**
+     * api.document.045 (Codex round-2 Finding 1): the scoped lookup returns
+     * null for cross-tenant product_ids, but the previous fix still wrote
+     * the raw foreign UUID into document_lines.product_id. That made the
+     * line dereference a foreign-tenant Product via DocumentLine::product()
+     * (unscoped belongsTo) — concretely surfaced in PostCOGSOnInvoice and
+     * other downstream consumers that read $line->product->is_physical etc.
+     */
+    public function test_auto_save_batch_lines_does_not_persist_cross_tenant_product_id(): void
+    {
+        $productB = Product::factory()->create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'TenantBForeignProductId',
+        ]);
+
+        $this->actingAsForTenant()
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customerA->id,
+                'lines' => [
+                    ['product_id' => $productB->id, 'quantity' => 1, 'unit_price' => 50],
+                    ['product_id' => $productB->id, 'quantity' => 1, 'unit_price' => 60],
+                ],
+            ])
+            ->assertStatus(200);
+
+        $linesWithForeignProductId = DocumentLine::query()
+            ->where('product_id', $productB->id)
+            ->count();
+
+        $this->assertSame(
+            0,
+            $linesWithForeignProductId,
+            'addLinesBatch must not persist a cross-tenant product_id; persist null when the scoped lookup misses.',
+        );
+    }
+
     public function test_auto_save_batch_lines_query_includes_tenant_and_company_predicates(): void
     {
         $productA = Product::factory()->create([

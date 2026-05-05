@@ -236,9 +236,15 @@ final class DraftPersistenceService
         $unitPrice = (float) ($lineData['unit_price'] ?? 0);
         $lineTotal = (string) ($quantity * $unitPrice);
 
+        // api.document.045: persist the *scoped* lookup result, not the raw
+        // request UUID. If the scoped lookup missed (cross-tenant or
+        // cross-company), $product / $service is null — write null to the
+        // foreign-key column rather than poisoning the line with an
+        // attacker-supplied UUID that DocumentLine::product()/::service()
+        // (unscoped belongsTo) would later dereference.
         $line = $document->lines()->create([
-            'product_id' => $lineData['product_id'] ?? null,
-            'service_id' => $lineData['service_id'] ?? null,
+            'product_id' => $product?->id,
+            'service_id' => $service?->id,
             'line_number' => $document->lines()->count() + 1,
             'description' => $overriddenDescription,
             'designation_default_snapshot' => $designationSnapshot,
@@ -467,11 +473,17 @@ final class DraftPersistenceService
 
             $batchSnapshot = $batchDefaultName !== '' ? mb_substr($batchDefaultName, 0, 500) : null;
 
+            // api.document.045: persist the *scoped* lookup result, not the raw
+            // request UUID. If the scoped lookup missed (foreign tenant /
+            // foreign company), $product / $service is null and the FK column
+            // gets null — preventing later cross-tenant dereference via
+            // DocumentLine::product() / DocumentLine::service() unscoped
+            // belongsTo relations.
             $insertData = [
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
-                'product_id' => $lineData['product_id'] ?? null,
-                'service_id' => $lineData['service_id'] ?? null,
+                'product_id' => $product?->id,
+                'service_id' => $service?->id,
                 'line_number' => $currentLineNumber,
                 'description' => $batchDescription,
                 'designation_default_snapshot' => $batchSnapshot,
