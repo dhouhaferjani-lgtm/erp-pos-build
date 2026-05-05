@@ -41,3 +41,32 @@ The api.taxation cluster closes with:
 - 13 inventoried callsites closed at e7a2f543 (round-1 fix).
 - 8 in-cluster blind spots closed at the round-2 fix (Opus round-1 Findings 1-4 + 6 test honesty).
 - Finding 5 (StampDutyRuleController) deferred here for follow-up cluster sweep.
+
+## Follow-up annotation attempt — 2026-05-05
+
+Attempted to annotate StampDutyRuleController callsites in
+`docs/superpowers/plans/tenant-isolation-sweep-inventory.yml` as
+`structurally_protected_by_country_scoped_reference` per the
+session-final hardening directive.
+
+**Bail-out reason**: no inventory rows exist for StampDutyRuleController
+or `stamp_duty_rules`. `grep -nE "StampDuty|stamp_duty_rules"` against
+the inventory YAML returned no matches — the scanners
+(php_presentation_exists / php_ast_find) did not surface this controller
+at generation time, presumably because it lives on a country-scoped
+global-reference table that the GUARDED_TABLES list (Gate A) does not
+include AND the controller's `findOrFail` chains were not flagged by
+the Gate B `chainIsScoped` visitor (consistent behaviour with how
+`tax_configurations` callsites surfaced through scanner-blind paths
+during the api.taxation round-1 sweep).
+
+Schema confirmation (kept here for owner-of-future-cluster):
+- `database/migrations/2025_12_30_101000_create_stamp_duty_rules_table.php`
+  defines `country_code` (FK to `countries.code`) ONLY. No `tenant_id`,
+  no `company_id`. Same shape as `tax_configurations`.
+
+**Owner**: a future `api.taxation.stampduty` cluster (or a scanner
+extension that surfaces country-scoped global-reference findOrFails so
+they enter the inventory in the first place — preferred). The
+recommended-fix sketch in Finding A above remains the actionable
+template.
