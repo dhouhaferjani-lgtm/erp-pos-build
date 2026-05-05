@@ -459,3 +459,45 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "redeemReward (lines 47 + 53) and the sibling preview method (lines 132 + 141) call EloquentEnrollmentRepository::findById and EloquentRewardRepository::findById — both unscoped. Add CompanyContext and tenant-scope both lookups (Enrollment via member.tenant_id; Reward via program.tenant_id) before mutating points/inventory."
+
+  # api.pos-stabilization round-2 Opus Findings (2026-05-04 verdict at
+  # docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-opus-review.md).
+  # Three round-1 follow-ups closed in the round-2 remediation:
+  - cluster_id: api.pos-stabilization
+    slug: voucher-ledger-push-service-terminal-lookup-unscoped
+    file: apps/api/app/Modules/POS/Application/Services/VoucherLedgerPushService.php
+    line: 87
+    symbol: 'App\Modules\POS\Application\Services\VoucherLedgerPushService::push'
+    pattern_type: service_method_unscoped_anchor_from_request_input
+    resource: pos_terminals+vouchers
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Round-1 .027 fix sourced the Terminal lookup's tenant_id from request-body terminal_id (untrusted), so the Voucher SELECT's tenant predicate was a tighter error message but not a tighter security guard. Round-2 path (a): inject CompanyContext into VoucherLedgerPushService; pin Terminal lookup with where('tenant_id',$companyContextTenant)->where('company_id',$companyContextCompany); also add ScopedExists::tenantAndCompany('pos_terminals',...) on entries.*.terminal_id in VoucherLedgerSyncRequest so cross-tenant payloads 422 at validator. Both tiers anchor on authenticated CompanyContext."
+
+  - cluster_id: api.pos-stabilization
+    slug: store-receipt-request-composite-item-id-bare-exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/StoreReceiptRequest.php
+    line: 60
+    symbol: 'App\Modules\POS\Presentation\Requests\StoreReceiptRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: composite_items
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "lines.*.composite_item_id kept 'exists:composite_items,id' bare even though composite_items has both tenant_id + company_id (per migration 2026_02_19_100001) and the same FormRequest already constructor-injects CompanyContext for sibling product/partner/contact fields. Round-2: replace with ScopedExists::tenantAndCompany('composite_items',$tenantId,$companyId). Also scope ReceiptSyncService::syncSingleReceipt CompositeItem::find at line 235 by anchoring terminal's tenant+company so a programmatic-caller bypass cannot leak a foreign sellable snapshot into the receipt write."
+
+  - cluster_id: api.pos-stabilization
+    slug: create-update-table-request-floor-id-bare-exists
+    file: apps/api/app/Modules/POS/Presentation/Requests/CreateTableRequest.php
+    line: 19
+    symbol: 'App\Modules\POS\Presentation\Requests\CreateTableRequest::rules + UpdateTableRequest::rules'
+    pattern_type: bare_exists_validator
+    resource: pos_floors
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Both Create/UpdateTableRequest kept 'exists:pos_floors,id' bare. pos_floors has both tenant_id + company_id (per migration 2026_03_03_*_create_pos_floors_table). Round-2: constructor-inject CompanyContext on both FormRequests, replace bare exists with ScopedExists::tenantAndCompany('pos_floors',$tenantId,$companyId)."
