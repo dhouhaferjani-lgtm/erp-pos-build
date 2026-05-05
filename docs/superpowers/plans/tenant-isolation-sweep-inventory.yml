@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 5f940d60981f10bfc7867c5bcf82a4e4c620ca70b912c6b493278c4fe0301bc3
+  yaml_sha256: 7f27d5d2687e55c7a7b42546aa4ed89ccdf7f5dfe3e47321a07fb20ba52fc3e6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -1921,7 +1921,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:08Z'
     review:
@@ -1930,8 +1930,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_create_batch_rejects_cross_tenant_product_id'
     blocked_reason: null
     history:
       -
@@ -2000,6 +2000,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:12Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5f940d60981f10bfc7867c5bcf82a4e4c620ca70b912c6b493278c4fe0301bc3
+        new_yaml_sha256: 4a34d5ea48e2d64e35c73534bc225cf9f17f70e4ddce39a665725b4a5d585e3b
+        target_ids:
+          - api.unmapped.006
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_create_batch_rejects_cross_tenant_product_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.007
     stable_key: 'sha256:58f1fd3210463ab65a9bcb43e9411ee9170ec907b18f68a57adf74316d4b8dfb'
@@ -2017,7 +2033,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:09Z'
     review:
@@ -2026,8 +2042,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_write_off_batch_rejects_cross_tenant_location_id'
     blocked_reason: null
     history:
       -
@@ -2096,6 +2112,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:13Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4a34d5ea48e2d64e35c73534bc225cf9f17f70e4ddce39a665725b4a5d585e3b
+        new_yaml_sha256: 8c3c07caf6558d2c61213e4db353bac8af28f35b67b6aae11fbf78f133634cc9
+        target_ids:
+          - api.unmapped.007
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_write_off_batch_rejects_cross_tenant_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.008
     stable_key: 'sha256:2f60e568caa255ef9fce2d033cbed3e6022eba94d58c83bb104ec9bfe75666af'
@@ -2113,7 +2145,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:10Z'
     review:
@@ -2122,8 +2154,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_transfer_batch_rejects_cross_tenant_from_location_id'
     blocked_reason: null
     history:
       -
@@ -2192,6 +2224,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:14Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8c3c07caf6558d2c61213e4db353bac8af28f35b67b6aae11fbf78f133634cc9
+        new_yaml_sha256: 305af6165ebfd75e659808e5f1bea934574d75a60ecb30439f4faadbcc49b36a
+        target_ids:
+          - api.unmapped.008
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_transfer_batch_rejects_cross_tenant_from_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.009
     stable_key: 'sha256:bd05ab8e21b49ff1b7b6ec00842b3963067f8371ddaacc1c9d86a2db0df7663b'
@@ -2209,7 +2257,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:11Z'
     review:
@@ -2218,8 +2266,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_transfer_batch_rejects_cross_tenant_to_location_id'
     blocked_reason: null
     history:
       -
@@ -2288,6 +2336,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:14Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 305af6165ebfd75e659808e5f1bea934574d75a60ecb30439f4faadbcc49b36a
+        new_yaml_sha256: 903a2ed3c22221aafa772266f0654b6477f0b616013dcd4f6f73d1a067709c88
+        target_ids:
+          - api.unmapped.009
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_transfer_batch_rejects_cross_tenant_to_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.010
     stable_key: 'sha256:a40504b7c04b5244ebc0d2334c7aab383fe07b56dbd57eedb7c7268c58f43812'
@@ -2305,7 +2369,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:12Z'
     review:
@@ -2314,8 +2378,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_pos_available_batches_rejects_cross_tenant_location_id'
     blocked_reason: null
     history:
       -
@@ -2384,6 +2448,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:15Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 903a2ed3c22221aafa772266f0654b6477f0b616013dcd4f6f73d1a067709c88
+        new_yaml_sha256: dd5fcb55e7e28999561933a09488e41c4858712384f856185f3acff8d54a8a22
+        target_ids:
+          - api.unmapped.010
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_pos_available_batches_rejects_cross_tenant_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.001
     stable_key: 'sha256:909854966f7f8b457568049dad900e0544810cdc7ace6388b5c95ae7b05500b3'
@@ -11945,7 +12025,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:56:12Z'
     review:
@@ -11954,8 +12034,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '39718854'
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_batch_write_off_query_scopes_product_by_batch_tenant_and_company'
     blocked_reason: null
     history:
       -
@@ -12024,6 +12104,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:04:16Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dd5fcb55e7e28999561933a09488e41c4858712384f856185f3acff8d54a8a22
+        new_yaml_sha256: 7f27d5d2687e55c7a7b42546aa4ed89ccdf7f5dfe3e47321a07fb20ba52fc3e6
+        target_ids:
+          - api.unmapped.014
+        from_status: in_progress
+        to_status: under_review
+        commit: '39718854'
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::test_batch_write_off_query_scopes_product_by_batch_tenant_and_company'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.catalog.008
     stable_key: 'sha256:d5c67a4a690ed720d4c87921cf9235ab7c952d7ea27fb22c459fc60d7cfae7ae'
