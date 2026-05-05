@@ -425,17 +425,48 @@ final class RefundResidualTenantIsolationTest extends TestCase
 
     public function test_draft_persistence_service_uses_scoped_lookups(): void
     {
+        // Codex round-1 Finding 2: file-wide regex is insufficient when the
+        // same model class is queried from multiple methods. Anchor each check
+        // to the method body so a regression in addLine alone (or
+        // addLinesBatch alone) cannot be masked by the other path keeping the
+        // predicates intact.
         $source = $this->readSource('app/Modules/Document/Domain/Services/DraftPersistenceService.php');
         $this->assertStringContainsString('api.document.011', $source);
         $this->assertStringContainsString('api.document.012', $source);
         $this->assertStringContainsString('api.document.013', $source);
         $this->assertStringContainsString('api.document.043', $source);
         $this->assertStringContainsString('api.document.044', $source);
-        // Tighten per Opus Finding D: require BOTH tenant_id AND company_id literals,
-        // not just tenant_id, so a regression that drops EITHER predicate fails the test.
-        $this->assertMatchesRegularExpression('/Document::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
-        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
-        $this->assertMatchesRegularExpression('/Service::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
+
+        $saveDraft = $this->extractMethodBody($source, 'public function saveDraft');
+        $this->assertMatchesRegularExpression(
+            '/Document::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $saveDraft,
+            'saveDraft Document::query() must scope by both tenant_id and company_id (api.document.011).',
+        );
+
+        $addLine = $this->extractMethodBody($source, 'private function addLine');
+        $this->assertMatchesRegularExpression(
+            '/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $addLine,
+            'addLine Product::query() must scope by both tenant_id and company_id (api.document.012).',
+        );
+        $this->assertMatchesRegularExpression(
+            '/Service::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $addLine,
+            'addLine Service::query() must scope by both tenant_id and company_id (api.document.013).',
+        );
+
+        $addLinesBatch = $this->extractMethodBody($source, 'private function addLinesBatch');
+        $this->assertMatchesRegularExpression(
+            '/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $addLinesBatch,
+            'addLinesBatch Product::query() must scope by both tenant_id and company_id (api.document.043).',
+        );
+        $this->assertMatchesRegularExpression(
+            '/Service::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $addLinesBatch,
+            'addLinesBatch Service::query() must scope by both tenant_id and company_id (api.document.044).',
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -563,6 +594,21 @@ final class RefundResidualTenantIsolationTest extends TestCase
         $this->assertNotFalse($contents, 'Source file must be readable: '.$relative);
 
         return $contents;
+    }
+
+    /**
+     * Extract a method body from PHP source by signature prefix. Anchored on
+     * the next "\n    }\n" terminator. Used for Codex round-1 Finding 2 to
+     * confirm a per-callsite (not file-wide) regex match on scoped reads.
+     */
+    private function extractMethodBody(string $source, string $signaturePrefix): string
+    {
+        $start = strpos($source, $signaturePrefix);
+        $this->assertNotFalse($start, 'Signature prefix must exist: '.$signaturePrefix);
+        $end = strpos($source, "\n    }\n", $start);
+        $this->assertNotFalse($end, 'Method must terminate: '.$signaturePrefix);
+
+        return substr($source, $start, $end - $start);
     }
 
     private function actingAsForTenant(): self

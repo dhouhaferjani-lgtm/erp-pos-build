@@ -4,15 +4,22 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
 use App\Modules\Identity\Domain\User;
 use App\Services\CompanyConfigService;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateDocumentRequest extends FormRequest
 {
     use AppliesDiscountToleranceRule;
+
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
 
     public function authorize(): bool
     {
@@ -31,6 +38,10 @@ class UpdateDocumentRequest extends FormRequest
         $user = $authenticatedUser;
         $tenantId = $user->tenant_id;
 
+        // Codex round-1 Finding 1: scope by tenant + company.
+        $companyId = $this->companyContext->requireCompanyId();
+        $scopedTenantId = $this->companyContext->requireCompany()->tenant_id;
+
         // Check if Vehicle module is enabled for this tenant
         $configService = app(CompanyConfigService::class);
         $hasVehicleModule = $user->tenant !== null
@@ -40,7 +51,7 @@ class UpdateDocumentRequest extends FormRequest
             'partner_id' => [
                 'sometimes',
                 'uuid',
-                Rule::exists('partners', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('partners', $scopedTenantId, $companyId),
             ],
             'vehicle_context' => $hasVehicleModule ? ['nullable', 'array'] : ['prohibited'],
             'vehicle_context.vehicle_id' => ['required_with:vehicle_context', 'uuid'],
@@ -63,13 +74,13 @@ class UpdateDocumentRequest extends FormRequest
                 'nullable',
                 'uuid',
                 'prohibits:lines.*.service_id',
-                Rule::exists('products', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('products', $scopedTenantId, $companyId),
             ],
             'lines.*.service_id' => [
                 'nullable',
                 'uuid',
                 'prohibits:lines.*.product_id',
-                Rule::exists('services', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('services', $scopedTenantId, $companyId),
             ],
             'lines.*.description' => ['required_with:lines', 'string', 'min:1', 'max:500'],
             'lines.*.quantity' => ['required_with:lines', 'numeric', 'gt:0'],
