@@ -275,14 +275,33 @@ final class AccountingTenantIsolationTest extends TestCase
     public function test_account_purpose_index_route_refuses_foreign_company(): void
     {
         $cross = $this->actingAsForCompany($this->userA, $this->companyA)
-            ->getJson("/api/companies/{$this->companyB->id}/accounts/purposes");
+            ->getJson("/api/v1/companies/{$this->companyB->id}/accounts/purposes");
         $cross->assertStatus(404);
     }
 
     public function test_account_purpose_validate_route_refuses_foreign_company(): void
     {
         $cross = $this->actingAsForCompany($this->userA, $this->companyA)
-            ->getJson("/api/companies/{$this->companyB->id}/accounts/purposes/validate");
+            ->getJson("/api/v1/companies/{$this->companyB->id}/accounts/purposes/validate");
+        $cross->assertStatus(404);
+    }
+
+    public function test_account_purpose_assign_mutation_route_refuses_foreign_company(): void
+    {
+        // High-impact test: assignPurpose() mutates tenant-B's chart of
+        // accounts. Must 404 at the controller, not reach the service.
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->putJson(
+                "/api/v1/companies/{$this->companyB->id}/accounts/{$this->accountB->id}/purpose",
+                ['purpose' => 'cash'],
+            );
+        $cross->assertStatus(404);
+    }
+
+    public function test_account_purpose_remove_mutation_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/companies/{$this->companyB->id}/accounts/{$this->accountB->id}/purpose");
         $cross->assertStatus(404);
     }
 
