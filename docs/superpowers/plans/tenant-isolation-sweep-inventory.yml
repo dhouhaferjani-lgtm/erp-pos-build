@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: fb82f483a3dcbccd2dfaee18e88c9f36fd2b1497345342e4b25d2ee1627ca24f
+  yaml_sha256: fc6cd4044281bc82a3bdf5a9a6c8f6414427b0abfaf2e3f6603fc7352fe2a8ab
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -31716,7 +31716,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -31725,8 +31725,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6ef13917
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
     blocked_reason: null
     history:
       -
@@ -31777,6 +31777,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T11:50:31Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fb82f483a3dcbccd2dfaee18e88c9f36fd2b1497345342e4b25d2ee1627ca24f
+        new_yaml_sha256: f4a1e18a82a99ab0e415e6bf61f0e17c94266b444f15a37ac0fdd8a75edab33b
+        target_ids:
+          - api.pos-stabilization.034
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ef13917
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.035
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-earn-unscoped-enrollment'
@@ -31794,7 +31810,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -31803,8 +31819,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6ef13917
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_earn_refuses_cross_tenant_enrollment'
     blocked_reason: null
     history:
       -
@@ -31855,6 +31871,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T11:50:32Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f4a1e18a82a99ab0e415e6bf61f0e17c94266b444f15a37ac0fdd8a75edab33b
+        new_yaml_sha256: 508de8fc2d516d61cf4cb3b54171ac627e16bc8ec8b37b843209cfbf04a4a6dd
+        target_ids:
+          - api.pos-stabilization.035
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ef13917
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_earn_refuses_cross_tenant_enrollment'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.036
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-redeem-unscoped-enrollment-reward'
@@ -31872,7 +31904,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -31881,8 +31913,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6ef13917
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
     blocked_reason: null
     history:
       -
@@ -31933,6 +31965,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T11:50:33Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 508de8fc2d516d61cf4cb3b54171ac627e16bc8ec8b37b843209cfbf04a4a6dd
+        new_yaml_sha256: d95757a8cbc9e21ba5a2f4901487f31f86c057a5a0fbb51189e845fddf4c7c74
+        target_ids:
+          - api.pos-stabilization.036
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ef13917
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.037
     stable_key: 'manual:api.pos-stabilization:earning-processing-service-find-by-id-unscoped'
@@ -31950,7 +31998,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -31959,8 +32007,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6ef13917
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
     blocked_reason: null
     history:
       -
@@ -32011,6 +32059,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T11:50:34Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d95757a8cbc9e21ba5a2f4901487f31f86c057a5a0fbb51189e845fddf4c7c74
+        new_yaml_sha256: 4adf4c8b82954a1f645bd82355c478fab6c1210d02f800cdced92705f1d28a68
+        target_ids:
+          - api.pos-stabilization.037
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ef13917
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.038
     stable_key: 'manual:api.pos-stabilization:redemption-processing-service-find-by-id-unscoped'
@@ -32028,7 +32092,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -32037,8 +32101,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6ef13917
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
     blocked_reason: null
     history:
       -
@@ -32089,6 +32153,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T11:50:35Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4adf4c8b82954a1f645bd82355c478fab6c1210d02f800cdced92705f1d28a68
+        new_yaml_sha256: fc6cd4044281bc82a3bdf5a9a6c8f6414427b0abfaf2e3f6603fc7352fe2a8ab
+        target_ids:
+          - api.pos-stabilization.038
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ef13917
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
