@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: bc72508f132c0b52b6955f98d9071af97598e3e9092bdf38f7965f31ed8cc03f
+  yaml_sha256: 2c3f80ea25a3abeb90a998cb7dbebb564b99fc2a22137f3162e5f8152123f3b1
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -359,7 +359,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -9572,15 +9572,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T04:55:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+      review_commit: 148d2703
     fix_commit: 148d2703
     regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
     blocked_reason: null
@@ -9649,6 +9649,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T04:55:38Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: bc72508f132c0b52b6955f98d9071af97598e3e9092bdf38f7965f31ed8cc03f
+        new_yaml_sha256: 2224f8bab4819ae09adda95dbcc31a0a2a602dc79e06a63235cbd589f078f49f
+        target_ids:
+          - api.workshop.001
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 5f5ce76d725d099896ac9df448687d1f4c560da2
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+        review_commit: 148d2703
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.workshop.002
     stable_key: 'sha256:f746dc766b5dc6b213fe8106f5c23a4564891e188ced733dd7cc345f87350f64'
@@ -9666,15 +9683,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T04:55:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+      review_commit: 148d2703
     fix_commit: 148d2703
     regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_refuses_cross_tenant_partner'
     blocked_reason: null
@@ -9743,6 +9760,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T04:55:43Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2224f8bab4819ae09adda95dbcc31a0a2a602dc79e06a63235cbd589f078f49f
+        new_yaml_sha256: 8d6b49c2dedd78cd3cae97788b861928e3b0ef069013cb2d3b4032505ceb0c2e
+        target_ids:
+          - api.workshop.002
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 5f5ce76d725d099896ac9df448687d1f4c560da2
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+        review_commit: 148d2703
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.workshop.003
     stable_key: 'sha256:337a8e7a33e205531a0970b561aac77df1ab8e81cf3c3ee437a46d04ab704417'
@@ -9760,15 +9794,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T04:55:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+      review_commit: 148d2703
     fix_commit: 148d2703
     regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_succeeds_with_in_scope_partner'
     blocked_reason: null
@@ -9837,6 +9871,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T04:55:44Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8d6b49c2dedd78cd3cae97788b861928e3b0ef069013cb2d3b4032505ceb0c2e
+        new_yaml_sha256: 827f0c4b38a95c1b556dbcb8bdd5ca6f4588b54554377acc3a24ea146a20ecd8
+        target_ids:
+          - api.workshop.003
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 5f5ce76d725d099896ac9df448687d1f4c560da2
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+        review_commit: 148d2703
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.workshop.004
     stable_key: 'sha256:518e47de6e47108de03f2081ece1460d92e6b7158faf2860480a9a7050d9152b'
@@ -9854,15 +9905,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T21:21:10Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T04:55:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+      review_commit: 148d2703
     fix_commit: 148d2703
     regression_test: 'tests/Feature/Workshop/WorkOrder/WorkshopTenantIsolationTest.php::test_create_from_appointment_currency_lookup_query_includes_tenant_predicate'
     blocked_reason: null
@@ -9931,6 +9982,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T04:55:45Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 827f0c4b38a95c1b556dbcb8bdd5ca6f4588b54554377acc3a24ea146a20ecd8
+        new_yaml_sha256: 2c3f80ea25a3abeb90a998cb7dbebb564b99fc2a22137f3162e5f8152123f3b1
+        target_ids:
+          - api.workshop.004
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 5f5ce76d725d099896ac9df448687d1f4c560da2
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-workshop-cluster-opus-round2-review.md
+        review_commit: 148d2703
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.unmapped.013
     stable_key: 'sha256:9380ebaef3fa1118c1cba4a759245de6fb68f0e59b283362d6d025d292b681c2'
