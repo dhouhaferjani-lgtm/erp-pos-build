@@ -285,18 +285,29 @@ final class DocumentConversionTenantIsolationTest extends TestCase
      */
     public function test_pdf_generate_path_uses_scoped_lookup(): void
     {
-        // Direct controller invocation: instantiate with mock services and call.
-        // We verify the SQL shape via a request to download (which uses the same
-        // scopedFindOrFail helper), then assert generatePath() also routes through it.
+        // Opus Finding E: method-body-anchored check, not file-wide string
+        // match. A regression that rewrites generatePath() to use bare
+        // Document::findOrFail (while download/preview keep the helper)
+        // must fail this test.
         $controller = new \ReflectionClass(DocumentPdfController::class);
         $method = $controller->getMethod('scopedFindOrFail');
         $this->assertTrue($method->isPrivate(), 'scopedFindOrFail must be the shared private helper.');
-        // Verify generatePath calls scopedFindOrFail (source-level invariant).
+
         $fileName = $controller->getFileName();
         $this->assertIsString($fileName);
-        $generatePathSource = file_get_contents($fileName);
-        $this->assertNotFalse($generatePathSource);
-        $this->assertStringContainsString('$this->scopedFindOrFail($id)', $generatePathSource);
+        $source = file_get_contents($fileName);
+        $this->assertNotFalse($source);
+
+        $methodStart = strpos($source, 'public function generatePath');
+        $this->assertNotFalse($methodStart, 'generatePath method must exist.');
+        $methodEnd = strpos($source, "\n    }\n", $methodStart);
+        $this->assertNotFalse($methodEnd, 'generatePath method must terminate.');
+        $methodBody = substr($source, $methodStart, $methodEnd - $methodStart);
+        $this->assertStringContainsString(
+            '$this->scopedFindOrFail($id)',
+            $methodBody,
+            'generatePath method body must call scopedFindOrFail (not just download/preview).',
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────

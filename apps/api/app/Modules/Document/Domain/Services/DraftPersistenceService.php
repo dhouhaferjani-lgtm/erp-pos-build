@@ -417,12 +417,28 @@ final class DraftPersistenceService
         string $userId,
         array $linesData
     ): void {
-        // 1. Batch fetch all products and services (1 query each instead of N)
+        // 1. Batch fetch all products and services (1 query each instead of N).
+        // api.document.043: scope batch Product lookup by document tenant + company.
+        // The /auto-save route accepts unrestricted $request->all() with no
+        // validator, so without this scope a tenant-A user can POST tenant-B
+        // product UUIDs in a multi-line lines array and have foreign product
+        // names persisted as designation snapshots on tenant-A draft lines.
         $productIds = collect($linesData)->pluck('product_id')->filter()->unique()->toArray();
-        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $products = Product::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
 
+        // api.document.044: scope batch Service lookup by document tenant + company.
         $serviceIds = collect($linesData)->pluck('service_id')->filter()->unique()->toArray();
-        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+        $services = Service::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $serviceIds)
+            ->get()
+            ->keyBy('id');
 
         // 2. Prepare line data for batch insert
         $currentLineNumber = $document->lines()->count();

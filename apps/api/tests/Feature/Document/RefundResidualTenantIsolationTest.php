@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -418,7 +419,8 @@ final class RefundResidualTenantIsolationTest extends TestCase
     {
         $source = $this->readSource('app/Modules/Document/Domain/Services/DocumentPostingService.php');
         $this->assertStringContainsString('api.document.010', $source);
-        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"]/', $source);
+        // Opus Finding D: require BOTH tenant_id AND company_id, not just tenant_id.
+        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
     }
 
     public function test_draft_persistence_service_uses_scoped_lookups(): void
@@ -427,9 +429,113 @@ final class RefundResidualTenantIsolationTest extends TestCase
         $this->assertStringContainsString('api.document.011', $source);
         $this->assertStringContainsString('api.document.012', $source);
         $this->assertStringContainsString('api.document.013', $source);
-        $this->assertMatchesRegularExpression('/Document::query\(\)\s*->where\([\'"]tenant_id[\'"]/', $source);
-        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"]/', $source);
-        $this->assertMatchesRegularExpression('/Service::query\(\)\s*->where\([\'"]tenant_id[\'"]/', $source);
+        $this->assertStringContainsString('api.document.043', $source);
+        $this->assertStringContainsString('api.document.044', $source);
+        // Tighten per Opus Finding D: require BOTH tenant_id AND company_id literals,
+        // not just tenant_id, so a regression that drops EITHER predicate fails the test.
+        $this->assertMatchesRegularExpression('/Document::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
+        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
+        $this->assertMatchesRegularExpression('/Service::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.document.043/044 — DraftPersistenceService::addLinesBatch leak
+    // (Opus round-1 Finding A): the /auto-save route accepts unrestricted
+    // request input with no validator, and the batch path uses unscoped
+    // Product::whereIn / Service::whereIn that loaded foreign tenants'
+    // products and snapshotted their names into local draft lines.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_auto_save_batch_lines_does_not_leak_cross_tenant_product_name(): void
+    {
+        // Seed a tenant-B product with a distinctive name so the leak is
+        // visually unambiguous in the assertion.
+        $productB = Product::factory()->create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'TenantBSecretProductName',
+        ]);
+
+        // POST ≥2 lines to hit the batch path (saveDraft dispatches to
+        // addLinesBatch when lines count > 1).
+        $response = $this->actingAsForTenant()
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customerA->id,
+                'lines' => [
+                    [
+                        'product_id' => $productB->id,
+                        'quantity' => 1,
+                        'unit_price' => 50,
+                    ],
+                    [
+                        'product_id' => $productB->id,
+                        'quantity' => 1,
+                        'unit_price' => 60,
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+
+        // Critical post-condition: no DocumentLine in tenant A may carry the
+        // foreign product's name in description / designation_default_snapshot.
+        $linesWithSecret = DocumentLine::query()
+            ->where(function ($q) {
+                $q->where('description', 'TenantBSecretProductName')
+                    ->orWhere('designation_default_snapshot', 'TenantBSecretProductName');
+            })
+            ->get();
+
+        $this->assertCount(
+            0,
+            $linesWithSecret,
+            'addLinesBatch leaked tenant-B product name into a tenant-A draft. Found '
+            .$linesWithSecret->count().' affected line(s).',
+        );
+    }
+
+    public function test_auto_save_batch_lines_query_includes_tenant_and_company_predicates(): void
+    {
+        $productA = Product::factory()->create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Product A Batch',
+        ]);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->actingAsForTenant()
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customerA->id,
+                'lines' => [
+                    ['product_id' => $productA->id, 'quantity' => 1, 'unit_price' => 50],
+                    ['product_id' => $productA->id, 'quantity' => 1, 'unit_price' => 60],
+                ],
+            ])
+            ->assertStatus(200);
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $batchProductQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (str_contains($sql, 'from "products"') && str_contains($sql, 'in (')) {
+                $batchProductQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $batchProductQuery,
+            'addLinesBatch Product whereIn query must be captured. Log: '
+            .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString('"tenant_id"', $batchProductQuery, 'addLinesBatch must filter by tenant_id. SQL: '.$batchProductQuery);
+        $this->assertStringContainsString('"company_id"', $batchProductQuery, 'addLinesBatch must filter by company_id. SQL: '.$batchProductQuery);
     }
 
     public function test_return_note_service_uses_company_scoped_location_lookup(): void
@@ -443,7 +549,8 @@ final class RefundResidualTenantIsolationTest extends TestCase
     {
         $source = $this->readSource('app/Modules/Document/Domain/Services/DeliveryNoteService.php');
         $this->assertStringContainsString('api.document.021', $source);
-        $this->assertMatchesRegularExpression('/Document::query\(\)\s*->where\([\'"]tenant_id[\'"]/', $source);
+        // Opus Finding D: require BOTH tenant_id AND company_id, not just tenant_id.
+        $this->assertMatchesRegularExpression('/Document::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
     }
 
     // ──────────────────────────────────────────────────────────────────

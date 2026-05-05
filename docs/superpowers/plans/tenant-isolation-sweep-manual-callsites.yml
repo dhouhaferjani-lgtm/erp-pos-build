@@ -110,3 +110,33 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Add required string $companyId arg; lead query with where('company_id', $companyId). Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input."
+
+  # api.document — round-1 Opus Finding A (DraftPersistenceService::addLinesBatch
+  # is the unscoped twin of api.document.012/013 — the inventory only flagged
+  # the single-line addLine path; the batch path was missed but is reachable via
+  # the no-permission /auto-save route with no FormRequest validator)
+  - cluster_id: api.document
+    slug: draft-persistence-add-lines-batch-product-unscoped
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 422
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Product
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Scope Product::whereIn by document tenant_id + companyId so foreign product names are not snapshotted into local draft lines via /auto-save batch path."
+
+  - cluster_id: api.document
+    slug: draft-persistence-add-lines-batch-service-unscoped
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 425
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Service
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Scope Service::whereIn by document tenant_id + companyId so foreign service names are not snapshotted into local draft lines via /auto-save batch path."
