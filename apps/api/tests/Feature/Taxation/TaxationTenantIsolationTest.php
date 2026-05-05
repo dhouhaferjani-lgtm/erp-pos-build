@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\SalesWithholdingTracking;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
@@ -697,6 +698,112 @@ final class TaxationTenantIsolationTest extends TestCase
             $taxConfigQuery,
             'TaxConfiguration route-anchored lookup must filter by country_code (global reference table; '.
             'structurally_protected_by_country_scoped_reference). Got SQL: '.$taxConfigQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Round-3 follow-up: SQL-tier hardening for SalesWithholdingTracking
+    //   show + markCertificateReceived (NICE-TO-HAVE from round-2; pre-fix
+    //   was response-tier 404 collapse, post-fix is SQL-tier scoping
+    //   with tenant_id + company_id literals leading the WHERE clause).
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_sales_withholding_tracking_rejects_cross_tenant_id(): void
+    {
+        // Seed a foreign tenant tracking row + assert cross-tenant 404.
+        $foreignTracking = SalesWithholdingTracking::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'document_id' => $this->documentB->id,
+            'customer_id' => $this->partnerB->id,
+            'invoice_amount' => '100.00',
+            'withholding_rate' => '0.10',
+            'withholding_amount' => '10.00',
+            'expected_receivable' => '90.00',
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/sales-withholding/{$foreignTracking->id}");
+        $cross->assertStatus(404);
+    }
+
+    public function test_mark_certificate_received_rejects_cross_tenant_id(): void
+    {
+        $foreignTracking = SalesWithholdingTracking::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'document_id' => $this->documentB->id,
+            'customer_id' => $this->partnerB->id,
+            'invoice_amount' => '100.00',
+            'withholding_rate' => '0.10',
+            'withholding_amount' => '10.00',
+            'expected_receivable' => '90.00',
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/sales-withholding/{$foreignTracking->id}/certificate-received", [
+                'certificate_number' => 'CERT-FOREIGN-001',
+            ]);
+        $cross->assertStatus(404);
+
+        // Post-condition: foreign tracking row must NOT have been mutated.
+        $this->assertNull(
+            $foreignTracking->fresh()?->certificate_number,
+            'Cross-tenant tracking certificate_number must NOT have been written.',
+        );
+    }
+
+    public function test_show_sales_withholding_tracking_query_includes_tenant_and_company_predicates(): void
+    {
+        $sameTracking = SalesWithholdingTracking::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'document_id' => $this->documentA->id,
+            'customer_id' => $this->partnerA->id,
+            'invoice_amount' => '100.00',
+            'withholding_rate' => '0.10',
+            'withholding_amount' => '10.00',
+            'expected_receivable' => '90.00',
+        ]);
+
+        \DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/sales-withholding/{$sameTracking->id}")
+            ->assertStatus(200);
+
+        $log = \DB::getQueryLog();
+        \DB::disableQueryLog();
+
+        $trackingQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "sales_withholding_tracking"')
+                && str_contains($sql, '"id" =')
+                && ! str_contains($sql, 'count(*)')
+            ) {
+                $trackingQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $trackingQuery,
+            'SalesWithholdingTracking lookup query must be captured. Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $trackingQuery,
+            'show SQL must filter by tenant_id (round-3 SQL-tier hardening). Got SQL: '.$trackingQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $trackingQuery,
+            'show SQL must filter by company_id (round-3 SQL-tier hardening). Got SQL: '.$trackingQuery,
         );
     }
 

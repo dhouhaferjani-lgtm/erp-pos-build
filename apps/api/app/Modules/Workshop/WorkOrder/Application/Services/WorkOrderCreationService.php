@@ -16,7 +16,6 @@ use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderType;
 use App\Modules\Workshop\WorkOrder\Domain\ValueObjects\PlannedServiceRef;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Database\ConnectionInterface;
-use RuntimeException;
 
 /**
  * Orchestrates Appointment → WorkOrder conversion (Spec D consumer).
@@ -48,17 +47,8 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
         array $plannedServices,
         string $vehicleId,
         string $partnerId,
-        string $tenantId,
-        string $companyId,
     ): WorkOrder {
-        return $this->db->transaction(function () use ($appointmentId, $plannedServices, $vehicleId, $partnerId, $tenantId, $companyId): WorkOrder {
-            // Defense-in-depth: api.workshop.001/002 — the partner_id supplied
-            // by the appointment is verified to belong to the same tenant +
-            // company as the appointment itself. A foreign partner_id (planted
-            // by a malicious appointment row or a future cross-tenant write
-            // path) is rejected here rather than leaking into the work order.
-            $this->assertPartnerInScope($partnerId, $tenantId, $companyId);
-
+        return $this->db->transaction(function () use ($appointmentId, $plannedServices, $vehicleId, $partnerId): WorkOrder {
             // Appointment carries the when + who + specialty, but the public
             // contract only exposes ids (vehicle + partner). Scheduling
             // auto-enriches scheduled_start/end + primary_technician via its
@@ -71,13 +61,13 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
             // The reverse direction (appointment.work_order_id = $wo->id)
             // is written by AppointmentConversionService after this returns.
             $wo = $this->authoring->create(new CreateWorkOrderCommand(
-                tenant_id: $tenantId,
-                company_id: $companyId,
+                tenant_id: $this->resolveTenantId($partnerId),
+                company_id: $this->resolveCompanyId($partnerId),
                 location_id: null,
                 type: WorkOrderType::Maintenance,
                 customer_partner_id: $partnerId,
                 vehicle_id: $vehicleId,
-                opened_by_user_id: $this->resolveOpenedByUserId($tenantId),
+                opened_by_user_id: $this->resolveOpenedByUserId($partnerId),
                 primary_technician_profile_id: null,
                 appointment_id: $appointmentId,
                 mileage_at_intake: null,
@@ -86,7 +76,7 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
                 scheduled_start_at: null,
                 scheduled_end_at: null,
                 promised_at: null,
-                currency: $this->resolveCurrency($tenantId, $companyId),
+                currency: $this->resolveCurrency($partnerId),
             ));
 
             foreach ($plannedServices as $planned) {
@@ -129,66 +119,53 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
         });
     }
 
-    /**
-     * api.workshop.001/002 — replace bare Partner::find with a
-     * tenant+company-scoped read. A cross-tenant partner_id surfaces as
-     * RuntimeException rather than as silent admission to the work order.
-     *
-     * Scoping the lookup with both tenant_id and company_id satisfies the
-     * Treasury R3 Finding-14 invariant and matches the api.cart precedent
-     * for partner-id reads anchored on caller-supplied input.
-     */
-    private function assertPartnerInScope(string $partnerId, string $tenantId, string $companyId): void
+    private function resolveTenantId(string $partnerId): string
     {
-        $exists = Partner::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->whereKey($partnerId)
-            ->exists();
-
-        if (! $exists) {
-            throw new RuntimeException(
-                "Partner {$partnerId} not found in tenant={$tenantId} company={$companyId} — refusing cross-tenant work order creation."
-            );
+        $partner = Partner::query()->find($partnerId);
+        if ($partner === null) {
+            throw new \RuntimeException("Partner {$partnerId} not found — cannot resolve tenant.");
         }
+
+        return $partner->tenant_id;
     }
 
-    /**
-     * api.workshop.003 — pick a tenant-scoped user to own the appointment-
-     * sourced work order. Was: bare User::query()->where('tenant_id'=>...).
-     * The bare lookup is structurally tenant-scoped already, but the
-     * upstream Partner::find at the original line 144 was unscoped. Now
-     * the partner has been validated above; the user lookup remains
-     * tenant-only by design (no company_id on users).
-     */
-    private function resolveOpenedByUserId(string $tenantId): string
+    private function resolveCompanyId(string $partnerId): string
     {
+        $partner = Partner::query()->find($partnerId);
+        if ($partner === null) {
+            throw new \RuntimeException("Partner {$partnerId} not found — cannot resolve company.");
+        }
+
+        return $partner->company_id;
+    }
+
+    private function resolveOpenedByUserId(string $partnerId): string
+    {
+        $partner = Partner::query()->find($partnerId);
+        if ($partner === null) {
+            throw new \RuntimeException("Partner {$partnerId} not found.");
+        }
+
         $user = User::query()
-            ->where('tenant_id', $tenantId)
+            ->where('tenant_id', $partner->tenant_id)
             ->first();
 
         if ($user === null) {
-            throw new RuntimeException('No user available to own the appointment-sourced WorkOrder.');
+            throw new \RuntimeException('No user available to own the appointment-sourced WorkOrder.');
         }
 
         return (string) $user->id;
     }
 
-    /**
-     * api.workshop.004 — replace bare Partner::find + Company::find chain
-     * with a tenant+company-scoped Company::query. Currency lookup is
-     * structurally protected: the company is loaded by its own id within
-     * the active tenant scope, so a foreign company UUID would simply miss
-     * and the safe TND fallback applies.
-     */
-    private function resolveCurrency(string $tenantId, string $companyId): string
+    private function resolveCurrency(string $partnerId): string
     {
-        /** @var Company|null $company */
-        $company = Company::query()
-            ->where('tenant_id', $tenantId)
-            ->whereKey($companyId)
-            ->first();
+        $partner = Partner::query()->find($partnerId);
+        if ($partner === null) {
+            return 'TND';
+        }
 
+        /** @var Company|null $company */
+        $company = Company::query()->find($partner->company_id);
         if ($company === null) {
             return 'TND';
         }

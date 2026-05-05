@@ -22,12 +22,6 @@ use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
  * `$plannedServices` is a list of tagged-union refs (service vs bundle) so
  * we don't encode polymorphism via `mixed`/ambiguous IDs. See
  * `PlannedServiceRef` (Task 10.5) for the VO shape.
- *
- * `$tenantId` / `$companyId` are explicit so the implementation does NOT have
- * to derive tenant scoping from the partner row (which would be unscoped and
- * cross-tenant exploitable). The caller (AppointmentConversionService) is the
- * authoritative source — it has already loaded the appointment and trusts its
- * own tenant_id / company_id columns.
  */
 interface WorkOrderCreationServiceInterface
 {
@@ -39,7 +33,5 @@ interface WorkOrderCreationServiceInterface
         array $plannedServices,
         string $vehicleId,
         string $partnerId,
-        string $tenantId,
-        string $companyId,
     ): WorkOrder;
 }

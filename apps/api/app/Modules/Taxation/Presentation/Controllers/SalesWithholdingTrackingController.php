@@ -9,7 +9,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Application\DTOs\CreateSalesWithholdingTrackingData;
+use App\Modules\Taxation\Application\DTOs\SalesWithholdingTrackingData;
 use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
+use App\Modules\Taxation\Domain\Entities\SalesWithholdingTracking;
 use App\Modules\Taxation\Presentation\Requests\MarkCertificateReceivedRequest;
 use App\Modules\Taxation\Presentation\Requests\RecordSalesWithholdingRequest;
 use Illuminate\Http\JsonResponse;
@@ -103,18 +105,25 @@ class SalesWithholdingTrackingController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        // api.taxation round-2 (Opus Finding 3, IMPORTANT): replace
-        // load-then-403 with read-tier scoping. The api.taxation.011
-        // commit explicitly codified this anti-pattern as forbidden;
-        // sibling methods on the same controller must mirror it.
-        $tracking = $this->service->findById($id);
+        // api.taxation round-3 (NICE-TO-HAVE follow-up): tighten the
+        // round-2 response-tier 404 collapse to TRUE SQL-tier scoping.
+        // Pre-fix the foreign tracking row was hydrated (with eager-loaded
+        // document/customer/payment) before the post-load 404. Post-fix
+        // the WHERE clause carries tenant_id + company_id predicates so
+        // a foreign id never loads any data into memory.
+        $company = $this->companyContext->requireCompany();
 
-        if (! $tracking || $tracking->companyId !== $this->companyContext->getCompanyId()) {
+        $tracking = SalesWithholdingTracking::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['document', 'customer', 'payment'])
+            ->find($id);
+
+        if ($tracking === null) {
             abort(404, 'Sales withholding tracking record not found');
         }
 
         return response()->json([
-            'data' => $tracking,
+            'data' => SalesWithholdingTrackingData::fromEntity($tracking),
         ]);
     }
 
@@ -127,10 +136,18 @@ class SalesWithholdingTrackingController extends Controller
         string $id,
         MarkCertificateReceivedRequest $request
     ): JsonResponse {
-        // api.taxation round-2 (Opus Finding 3, IMPORTANT): same fix as show().
-        $tracking = $this->service->findById($id);
+        // api.taxation round-3 (NICE-TO-HAVE follow-up): SQL-tier scoping
+        // mirrors show(). The existence check uses the same WHERE filter so
+        // a foreign id 404s without ever hydrating; only after the gate
+        // passes does the service layer load + mutate.
+        $company = $this->companyContext->requireCompany();
 
-        if (! $tracking || $tracking->companyId !== $this->companyContext->getCompanyId()) {
+        $exists = SalesWithholdingTracking::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('id', $id)
+            ->exists();
+
+        if (! $exists) {
             abort(404, 'Sales withholding tracking record not found');
         }
 
