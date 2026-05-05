@@ -200,9 +200,16 @@ final class ManagerPinControllerTest extends TestCase
     }
 
     /**
-     * Test 5: Cross-tenant manager → 200 with data.valid=false.
+     * Test 5: Cross-tenant manager → 422 (validator-tier denial).
+     *
+     * Post api.pos-stabilization.031 fix: VerifyManagerPinRequest now scopes
+     * user_id via ScopedExists::tenant on users, so a cross-tenant
+     * manager_user_id is rejected at the validator BEFORE reaching
+     * ManagerPinController::verify (which previously returned 200 with
+     * data.valid=false from the look-up-and-fail path). The new contract
+     * is more secure: cross-tenant ids never even reach the PIN comparison.
      */
-    public function test_cross_tenant_manager_returns_valid_false(): void
+    public function test_cross_tenant_manager_returns_422(): void
     {
         $otherTenant = Tenant::create([
             'name' => 'Other Tenant',
@@ -234,7 +241,9 @@ final class ManagerPinControllerTest extends TestCase
                 'pin' => self::PIN,
             ]);
 
-        $response->assertOk();
-        $response->assertJsonPath('data.valid', false);
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('user_id', $errors);
     }
 }

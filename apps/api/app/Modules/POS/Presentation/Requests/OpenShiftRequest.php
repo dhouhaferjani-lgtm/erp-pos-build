@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,6 +13,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class OpenShiftRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -26,10 +34,22 @@ final class OpenShiftRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
         return [
-            'terminal_code' => ['required', 'string', 'max:50', 'exists:pos_terminals,code'],
+            // api.pos-stabilization.006 — pos_terminals (T+C, column=code).
+            'terminal_code' => [
+                'required', 'string', 'max:50',
+                ScopedExists::tenantAndCompany('pos_terminals', $tenantId, $companyId, 'code'),
+            ],
             'opening_cash' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'cashier_id' => ['nullable', 'uuid', 'exists:users,id'],
+            // api.pos-stabilization.033 — users (tenant only).
+            'cashier_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenant('users', $tenantId),
+            ],
         ];
     }
 

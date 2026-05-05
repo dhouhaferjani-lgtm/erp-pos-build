@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -13,6 +15,12 @@ use Illuminate\Validation\Rule;
  */
 final class CreateOrderRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -28,11 +36,23 @@ final class CreateOrderRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
-            'terminal_id' => ['required', 'uuid', 'exists:pos_terminals,id'],
+            // api.pos-stabilization.008 — scope pos_terminals by caller tenant + company.
+            'terminal_id' => [
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('pos_terminals', $company->tenant_id, $company->id),
+            ],
+            // pos_shifts not in inventory; defer to a future sweep. Keep
+            // bare exists so existing functionality remains intact.
             'shift_id' => ['required', 'uuid', 'exists:pos_shifts,id'],
             'table_id' => ['nullable', 'uuid'],
-            'partner_id' => ['nullable', 'uuid', 'exists:partners,id'],
+            // api.pos-stabilization.009 — scope partners by caller tenant + company.
+            'partner_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'consumption_mode' => ['nullable', 'string', Rule::enum(ConsumptionMode::class)],
             'notes' => ['nullable', 'string', 'max:1000'],

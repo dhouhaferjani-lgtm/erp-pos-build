@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\ReturnReason;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,6 +17,12 @@ use Illuminate\Validation\Rule;
  */
 final class StoreReturnRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -30,8 +38,14 @@ final class StoreReturnRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
-            'terminal_id' => 'required|uuid|exists:pos_terminals,id',
+            // api.pos-stabilization.030 — pos_terminals (T+C).
+            'terminal_id' => [
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('pos_terminals', $company->tenant_id, $company->id),
+            ],
             'return_reason' => ['required', 'string', Rule::in(array_column(ReturnReason::cases(), 'value'))],
             'lines' => 'required|array|min:1',
             'lines.*.line_id' => 'required|uuid',

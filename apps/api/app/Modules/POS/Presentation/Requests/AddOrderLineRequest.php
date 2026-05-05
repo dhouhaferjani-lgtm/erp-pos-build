@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,6 +13,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class AddOrderLineRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -26,8 +34,14 @@ final class AddOrderLineRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
-            'product_id' => ['required', 'uuid', 'exists:products,id'],
+            // api.pos-stabilization.005 — scope products by caller tenant + company.
+            'product_id' => [
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
             'quantity' => ['required', 'numeric', 'gt:0'],
             'unit_price' => ['required', 'numeric', 'gte:0'],
             'tax_rate' => ['required', 'numeric', 'gte:0'],

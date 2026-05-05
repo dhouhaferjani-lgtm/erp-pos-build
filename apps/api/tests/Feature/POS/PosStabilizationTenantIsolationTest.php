@@ -529,6 +529,249 @@ final class PosStabilizationTenantIsolationTest extends TestCase
     }
 
     // =========================================================================
+    // Group 1b — FormRequest validators: orders / receipts / shifts / z-report / pin / return
+    // =========================================================================
+    //
+    //   .003 GenerateZReportRequest      terminal_id        → pos_terminals (T+C)
+    //   .005 AddOrderLineRequest         product_id         → products      (T+C)
+    //   .006 OpenShiftRequest            terminal_code      → pos_terminals (T+C, col=code)
+    //   .008 CreateOrderRequest          terminal_id        → pos_terminals (T+C)
+    //   .009 CreateOrderRequest          partner_id         → partners      (T+C)
+    //   .010 StoreReceiptRequest         terminal_id        → pos_terminals (T+C)
+    //   .011 StoreReceiptRequest         lines.*.product_id → products      (T+C)
+    //   .012 StoreReceiptRequest         lines.*.modifiers.*.modifier_id
+    //                                    → modifiers (scoped via modifier_groups subquery)
+    //   .013 StoreReceiptRequest         lines.*.modifiers.*.modifier_group_id
+    //                                    → modifier_groups (T+C)
+    //   .014 StoreReceiptRequest         customer_id        → partners      (T+C)
+    //   .015 StoreReceiptRequest         contact_id         → contacts      (T+C)
+    //   .029 GenerateZReportRequest      cash_counts.*.payment_method_id
+    //                                    → payment_methods (T+C)
+    //   .030 StoreReturnRequest          terminal_id        → pos_terminals (T+C)
+    //   .031 VerifyManagerPinRequest     user_id            → users         (T)
+    //   .032 GenerateZReportRequest      manager_user_id    → users         (T)
+    //   .033 OpenShiftRequest            cashier_id         → users         (T)
+    // =========================================================================
+
+    public function test_generate_z_report_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/z', [
+                'terminal_id' => $this->terminalB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    public function test_add_order_line_refuses_cross_tenant_product_id(): void
+    {
+        // Reach the AddOrderLineRequest validator via an order-scoped route;
+        // simplest path is POSTing to a synthetic route — but the validator
+        // can also be exercised by a Validator::make of the request rules
+        // directly. Use the controller route to keep coverage realistic.
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/orders/'.Str::uuid()->toString().'/lines', [
+                'product_id' => $this->productB->id,
+                'quantity' => '1',
+                'unit_price' => '10.00',
+                'tax_rate' => '0',
+            ]);
+        $this->assertApiValidationErrors($response, ['product_id']);
+    }
+
+    public function test_open_shift_refuses_cross_tenant_terminal_code(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/shifts/open', [
+                'terminal_code' => $this->terminalB->code,
+                'opening_cash' => '100.00',
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_code']);
+    }
+
+    public function test_open_shift_refuses_cross_tenant_cashier_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/shifts/open', [
+                'terminal_code' => $this->terminalA->code,
+                'opening_cash' => '100.00',
+                'cashier_id' => $this->userB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['cashier_id']);
+    }
+
+    public function test_create_order_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/orders', [
+                'terminal_id' => $this->terminalB->id,
+                'shift_id' => Str::uuid()->toString(),
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    public function test_create_order_refuses_cross_tenant_partner_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/orders', [
+                'terminal_id' => $this->terminalA->id,
+                'shift_id' => Str::uuid()->toString(),
+                'partner_id' => $this->partnerB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['partner_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalB->id,
+                'lines' => [[
+                    'product_id' => $this->productA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_product_id_on_lines(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'product_id' => $this->productB->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['lines.0.product_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_modifier_group_id_on_lines(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'product_id' => $this->productA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                    'modifiers' => [[
+                        'modifier_id' => $this->modifierA->id,
+                        'modifier_group_id' => $this->modifierGroupB->id,
+                        'price_adjustment' => '0.50',
+                    ]],
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['lines.0.modifiers.0.modifier_group_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_modifier_id_on_lines(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'product_id' => $this->productA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                    'modifiers' => [[
+                        'modifier_id' => $this->modifierB->id,
+                        'modifier_group_id' => $this->modifierGroupA->id,
+                        'price_adjustment' => '0.50',
+                    ]],
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['lines.0.modifiers.0.modifier_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_customer_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'product_id' => $this->productA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+                'customer_id' => $this->partnerB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['customer_id']);
+    }
+
+    public function test_store_receipt_refuses_cross_tenant_contact_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'product_id' => $this->productA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+                'contact_id' => $this->contactB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['contact_id']);
+    }
+
+    public function test_generate_z_report_refuses_cross_tenant_payment_method_id_in_cash_counts(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/z', [
+                'terminal_id' => $this->terminalA->id,
+                'cash_counts' => [[
+                    'payment_method_id' => $this->paymentMethodB->id,
+                    'currency_code' => 'EUR',
+                    'actual_amount' => '10.00',
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['cash_counts.0.payment_method_id']);
+    }
+
+    public function test_generate_z_report_refuses_cross_tenant_manager_user_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/z', [
+                'terminal_id' => $this->terminalA->id,
+                'manager_user_id' => $this->userB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['manager_user_id']);
+    }
+
+    public function test_store_return_refuses_cross_tenant_terminal_id(): void
+    {
+        // Endpoint POST /api/v1/pos/receipts/{id}/return uses a route-anchored
+        // receipt id; the FormRequest's terminal_id rule still fires for any
+        // call shape, so a synthetic uuid for the receipt path param is fine —
+        // we're pinning the validator-tier denial of cross-tenant terminal_id.
+        $syntheticReceiptId = Str::uuid()->toString();
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/receipts/{$syntheticReceiptId}/return", [
+                'terminal_id' => $this->terminalB->id,
+                'return_reason' => 'damaged',
+                'lines' => [[
+                    'line_id' => Str::uuid()->toString(),
+                    'quantity' => '1',
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    public function test_verify_manager_pin_refuses_cross_tenant_user_id(): void
+    {
+        // ManagerPinController::verify uses VerifyManagerPinRequest;
+        // route is POST /api/v1/pos/verify-manager-pin (NOT /pos/auth/verify-pin).
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/verify-manager-pin', [
+                'user_id' => $this->userB->id,
+                'pin' => '1234',
+            ]);
+        $this->assertApiValidationErrors($response, ['user_id']);
+    }
+
+    // =========================================================================
     // Group 2 — Controller-tier route-anchored finds
     // =========================================================================
     //
