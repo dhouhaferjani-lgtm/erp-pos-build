@@ -222,6 +222,16 @@ final class ReceiptSyncService
                 $sellableUnit = 'pc';
                 $taxRate = '0.00';
 
+                // Round-3 Codex Finding 1 — defense-in-depth: even when the
+                // FormRequest validator passes, a programmatic caller (queue
+                // retry, backfill) constructing SyncReceiptPayload directly
+                // bypasses ScopedExists. We REWRITE the FK columns from the
+                // resolved entity ids — a payload UUID that fails scoped
+                // resolution is persisted as NULL, never as a raw cross-tenant
+                // FK reference.
+                $resolvedProductId = null;
+                $resolvedCompositeItemId = null;
+
                 if ($productId !== null) {
                     // api.pos-stabilization.025 — scope Product::find by the
                     // anchoring terminal's tenant + company. Cross-tenant
@@ -232,6 +242,7 @@ final class ReceiptSyncService
                         ->where('company_id', $terminal->company_id)
                         ->find($productId);
                     if ($product !== null) {
+                        $resolvedProductId = $product->id;
                         $sellableName = $product->name;
                         $sellableCode = $product->sku ?? $product->barcode ?? '';
                         $sellableUnit = $product->unit ?? 'pc';
@@ -252,6 +263,7 @@ final class ReceiptSyncService
                         ->where('company_id', $terminal->company_id)
                         ->find($compositeItemId);
                     if ($compositeItem !== null) {
+                        $resolvedCompositeItemId = $compositeItem->id;
                         $sellableName = $compositeItem->getSellableName();
                         $sellableCode = $compositeItem->code;
                         $sellableUnit = $compositeItem->getSellableUnit() ?? 'pc';
@@ -285,8 +297,11 @@ final class ReceiptSyncService
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
-                    'product_id' => $compositeItemId !== null ? null : $productId,
-                    'composite_item_id' => $compositeItemId,
+                    // Round-3 Codex Finding 1 — persist the SCOPED-RESOLVED ids
+                    // so a foreign payload UUID is stored as NULL, not as a
+                    // cross-tenant FK reference.
+                    'product_id' => $resolvedCompositeItemId !== null ? null : $resolvedProductId,
+                    'composite_item_id' => $resolvedCompositeItemId,
                     'product_code' => $sellableCode,
                     'product_name' => $sellableName,
                     'product_description' => null,

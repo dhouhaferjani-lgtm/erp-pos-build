@@ -1333,6 +1333,97 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         );
     }
 
+    // =========================================================================
+    // Round-3 Codex Finding 1 — SyncReceiptsRequest cross-tenant sellable FKs
+    // =========================================================================
+    //
+    // Path: POST /api/v1/pos/receipts/sync
+    // Pre-fix: receipts.*.lines.*.product_id and ...composite_item_id are
+    // validated only as nullable UUIDs. ReceiptSyncService refuses to LOAD a
+    // foreign Product/CompositeItem snapshot, but persists the raw payload UUID
+    // into pos_receipt_lines.product_id / composite_item_id — a tenant-A
+    // receipt line ends up referencing tenant-B sellable rows.
+    // Fix: ScopedExists::tenantAndCompany on both fields + service-tier null-
+    // fallback so any FK that fails scoped resolution is persisted as NULL.
+    // =========================================================================
+
+    public function test_sync_receipts_refuses_cross_tenant_product_id_via_validator(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts/sync', [
+                'receipts' => [[
+                    'idempotency_key' => 'rcpt-cross-product-'.Str::random(8),
+                    'receipt_number' => 'R-1',
+                    'terminal_id' => $this->terminalA->id,
+                    'operator_id' => $this->userA->id,
+                    'lines' => [[
+                        // Cross-tenant — must trip ScopedExists::tenantAndCompany.
+                        'product_id' => $this->productB->id,
+                        'quantity' => '1',
+                        'unit_price' => '10.00',
+                    ]],
+                    'subtotal' => '10.00',
+                    'tax_amount' => '0',
+                    'discount_amount' => '0',
+                    'total' => '10.00',
+                    'currency' => 'EUR',
+                    'offline_fiscal_hash' => str_repeat('0', 64),
+                    'previous_hash' => null,
+                    'hash_sequence' => 0,
+                    'payment_method_id' => $this->paymentMethodA->id,
+                    'payment_repository_id' => Str::uuid()->toString(),
+                    'created_at' => now()->toIso8601String(),
+                    'fiscal_schema_version' => 2,
+                    'payments' => [[
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'repository_id' => Str::uuid()->toString(),
+                        'amount' => '10.00',
+                        'method_code' => 'CASH',
+                    ]],
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['receipts.0.lines.0.product_id']);
+    }
+
+    public function test_sync_receipts_refuses_cross_tenant_composite_item_id_via_validator(): void
+    {
+        $compositeB = $this->seedCompositeItem($this->tenantB->id, $this->companyB->id, 'CompB-Sync');
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts/sync', [
+                'receipts' => [[
+                    'idempotency_key' => 'rcpt-cross-composite-'.Str::random(8),
+                    'receipt_number' => 'R-2',
+                    'terminal_id' => $this->terminalA->id,
+                    'operator_id' => $this->userA->id,
+                    'lines' => [[
+                        'composite_item_id' => $compositeB->id,
+                        'quantity' => '1',
+                        'unit_price' => '10.00',
+                    ]],
+                    'subtotal' => '10.00',
+                    'tax_amount' => '0',
+                    'discount_amount' => '0',
+                    'total' => '10.00',
+                    'currency' => 'EUR',
+                    'offline_fiscal_hash' => str_repeat('0', 64),
+                    'previous_hash' => null,
+                    'hash_sequence' => 0,
+                    'payment_method_id' => $this->paymentMethodA->id,
+                    'payment_repository_id' => Str::uuid()->toString(),
+                    'created_at' => now()->toIso8601String(),
+                    'fiscal_schema_version' => 2,
+                    'payments' => [[
+                        'payment_method_id' => $this->paymentMethodA->id,
+                        'repository_id' => Str::uuid()->toString(),
+                        'amount' => '10.00',
+                        'method_code' => 'CASH',
+                    ]],
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['receipts.0.lines.0.composite_item_id']);
+    }
+
     public function test_setup_creates_per_tenant_resources_correctly(): void
     {
         // Tenant A side

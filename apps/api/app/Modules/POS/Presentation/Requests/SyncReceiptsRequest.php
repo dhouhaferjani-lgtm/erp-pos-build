@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -17,6 +19,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class SyncReceiptsRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -48,6 +56,10 @@ final class SyncReceiptsRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
         return [
             'receipts' => ['required', 'array', 'min:1', 'max:100'],
             'receipts.*.idempotency_key' => ['required', 'string', 'max:255'],
@@ -55,8 +67,18 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.terminal_id' => ['required', 'uuid'],
             'receipts.*.operator_id' => ['required', 'uuid'],
             'receipts.*.lines' => ['required', 'array', 'min:1'],
-            'receipts.*.lines.*.product_id' => ['nullable', 'uuid'],
-            'receipts.*.lines.*.composite_item_id' => ['nullable', 'uuid'],
+            // Round-3 Codex Finding 1 — without scoped exists, a tenant-A
+            // sync receipt could persist tenant-B sellable FKs into
+            // pos_receipt_lines. Reject at the validator + null-fallback
+            // service-tier persist (defense-in-depth).
+            'receipts.*.lines.*.product_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('products', $tenantId, $companyId),
+            ],
+            'receipts.*.lines.*.composite_item_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('composite_items', $tenantId, $companyId),
+            ],
             'receipts.*.lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'receipts.*.lines.*.unit_price' => ['required', 'numeric', 'gte:0'],
             'receipts.*.lines.*.modifiers' => ['nullable', 'array'],
