@@ -16,6 +16,7 @@ use App\Modules\BatchExpiry\Presentation\Requests\UpdateBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\WriteOffBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -245,8 +246,13 @@ class BatchController extends Controller
      */
     public function posAvailableBatches(Request $request, string $productId): JsonResponse
     {
+        // api.unmapped.010 (api.inventory): locations is company-scoped
+        // (no tenant_id column). Inline validator scoped via
+        // ScopedExists::company so a cross-company location_id cannot
+        // satisfy the FK validator.
+        $companyId = $this->companyContext->requireCompanyId();
         $request->validate([
-            'location_id' => ['required', 'exists:locations,id'],
+            'location_id' => ['required', ScopedExists::company('locations', $companyId)],
             'quantity' => ['required', 'numeric', 'min:0.0001'],
         ]);
 

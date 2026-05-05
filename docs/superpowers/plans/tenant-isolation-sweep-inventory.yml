@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: c32d947cc4023955b149f85d7dd48948e58750e86cffc19f68de13dd61c74aa4
+  yaml_sha256: 5f940d60981f10bfc7867c5bcf82a4e4c620ca70b912c6b493278c4fe0301bc3
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -1921,9 +1921,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:08Z'
     review:
       reviewer: null
       verdict: null
@@ -1968,6 +1968,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.006 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:08Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c32d947cc4023955b149f85d7dd48948e58750e86cffc19f68de13dd61c74aa4
+        new_yaml_sha256: 52c84369792b728f29543bcf23c7741dcda166033e3d79c39b7e5db11fba7895
+        target_ids:
+          - api.unmapped.006
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:14Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1f33ffaf95f5afe8cbe36c3f802f0cf4a9fc17c6a85ecdd7bd8d044e54bbb556
+        new_yaml_sha256: b3a64b060779009b3890797a133c6c1e1be0ffeecc793fa508d271798fb15dd5
+        target_ids:
+          - api.unmapped.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.unmapped.007
     stable_key: 'sha256:58f1fd3210463ab65a9bcb43e9411ee9170ec907b18f68a57adf74316d4b8dfb'
@@ -1985,9 +2017,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:09Z'
     review:
       reviewer: null
       verdict: null
@@ -2032,6 +2064,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.007 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:09Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 52c84369792b728f29543bcf23c7741dcda166033e3d79c39b7e5db11fba7895
+        new_yaml_sha256: 992ad7e367de6cc8e7eaf388793c77139a69914ae2fd536ca0230f18119f1a57
+        target_ids:
+          - api.unmapped.007
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:14Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b3a64b060779009b3890797a133c6c1e1be0ffeecc793fa508d271798fb15dd5
+        new_yaml_sha256: f6403f94da2119cbd08c33cf246f328f0e1ddb7efb08b899c578480a069dfd51
+        target_ids:
+          - api.unmapped.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.unmapped.008
     stable_key: 'sha256:2f60e568caa255ef9fce2d033cbed3e6022eba94d58c83bb104ec9bfe75666af'
@@ -2049,9 +2113,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:10Z'
     review:
       reviewer: null
       verdict: null
@@ -2096,6 +2160,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.008 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 992ad7e367de6cc8e7eaf388793c77139a69914ae2fd536ca0230f18119f1a57
+        new_yaml_sha256: 12692e6221d8dd8cfa0c4a0f88531262d54467eaad2f8b73a2b59b492ab6dd3d
+        target_ids:
+          - api.unmapped.008
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:15Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: f6403f94da2119cbd08c33cf246f328f0e1ddb7efb08b899c578480a069dfd51
+        new_yaml_sha256: 8ef824cb4d79d3f13b7ad55ed0f3a83e8f86b5fb2ad94667b048102363b7a70a
+        target_ids:
+          - api.unmapped.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.unmapped.009
     stable_key: 'sha256:bd05ab8e21b49ff1b7b6ec00842b3963067f8371ddaacc1c9d86a2db0df7663b'
@@ -2113,9 +2209,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:11Z'
     review:
       reviewer: null
       verdict: null
@@ -2160,6 +2256,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.009 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:11Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 12692e6221d8dd8cfa0c4a0f88531262d54467eaad2f8b73a2b59b492ab6dd3d
+        new_yaml_sha256: 7232f3ce7365defb533ba8bc548a5e183f046f72015a6f494532d708bb342119
+        target_ids:
+          - api.unmapped.009
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8ef824cb4d79d3f13b7ad55ed0f3a83e8f86b5fb2ad94667b048102363b7a70a
+        new_yaml_sha256: 0fa051021b6c5c0500aef6879dc9b1aabd71522064ea392b92aa02687a6f585f
+        target_ids:
+          - api.unmapped.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.unmapped.010
     stable_key: 'sha256:a40504b7c04b5244ebc0d2334c7aab383fe07b56dbd57eedb7c7268c58f43812'
@@ -2177,9 +2305,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:12Z'
     review:
       reviewer: null
       verdict: null
@@ -2224,6 +2352,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.010 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:12Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7232f3ce7365defb533ba8bc548a5e183f046f72015a6f494532d708bb342119
+        new_yaml_sha256: 7afce403fe2884d2f01559f6639af58f7d48524e7d90d59ea518db23428ba7d6
+        target_ids:
+          - api.unmapped.010
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:17Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 0fa051021b6c5c0500aef6879dc9b1aabd71522064ea392b92aa02687a6f585f
+        new_yaml_sha256: 7ee64d3e600198c2a2500cbdfd4f951473d0dcf016b1a4d9b3ca759f71858b38
+        target_ids:
+          - api.unmapped.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.catalog.001
     stable_key: 'sha256:909854966f7f8b457568049dad900e0544810cdc7ace6388b5c95ae7b05500b3'
@@ -11785,9 +11945,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:56:12Z'
     review:
       reviewer: null
       verdict: null
@@ -11832,6 +11992,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.inventory. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.inventory, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.014 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:56:13Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7afce403fe2884d2f01559f6639af58f7d48524e7d90d59ea518db23428ba7d6
+        new_yaml_sha256: 1f33ffaf95f5afe8cbe36c3f802f0cf4a9fc17c6a85ecdd7bd8d044e54bbb556
+        target_ids:
+          - api.unmapped.014
+        from_status: pending
+        to_status: claimed
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:56:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7ee64d3e600198c2a2500cbdfd4f951473d0dcf016b1a4d9b3ca759f71858b38
+        new_yaml_sha256: 5f940d60981f10bfc7867c5bcf82a4e4c620ca70b912c6b493278c4fe0301bc3
+        target_ids:
+          - api.unmapped.014
+        from_status: claimed
+        to_status: in_progress
+        commit: 382afb300da623c94a87e853e4d67619e89f6179
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.catalog.008
     stable_key: 'sha256:d5c67a4a690ed720d4c87921cf9235ab7c952d7ea27fb22c459fc60d7cfae7ae'

@@ -83,7 +83,12 @@ final class BatchWriteOffService
                     companyId: (string) $company->id,
                     batchNumber: $batch->batch_number,
                     productId: $productId,
-                    amount: $this->calculateWriteOffAmount($productId, $quantity),
+                    amount: $this->calculateWriteOffAmount(
+                        productId: $productId,
+                        quantity: $quantity,
+                        tenantId: (string) $batch->tenant_id,
+                        companyId: (string) $batch->company_id,
+                    ),
                     reason: $movementReason,
                     movementId: $movement->id,
                 );
@@ -103,11 +108,26 @@ final class BatchWriteOffService
     /**
      * Calculate the write-off amount using the product's WAC.
      *
+     * api.unmapped.014 (api.inventory): the lookup is scoped by the source
+     * batch's tenant_id + company_id. The public write-off route is already
+     * structurally protected by BatchController::findBatchOrFail (which
+     * enforces $batch->company_id === current company), but a service-direct
+     * caller (queue job, cross-module orchestrator) can hit this method with
+     * arbitrary product_ids; scoping by the batch's own tenant + company
+     * provides defense-in-depth and pins the SQL invariant.
+     *
      * @return numeric-string
      */
-    private function calculateWriteOffAmount(string $productId, string $quantity): string
-    {
-        $product = Product::find($productId);
+    private function calculateWriteOffAmount(
+        string $productId,
+        string $quantity,
+        string $tenantId,
+        string $companyId,
+    ): string {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($productId);
         if ($product === null) {
             return '0.00';
         }

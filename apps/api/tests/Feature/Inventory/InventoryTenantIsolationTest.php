@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Services\BatchWriteOffService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -763,6 +765,225 @@ final class InventoryTenantIsolationTest extends TestCase
             $stockLevelQuery,
             'StockLevel index must filter by company_id. Got SQL: '.$stockLevelQuery,
         );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // BatchExpiry FormRequest validators + service-tier finds
+    // (api.unmapped.006-010, api.unmapped.014 — reassigned to api.inventory).
+    //
+    // BatchExpiry routes are gated by `module:Inventory`. Both test tenants
+    // already enable Inventory above. The schema:
+    //   - products: tenant_id + company_id (ScopedExists::tenantAndCompany)
+    //   - locations: company_id only (no tenant_id; ScopedExists::company)
+    //
+    // Pre-fix: bare `exists:products,id` / `exists:locations,id` rules
+    // allowed any UUID with the correct shape to satisfy the FK validator
+    // — including foreign-tenant ids that pointed at someone else's data.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_create_batch_rejects_cross_tenant_product_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/batches', [
+                'product_id' => $this->productB->id, // foreign-tenant product
+                'batch_number' => 'BATCH-CROSS-001',
+                'expiry_date' => now()->addYear()->toDateString(),
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('product_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_write_off_batch_rejects_cross_tenant_location_id(): void
+    {
+        // Seed a same-tenant batch the user owns and a foreign-tenant
+        // location the user must NOT be able to reference.
+        /** @var Batch $batchA */
+        $batchA = Batch::create([
+            'uuid' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'batch_number' => 'BATCH-WO-A',
+            'expiry_date' => now()->addYear()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/batches/{$batchA->uuid}/write-off", [
+                'quantity' => '1',
+                'location_id' => $this->locationB->id, // foreign-company location
+                'reason' => 'expiry',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('location_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_transfer_batch_rejects_cross_tenant_from_location_id(): void
+    {
+        /** @var Batch $batchA */
+        $batchA = Batch::create([
+            'uuid' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'batch_number' => 'BATCH-TR-A',
+            'expiry_date' => now()->addYear()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/batches/{$batchA->uuid}/transfer", [
+                'from_location_id' => $this->locationB->id, // foreign-company
+                'to_location_id' => $this->locationA->id,
+                'quantity' => '1',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('from_location_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_transfer_batch_rejects_cross_tenant_to_location_id(): void
+    {
+        /** @var Batch $batchA */
+        $batchA = Batch::create([
+            'uuid' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'batch_number' => 'BATCH-TR2-A',
+            'expiry_date' => now()->addYear()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/batches/{$batchA->uuid}/transfer", [
+                'from_location_id' => $this->locationA->id,
+                'to_location_id' => $this->locationB->id, // foreign-company
+                'quantity' => '1',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('to_location_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_pos_available_batches_rejects_cross_tenant_location_id(): void
+    {
+        // GET /api/v1/pos/products/{productId}/batches?location_id=...&quantity=...
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson(
+                "/api/v1/pos/products/{$this->productA->id}/batches"
+                .'?location_id='.$this->locationB->id // foreign-company
+                .'&quantity=1'
+            );
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('location_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // BatchWriteOffService::calculateWriteOffAmount (api.unmapped.014).
+    // Pre-fix: bare Product::find($productId) used the batch's product_id
+    // unscoped to look up the WAC. Same-tenant batches anchor a same-tenant
+    // product transitively (Batch carries tenant_id + company_id, FKed to
+    // products), so cross-tenant exfiltration via the public write-off route
+    // is structurally blocked by the upstream BatchController guard
+    // (findBatchOrFail at line 59 enforces $batch->company_id === current
+    // company). The structural defense here scopes the Product lookup by
+    // the source batch's tenant_id + company_id so a service-direct caller
+    // (queue job, cross-module orchestrator) gets the same protection.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_batch_write_off_query_scopes_product_by_batch_tenant_and_company(): void
+    {
+        // Service-direct test pin for the calculateWriteOffAmount SQL
+        // shape. The HTTP-level write-off path requires substantial seeding
+        // (inventory_batch_stock + GL accounts + chart-of-accounts purposes),
+        // so we instead invoke the private method via reflection to pin the
+        // SQL invariant on its own. The structural fix is the predicate
+        // shape; the public surface is also covered by the validator-tier
+        // tests above and the upstream BatchController::findBatchOrFail
+        // company-id check.
+        /** @var BatchWriteOffService $service */
+        $service = $this->app->make(BatchWriteOffService::class);
+
+        $reflection = new \ReflectionClass($service);
+        $method = $reflection->getMethod('calculateWriteOffAmount');
+        $method->setAccessible(true);
+
+        DB::enableQueryLog();
+
+        // Same-tenant call: returns the WAC * quantity.
+        $sameTenantAmount = (string) $method->invoke(
+            $service,
+            $this->productA->id,           // productId
+            '1',                           // quantity
+            $this->tenantA->id,            // tenantId
+            $this->companyA->id,           // companyId
+        );
+
+        // Cross-tenant call: same productId BUT tenantB / companyB.
+        // Pre-fix this would still find the product (Product::find($id) is
+        // unscoped). Post-fix it must return '0.00' because the scoped
+        // chain finds nothing.
+        $crossTenantAmount = (string) $method->invoke(
+            $service,
+            $this->productA->id,           // productA's UUID
+            '1',                           // quantity
+            $this->tenantB->id,            // foreign tenant
+            $this->companyB->id,           // foreign company
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertSame(
+            '0.00',
+            $crossTenantAmount,
+            'calculateWriteOffAmount must return 0.00 when productId belongs '
+                .'to a different tenant + company than passed in.',
+        );
+
+        // Find the products lookup that fires inside
+        // calculateWriteOffAmount.
+        $productLookupQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "products"')
+                && str_contains($sql, '"id" =')
+                && str_contains($sql, 'limit 1')
+                && ! str_contains($sql, 'count(*)')
+                && ! str_contains($sql, 'inner join')
+            ) {
+                $productLookupQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $productLookupQuery,
+            'BatchWriteOffService Product lookup query must be captured. '
+                .'Log: '.json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $productLookupQuery,
+            'BatchWriteOffService Product lookup must filter by tenant_id. Got SQL: '.$productLookupQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $productLookupQuery,
+            'BatchWriteOffService Product lookup must filter by company_id. Got SQL: '.$productLookupQuery,
+        );
+
+        // Sanity: same-tenant path still returns the expected WAC
+        // (price defaults). productA was seeded without cost_price /
+        // weighted_average_cost, so the unit cost falls back to '0.00'
+        // and the amount is 0 * 1 = 0.00. The test pins the SQL shape,
+        // not the WAC math.
+        $this->assertSame('0.00', $sameTenantAmount);
     }
 
     /**

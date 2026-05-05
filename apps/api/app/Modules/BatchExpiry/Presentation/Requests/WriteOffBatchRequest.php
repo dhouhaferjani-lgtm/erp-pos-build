@@ -4,23 +4,35 @@ declare(strict_types=1);
 
 namespace App\Modules\BatchExpiry\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 class WriteOffBatchRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return $this->user()?->can('batches.write-off') ?? false;
     }
 
     /**
-     * @return array<string, array<int, string>>
+     * @return array<string, array<int, mixed>>
      */
     public function rules(): array
     {
+        $companyId = $this->companyContext->requireCompanyId();
+
         return [
             'quantity' => ['required', 'numeric', 'gt:0'],
-            'location_id' => ['required', 'exists:locations,id'],
+            // api.unmapped.007 (api.inventory): locations is company-scoped
+            // (no tenant_id column); single-predicate ScopedExists::company.
+            'location_id' => ['required', ScopedExists::company('locations', $companyId)],
             'reason' => ['required', 'in:expiry,damage,other'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
