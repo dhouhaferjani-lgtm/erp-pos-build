@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T16:04:57Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 8c85fc5617f704d5aba3a66795a660ea9a05af3e044fa4aebb5c1652eaf9111a
+  yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -290,7 +290,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -19013,15 +19013,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:27:55Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:32:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-reassigned-cluster-codex-round2-review.md
+      review_commit: da535327
     fix_commit: da535327
     regression_test: 'tests/Feature/Pricing/PricingTenantIsolationTest.php::test_record_usage_rejects_cross_tenant_coupon_id'
     blocked_reason: null
@@ -19108,6 +19108,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:32:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8c85fc5617f704d5aba3a66795a660ea9a05af3e044fa4aebb5c1652eaf9111a
+        new_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        target_ids:
+          - api.unmapped.017
+          - api.pricing
+        from_status: under_review
+        to_status: fixed
+        commit: 6ca27b7aca63359e78335c11edecb81b5ba5f407
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-reassigned-cluster-codex-round2-review.md
+        review_commit: da535327
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.018
     stable_key: 'sha256:102aae677cdd57c130173c3346d7a743a0887243b1268821beda6b8e08180f73'
