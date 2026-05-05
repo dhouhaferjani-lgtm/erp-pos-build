@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 4ac25f42903c49df8dfc53c5cb55f588c05e9fb797abd30f88bab8dd3980a21c
+  yaml_sha256: 539e56fb79db40e5920eef91cd1b96e5b585a319a8b7f005f8bfa6a89b0dab87
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -588,9 +588,9 @@ clusters:
     id: api.pos-stabilization
     display_name: 'POS stabilization'
     surface: api
-    owner: null
+    owner: claude
     required_owner: null
-    status: pending
+    status: in_progress
     blocked_by: {  }
     blocked_by_external: null
     blocked_reason: null
@@ -4571,7 +4571,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:32:54Z'
     review:
@@ -4580,8 +4580,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: f88ad4a5
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_accepts_real_tax_configuration_id_country_scoped'
     blocked_reason: null
     history:
       -
@@ -4666,6 +4666,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-05T09:46:19Z'
+        actor: codex
+        action: edit_applied
+        command: manual-one-shot-recheck-clear
+        previous_yaml_sha256: 4ac25f42903c49df8dfc53c5cb55f588c05e9fb797abd30f88bab8dd3980a21c
+        new_yaml_sha256: ad4a15f7b55178e436353defb6e29f901b34fc4c4dbbd4526796b8a5bf2977ea
+        target_ids:
+          - api.unmapped.011
+        from_status: needs_recheck
+        to_status: in_progress
+        commit: f88ad4a5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Human revisit (master plan Section 4): callsite tripped from in_progress to needs_recheck because the inline scanner-false-positive annotation in CreateProductRequest / UpdateProductRequest changed the file content and therefore the stable_key. Disposition unchanged: tax_configurations is country-scoped global reference (no tenant_id / company_id columns). Mirrors api.catalog.002 / 005 closure precedent. See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md. Returning to in_progress so the existing fix_commit (f88ad4a5) can be submit + reviewed via the standard pipeline.'
+      -
+        at: '2026-05-05T09:46:33Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        new_yaml_sha256: 1a5b97574cf98d23e1dac05ecbc60048f8f856105da6de81cc0ada0fd45ebb6d
+        target_ids:
+          - api.unmapped.011
+        from_status: in_progress
+        to_status: under_review
+        commit: f88ad4a5
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_accepts_real_tax_configuration_id_country_scoped'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.012
     stable_key: 'sha256:bc7185c910b4dfc098be7273ad9aaad50f221097e0516dbf715a02795892cd99'
@@ -4683,7 +4715,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:32:55Z'
     review:
@@ -4692,8 +4724,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: f88ad4a5
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_rejects_nonexistent_tax_configuration_id'
     blocked_reason: null
     history:
       -
@@ -4778,6 +4810,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-05T09:46:19Z'
+        actor: codex
+        action: edit_applied
+        command: manual-one-shot-recheck-clear
+        previous_yaml_sha256: ad4a15f7b55178e436353defb6e29f901b34fc4c4dbbd4526796b8a5bf2977ea
+        new_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        target_ids:
+          - api.unmapped.012
+        from_status: needs_recheck
+        to_status: in_progress
+        commit: f88ad4a5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Human revisit (master plan Section 4): callsite tripped from in_progress to needs_recheck because the inline scanner-false-positive annotation in CreateProductRequest / UpdateProductRequest changed the file content and therefore the stable_key. Disposition unchanged: tax_configurations is country-scoped global reference (no tenant_id / company_id columns). Mirrors api.catalog.002 / 005 closure precedent. See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md. Returning to in_progress so the existing fix_commit (f88ad4a5) can be submit + reviewed via the standard pipeline.'
+      -
+        at: '2026-05-05T09:46:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1a5b97574cf98d23e1dac05ecbc60048f8f856105da6de81cc0ada0fd45ebb6d
+        new_yaml_sha256: 539e56fb79db40e5920eef91cd1b96e5b585a319a8b7f005f8bfa6a89b0dab87
+        target_ids:
+          - api.unmapped.012
+        from_status: in_progress
+        to_status: under_review
+        commit: f88ad4a5
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_rejects_nonexistent_tax_configuration_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.pos-stabilization.001
     stable_key: 'sha256:a17880df79993c0917b03ab9ae0de97f5821cdc521a9863790631e4a4340afb6'
@@ -4795,9 +4859,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -4841,6 +4905,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster unblocked: api.pos-stabilization. Originally blocked (blocked_by_external: pos_orchestrator_branch; blocked_by: [api.treasury]) because the POS orchestrator branch owned apps/pos and apps/api/app/Modules/POS work concurrently with the tenant-isolation sweep. The POS-stabilization session has paused offline-first / perf hardening to fold in tenant-scoping cleanup as the primary track (per 2026-05-05 session prompt). api.treasury reference cluster closed at d7184178 (Section 7 LOCKED, both reviewers APPROVE round 5), satisfying the prior cluster-level dependency. Cluster status flips from blocked → pending; per-callsite claims will roll aggregate forward.'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.001
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.001
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.002
     stable_key: 'sha256:5a7ce8eb4f2b6ef5a24e47cbc4e95a6f92c1583c9973de12405b1ec2736f7045'
@@ -4858,9 +4954,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -4887,6 +4983,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.002
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.002
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.003
     stable_key: 'sha256:cfa54d270457dcef759b152857307bff6cc278f4ebe5dd5edfa4f9cb8eb9893c'
@@ -4904,9 +5032,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -4933,6 +5061,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.003
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.003
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.004
     stable_key: 'sha256:4bfbf29bf978c4aaea8dbe5fdf7398e637eff6fa674f0324bb7ed9a85fbafc4d'
@@ -4950,9 +5110,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -4979,6 +5139,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.004
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.004
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.005
     stable_key: 'sha256:9f79ae9a373c27c3a1727c183ad03ecbbcc93627edf831679fb9aaa7446debfa'
@@ -4996,9 +5188,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5025,6 +5217,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.005
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.005
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.006
     stable_key: 'sha256:7a958a5e06e9c313508083926e5f6db684a7ff2d7de80a8d6b92677c92701b79'
@@ -5042,9 +5266,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5071,6 +5295,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.006
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.006
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.007
     stable_key: 'sha256:914055886d56aeb7632b133929422d79bda12bf69ab81edd3753feeffa7da2e1'
@@ -5088,9 +5344,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5117,6 +5373,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.007
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.007
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.008
     stable_key: 'sha256:8dac8cb1c34558c953a64f14165c437fae5363a343d6c422e8dbe092f2b49b77'
@@ -5134,9 +5422,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5163,6 +5451,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.008
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.008
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.009
     stable_key: 'sha256:fe4bc5a18d60151d1549f65cf2e40c876590e6b782dfca8b0e0c50a9563993a5'
@@ -5180,9 +5500,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5209,6 +5529,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.009
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.009
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.010
     stable_key: 'sha256:e580489f6aa7778e11bda44aa34870c888dca8f8f3e21771a471b969e4bb9135'
@@ -5226,9 +5578,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5255,6 +5607,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.010
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.010
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.011
     stable_key: 'sha256:4ac636b52fb08db4168cb8af5a8fd859ed1d622e68ec58c8c7616af076319ad0'
@@ -5272,9 +5656,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5301,6 +5685,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.011
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.011
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.012
     stable_key: 'sha256:e8cc28361b617b6a0c55239a990d4f3e0c3d2fb944630e4864985d3c110ff9b7'
@@ -5318,9 +5734,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5347,6 +5763,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.012
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.012
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.013
     stable_key: 'sha256:ba796b87f34651a09925824caaf8b4440bc5e9123e6c69b2fc47616393b9288d'
@@ -5364,9 +5812,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5393,6 +5841,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.013
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.013
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.014
     stable_key: 'sha256:8a1e2e4e055c16f3532006b480e684605a3d535cb30991d345ea9f322d2b9f2d'
@@ -5410,9 +5890,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5439,6 +5919,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.014
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.014
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.015
     stable_key: 'sha256:8d41aa940ba9c576d4423972236669a8365aedcd4136f9ab64aaca3318f4888c'
@@ -5456,9 +5968,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5485,6 +5997,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.015
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.015
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.016
     stable_key: 'sha256:bd221c8ec5fa1a01c3ec63d0036fd2fc80ef20480c40021c01f55dee3a10bb90'
@@ -5502,9 +6046,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5531,6 +6075,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.016
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.016
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.017
     stable_key: 'sha256:84e1dc6776f8aad38089a53619e3f9da7cb0a11ec14bbef2d442b16222faf57a'
@@ -5548,9 +6124,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5577,6 +6153,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.017
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.017
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.018
     stable_key: 'sha256:f15ec2471eba5edd73a8428115391dd9fefbae9bcd077efd09eb4a39c373f7b7'
@@ -5594,9 +6202,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5623,6 +6231,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.018
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.018
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.019
     stable_key: 'sha256:4b881622d1593a6a2197da22bbd6d9e35213e96de11b64dfc9521f9a5a7fd329'
@@ -5640,9 +6280,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -5669,6 +6309,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.019
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.019
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.inventory.001
     stable_key: 'sha256:d361456f9b08507ad6ec843d26a9b772f75b703d8672e44a4ef79b8ec578805f'
@@ -18043,9 +18715,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18072,6 +18744,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.020
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.020
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.021
     stable_key: 'sha256:ca8a2b86f695c2f5159bf71c1599ad5f042e945bd07916186b4ae976e7d263c4'
@@ -18089,9 +18793,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18118,6 +18822,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.021
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.021
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.022
     stable_key: 'sha256:a059ef5c27fc6889077ef6f5ad8a6adbcfef861b51126f93a7bb85405ea9d2b6'
@@ -18135,9 +18871,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18164,6 +18900,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.022
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.022
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.023
     stable_key: 'sha256:9224fbd9c430ade0e3a45cf20cabc248fa24a35d5bf8e37a8383e255ab300061'
@@ -18181,9 +18949,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18210,6 +18978,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.023
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.023
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.024
     stable_key: 'sha256:63f62137b7c7695d8965bbf502d79df1c232170273cf488773e06998a3980946'
@@ -18227,9 +19027,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18256,6 +19056,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.024
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.024
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.025
     stable_key: 'sha256:e3b3fa8c06c928244a344e6dc4de41b8235cbcc165f8fc168bee77b5653d9fe8'
@@ -18273,9 +19105,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18302,6 +19134,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.025
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.025
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.026
     stable_key: 'sha256:c896c85d6cb50ac0f6fe0b839de966abbd0d84f30d5cdce4506109f245f672f1'
@@ -18319,9 +19183,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18348,6 +19212,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.026
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.026
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.027
     stable_key: 'sha256:20eced31ddcd748718de2c4db365b33458a332902d7858587269dbdde290b1e1'
@@ -18365,9 +19261,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18394,6 +19290,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.027
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.027
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.028
     stable_key: 'sha256:b2d2a83304b615832d2377f9d560b77bf980cbf738c39147bc5579effd4ee169'
@@ -18411,9 +19339,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -18440,6 +19368,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.028
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.028
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.inventory.011
     stable_key: 'sha256:3fbc312a694546c888c58872f9317b6238cdd279fcefd06e6b5e6a7c9441a4bb'
@@ -24274,9 +25234,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -24303,6 +25263,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.029
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.029
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.030
     stable_key: 'sha256:f141ce638e2af717ae2a17474ffeeb3137cc1dc223bf41b9f0042814a47b8404'
@@ -24320,9 +25312,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -24349,6 +25341,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.030
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.030
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.treasury.049
     stable_key: 'sha256:3402118217d1e7044d5b5f90c34a8e19f86edf0fd1c38a93a08b62b33eeb7b05'
@@ -26142,9 +27166,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -26171,6 +27195,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.031
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.031
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.032
     stable_key: 'sha256:07daf9fcc4e1fd38732e5fe7b8a4d25f91bd46bfb935c378e49d63c66a1172b5'
@@ -26188,9 +27244,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -26217,6 +27273,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.032
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.032
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.033
     stable_key: 'sha256:47edb25c456ba44a90e6c1778645b8b6f24ce87f21404323e8f5a8faf4337f90'
@@ -26234,9 +27322,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -26263,6 +27351,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.033
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.033
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.inventory.020
     stable_key: 'sha256:7ce99d6c1492f36f9195a3ba3acb3fe7a8f5993fcb22c4ad2c75cefe58dad6f9'
@@ -29492,9 +30612,9 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -29521,6 +30641,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.034
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.034
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.035
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-earn-unscoped-enrollment'
@@ -29538,9 +30690,9 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -29567,6 +30719,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.035
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.035
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.036
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-redeem-unscoped-enrollment-reward'
@@ -29584,9 +30768,9 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -29613,6 +30797,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.036
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.036
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.037
     stable_key: 'manual:api.pos-stabilization:earning-processing-service-find-by-id-unscoped'
@@ -29630,9 +30846,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -29659,6 +30875,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.037
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.037
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.pos-stabilization.038
     stable_key: 'manual:api.pos-stabilization:redemption-processing-service-find-by-id-unscoped'
@@ -29676,9 +30924,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-05T09:46:27Z'
     review:
       reviewer: null
       verdict: null
@@ -29705,6 +30953,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:46:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c6f62b32fde4515569e8333ea87cc194fe486ccfda939b963e881e3d74275554
+        new_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        target_ids:
+          - api.pos-stabilization.038
+        from_status: pending
+        to_status: claimed
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:46:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 272a86eef4ebdf51e50997b09cc35986148f26f4b7b1ac39cf0c737bf465aadf
+        new_yaml_sha256: 0e00f5c36e3acc16528b8ac19958090037156bd8b01fdcc1d37855811afc2e5f
+        target_ids:
+          - api.pos-stabilization.038
+        from_status: claimed
+        to_status: in_progress
+        commit: bab1bd7aa730b44d8a40488b397d004791984301
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29
