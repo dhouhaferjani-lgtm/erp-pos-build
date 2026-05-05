@@ -140,3 +140,19 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Scope Service::whereIn by document tenant_id + companyId so foreign service names are not snapshotted into local draft lines via /auto-save batch path."
+
+  # api.document — round-2 Codex Finding 1 (DraftPersistence persists raw
+  # foreign product_id/service_id when the scoped lookup misses; fixed by
+  # writing $product?->id / $service?->id instead — addLine + addLinesBatch)
+  - cluster_id: api.document
+    slug: draft-persistence-persists-raw-foreign-product-service-fk
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 239
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLine'
+    pattern_type: persists_unverified_foreign_key
+    resource: DocumentLine
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Persist scoped Product/Service lookup result (?->id) into document_lines, not the raw request UUID. Same fix in addLinesBatch."
