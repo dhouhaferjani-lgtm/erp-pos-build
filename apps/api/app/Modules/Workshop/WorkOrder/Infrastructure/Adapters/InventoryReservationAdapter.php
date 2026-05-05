@@ -51,6 +51,8 @@ final readonly class InventoryReservationAdapter
             $quantity = $line->quantity;
 
             $reservation = $this->reservations->reserveForWorkOrder(
+                tenantId: $wo->tenant_id,
+                companyId: $wo->company_id,
                 productId: $line->product_id,
                 quantity: $quantity,
                 workOrderLineId: $line->id,

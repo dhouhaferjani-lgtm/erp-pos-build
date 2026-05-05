@@ -435,14 +435,25 @@ class StockReservationService implements InventoryReservationServiceInterface
      * @throws \RuntimeException If no StockLevel exists for the product.
      */
     public function reserveForWorkOrder(
+        string $tenantId,
+        string $companyId,
         string $productId,
         string $quantity,
         string $workOrderLineId,
         string $workOrderId,
         ?\DateTimeImmutable $expiresAt,
     ): StockReservation {
+        // Scope the StockLevel lookup to the caller's tenant + company.
+        // Prior to api.inventory Codex round-2 Finding 1, this method
+        // derived Company from `StockLevel::where('product_id',$productId)
+        // ->first()->company_id`, allowing a forged cross-company productId
+        // to anchor a reservation against a foreign company's stock on
+        // Workshop approval. Now an unauthorized cross-company productId
+        // returns no row → RuntimeException → reservation is rejected.
         /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
+        $stockLevel = StockLevel::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
             ->orderByRaw('(quantity - reserved) DESC')
             ->first();
 
@@ -453,7 +464,9 @@ class StockReservationService implements InventoryReservationServiceInterface
         }
 
         /** @var Company $company */
-        $company = Company::query()->findOrFail($stockLevel->company_id);
+        $company = Company::query()
+            ->where('tenant_id', $tenantId)
+            ->findOrFail($companyId);
 
         $reservation = $this->reserve(
             company: $company,

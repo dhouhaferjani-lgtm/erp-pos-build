@@ -32,6 +32,8 @@ final class PartsNeededEventTest extends TestCase
         $this->app->bind(InventoryReservationServiceInterface::class, static fn () => new class implements InventoryReservationServiceInterface
         {
             public function reserveForWorkOrder(
+                string $tenantId,
+                string $companyId,
                 string $productId,
                 string $quantity,
                 string $workOrderLineId,
@@ -92,6 +94,8 @@ final class PartsNeededEventTest extends TestCase
         $this->app->bind(InventoryReservationServiceInterface::class, static fn () => new class implements InventoryReservationServiceInterface
         {
             public function reserveForWorkOrder(
+                string $tenantId,
+                string $companyId,
                 string $productId,
                 string $quantity,
                 string $workOrderLineId,

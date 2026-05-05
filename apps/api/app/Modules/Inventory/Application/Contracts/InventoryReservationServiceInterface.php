@@ -19,9 +19,18 @@ interface InventoryReservationServiceInterface
     /**
      * Reserve stock for a specific WorkOrder line.
      *
+     * Caller MUST pass the work order's tenant_id + company_id so the
+     * reservation is anchored to the requesting tenant + company. Prior
+     * to the api.inventory Codex round-2 finding, this method derived
+     * Company from an unscoped StockLevel lookup-by-product_id, which
+     * allowed a forged cross-company productId to anchor a reservation
+     * against a foreign company's stock on Workshop approval.
+     *
      * @param  numeric-string  $quantity  Quantity to reserve, as a scale-preserving string.
      */
     public function reserveForWorkOrder(
+        string $tenantId,
+        string $companyId,
         string $productId,
         string $quantity,
         string $workOrderLineId,

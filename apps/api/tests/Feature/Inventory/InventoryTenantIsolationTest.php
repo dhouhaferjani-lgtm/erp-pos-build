@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -626,6 +627,46 @@ final class InventoryTenantIsolationTest extends TestCase
             $foreignMovement->id,
             $ids,
             'Same-tenant cross-company stock movement must NOT leak into Company A response.',
+        );
+    }
+
+    /**
+     * Codex round-2 Finding 1 — StockReservationService::reserveForWorkOrder
+     * derived Company from an unscoped StockLevel lookup-by-product_id,
+     * letting a Workshop approval cross-company-reserve foreign stock.
+     * Now the method requires explicit tenantId + companyId and scopes
+     * the StockLevel lookup. A forged cross-company productId yields
+     * RuntimeException → no reservation is created.
+     */
+    public function test_reserve_for_work_order_rejects_cross_company_product(): void
+    {
+        // Foreign-tenant stock level seeded for productB, locationB.
+        StockLevel::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'product_id' => $this->productB->id,
+            'location_id' => $this->locationB->id,
+            'quantity' => '100.0',
+            'reserved' => '0.0',
+        ]);
+
+        /** @var StockReservationService $service */
+        $service = app(StockReservationService::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/no StockLevel row found/');
+
+        // Caller scope is tenantA + companyA, but the productId belongs to
+        // tenantB / companyB. Pre-fix this would have happily reserved
+        // 1 unit against tenantB's stock; post-fix it must throw.
+        $service->reserveForWorkOrder(
+            tenantId: $this->tenantA->id,
+            companyId: $this->companyA->id,
+            productId: $this->productB->id,
+            quantity: '1.0',
+            workOrderLineId: Str::uuid()->toString(),
+            workOrderId: Str::uuid()->toString(),
+            expiresAt: null,
         );
     }
 
