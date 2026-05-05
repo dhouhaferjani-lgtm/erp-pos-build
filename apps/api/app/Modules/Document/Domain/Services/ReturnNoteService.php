@@ -166,7 +166,11 @@ final class ReturnNoteService
                 );
             }
 
-            $location = Location::findOrFail($locationId);
+            // api.document.020: scope Location lookup by return note's company.
+            // Locations table is company-scoped (no tenant_id column).
+            $location = Location::query()
+                ->where('company_id', $returnNote->company_id)
+                ->findOrFail($locationId);
 
             // Get original cost (from source document if available, otherwise use current cost)
             $originalCost = $this->getOriginalCost($line);

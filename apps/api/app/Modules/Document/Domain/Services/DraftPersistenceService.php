@@ -55,8 +55,14 @@ final class DraftPersistenceService
         array $data
     ): Document {
         return DB::transaction(function () use ($tenantId, $companyId, $userId, $draftId, $data) {
+            // api.document.011: scope by tenant + company so a cross-tenant
+            // draftId surfaces as null and a fresh draft is created instead
+            // of mutating a foreign tenant's row.
             $document = $draftId !== null
-                ? Document::find($draftId)
+                ? Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($draftId)
                 : null;
 
             if ($document === null) {
@@ -195,11 +201,23 @@ final class DraftPersistenceService
         string $userId,
         array $lineData
     ): DocumentLine {
+        // api.document.012: scope Product lookup by document's tenant + company.
         /** @var Product|null $product */
-        $product = isset($lineData['product_id']) ? Product::find($lineData['product_id']) : null;
+        $product = isset($lineData['product_id'])
+            ? Product::query()
+                ->where('tenant_id', $document->tenant_id)
+                ->where('company_id', $companyId)
+                ->find($lineData['product_id'])
+            : null;
 
+        // api.document.013: scope Service lookup by document's tenant + company.
         /** @var Service|null $service */
-        $service = isset($lineData['service_id']) ? Service::find($lineData['service_id']) : null;
+        $service = isset($lineData['service_id'])
+            ? Service::query()
+                ->where('tenant_id', $document->tenant_id)
+                ->where('company_id', $companyId)
+                ->find($lineData['service_id'])
+            : null;
 
         $defaultName = $service !== null
             ? (string) $service->name

@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\RefundService;
+use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,8 +18,23 @@ class RefundController extends Controller
 {
     public function __construct(
         private readonly RefundService $refundService,
-        private readonly DocumentNumberingService $numberingService
+        private readonly DocumentNumberingService $numberingService,
+        private readonly CompanyContext $companyContext,
     ) {}
+
+    /**
+     * Tenant+company scoped Document base query for route-anchored lookups.
+     *
+     * @return Builder<Document>
+     */
+    private function scopedQuery(): Builder
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id);
+    }
 
     /**
      * Cancel an invoice
@@ -27,7 +45,7 @@ class RefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $cancelled = $this->refundService->cancelInvoice(
@@ -55,7 +73,7 @@ class RefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        $creditNote = Document::findOrFail($id);
+        $creditNote = $this->scopedQuery()->findOrFail($id);
 
         try {
             $cancelled = $this->refundService->cancelCreditNote(
@@ -83,7 +101,7 @@ class RefundController extends Controller
             'reason' => 'required|string|max:500',
         ]);
 
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $creditNote = $this->refundService->createFullCreditNote(
@@ -108,10 +126,13 @@ class RefundController extends Controller
      */
     public function createPartialCreditNote(Request $request, string $id): JsonResponse
     {
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
             'reason' => 'required|string|max:500',
             'line_items' => 'required|array|min:1',
-            'line_items.*.product_id' => 'nullable|exists:products,id',
+            // api.document.042: tenant+company-scoped product validator.
+            'line_items.*.product_id' => ['nullable', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
             'line_items.*.description' => 'required|string',
             'line_items.*.quantity' => 'required|numeric|min:0.01',
             'line_items.*.unit_price' => 'required|numeric|min:0',
@@ -123,7 +144,7 @@ class RefundController extends Controller
             'line_items.*.total' => 'required|numeric|min:0',
         ]);
 
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $creditNote = $this->refundService->createPartialCreditNote(
@@ -149,7 +170,7 @@ class RefundController extends Controller
      */
     public function checkCancellable(string $id): JsonResponse
     {
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $canCancel = $this->refundService->canCancelInvoice($invoice);
@@ -172,7 +193,7 @@ class RefundController extends Controller
      */
     public function checkCreditable(string $id): JsonResponse
     {
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $canCredit = $this->refundService->canCreditInvoice($invoice);
@@ -195,7 +216,7 @@ class RefundController extends Controller
      */
     public function getCreditNoteSummary(string $id): JsonResponse
     {
-        $invoice = Document::findOrFail($id);
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $summary = $this->refundService->getCreditNoteSummary($invoice);

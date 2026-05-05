@@ -290,7 +290,11 @@ final class DocumentPostingService
                 continue;
             }
 
-            $product = Product::find($line->product_id);
+            // api.document.010: scope by invoice's tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $invoice->tenant_id)
+                ->where('company_id', $invoice->company_id)
+                ->find($line->product_id);
             if ($product !== null && $product->is_physical) {
                 $hasPhysicalProducts = true;
                 break;
