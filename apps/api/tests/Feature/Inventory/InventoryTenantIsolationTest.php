@@ -197,6 +197,9 @@ final class InventoryTenantIsolationTest extends TestCase
             'sku' => 'SKU-A',
             'type' => 'part',
             'is_active' => true,
+            // Non-zero cost_price so .014's value pin discriminates between
+            // same-tenant (returns '10.00') and cross-tenant (returns '0.00').
+            'cost_price' => '10.00',
         ]);
         $this->productB = Product::create([
             'tenant_id' => $this->tenantB->id,
@@ -883,6 +886,82 @@ final class InventoryTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // BatchController::productBatchStock — Codex round-1 Finding 1.
+    //
+    // GET /api/v1/products/{productId}/batch-stock previously called
+    // BatchRepository::getByProduct($productId), which scoped only by
+    // product_id with no tenant_id / company_id predicates. A tenant-A
+    // user passing tenant-B's productId received tenant-B batch rows.
+    // Round-2 fix scopes the repository read by tenant + company resolved
+    // from CompanyContext.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_product_batch_stock_does_not_leak_cross_tenant_batches(): void
+    {
+        // Seed a tenant-B batch tied to productB. If the repository read
+        // is unscoped, this row will appear in tenant-A's response.
+        Batch::create([
+            'uuid' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'product_id' => $this->productB->id,
+            'batch_number' => 'BATCH-LEAK-B',
+            'expiry_date' => now()->addYear()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        DB::enableQueryLog();
+
+        // Tenant-A user + company-A header, but URL targets tenant-B's productId.
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/products/{$this->productB->id}/batch-stock");
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $response->assertStatus(200);
+
+        $payload = $response->json('data');
+        $this->assertIsArray($payload);
+        $this->assertSame(
+            [],
+            $payload,
+            'productBatchStock must not return foreign-tenant batch records.',
+        );
+
+        // Pin the SQL invariant: the product_batches read must filter by
+        // tenant_id AND company_id.
+        $batchQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "product_batches"')
+                && str_contains($sql, '"product_id" =')
+                && ! str_contains($sql, 'count(*)')
+            ) {
+                $batchQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $batchQuery,
+            'product_batches lookup query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $batchQuery,
+            'product_batches read must filter by tenant_id. Got SQL: '.$batchQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $batchQuery,
+            'product_batches read must filter by company_id. Got SQL: '.$batchQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // BatchWriteOffService::calculateWriteOffAmount (api.unmapped.014).
     // Pre-fix: bare Product::find($productId) used the batch's product_id
     // unscoped to look up the WAC. Same-tenant batches anchor a same-tenant
@@ -978,12 +1057,14 @@ final class InventoryTenantIsolationTest extends TestCase
             'BatchWriteOffService Product lookup must filter by company_id. Got SQL: '.$productLookupQuery,
         );
 
-        // Sanity: same-tenant path still returns the expected WAC
-        // (price defaults). productA was seeded without cost_price /
-        // weighted_average_cost, so the unit cost falls back to '0.00'
-        // and the amount is 0 * 1 = 0.00. The test pins the SQL shape,
-        // not the WAC math.
-        $this->assertSame('0.00', $sameTenantAmount);
+        // Same-tenant path returns cost_price * quantity. productA is
+        // seeded with cost_price = '10.00' (no weighted_average_cost
+        // column on the model), so 10.00 * 1 = 10.00. This makes the
+        // value pin discriminate: pre-fix the unscoped Product::find
+        // would return '10.00' for BOTH calls (because productA still
+        // matches by id alone), while post-fix the scoped lookup
+        // returns null for cross-tenant → '0.00'.
+        $this->assertSame('10.00', $sameTenantAmount);
     }
 
     /**

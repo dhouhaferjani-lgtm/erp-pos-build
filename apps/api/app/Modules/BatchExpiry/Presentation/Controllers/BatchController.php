@@ -275,7 +275,16 @@ class BatchController extends Controller
      */
     public function productBatchStock(string $productId): JsonResponse
     {
-        $batches = $this->batchRepository->getByProduct($productId, activeOnly: true);
+        // api.inventory round-2 (Codex Finding 1): scope by current
+        // tenant + company so a foreign-tenant productId returns an
+        // empty collection instead of leaking foreign batch records.
+        $company = $this->companyContext->requireCompany();
+        $batches = $this->batchRepository->getByProduct(
+            $company->tenant_id,
+            $company->id,
+            $productId,
+            activeOnly: true,
+        );
 
         return response()->json([
             'data' => BatchResource::collection($batches),
