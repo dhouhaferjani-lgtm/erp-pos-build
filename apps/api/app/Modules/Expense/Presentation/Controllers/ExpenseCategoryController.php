@@ -105,7 +105,9 @@ class ExpenseCategoryController extends Controller
      */
     public function update(ExpenseCategoryRequest $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
 
         $category = ExpenseCategory::where('id', $id)
             ->where('company_id', $companyId)
@@ -115,8 +117,8 @@ class ExpenseCategoryController extends Controller
 
         // Prevent circular references in hierarchy
         if ($request->filled('parent_id')) {
-            $parentId = $request->input('parent_id');
-            if ($this->wouldCreateCircularReference($category->id, $parentId)) {
+            $parentId = (string) $request->input('parent_id');
+            if ($this->wouldCreateCircularReference($category->id, $parentId, $tenantId, $companyId)) {
                 return response()->json([
                     'error' => __('messages.circular_reference_not_allowed'),
                 ], 422);
@@ -161,19 +163,22 @@ class ExpenseCategoryController extends Controller
     /**
      * Check if setting a parent would create a circular reference.
      *
-     * api.unmapped.013 (api.accounting): the bare `ExpenseCategory::find()`
-     * could traverse a foreign company's category tree. Defense-in-depth on
-     * top of the validator-tier ScopedExists::tenantAndCompany guard. Scope
-     * the lookup by the controller's CompanyContext company_id; the parent
-     * relationship walk continues to use the model's BelongsTo (the
-     * BelongsTo is keyed on parent_id within expense_categories — same
-     * table — so the company_id transitivity is already enforced by the
-     * starting category being scoped).
+     * api.unmapped.013 (api.accounting) round-2: the seed lookup AND every
+     * recursive parent-hop must be scoped by both tenant_id and company_id.
+     * The model's BelongsTo `parent()` relation is unscoped (parent_id has
+     * no composite FK to tenant_id+company_id at the schema level), so a
+     * legacy or non-FormRequest write path that planted a cross-tenant
+     * parent_id could otherwise let the walk traverse a foreign tree. Each
+     * iteration runs an explicit scoped query instead of `$current->parent`.
      */
-    private function wouldCreateCircularReference(string $categoryId, string $parentId): bool
-    {
-        $companyId = $this->companyContext->requireCompanyId();
+    private function wouldCreateCircularReference(
+        string $categoryId,
+        string $parentId,
+        string $tenantId,
+        string $companyId,
+    ): bool {
         $current = ExpenseCategory::query()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($parentId);
 
@@ -181,7 +186,13 @@ class ExpenseCategoryController extends Controller
             if ($current->id === $categoryId) {
                 return true;
             }
-            $current = $current->parent;
+            if ($current->parent_id === null) {
+                return false;
+            }
+            $current = ExpenseCategory::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->find($current->parent_id);
         }
 
         return false;

@@ -11,7 +11,9 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Expense\Domain\ExpenseCategory;
+use App\Modules\Expense\Presentation\Controllers\ExpenseCategoryController;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -674,6 +676,126 @@ final class AccountingTenantIsolationTest extends TestCase
             $expenseCategoryValidator,
             'ExpenseRequest expense_category_id validator must filter by company_id. Got SQL: '.$expenseCategoryValidator,
         );
+    }
+
+    /**
+     * Round-2 Codex Finding 1+2: directly exercise the recursive parent walk
+     * inside ExpenseCategoryController::wouldCreateCircularReference, bypass
+     * the FormRequest validator (which short-circuits hostile parent_id
+     * before the helper runs), and pin the SQL shape of every id-anchored
+     * SELECT the helper emits — seed AND every parent-hop must include both
+     * tenant_id and company_id literals.
+     */
+    public function test_expense_category_circular_check_recursive_walk_is_tenant_company_scoped(): void
+    {
+        // Same-tenant chain rooted in companyA: leaf -> middle -> root.
+        /** @var ExpenseCategory $root */
+        $root = ExpenseCategory::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Root A',
+            'is_active' => true,
+        ]);
+        /** @var ExpenseCategory $middle */
+        $middle = ExpenseCategory::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Middle A',
+            'parent_id' => $root->id,
+            'is_active' => true,
+        ]);
+        /** @var ExpenseCategory $leaf */
+        $leaf = ExpenseCategory::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Leaf A',
+            'parent_id' => $middle->id,
+            'is_active' => true,
+        ]);
+
+        // Foreign-tenant category — used as legacy hostile state.
+        /** @var ExpenseCategory $foreign */
+        $foreign = ExpenseCategory::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Foreign Parent',
+            'is_active' => true,
+        ]);
+
+        // Plant a cross-tenant parent link by writing root.parent_id directly.
+        // This bypasses ExpenseCategoryRequest validation and simulates legacy
+        // data corruption, an admin tool path, or any non-FormRequest writer.
+        DB::table('expense_categories')
+            ->where('id', $root->id)
+            ->update(['parent_id' => $foreign->id]);
+
+        // CompanyContext bound to companyA, controller instantiated directly
+        // so the SQL log captures only helper queries (no FormRequest noise,
+        // no controller route-id read).
+        $companyContext = new CompanyContext;
+        $companyContext->setCompanyId($this->companyA->id);
+        $controller = new ExpenseCategoryController($companyContext);
+
+        $reflection = new \ReflectionClass($controller);
+        $helper = $reflection->getMethod('wouldCreateCircularReference');
+        $helper->setAccessible(true);
+
+        DB::enableQueryLog();
+
+        // Walk: middle (seed) -> root (parent hop 1) -> foreign (parent hop 2,
+        // cross-tenant — must NOT be reachable post-fix). $leaf->id never
+        // appears in the chain so the helper must return false.
+        $hasCycle = (bool) $helper->invoke(
+            $controller,
+            $leaf->id,
+            $middle->id,
+            $this->tenantA->id,
+            $this->companyA->id,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertFalse(
+            $hasCycle,
+            'wouldCreateCircularReference must return false; cross-tenant parent '
+                .'link must terminate the recursive walk safely.',
+        );
+
+        // Capture every id-anchored row SELECT from expense_categories. The
+        // helper must emit at least the seed lookup + one parent-hop in this
+        // chain. Each must carry tenant_id and company_id literals.
+        $idAnchoredSelects = [];
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            $isExpenseCategorySelect = str_contains($sql, 'from "expense_categories"')
+                && ! str_contains($sql, 'count(*)');
+            $isIdAnchored = preg_match('/"id" (?:=|in) /', $sql) === 1;
+
+            if ($isExpenseCategorySelect && $isIdAnchored) {
+                $idAnchoredSelects[] = $sql;
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(
+            2,
+            count($idAnchoredSelects),
+            'Recursive helper must emit at least seed + one parent-hop SELECT. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+
+        foreach ($idAnchoredSelects as $sql) {
+            $this->assertStringContainsString(
+                '"tenant_id"',
+                $sql,
+                'Every recursive-helper id-anchored SELECT must filter by tenant_id. SQL: '.$sql,
+            );
+            $this->assertStringContainsString(
+                '"company_id"',
+                $sql,
+                'Every recursive-helper id-anchored SELECT must filter by company_id. SQL: '.$sql,
+            );
+        }
     }
 
     private function actingAsForCompany(User $user, Company $company): self
