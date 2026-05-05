@@ -156,3 +156,232 @@ manual_callsites:
     fiscal_path: false
     cross_module: true
     expected_fix: "Persist scoped Product/Service lookup result (?->id) into document_lines, not the raw request UUID. Same fix in addLinesBatch."
+
+  # api.catalog — round-1 Opus Finding 1 (sibling-controller blind spots in
+  # Catalog/Presentation/Controllers and the recipe surfaces NOT in scanner inventory)
+  - cluster_id: api.catalog
+    slug: composite-item-controller-bare-where-chains
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to all CompositeItem::where('company_id', $companyId)->findOrFail($id) chains (lines 73, 101, 116, 132, 182). composite_items has both tenant_id and company_id — missing tenant_id violates the Treasury Finding-14 invariant."
+
+  - cluster_id: api.catalog
+    slug: recipe-controller-bare-where-chains
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeController.php
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\RecipeController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem+Recipe
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Lines 33, 70: scope CompositeItem::where('company_id', ...) by tenant_id too. Lines 51, 97, 116, 142: Recipe::with('compositeItem')->findOrFail($id) is unscoped — verify via compositeItem.company_id (and tenant_id) before mutating."
+
+  - cluster_id: api.catalog
+    slug: recipe-line-controller-store-bare-where-chain
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeLineController.php
+    line: 33
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\RecipeLineController::store'
+    pattern_type: unscoped_eloquent_with_findOrFail
+    resource: Recipe
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Recipe::with('compositeItem')->findOrFail($recipeId) is unscoped. The compositeItem.company_id manual check at line 36-38 catches cross-company but not cross-tenant within a same-id collision (UUID prevents); add scoped Recipe lookup via composite_items.tenant_id + company_id."
+
+  - cluster_id: api.catalog
+    slug: composite-item-variant-controller-bare-where-chain
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemVariantController.php
+    line: 31
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemVariantController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId) chain at line 31. composite_items has both columns."
+
+  # api.catalog — round-1 Opus Finding 3 (units bare exists across 8 callsites in Catalog Presentation surface)
+  - cluster_id: api.catalog
+    slug: units-bare-exists-eight-callsites
+    file: apps/api/app/Modules/Catalog/Presentation
+    symbol: '8 validators using exists:units,id'
+    pattern_type: bare_exists_validator
+    resource: units
+    expected_scope: tenant_only_or_system
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "units has nullable tenant_id (system row + tenant rows). ScopedExists::tenant excludes system units. Need a custom rule that allows tenant_id=$callerTenantId OR tenant_id IS NULL. Affected: StoreCompositeItemRequest:48, UpdateCompositeItemRequest:50, StoreModifierRequest:30, ModifierController:71, StoreRecipeRequest, UpdateRecipeRequest, StoreRecipeLineRequest:34, RecipeLineController:88."
+
+  # api.catalog — round-1 Opus Finding 4 (tax_configurations annotation overstates the actual guard)
+  - cluster_id: api.catalog
+    slug: tax-configurations-country-guard-overstated
+    file: apps/api/app/Modules/Catalog/Presentation/Requests/StoreCompositeItemRequest.php
+    line: 48
+    symbol: 'StoreCompositeItemRequest::rules + UpdateCompositeItemRequest::rules'
+    pattern_type: annotation_inaccurate
+    resource: tax_configurations
+    expected_scope: country_scoped
+    severity: low
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "tax_configurations is country-scoped but the annotation claimed tax-application enforces country_code. Verify the actual enforcement point in Tax/Document/Billing — if absent, add a country_code-coherence check at composite-item save time. UpdateCompositeItemRequest comment was softened in 91c6a9e9; StoreCompositeItemRequest comment still claims the strong guard."
+
+  # api.catalog — round-2 Opus LOW (ModifierController::update component_type asymmetric Enum)
+  - cluster_id: api.catalog
+    slug: modifier-controller-component-type-not-enum
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
+    line: 65
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
+    pattern_type: validation_asymmetry
+    resource: null
+    expected_scope: enum_validation
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace 'component_type' => ['nullable', 'string'] with ['nullable', new Enum(ComponentType::class)] to match StoreModifierRequest's validation. component_id is already tenant+company scoped to products, so no cross-tenant persistence leak — just an integrity bug."
+
+  # api.catalog — round-2 Opus LOW (CompositeItemController::checkAvailability forwards location_id without scoping)
+  - cluster_id: api.catalog
+    slug: composite-item-check-availability-location-unscoped
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    line: 175
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemController::checkAvailability'
+    pattern_type: forwards_request_fk_without_scoped_validation
+    resource: locations
+    expected_scope: company_only
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ScopedExists::company('locations', $companyId) to the location_id validator. Returns 0 stock for foreign locations (no leak), but breaks the invariant that user-supplied FKs pass through ScopedExists before use."
+
+  # api.catalog — round-2 Codex LOW (NoCircularCompositeItemReference unscoped find)
+  - cluster_id: api.catalog
+    slug: no-circular-composite-reference-unscoped-find
+    file: apps/api/app/Modules/Catalog/Presentation/Rules/NoCircularCompositeItemReference.php
+    line: 52
+    symbol: 'App\Modules\Catalog\Presentation\Rules\NoCircularCompositeItemReference::passes'
+    pattern_type: unscoped_eloquent_find
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "CompositeItem::with('activeRecipe.lines')->find($compositeItemId) is unscoped. Pass the caller's tenant + company into the rule's constructor and scope the lookup. No persistence leak (the new ScopedExists in StoreRecipeLineRequest still rejects the id), but the unscoped read inside this rule violates the invariant."
+
+  # api.inventory — round-1 Opus LOW (CountingItemController::triggerThirdCount bare exists)
+  - cluster_id: api.inventory
+    slug: counting-item-controller-trigger-third-count-bare-exists
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/CountingItemController.php
+    line: 242
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\CountingItemController::triggerThirdCount'
+    pattern_type: bare_exists_validator
+    resource: inventory_counting_items
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace bare 'exists:inventory_counting_items,id' with ScopedExists scoped via the parent counting_id. Structurally protected today by InventoryCountingService::whereIn(...)->where('counting_id', $counting->id)->update(...) — but the validator surface is a sibling-controller blind spot."
+
+  # api.inventory — round-1 Opus MEDIUM (FraudTriggeredCountingService cross-tenant User::first() fallback)
+  - cluster_id: api.inventory
+    slug: fraud-triggered-counting-system-user-fallback
+    file: apps/api/app/Modules/Inventory/Application/Services/FraudTriggeredCountingService.php
+    line: 56
+    symbol: 'App\Modules\Inventory\Application\Services\FraudTriggeredCountingService::createCountingFromAlert'
+    pattern_type: cross_tenant_fallback_user_first
+    resource: users
+    expected_scope: tenant_only
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "User::where('email', 'system@autoerp.local')->first() ?? User::first() can pick a User from a different tenant when the system user is missing. Triggered by the scheduled fraud:detect command. Audit-trail integrity issue: created_by_user_id may be cross-tenant from the alert's company. Replace fallback with a per-tenant system-user lookup or fail-loud."
+
+  # api.inventory — round-1 Opus LOW (createDraft tenant_id hygiene)
+  - cluster_id: api.inventory
+    slug: inventory-counting-create-draft-tenant-id-not-set
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php
+    line: 422
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\InventoryCountingController::createDraft'
+    pattern_type: tenant_id_not_set_on_create
+    resource: inventory_countings
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Persist company.tenant_id alongside company_id when creating a draft inventory_counting (column is nullable but should always be set for audit consistency). Reads remain company-coherent because company_id is set."
+
+  # api.inventory — round-2 Opus INFORMATIONAL (WAC StockLevel locks tuple-scoped (product_id, location_id, tenant_id) only)
+  - cluster_id: api.inventory
+    slug: wac-stock-level-lock-tuple-missing-company-id
+    file: apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+    line: 62
+    symbol: 'App\Modules\Inventory\Application\Services\WeightedAverageCostService'
+    pattern_type: defense_in_depth_gap
+    resource: stock_levels
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Lock tuples at lines 62, 211, 309 do not include company_id. Defense-in-depth gap; not exploitable today because the stock_levels (tenant_id, product_id, location_id) unique key + product re-lock by tenant+company at lines 83-87/219-223/329-333 catch the leak. Add company_id for symmetry."
+
+  # api.inventory — round-3 Opus + round-4 Codex follow-ups (releaseBySource scoping, releaseForWorkOrder caller-scope)
+  - cluster_id: api.inventory
+    slug: release-by-source-not-tenant-scoped
+    file: apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php
+    line: 237
+    symbol: 'App\Modules\Inventory\Application\Services\StockReservationService::releaseBySource'
+    pattern_type: missing_caller_scope
+    resource: stock_reservations
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "releaseBySource (and releaseForWorkOrder which delegates to it) lack tenantId+companyId predicates. Practical risk is negligible (UUID v4 source_id collision) but mirror the reserveForWorkOrder hardening pattern: take caller scope and filter by it. Cross-module surface (reachable via Workshop's InventoryReservationAdapter::releaseFor)."
+
+  # api.inventory — round-3 Opus INFO (EloquentWorkOrderRepository finder lacks tenant_id predicate; api.workshop's responsibility)
+  - cluster_id: api.workshop
+    slug: eloquent-work-order-repository-find-no-tenant-id
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Persistence/EloquentWorkOrderRepository.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderRepository::findById|findForUpdate'
+    pattern_type: missing_tenant_predicate
+    resource: work_orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Repository finders only filter by company_id (controller checks company access). Add tenant_id predicate so a same-tenant cross-company access through a future caller path cannot leak. api.workshop cluster's responsibility — flagged here from the api.inventory round-3 Opus review."
+
+  # api.inventory — round-4 Codex INFO (Workshop cross-module raw-FK patterns)
+  - cluster_id: api.workshop
+    slug: bundle-expansion-adapter-raw-find
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/BundleExpansionAdapter.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\BundleExpansionAdapter::pricingModeOf|bundleName'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "ServiceBundle::find($bundleId) is unscoped; Workshop should pass and use its own tenant/company scope when resolving cross-module bundle metadata."
+
+  - cluster_id: api.workshop
+    slug: document-generation-adapter-raw-find
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/DocumentGenerationAdapter.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\DocumentGenerationAdapter'
+    pattern_type: unscoped_eloquent_find
+    resource: Document
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id."

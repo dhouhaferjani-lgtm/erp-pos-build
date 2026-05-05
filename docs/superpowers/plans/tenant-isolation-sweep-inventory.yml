@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 2c3f80ea25a3abeb90a998cb7dbebb564b99fc2a22137f3162e5f8152123f3b1
+  yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -129,7 +129,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -221,7 +221,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -1822,15 +1822,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -1899,6 +1899,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:45Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2c3f80ea25a3abeb90a998cb7dbebb564b99fc2a22137f3162e5f8152123f3b1
+        new_yaml_sha256: d8c7ffae12a91827ea82f49455419de40ed7475bec3a3e63c7f3f528537b0fb7
+        target_ids:
+          - api.catalog.001
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.002
     stable_key: 'sha256:1472ec6ff79d4adadde23399cf46f1f669989d0e0db3b0efc5ad5a0a2f54506f'
@@ -1916,15 +1933,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -1993,6 +2010,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:45Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d8c7ffae12a91827ea82f49455419de40ed7475bec3a3e63c7f3f528537b0fb7
+        new_yaml_sha256: 671c0932c2bcd545812dabf28aba1ad3fc6d9915dc2e324b05b87107b04f90c7
+        target_ids:
+          - api.catalog.002
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.003
     stable_key: 'sha256:9329ea64c5b5a85d2f6690dc21740e80fd7a5219df465ae57d68e29cfa2acca5'
@@ -2010,15 +2044,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:46Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -2087,6 +2121,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:46Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 671c0932c2bcd545812dabf28aba1ad3fc6d9915dc2e324b05b87107b04f90c7
+        new_yaml_sha256: c304bad5c66d97c1972196da5437c452abb98b8061a314ced26d4dda27cf88f2
+        target_ids:
+          - api.catalog.003
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.004
     stable_key: 'sha256:3f516d5f96119ad68b14fc6a9ac0dde4c4a33a89701089944c34efab815300e2'
@@ -2104,15 +2155,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:47Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -2181,6 +2232,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:47Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c304bad5c66d97c1972196da5437c452abb98b8061a314ced26d4dda27cf88f2
+        new_yaml_sha256: a2a386aa5dc5b5cfc8784122a8d3cd2dc4ed77e1b5f19896b386361301c9a4ec
+        target_ids:
+          - api.catalog.004
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.005
     stable_key: 'sha256:c62aec5cec47de6ec631986a006ac71fcf7da792e091bc00e31df2458bf67664'
@@ -2198,15 +2266,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:47Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -2275,6 +2343,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:47Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a2a386aa5dc5b5cfc8784122a8d3cd2dc4ed77e1b5f19896b386361301c9a4ec
+        new_yaml_sha256: 011f91c1f188e13eacabeb265323a04083474c9e6c6fd1ff0633f95becff4696
+        target_ids:
+          - api.catalog.005
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.006
     stable_key: 'sha256:0d5330410c251b2e17ffda1e2447a27f3a0cf66d321fdec650140d8bc21a4471'
@@ -2292,15 +2377,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:48Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -2369,6 +2454,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:48Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 011f91c1f188e13eacabeb265323a04083474c9e6c6fd1ff0633f95becff4696
+        new_yaml_sha256: c0bdf5e743178bd97cbd62c6cc13f5cc77cefd45e52b7a98cb22cee64c333eae
+        target_ids:
+          - api.catalog.006
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.007
     stable_key: 'sha256:94da925eac06f6691f6dec5bdc42a09a9b83c42ac3f37b4302042d8b3e4b67c1'
@@ -2386,15 +2488,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -2463,6 +2565,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:49Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c0bdf5e743178bd97cbd62c6cc13f5cc77cefd45e52b7a98cb22cee64c333eae
+        new_yaml_sha256: a03805bcec0140a025725f7b20a0b8c36d8e1646f45c07db7f7ff061d257bf2f
+        target_ids:
+          - api.catalog.007
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.taxation.001
     stable_key: 'sha256:47cd6b9d7a87c5280fc2b14dba3ca8a9ad26b25692fbb3353d0e06edbc923439'
@@ -5111,15 +5230,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:14Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5188,6 +5307,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:14Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c86a70d3d7aaeb594c60f929d4f9c4357057b12c76d403671150db54a76a9a41
+        new_yaml_sha256: 43334c88f2bba58b52bd381fc95f3e7881422044f1d50c80568d95afeb73ea09
+        target_ids:
+          - api.inventory.001
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.002
     stable_key: 'sha256:390c9adcb443b844f7eab12bcc6447198c0975d65ee79624a33264b095db2c27'
@@ -5205,15 +5341,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:15Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5282,6 +5418,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:15Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 43334c88f2bba58b52bd381fc95f3e7881422044f1d50c80568d95afeb73ea09
+        new_yaml_sha256: 22793b1f0814364692a24e2737ce583b1fc32b841390803f457b35f7acc3aaf2
+        target_ids:
+          - api.inventory.002
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.003
     stable_key: 'sha256:585ac3b00534ed00e655b979ab6e2107a4db58c337ddd882e794e07a02a52f91'
@@ -5299,15 +5452,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:15Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5376,6 +5529,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:15Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 22793b1f0814364692a24e2737ce583b1fc32b841390803f457b35f7acc3aaf2
+        new_yaml_sha256: 6d4449eeeaad645a48ab663cd34b498491f68f50e5bc8be974baefbdd92af499
+        target_ids:
+          - api.inventory.003
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.004
     stable_key: 'sha256:7c526c8589d9415e2d337debbfaebd048fc9cc7d13f3040497fc3401b5eec5f6'
@@ -5393,15 +5563,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:16Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5470,6 +5640,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:16Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6d4449eeeaad645a48ab663cd34b498491f68f50e5bc8be974baefbdd92af499
+        new_yaml_sha256: b067646614c5896eabbd49b4e7555f80fe5fda4832a2095e17033ce9a0160ff4
+        target_ids:
+          - api.inventory.004
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.005
     stable_key: 'sha256:605f2f0c31c801e26857d4d37ebd380bf21870bb13c1baf51ca3c0fd9e43c02a'
@@ -5487,15 +5674,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:17Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5564,6 +5751,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:17Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b067646614c5896eabbd49b4e7555f80fe5fda4832a2095e17033ce9a0160ff4
+        new_yaml_sha256: 187460a0dcc36016835ff777ab526337297c988645e93a8cc5792a3b8dd00b8b
+        target_ids:
+          - api.inventory.005
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.006
     stable_key: 'sha256:c9bf1882b08a265aa80f54cef505ba6921e5b9911246c1bf83417e1b6198f960'
@@ -5581,15 +5785,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:17Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5658,6 +5862,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:17Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 187460a0dcc36016835ff777ab526337297c988645e93a8cc5792a3b8dd00b8b
+        new_yaml_sha256: 853f1e5e3aa0e94d6f217b6f4b79f70aaf72698045926b1653a2de2a1447e417
+        target_ids:
+          - api.inventory.006
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.007
     stable_key: 'sha256:e6928db5e9b0ca12db2550794615ed8357ed3cdacc288d9a4a0f10b01d1e6274'
@@ -5675,15 +5896,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:18Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5752,6 +5973,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:18Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 853f1e5e3aa0e94d6f217b6f4b79f70aaf72698045926b1653a2de2a1447e417
+        new_yaml_sha256: 3773148a92fbfcd1b3ba722b1ead5a1ff328e033918b4ba74cd198acca4ae0d0
+        target_ids:
+          - api.inventory.007
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.008
     stable_key: 'sha256:c9df01b56f3e8e9d35346a7f9f4c52aa978f059afd314b4bdfc6dcac036b77d7'
@@ -5769,15 +6007,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:19Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5846,6 +6084,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:19Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3773148a92fbfcd1b3ba722b1ead5a1ff328e033918b4ba74cd198acca4ae0d0
+        new_yaml_sha256: 3c76c5574ac596a1be7deb66deed24c0b66d9f355f361fc0a44fceb101d2f06e
+        target_ids:
+          - api.inventory.008
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.009
     stable_key: 'sha256:bd5289c33d6267d13daafb194d204b20bbdb305d5104c20c117065019a2f5219'
@@ -5863,15 +6118,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:19Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -5940,6 +6195,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:19Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3c76c5574ac596a1be7deb66deed24c0b66d9f355f361fc0a44fceb101d2f06e
+        new_yaml_sha256: 9e95f288085c08f0dcb7f9d3bc9f5271c440a64653f92d8a70189998f0e38cc5
+        target_ids:
+          - api.inventory.009
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.010
     stable_key: 'sha256:8c121eb85aadc07250dacb05e69b69082bfff0264a4bc186cdceff363762073a'
@@ -5957,15 +6229,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:20Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -6034,6 +6306,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:20Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9e95f288085c08f0dcb7f9d3bc9f5271c440a64653f92d8a70189998f0e38cc5
+        new_yaml_sha256: a376d276155983b505cc79465af31cc3863e1ce55014924af5aeef525361fdaa
+        target_ids:
+          - api.inventory.010
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.treasury.001
     stable_key: 'sha256:9744c704bac225d2679ff27e9803a9d9aaaeb63bca26c6a80423f4d5816f28fb'
@@ -10108,15 +10397,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10185,6 +10474,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:50Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a03805bcec0140a025725f7b20a0b8c36d8e1646f45c07db7f7ff061d257bf2f
+        new_yaml_sha256: 15fddfccc24daa44fed7a0f1b78f4b6aba907df102ff6bcdb674d68f09799824
+        target_ids:
+          - api.catalog.008
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.009
     stable_key: 'sha256:3dc2767133b47f531e82b9344fd90046d9d354ef3730b0482afa6f50ed4e34cc'
@@ -10202,15 +10508,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:50Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10279,6 +10585,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:50Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 15fddfccc24daa44fed7a0f1b78f4b6aba907df102ff6bcdb674d68f09799824
+        new_yaml_sha256: d5a80f7398a3642df68a2ef2b51fc22c803df780b3a3a8af163cc5ab0cfc9dae
+        target_ids:
+          - api.catalog.009
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.010
     stable_key: 'sha256:7d7a07cd83de10824ce54b382e7fe82d07589be24264bc1bd8bf4b9edc713799'
@@ -10296,15 +10619,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:51Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10373,6 +10696,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:51Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d5a80f7398a3642df68a2ef2b51fc22c803df780b3a3a8af163cc5ab0cfc9dae
+        new_yaml_sha256: bd5c339b8c461b533c5e9800b2ea4854ab5b4de602070c736de73c410b0b9ee1
+        target_ids:
+          - api.catalog.010
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.011
     stable_key: 'sha256:7bbcbda63a8c24c169fa3b0af3eb7fc8cc5a1d311592e16ea661eaaeff59765a'
@@ -10390,15 +10730,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:52Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10467,6 +10807,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:52Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: bd5c339b8c461b533c5e9800b2ea4854ab5b4de602070c736de73c410b0b9ee1
+        new_yaml_sha256: 62daefbc6c6e61360af570e0c898b2cab7e8834237a2155372e4fff5693631e1
+        target_ids:
+          - api.catalog.011
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.012
     stable_key: 'sha256:3000b7a49dd21167ba2be8fd04c16c25f0e41339aa7daa8453b7cb03af64713d'
@@ -10484,15 +10841,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:52Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10561,6 +10918,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 62daefbc6c6e61360af570e0c898b2cab7e8834237a2155372e4fff5693631e1
+        new_yaml_sha256: f0f0ee3e71166392b774a08d43b53c54e6fbf31368ff77f0d3c3355ebef96283
+        target_ids:
+          - api.catalog.012
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.013
     stable_key: 'sha256:0b4c65fd10c951badf47fc3de4aa2f58c97ab96400b1b6c2809a10eae9ccad7a'
@@ -10578,15 +10952,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -10655,6 +11029,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f0f0ee3e71166392b774a08d43b53c54e6fbf31368ff77f0d3c3355ebef96283
+        new_yaml_sha256: 52ef5974ffe72ff5c487be6c954876c69237572605d7e654ef48db61952a4c19
+        target_ids:
+          - api.catalog.013
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
@@ -17088,15 +17479,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17165,6 +17556,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:21Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a376d276155983b505cc79465af31cc3863e1ce55014924af5aeef525361fdaa
+        new_yaml_sha256: b00bf23efeb345468a506c28af27bec54c0324a68f5a675ba2fe37be67334fe8
+        target_ids:
+          - api.inventory.011
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.012
     stable_key: 'sha256:0d76dfeee0f3646ddc7e5b7d9478b00488550bca02e9704e7a6e80976d662c39'
@@ -17182,15 +17590,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:22Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17259,6 +17667,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b00bf23efeb345468a506c28af27bec54c0324a68f5a675ba2fe37be67334fe8
+        new_yaml_sha256: 314e79ddbc6fc459050324469a74c5d7295bfa39e33c7b092d2b2d6de9816e22
+        target_ids:
+          - api.inventory.012
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.013
     stable_key: 'sha256:6fbec0da7da06be62946b5e823d671d351e97ad549c96d9c0988810d6a46dacd'
@@ -17276,15 +17701,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:22Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17353,6 +17778,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 314e79ddbc6fc459050324469a74c5d7295bfa39e33c7b092d2b2d6de9816e22
+        new_yaml_sha256: 05dd989b2bf5f45d782663f122417146f5efb796386ee54351613b2fda2cbb3b
+        target_ids:
+          - api.inventory.013
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.014
     stable_key: 'sha256:131843ff334cb2805083457feebe16fc6d19e55c542441521aceec885716c58c'
@@ -17370,15 +17812,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:23Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17447,6 +17889,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:23Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 05dd989b2bf5f45d782663f122417146f5efb796386ee54351613b2fda2cbb3b
+        new_yaml_sha256: 57a74d1903b2960570aca509bec56023fddda33a67f0753dd7f0fb592b73fa6e
+        target_ids:
+          - api.inventory.014
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.015
     stable_key: 'sha256:ce975496ebbac1efd3b3129a4ec223b58dc62cab6a7bfc3c4fc7392149dc58cc'
@@ -17464,15 +17923,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:24Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17541,6 +18000,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:24Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 57a74d1903b2960570aca509bec56023fddda33a67f0753dd7f0fb592b73fa6e
+        new_yaml_sha256: d04ab39e502d197191e3e1f1f072cbf70556cbef47e4e6e1e9ab7136b67675f2
+        target_ids:
+          - api.inventory.015
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.016
     stable_key: 'sha256:f20a05dcdedd07bfc2a49da2c11e09a6ece7e52b717f57171cdffa85aa9ae2c8'
@@ -17558,15 +18034,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:24Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17635,6 +18111,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:25Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d04ab39e502d197191e3e1f1f072cbf70556cbef47e4e6e1e9ab7136b67675f2
+        new_yaml_sha256: 75f4cff862a1535048f2ae79e43f90a21486ff0bba122d45331733faba2b3758
+        target_ids:
+          - api.inventory.016
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.017
     stable_key: 'sha256:dea6be20e9cca53bbdbaa38a4415c2d43c06fc67ded4d4dbbb242cc315c55cba'
@@ -17652,15 +18145,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:25Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17729,6 +18222,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:25Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 75f4cff862a1535048f2ae79e43f90a21486ff0bba122d45331733faba2b3758
+        new_yaml_sha256: 47fe2af1e500a20000e90365b44dd0706a21ff10f8d4ff89e5ecc7e473049da5
+        target_ids:
+          - api.inventory.017
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.018
     stable_key: 'sha256:fe55cecb4de835f62d7ead0aaf01ced9bd3dfdc3cbacff7b68ef61562843a702'
@@ -17746,15 +18256,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17823,6 +18333,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:26Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 47fe2af1e500a20000e90365b44dd0706a21ff10f8d4ff89e5ecc7e473049da5
+        new_yaml_sha256: ec39dbd63038b6901f0ad7f0a910a775ebc2479f9d928370d44d98f227bb7cd2
+        target_ids:
+          - api.inventory.018
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.019
     stable_key: 'sha256:0f270dc672878a8227cad9c64d284120b3f6dbff01a611a82b4d3bbbfecac3a6'
@@ -17840,15 +18367,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -17917,6 +18444,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:27Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ec39dbd63038b6901f0ad7f0a910a775ebc2479f9d928370d44d98f227bb7cd2
+        new_yaml_sha256: 10a5bb0c79d6d87fa50e126d5b0a8cc8df91d6f37f1eb60c13d7fe66212a432f
+        target_ids:
+          - api.inventory.019
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.cart.001
     stable_key: 'sha256:30a335e5ee26f353f011d6ee78e5c4693bcd3836b3381bdfd13ed10491f002a3'
@@ -22124,15 +22668,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:54Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -22201,6 +22745,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:54Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 52ef5974ffe72ff5c487be6c954876c69237572605d7e654ef48db61952a4c19
+        new_yaml_sha256: ad9089df60a0fc6db3fd05034a179c9b43067fca5da31597dc7f7549a3ae79e2
+        target_ids:
+          - api.catalog.014
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.015
     stable_key: 'sha256:ec27702bfb343951737d03ce257aebb7a88367d0cb747d782c7ba6d10f1a46ea'
@@ -22218,15 +22779,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -22295,6 +22856,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:55Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ad9089df60a0fc6db3fd05034a179c9b43067fca5da31597dc7f7549a3ae79e2
+        new_yaml_sha256: 82cf2da78fe9571a58ce4ba3d5c3eb99aa556d29bf63a0fc9b763e4e911df0fd
+        target_ids:
+          - api.catalog.015
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.016
     stable_key: 'sha256:44db58073152a2f1d323222cc1c1ae0e7779f716d8025ea517c59c53db5854a1'
@@ -22312,15 +22890,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -22389,6 +22967,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:55Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 82cf2da78fe9571a58ce4ba3d5c3eb99aa556d29bf63a0fc9b763e4e911df0fd
+        new_yaml_sha256: dd9d8a7f0f2608b2bb3521e97e7fbcdb8071ca85e083f0f3ec701737c2636700
+        target_ids:
+          - api.catalog.016
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.017
     stable_key: 'sha256:afe4d10d85d088786d9b60049b2dba53c2fdc75098ec69d9107892f34e807483'
@@ -22406,15 +23001,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
+      reviewed_at: '2026-05-05T05:42:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
     blocked_reason: null
@@ -22483,6 +23078,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:42:56Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: dd9d8a7f0f2608b2bb3521e97e7fbcdb8071ca85e083f0f3ec701737c2636700
+        new_yaml_sha256: c86a70d3d7aaeb594c60f929d4f9c4357057b12c76d403671150db54a76a9a41
+        target_ids:
+          - api.catalog.017
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.pos-stabilization.029
     stable_key: 'sha256:26c28ae36ada8faafb08e030fe6cb40919558c22fcf9017096af64ab6de97be7'
@@ -24506,15 +25118,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:27Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -24583,6 +25195,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:27Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 10a5bb0c79d6d87fa50e126d5b0a8cc8df91d6f37f1eb60c13d7fe66212a432f
+        new_yaml_sha256: 8f9bb7a36c190e0e10c0f775d99971aa0399f104cfd57045cc49ca5537b80012
+        target_ids:
+          - api.inventory.020
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.021
     stable_key: 'sha256:6a0c90e14f4ffb686f0780a42be742ab0dc14aaca8a8f6c24ff31cf64ec4f2c4'
@@ -24600,15 +25229,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:28Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -24677,6 +25306,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:28Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8f9bb7a36c190e0e10c0f775d99971aa0399f104cfd57045cc49ca5537b80012
+        new_yaml_sha256: 8e8811cb17c7e4a72943ed9d5c6f5633f9614c67ab20f635af23eb7c70b200a6
+        target_ids:
+          - api.inventory.021
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.022
     stable_key: 'sha256:a657c0eaac57a19edfa478bb130f1503a2c8b16b1c3c01e174de57de739f3213'
@@ -24694,15 +25340,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:28Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -24771,6 +25417,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:29Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8e8811cb17c7e4a72943ed9d5c6f5633f9614c67ab20f635af23eb7c70b200a6
+        new_yaml_sha256: 08ddb7f00c046abac7787f6c9fca598ac049a54bb6eb5c85b119e8b7fb4b98f5
+        target_ids:
+          - api.inventory.022
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.023
     stable_key: 'sha256:f84ac666f3a1fa47bdf5bb643f9761ca0ffc9ffaa022f159eb0246a1cb3e16b3'
@@ -24788,15 +25451,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:29Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -24865,6 +25528,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:29Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 08ddb7f00c046abac7787f6c9fca598ac049a54bb6eb5c85b119e8b7fb4b98f5
+        new_yaml_sha256: 11fcb70569c1f13f17447758749ea22a51b640b46a3ff23f2e48f1e746375cb6
+        target_ids:
+          - api.inventory.023
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.024
     stable_key: 'sha256:8fad2cba2691ae8c8bd3bc312ad89559995fa1acf2e98c7c4c5a9b2869378be5'
@@ -24882,15 +25562,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:30Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -24959,6 +25639,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:30Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 11fcb70569c1f13f17447758749ea22a51b640b46a3ff23f2e48f1e746375cb6
+        new_yaml_sha256: fba3831de52f70bbb70e2d5d5036b3224c7011ec0288954e508399fcbf3056d8
+        target_ids:
+          - api.inventory.024
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.025
     stable_key: 'sha256:d623bf08e2a3f9d4923293d50d2e7205471c84f9865727d278afba3229a897c9'
@@ -24976,15 +25673,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -25053,6 +25750,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:31Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fba3831de52f70bbb70e2d5d5036b3224c7011ec0288954e508399fcbf3056d8
+        new_yaml_sha256: 6877c43553ee5df4fe9940abbbf2ba6bade8f64a883dc7dc88e38cadfcd526c5
+        target_ids:
+          - api.inventory.025
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.026
     stable_key: 'sha256:8b5e9f8fe5255e9021bbaafae42807477baae1ce4356aba9f5ea2788e95cb9ed'
@@ -25070,15 +25784,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -25147,6 +25861,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:31Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6877c43553ee5df4fe9940abbbf2ba6bade8f64a883dc7dc88e38cadfcd526c5
+        new_yaml_sha256: 370dedac1ec33ac01397f065d13db8d009d3cdf9b0ec5d1b7149098e952a9b13
+        target_ids:
+          - api.inventory.026
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.027
     stable_key: 'sha256:8b907e5a3535e7d59e351233bc5a825175604c62a5dc772d7a9470a31f07ea3e'
@@ -25164,15 +25895,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:32Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -25241,6 +25972,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:32Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 370dedac1ec33ac01397f065d13db8d009d3cdf9b0ec5d1b7149098e952a9b13
+        new_yaml_sha256: 16705955eee62f6a207cdefe6b49a6f278f8851de4f74591b92fb1fe9915a101
+        target_ids:
+          - api.inventory.027
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.028
     stable_key: 'sha256:1f8523a6449f20f8fe46bafad293e6b479915ffa5488ceb52317dec6b5e92c99'
@@ -25258,15 +26006,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T05:43:33Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+      review_commit: 1eada1cb
     fix_commit: 1eada1cb
     regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
@@ -25335,6 +26083,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T05:43:33Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 16705955eee62f6a207cdefe6b49a6f278f8851de4f74591b92fb1fe9915a101
+        new_yaml_sha256: ec775d5752e3131d7eb3b7ad38140490e35b0ef5cabc495fa8a67a8e10af18b5
+        target_ids:
+          - api.inventory.028
+          - api.inventory
+        from_status: under_review
+        to_status: fixed
+        commit: 44207410e0b6c9e550d354365560afd368b213f0
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
+        review_commit: 1eada1cb
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.treasury.056
     stable_key: 'sha256:a528753f8a8a413667d47af15c4133713d73a6ce79856c81d42f7094ccb358b6'
