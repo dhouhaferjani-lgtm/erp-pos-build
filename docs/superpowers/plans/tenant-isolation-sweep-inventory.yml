@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 1504a1283394de092561b16160ce93de42402a70179dd1cb6d305903f1439b06
+  yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -106,7 +106,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -3257,15 +3257,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:27Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -3334,6 +3334,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:27Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1504a1283394de092561b16160ce93de42402a70179dd1cb6d305903f1439b06
+        new_yaml_sha256: 0fd5f66b107b88da7192007899e08546bd7c2e6716685c5498e863fa7803fe68
+        target_ids:
+          - api.document.001
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.002
     stable_key: 'sha256:01eb1e28d31da3d2ce67fdab4b9159ba094e36fdc294314ae73f791607e273bf'
@@ -3351,15 +3368,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:28Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -3428,6 +3445,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:28Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 0fd5f66b107b88da7192007899e08546bd7c2e6716685c5498e863fa7803fe68
+        new_yaml_sha256: a74896e37d6d6d99dfbe84a4e4e12e7d135e60bc3e30153bf688672b7bf9d4e6
+        target_ids:
+          - api.document.002
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.003
     stable_key: 'sha256:e33a9b9adf109ec6d2039e87c1ed5173f7ea2aa964e66ab3de6be74b21dffd9a'
@@ -3445,15 +3479,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:29Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -3522,6 +3556,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:29Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a74896e37d6d6d99dfbe84a4e4e12e7d135e60bc3e30153bf688672b7bf9d4e6
+        new_yaml_sha256: 7b789cb16b4b015cfad9895951b83426498b4b3b5556674a95b06970c7bf70ca
+        target_ids:
+          - api.document.003
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.001
     stable_key: 'sha256:2d2ddef9bf28ec941101400e0367e73b14c26e2465754fedf32c7833ed973c12'
@@ -10831,15 +10882,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:29Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -10908,6 +10959,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:30Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 7b789cb16b4b015cfad9895951b83426498b4b3b5556674a95b06970c7bf70ca
+        new_yaml_sha256: 05f18aece0c6d9105d586d1af51753ac63da2324f00e5cc05f1c0a7df75416fb
+        target_ids:
+          - api.document.004
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.005
     stable_key: 'sha256:09fc52244cdce6953255afb9a58a31167d7092678a98bfd65db3eb03d6beedca'
@@ -10925,15 +10993,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:30Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -11002,6 +11070,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:30Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 05f18aece0c6d9105d586d1af51753ac63da2324f00e5cc05f1c0a7df75416fb
+        new_yaml_sha256: b4ac79633596c9539b50d1e1966582e528a6816ddc6cf97cba0a3b6e25d68c7d
+        target_ids:
+          - api.document.005
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.006
     stable_key: 'sha256:cd050329ba6cf54216f2150d42c647ab81d54a54fc2a7e8458a402c9ad214c7f'
@@ -11019,15 +11104,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -11096,6 +11181,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:31Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b4ac79633596c9539b50d1e1966582e528a6816ddc6cf97cba0a3b6e25d68c7d
+        new_yaml_sha256: d7d39f57dd6d699754e6e10d574bc17308c93b845fa727ac3b6284b7659e2a45
+        target_ids:
+          - api.document.006
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.007
     stable_key: 'sha256:c001696a78ff909d2a48d64c0e6d8beca511396342d92ca8d0cf37240ebe33a9'
@@ -11113,15 +11215,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -11190,6 +11292,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:32Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d7d39f57dd6d699754e6e10d574bc17308c93b845fa727ac3b6284b7659e2a45
+        new_yaml_sha256: 801242d77e4ffff70c743845b26a95b6d3726b9b4773a89e4a29c1b9519109eb
+        target_ids:
+          - api.document.007
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.008
     stable_key: 'sha256:ead1cab1f5d684b370838c2ec32e5352450497571596c553f612500ca1da947b'
@@ -11207,15 +11326,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:32Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
     fix_commit: dd56691b
     regression_test: apps/api/tests/Feature/Document/CreditNoteTenantIsolationTest.php
     blocked_reason: null
@@ -11284,6 +11403,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:32Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 801242d77e4ffff70c743845b26a95b6d3726b9b4773a89e4a29c1b9519109eb
+        new_yaml_sha256: 2a47391ea382d29befec084f58f54f7037cdd3ea4dd77b39153cee7120f40207
+        target_ids:
+          - api.document.008
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.009
     stable_key: 'sha256:c60252f852f27dd97515bbe3c5c81df2687bb7f2570bf611d70d6cbfdc62954f'
@@ -11301,15 +11437,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:46Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -11378,6 +11514,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:46Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8dfd8f84cb1206c98fad7e3b098793773809bff7ffeb07042da3170ae9adf0d7
+        new_yaml_sha256: 3ba2153cbafc3b305a3e1cdf34dd130a2acee772bbced9dcba2ea6fada20001d
+        target_ids:
+          - api.document.009
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.010
     stable_key: 'sha256:a877a6df3897402063e64084f240f358c526f849ce372c42ea9421a2682ec8ca'
@@ -11395,15 +11548,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:46Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -11472,6 +11625,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:47Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3ba2153cbafc3b305a3e1cdf34dd130a2acee772bbced9dcba2ea6fada20001d
+        new_yaml_sha256: 1a4ebf6499017005baee1452e76baac0e1df4b9a0bf409a650a880a82982df6a
+        target_ids:
+          - api.document.010
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.011
     stable_key: 'sha256:86ca8b68c03c1d6da46d2236673e703dbe8498443d8a12b82db8f19de2842cac'
@@ -11489,15 +11659,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:47Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -11566,6 +11736,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:47Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1a4ebf6499017005baee1452e76baac0e1df4b9a0bf409a650a880a82982df6a
+        new_yaml_sha256: daaccaacede9acca4e876ba2b42fe0f6ac5aa0895951b724188bb657ac07cf17
+        target_ids:
+          - api.document.011
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.012
     stable_key: 'sha256:9fad80a63578eb43f67e2d508a8e23b0a562872e598b5a7e55de2e1a14f2f14a'
@@ -11583,15 +11770,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:48Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -11660,6 +11847,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:48Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: daaccaacede9acca4e876ba2b42fe0f6ac5aa0895951b724188bb657ac07cf17
+        new_yaml_sha256: 01d7fc1450262ea19fb4a4a3095a60784993b81d18db9ab4dd4535738f08084a
+        target_ids:
+          - api.document.012
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.013
     stable_key: 'sha256:781663173de03fba3cf28338fa6a751b9c6835f493bf09fc5758724074413e66'
@@ -11677,15 +11881,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -11754,6 +11958,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:49Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 01d7fc1450262ea19fb4a4a3095a60784993b81d18db9ab4dd4535738f08084a
+        new_yaml_sha256: daa056dd68d22e2825c25aab77893c9fbb3f22832d013115a840dc234226023d
+        target_ids:
+          - api.document.013
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.014
     stable_key: 'sha256:644ac8df6e6c6bc301d80ca9e4806d659281da895ddcd92edfc1df94dbd7b91f'
@@ -11771,15 +11992,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:33Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -11848,6 +12069,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:33Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2a47391ea382d29befec084f58f54f7037cdd3ea4dd77b39153cee7120f40207
+        new_yaml_sha256: 77250e9bdddb4fc1056c03428cf33d612d9f59af2a56ebbefd74e25847a61675
+        target_ids:
+          - api.document.014
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.015
     stable_key: 'sha256:2170bfecfa24e23d3d1b5b80d746d3c166e6897b3771677c2ff255b0417bba09'
@@ -11865,15 +12103,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:33Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -11942,6 +12180,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:34Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 77250e9bdddb4fc1056c03428cf33d612d9f59af2a56ebbefd74e25847a61675
+        new_yaml_sha256: b788e905aaf6207a299982fa52187283fc4aa48863ee3fef6fc6f250f37fd99e
+        target_ids:
+          - api.document.015
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.016
     stable_key: 'sha256:d909ea58678d711c688c7a60be3f6259e2881a9a580a2b57bb593d1fdffadeca'
@@ -11959,15 +12214,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:34Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12036,6 +12291,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:34Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b788e905aaf6207a299982fa52187283fc4aa48863ee3fef6fc6f250f37fd99e
+        new_yaml_sha256: 68acb8fa8ef0b48b72fcde0244d43ff9ff320499756503564148ea36b0ab17f3
+        target_ids:
+          - api.document.016
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.017
     stable_key: 'sha256:8be09f001658b207ce0dc850903842d1ac9f17d41214e122a83cf2ffd1c20f41'
@@ -12053,15 +12325,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:35Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12130,6 +12402,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:35Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 68acb8fa8ef0b48b72fcde0244d43ff9ff320499756503564148ea36b0ab17f3
+        new_yaml_sha256: b9f1b3cd0bb700bd2c32a439e3e8f0c765f1274bfec3b06a4863b3e921b4314f
+        target_ids:
+          - api.document.017
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.018
     stable_key: 'sha256:7768361088d05e399f73e255c73fa02b5accd3dcf38b811fbad691b43aae5c4e'
@@ -12147,15 +12436,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:35Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12224,6 +12513,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:36Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b9f1b3cd0bb700bd2c32a439e3e8f0c765f1274bfec3b06a4863b3e921b4314f
+        new_yaml_sha256: cbdc40b97d460bf14529df14c2a8d16d9ce21194c4e29847cd07c01a68e0c28b
+        target_ids:
+          - api.document.018
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.019
     stable_key: 'sha256:784fa9712550b150556e9776f1882fdf7993a53aa74abfc277a6514196960a0a'
@@ -12241,15 +12547,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:36Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12318,6 +12624,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:36Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: cbdc40b97d460bf14529df14c2a8d16d9ce21194c4e29847cd07c01a68e0c28b
+        new_yaml_sha256: 003e2a82e69c101c5509f4e444f17bdf964de486eabbdfff25117cf67bf5b4fd
+        target_ids:
+          - api.document.019
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.020
     stable_key: 'sha256:e5db68c814235797cc131d05c805a29f102f63f932cc802e82c8217ac4660ce6'
@@ -12335,15 +12658,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -12412,6 +12735,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:49Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: daa056dd68d22e2825c25aab77893c9fbb3f22832d013115a840dc234226023d
+        new_yaml_sha256: b64ba740c9a7a6fbb09e20f4b2322f59b30d24a2b0091c015ae0be2862f52fd6
+        target_ids:
+          - api.document.020
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.021
     stable_key: 'sha256:4ff2024568d22cefee270e6b753841e8aa0f5bd0abb33d1f7c6e164dbe34e7f9'
@@ -12429,15 +12769,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:50Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -12506,6 +12846,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:50Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b64ba740c9a7a6fbb09e20f4b2322f59b30d24a2b0091c015ae0be2862f52fd6
+        new_yaml_sha256: c560309cde405b0cbeac823e6bf1fbbcd8e858b14e412887a797170b854a362d
+        target_ids:
+          - api.document.021
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.022
     stable_key: 'sha256:7d24e7db2e34ae018d32bb3d3091810c1105cce24667cb3a5faa44a6b781a042'
@@ -12523,15 +12880,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:37Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12600,6 +12957,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:37Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 003e2a82e69c101c5509f4e444f17bdf964de486eabbdfff25117cf67bf5b4fd
+        new_yaml_sha256: e051a39fc07dadddac48b6ac138aef453fd6d2cdf661d3a50335e11219494049
+        target_ids:
+          - api.document.022
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.023
     stable_key: 'sha256:78f78575d0c4c093e2fa27e16fa6c9c382abe60c78488b4fb0fc42c2572b9709'
@@ -12617,15 +12991,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12694,6 +13068,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:38Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e051a39fc07dadddac48b6ac138aef453fd6d2cdf661d3a50335e11219494049
+        new_yaml_sha256: 434ebd567a0612d4d190f70c65694dd21aedd62b76eb3e6b9c69ddf6bff4bb08
+        target_ids:
+          - api.document.023
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.024
     stable_key: 'sha256:0efd8d8d856315f255b8af5613b4b94f47103c0c73b4bf550555eee51f873f44'
@@ -12711,15 +13102,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12788,6 +13179,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:38Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 434ebd567a0612d4d190f70c65694dd21aedd62b76eb3e6b9c69ddf6bff4bb08
+        new_yaml_sha256: 639d2897a9550a42c0bac5b4cd1f29d1c17d922d7ed476c089af28a33d1b3337
+        target_ids:
+          - api.document.024
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.025
     stable_key: 'sha256:7f714660897d4c20cf07ad8b0834372465df98938ee8b69daa0c9de3db2069ed'
@@ -12805,15 +13213,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12882,6 +13290,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:39Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 639d2897a9550a42c0bac5b4cd1f29d1c17d922d7ed476c089af28a33d1b3337
+        new_yaml_sha256: 7e509bf4bed50e9c8617aef178eb2f1fc03dbe588a97c416275c7a3ab6280502
+        target_ids:
+          - api.document.025
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.026
     stable_key: 'sha256:e5a7c0a1ae360be87948faec3af1f2c3edf2fa2cb977d61884a7ef014bd8905f'
@@ -12899,15 +13324,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -12976,6 +13401,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:40Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 7e509bf4bed50e9c8617aef178eb2f1fc03dbe588a97c416275c7a3ab6280502
+        new_yaml_sha256: 7aaf72f1bc14a03c254ee9aeffe9c3951086ec2e2f9dfaedc33581b9de23cdd0
+        target_ids:
+          - api.document.026
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.027
     stable_key: 'sha256:607142a882e008cf5ec3b360a74b47a842cda2778396ccfd88894f7ed4a6c807'
@@ -12993,15 +13435,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13070,6 +13512,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:41Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 7aaf72f1bc14a03c254ee9aeffe9c3951086ec2e2f9dfaedc33581b9de23cdd0
+        new_yaml_sha256: 26c5ba65496eff11718a9c556bdf9eb8025a5bb7d639485531b873ab84306b9a
+        target_ids:
+          - api.document.027
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.028
     stable_key: 'sha256:f88efe25fa7e75d92e0520777aae13f55bfeca870e3bb8943787a1cfe382b797'
@@ -13087,15 +13546,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:41Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13164,6 +13623,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:41Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 26c5ba65496eff11718a9c556bdf9eb8025a5bb7d639485531b873ab84306b9a
+        new_yaml_sha256: 6735d2abe0122026562caccbbb4bdd898f034bff02958ce573f4b641ea76041c
+        target_ids:
+          - api.document.028
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.029
     stable_key: 'sha256:e0c1a2fd2d3754228f88b6bc995bac780a3f9d1376f036707f712d5024005ad0'
@@ -13181,15 +13657,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:42Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13258,6 +13734,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:42Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6735d2abe0122026562caccbbb4bdd898f034bff02958ce573f4b641ea76041c
+        new_yaml_sha256: e510869abe620768c73425f73b7e15ee17c80adf340cd53fea26bdad6b94b02a
+        target_ids:
+          - api.document.029
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.030
     stable_key: 'sha256:1e02592b0d56ef09a55a3cb936b146202eac7ab4a926aae7b5d423d01582ca5d'
@@ -13275,15 +13768,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:42Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13352,6 +13845,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:43Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e510869abe620768c73425f73b7e15ee17c80adf340cd53fea26bdad6b94b02a
+        new_yaml_sha256: e5cb6bbe5606ceb0d6195b97ec5a9166b935ea0401f050ccfef720780bd0ce5f
+        target_ids:
+          - api.document.030
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.031
     stable_key: 'sha256:d02de606c676b7b0c639f7fecbd0b1d9d7d6d5cb30863b3fc6cffb3fb2f74f84'
@@ -13369,15 +13879,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13446,6 +13956,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:43Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e5cb6bbe5606ceb0d6195b97ec5a9166b935ea0401f050ccfef720780bd0ce5f
+        new_yaml_sha256: dfe9208c448289d4c08d69f6accd3f6bdbbcd5cbde39276f1717ad97ca725e0b
+        target_ids:
+          - api.document.031
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.032
     stable_key: 'sha256:61448c8fe6a2eb1985682f2702ab87a60b6da93a7d1874b251ebac01ce0a7667'
@@ -13463,15 +13990,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13540,6 +14067,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:44Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: dfe9208c448289d4c08d69f6accd3f6bdbbcd5cbde39276f1717ad97ca725e0b
+        new_yaml_sha256: 42a7efb2aba5ee609008caa47741b276ddc420deb2040d0b34741ecb9a1efc40
+        target_ids:
+          - api.document.032
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.033
     stable_key: 'sha256:87b819324d40aea1a6f568afd20ee6a9f419fed08413769c715a755de46a093a'
@@ -13557,15 +14101,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -13634,6 +14178,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:45Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 42a7efb2aba5ee609008caa47741b276ddc420deb2040d0b34741ecb9a1efc40
+        new_yaml_sha256: 66066f321937e300a582a42752d96d5a7b32d7869d296f0889b103af3d956b59
+        target_ids:
+          - api.document.033
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.034
     stable_key: 'sha256:b5ef2d6453df36416e4257b37760b1a90af0ca86962203c18dc0395118e33769'
@@ -13651,15 +14212,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:51Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -13728,6 +14289,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:51Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c560309cde405b0cbeac823e6bf1fbbcd8e858b14e412887a797170b854a362d
+        new_yaml_sha256: a8b662517a4fcc93fa51e3764685210afed4f8314533e7571bb0b76d9354523e
+        target_ids:
+          - api.document.034
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.035
     stable_key: 'sha256:9c8ed33c71a2669339cb9b9b64676b770708d6f8b0b5f29d174780708f33b425'
@@ -13745,15 +14323,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:51Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -13822,6 +14400,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:51Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a8b662517a4fcc93fa51e3764685210afed4f8314533e7571bb0b76d9354523e
+        new_yaml_sha256: 2f81d08d45903e6178276afa01b18897e803cd26191306eb8ae76c25c1817bb9
+        target_ids:
+          - api.document.035
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.036
     stable_key: 'sha256:35d485f6f74c5352fe39e0a73b4197dfeea0c8193d5f28e7c5ea3f2da8454edb'
@@ -13839,15 +14434,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:52Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -13916,6 +14511,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:52Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2f81d08d45903e6178276afa01b18897e803cd26191306eb8ae76c25c1817bb9
+        new_yaml_sha256: dd3a9b938534383428b4071ce4609e4c85a5fa36147b6c8ea343635d4379d5e5
+        target_ids:
+          - api.document.036
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.037
     stable_key: 'sha256:acac0b74e7b55f29c1cf79df6c177582dc8edcfd12d03f4859570ab6de57a82d'
@@ -13933,15 +14545,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -14010,6 +14622,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: dd3a9b938534383428b4071ce4609e4c85a5fa36147b6c8ea343635d4379d5e5
+        new_yaml_sha256: c6be4ad340b6ff2f4635f5e7ae1b5c8e6da9317722948ba10ec762fb6762ed92
+        target_ids:
+          - api.document.037
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.038
     stable_key: 'sha256:94774b86f1bf8c1b8b06d5ab6a0bb7152265ebf8de551844332333f41156e87e'
@@ -14027,15 +14656,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -14104,6 +14733,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:54Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c6be4ad340b6ff2f4635f5e7ae1b5c8e6da9317722948ba10ec762fb6762ed92
+        new_yaml_sha256: 9a6cf09a8538d223358bfdeca2be14cdf5ff1f43bc7788f8177d5680c47f3e83
+        target_ids:
+          - api.document.038
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.039
     stable_key: 'sha256:060bb48e59debed797d29221e4694d65604052ca38cfd6c39b9b33ded208f2b7'
@@ -14121,15 +14767,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:54Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -14198,6 +14844,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:54Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9a6cf09a8538d223358bfdeca2be14cdf5ff1f43bc7788f8177d5680c47f3e83
+        new_yaml_sha256: f30476631fdcd3bfae1d4e0ba49c6b3b673c50f926e5852ed20c4d74b21ca9c9
+        target_ids:
+          - api.document.039
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.040
     stable_key: 'sha256:41e81ffab8e941b1c00944a529b6b5dcf26241206426e6750a4357ce93838279'
@@ -14215,15 +14878,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -14292,6 +14955,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:55Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f30476631fdcd3bfae1d4e0ba49c6b3b673c50f926e5852ed20c4d74b21ca9c9
+        new_yaml_sha256: 6fde0d5a8b89f1fd9804eedb8e59df2a2ed7bdbf977b9adcaf63347e83bc67a1
+        target_ids:
+          - api.document.040
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.006
     stable_key: 'sha256:6992e6566414bb6b658d9da208e330f82ea3a604118d4836a8176f2b03346937'
@@ -20242,15 +20922,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
     fix_commit: '5174e756'
     regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
@@ -20319,6 +20999,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:45Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 66066f321937e300a582a42752d96d5a7b32d7869d296f0889b103af3d956b59
+        new_yaml_sha256: 8dfd8f84cb1206c98fad7e3b098793773809bff7ffeb07042da3170ae9adf0d7
+        target_ids:
+          - api.document.041
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.042
     stable_key: 'sha256:0c76fb93ad41c60e45e9e7533a4bd4e56e1a646ff67d6fc74108d4b01f01e768'
@@ -20336,15 +21033,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T03:54:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
     fix_commit: 8bd2b13a
     regression_test: apps/api/tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
@@ -20413,6 +21110,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T03:54:56Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6fde0d5a8b89f1fd9804eedb8e59df2a2ed7bdbf977b9adcaf63347e83bc67a1
+        new_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        target_ids:
+          - api.document.042
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 6d223af94fcc875ec5b29ec8c5dece10655709da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.catalog.014
     stable_key: 'sha256:587bd04a044eee518992bc8c584f6b3faa8945545c6b5a3382713f623a579888'
