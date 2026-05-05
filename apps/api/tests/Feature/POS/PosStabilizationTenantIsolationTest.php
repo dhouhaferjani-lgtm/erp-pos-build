@@ -25,6 +25,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Voucher\Domain\Voucher;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
@@ -358,6 +359,101 @@ final class PosStabilizationTenantIsolationTest extends TestCase
      * tenant + company. If this test fails, ALL per-callsite tests below fail
      * for the same reason — the seeder is broken.
      */
+    // =========================================================================
+    // Group 2 — Controller-tier route-anchored finds
+    // =========================================================================
+    //
+    // api.pos-stabilization.019 — TerminalController::getOrCreateWebTerminal
+    //   inline validate() with bare `exists:locations,id` (line 403).
+    // api.pos-stabilization.028 — TerminalController::getOrCreateWebTerminal
+    //   Location::findOrFail($locationId) (line 423).
+    //
+    // Both reachable from POST /api/v1/pos/terminals/web. locations has
+    // company_id only (no tenant_id), so the canonical scope is
+    // ScopedExists::company + Location::where('company_id', ...)->findOrFail.
+    // Pre-fix: tenant-A user passing tenant-B location_id (1) passes the bare
+    // exists, then (2) findOrFail returns the foreign location, and the new
+    // web terminal is created with tenant_id = tenant-A but location_id =
+    // tenant-B's location. Because Terminal::create is forced to the caller's
+    // tenant_id+company_id, the persisted row is internally inconsistent
+    // (location_id points to a foreign company's row). This is a real cross-
+    // company write defect.
+    // =========================================================================
+
+    /**
+     * Inventory: api.pos-stabilization.019 — bare `exists:locations,id`
+     * validator at TerminalController::getOrCreateWebTerminal:403.
+     */
+    public function test_get_or_create_web_terminal_refuses_cross_tenant_location_via_validator(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/web', [
+                'location_id' => $this->locationB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['location_id']);
+    }
+
+    /**
+     * Same-tenant control for callsites .019/.028 — proves the route accepts
+     * a legitimate location_id from the caller's company without 5xx.
+     */
+    public function test_get_or_create_web_terminal_accepts_same_tenant_location(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/web', [
+                'location_id' => $this->locationA->id,
+            ]);
+        $this->assertNoValidationErrorFor($response, 'location_id');
+        // Route may legitimately 200 (existing web terminal) or 201 (created)
+        // — both indicate the validator accepted the value and the route
+        // executed without a server error.
+        $this->assertContains(
+            $response->status(),
+            [200, 201],
+            'Same-tenant control: web-terminal route must succeed for caller\'s own location. Body: '.$response->getContent(),
+        );
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.028 — Location::findOrFail($locationId)
+     * at TerminalController::getOrCreateWebTerminal:423 must short-circuit on
+     * cross-tenant ids before any Terminal write. Structural-SQL-log
+     * invariant: the SELECT against `locations` MUST include a `company_id`
+     * predicate (post-fix). Pre-fix: bare `where "id" = ?` only.
+     *
+     * Note: depending on the order of guards this assertion may pin the
+     * validator's underlying exists-query OR the post-validation Location
+     * lookup; either way, the fix scopes the locations SELECT by company_id.
+     */
+    public function test_get_or_create_web_terminal_locations_query_includes_company_predicate(): void
+    {
+        DB::enableQueryLog();
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/web', [
+                'location_id' => $this->locationA->id,
+            ]);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $relevant = collect($queries)->filter(
+            fn (array $q): bool => str_contains($q['query'], 'locations')
+        )->values();
+
+        $this->assertNotEmpty(
+            $relevant,
+            'Expected at least one query against `locations` during web-terminal route.',
+        );
+
+        $sawCompanyPredicate = $relevant->contains(
+            fn (array $q): bool => str_contains($q['query'], 'company_id')
+        );
+        $this->assertTrue(
+            $sawCompanyPredicate,
+            'Locations SELECT during web-terminal route must include company_id predicate. Queries: '.
+                $relevant->pluck('query')->implode(' || '),
+        );
+    }
+
     public function test_setup_creates_per_tenant_resources_correctly(): void
     {
         // Tenant A side
