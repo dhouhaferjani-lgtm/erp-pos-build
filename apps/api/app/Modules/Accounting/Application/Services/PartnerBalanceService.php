@@ -287,12 +287,15 @@ class PartnerBalanceService
      */
     public function refreshPartnerBalance(string $companyId, string $partnerId): void
     {
-        // api.accounting.004: scope the Partner load by company_id so a
-        // foreign tenant's partner UUID cannot be silently picked up. The
-        // company_id parameter is the controller's route-bound tenant
-        // boundary; pinning the FK against it makes cross-tenant exfiltration
-        // structurally impossible (companies are globally unique UUIDs and
-        // are themselves tenant-owned).
+        // api.accounting.004 (round-2 Codex remediation): the Partner load
+        // is scoped by company_id; the route-driven cross-tenant exploit
+        // path is closed at the controller tier via the
+        // UserCompanyMembership check in PartnerBalanceController (a tenant-A
+        // user can no longer hit /api/v1/companies/{companyB}/... because
+        // the controller short-circuits with 404 when the auth user is not
+        // a member of {companyB}). Internal callers (GeneralLedgerService,
+        // AccountingService, CoffeeShopSeeder) pass company_id from a
+        // tenant-loaded Document, so the company_id is itself trusted.
         $partner = Partner::query()
             ->where('company_id', $companyId)
             ->whereKey($partnerId)
@@ -346,7 +349,9 @@ class PartnerBalanceService
      */
     public function refreshAllPartnerBalances(string $companyId): int
     {
-        $partners = Partner::where('company_id', $companyId)->get();
+        $partners = Partner::query()
+            ->where('company_id', $companyId)
+            ->get();
         $count = 0;
 
         foreach ($partners as $partner) {
@@ -369,8 +374,9 @@ class PartnerBalanceService
         bool $refreshIfStale = true,
         int $staleMinutes = 60
     ): array {
-        // api.accounting.005: scope the Partner load by company_id (same
-        // structural-protection argument as api.accounting.004 above).
+        // api.accounting.005 (round-2 Codex remediation): see refreshPartnerBalance
+        // note. Route-driven exploit closed at PartnerBalanceController via
+        // UserCompanyMembership check.
         $partner = Partner::query()
             ->where('company_id', $companyId)
             ->whereKey($partnerId)

@@ -73,6 +73,8 @@ final class AppointmentConversionService
                 plannedServices: $plannedServices,
                 vehicleId: $vehicleId,
                 partnerId: $partnerId,
+                tenantId: $appointment->tenant_id,
+                companyId: $appointment->company_id,
             );
 
             $appointment->work_order_id = $workOrder->id;

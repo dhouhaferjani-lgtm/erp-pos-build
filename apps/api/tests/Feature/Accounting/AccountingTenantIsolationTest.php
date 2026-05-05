@@ -223,6 +223,51 @@ final class AccountingTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // api.accounting.004/005 (round-2 Codex) — controller-tier
+    // UserCompanyMembership check refuses route-driven cross-tenant exploit
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_partner_balance_refresh_route_refuses_foreign_company(): void
+    {
+        // Real attack shape Codex round-1 second-layer flagged: tenant-A user
+        // hits /api/v1/companies/{companyB}/partners/{partnerB}/balance/refresh.
+        // Pre-fix, the company-only service scope resolved tenant-B's partner.
+        // Post-fix, the controller's UserCompanyMembership check short-circuits
+        // with 404 because userA is not a member of companyB.
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson("/api/v1/companies/{$this->companyB->id}/partners/{$this->partnerB->id}/balance/refresh");
+        $cross->assertStatus(404);
+    }
+
+    public function test_partner_balance_show_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$this->companyB->id}/partners/{$this->partnerB->id}/balance");
+        $cross->assertStatus(404);
+    }
+
+    public function test_partner_balance_statement_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$this->companyB->id}/partners/{$this->partnerB->id}/statement");
+        $cross->assertStatus(404);
+    }
+
+    public function test_partner_balance_receivables_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$this->companyB->id}/subledger/receivables");
+        $cross->assertStatus(404);
+    }
+
+    public function test_partner_balance_refresh_all_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson("/api/v1/companies/{$this->companyB->id}/partners/balance/refresh-all");
+        $cross->assertStatus(404);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // api.accounting.006 — GeneralLedgerReportService::getAccountDetails
     // ──────────────────────────────────────────────────────────────────
 
