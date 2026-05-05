@@ -13,6 +13,14 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Loyalty\Domain\Entities\Enrollment;
+use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
+use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
+use App\Modules\Loyalty\Domain\Entities\Reward;
+use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use App\Modules\Loyalty\Domain\Enums\MemberStatus;
+use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
+use App\Modules\Loyalty\Domain\Enums\ProgramType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
 use App\Modules\POS\Application\Services\VoucherLedgerPushService;
@@ -772,6 +780,175 @@ final class PosStabilizationTenantIsolationTest extends TestCase
                 'pin' => '1234',
             ]);
         $this->assertApiValidationErrors($response, ['user_id']);
+    }
+
+    // =========================================================================
+    // Group 4 — LoyaltyPOSController + processing services (5 manual stubs)
+    // =========================================================================
+    //
+    //   manual:loyalty-pos-controller-preview-earning-unscoped-enrollment
+    //     LoyaltyPOSController::previewEarning (line 78)
+    //   manual:loyalty-pos-controller-earn-unscoped-enrollment
+    //     LoyaltyPOSController::earn (line 174)
+    //   manual:loyalty-pos-controller-redeem-unscoped-enrollment-reward
+    //     LoyaltyPOSController::redeem (line 147)
+    //   manual:earning-processing-service-find-by-id-unscoped
+    //     EarningProcessingService::previewEarning|earnPoints
+    //   manual:redemption-processing-service-find-by-id-unscoped
+    //     RedemptionProcessingService::redeemReward|previewRedemption
+    //
+    // Cross-cluster blind spot deferred from api.loyalty (Finding B in
+    // 2026-05-04-loyalty-cross-cluster-blind-spots.md). Fix lands at the
+    // controller tier: pre-load Enrollment scoped via member.tenant_id and
+    // Reward scoped via program.tenant_id+company_id BEFORE delegating to
+    // the underlying processing service. This mirrors LoyaltyPOSController::
+    // rewards (line 124) which already used the canonical whereHas('member',
+    // tenant_id) pattern.
+    //
+    // The service-tier manual stubs (.037/.038) are structurally protected
+    // by the controller-tier guard — every HTTP path into the unscoped
+    // repository::findById passes through the controller's pre-load first.
+    // ============================================================================
+
+    public function test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment(): void
+    {
+        // Seed loyalty resources lazily — kept out of setUp per file
+        // docblock convention so Groups 1-3 don't pay the cost.
+        [$enrollmentA, $enrollmentB] = $this->seedLoyaltyEnrollments();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/loyalty/pos/preview-earning', [
+                'enrollment_id' => $enrollmentB->id,
+                'amount' => '50.00',
+            ]);
+        $this->assertContains(
+            $response->status(),
+            [404, 422],
+            'Cross-tenant enrollment_id must be rejected before reaching the unscoped EarningProcessingService::previewEarning. Body: '.$response->getContent(),
+        );
+
+        // Same-tenant control: tenant-A enrollment passes the pre-load guard.
+        $okResponse = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/loyalty/pos/preview-earning', [
+                'enrollment_id' => $enrollmentA->id,
+                'amount' => '50.00',
+            ]);
+        $this->assertLessThan(500, $okResponse->status());
+        // No assertion on enrollment_id field error key — same-tenant
+        // enrollment must NOT be flagged by the pre-load guard.
+        $errors = $okResponse->json('error.errors');
+        if (is_array($errors)) {
+            $this->assertArrayNotHasKey('enrollment_id', $errors);
+        }
+    }
+
+    public function test_loyalty_pos_earn_refuses_cross_tenant_enrollment(): void
+    {
+        [, $enrollmentB] = $this->seedLoyaltyEnrollments();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/loyalty/pos/earn', [
+                'enrollment_id' => $enrollmentB->id,
+                'receipt_id' => Str::uuid()->toString(),
+                'amount' => '25.00',
+            ]);
+        $this->assertContains(
+            $response->status(),
+            [404, 422],
+            'Cross-tenant enrollment_id on /loyalty/pos/earn must be rejected before reaching EarningProcessingService::earnPoints. Body: '.$response->getContent(),
+        );
+    }
+
+    public function test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward(): void
+    {
+        [, $enrollmentB, , $rewardB] = $this->seedLoyaltyEnrollments();
+
+        // Cross-tenant enrollment_id rejected.
+        $r1 = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/loyalty/pos/redeem', [
+                'enrollment_id' => $enrollmentB->id,
+                'reward_id' => $rewardB->id,
+            ]);
+        $this->assertContains(
+            $r1->status(),
+            [404, 422],
+            'Cross-tenant enrollment_id on /loyalty/pos/redeem must be rejected. Body: '.$r1->getContent(),
+        );
+    }
+
+    /**
+     * Seed minimal loyalty resources for Group 4 tests (kept out of setUp
+     * per the class-level docblock so non-loyalty groups don't pay the cost).
+     *
+     * @return array{0: Enrollment, 1: Enrollment, 2: Reward, 3: Reward}
+     */
+    private function seedLoyaltyEnrollments(): array
+    {
+        $programA = LoyaltyProgram::create([
+            'tenant_id' => $this->tenantA->id,
+            'name' => 'Program A',
+            'program_type' => ProgramType::Points,
+            'currency' => 'points',
+            'status' => ProgramStatus::Active,
+        ]);
+        $programB = LoyaltyProgram::create([
+            'tenant_id' => $this->tenantB->id,
+            'name' => 'Program B',
+            'program_type' => ProgramType::Points,
+            'currency' => 'points',
+            'status' => ProgramStatus::Active,
+        ]);
+
+        $memberA = LoyaltyMember::create([
+            'tenant_id' => $this->tenantA->id,
+            'phone' => LoyaltyMember::normalizePhone('+33100000001'),
+            'status' => MemberStatus::Active,
+            'enrollment_date' => now(),
+        ]);
+        $memberB = LoyaltyMember::create([
+            'tenant_id' => $this->tenantB->id,
+            'phone' => LoyaltyMember::normalizePhone('+33100000002'),
+            'status' => MemberStatus::Active,
+            'enrollment_date' => now(),
+        ]);
+
+        $enrollmentA = Enrollment::create([
+            'member_id' => $memberA->id,
+            'program_id' => $programA->id,
+            'current_balance' => '100.00',
+            'lifetime_earned' => '100.00',
+            'lifetime_redeemed' => '0.00',
+            'status' => EnrollmentStatus::Active,
+            'enrolled_at' => now(),
+        ]);
+        $enrollmentB = Enrollment::create([
+            'member_id' => $memberB->id,
+            'program_id' => $programB->id,
+            'current_balance' => '500.00',
+            'lifetime_earned' => '500.00',
+            'lifetime_redeemed' => '0.00',
+            'status' => EnrollmentStatus::Active,
+            'enrolled_at' => now(),
+        ]);
+
+        $rewardA = Reward::create([
+            'program_id' => $programA->id,
+            'name' => 'Reward A',
+            'points_cost' => '50',
+            'reward_type' => 'discount_amount',
+            'reward_value' => '5.00',
+            'is_active' => true,
+        ]);
+        $rewardB = Reward::create([
+            'program_id' => $programB->id,
+            'name' => 'Reward B',
+            'points_cost' => '50',
+            'reward_type' => 'discount_amount',
+            'reward_value' => '5.00',
+            'is_active' => true,
+        ]);
+
+        return [$enrollmentA, $enrollmentB, $rewardA, $rewardB];
     }
 
     // =========================================================================

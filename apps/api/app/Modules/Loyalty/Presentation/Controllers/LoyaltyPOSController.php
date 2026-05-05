@@ -87,6 +87,23 @@ class LoyaltyPOSController extends Controller
             'items.*.price' => ['required_with:items', 'numeric', 'gte:0'],
         ]);
 
+        // manual:loyalty-pos-controller-preview-earning-unscoped-enrollment +
+        // manual:earning-processing-service-find-by-id-unscoped — pre-load
+        // Enrollment scoped via the member's tenant_id BEFORE delegating to
+        // the unscoped EarningProcessingService::previewEarning. Mirrors the
+        // canonical pattern already used by self::rewards (line 124).
+        // Cross-tenant enrollment_id surfaces as 404 with no foreign data
+        // leak instead of 200 with points_to_earn computed against the
+        // foreign enrollment.
+        $company = $this->companyContext->requireCompany();
+        $enrollmentExists = Enrollment::query()
+            ->where('id', $validated['enrollment_id'])
+            ->whereHas('member', fn (Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
+            ->exists();
+        if (! $enrollmentExists) {
+            return response()->json(['error' => ['message' => 'Enrollment not found']], 404);
+        }
+
         $transactionData = [
             'amount' => (float) $validated['amount'],
             'items' => $validated['items'] ?? [],
@@ -151,6 +168,30 @@ class LoyaltyPOSController extends Controller
             'reward_id' => ['required', 'string', 'uuid'],
         ]);
 
+        // manual:loyalty-pos-controller-redeem-unscoped-enrollment-reward +
+        // manual:redemption-processing-service-find-by-id-unscoped — pre-load
+        // BOTH Enrollment and Reward tenant-scoped before delegating to the
+        // unscoped RedemptionProcessingService::redeemReward. Cross-tenant
+        // enrollment_id OR reward_id surfaces as 404; without these guards
+        // the service writes redemption transactions against foreign program
+        // / member rows (CRITICAL Finding B from
+        // 2026-05-04-loyalty-cross-cluster-blind-spots.md).
+        $company = $this->companyContext->requireCompany();
+        $enrollmentExists = Enrollment::query()
+            ->where('id', $validated['enrollment_id'])
+            ->whereHas('member', fn (Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
+            ->exists();
+        if (! $enrollmentExists) {
+            return response()->json(['error' => ['message' => 'Enrollment not found']], 404);
+        }
+        $rewardExists = Reward::query()
+            ->where('id', $validated['reward_id'])
+            ->whereHas('program', fn (Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
+            ->exists();
+        if (! $rewardExists) {
+            return response()->json(['error' => ['message' => 'Reward not found']], 404);
+        }
+
         try {
             $transaction = $this->redemptionService->redeemReward(
                 $validated['enrollment_id'],
@@ -183,6 +224,20 @@ class LoyaltyPOSController extends Controller
             'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
             'items.*.price' => ['required_with:items', 'numeric', 'gte:0'],
         ]);
+
+        // manual:loyalty-pos-controller-earn-unscoped-enrollment +
+        // manual:earning-processing-service-find-by-id-unscoped — pre-load
+        // tenant-scoped Enrollment before delegating. Without this guard
+        // tenant-A can write loyalty transactions and decrement balance
+        // against a foreign tenant's enrollment via POST /loyalty/pos/earn.
+        $company = $this->companyContext->requireCompany();
+        $enrollmentExists = Enrollment::query()
+            ->where('id', $validated['enrollment_id'])
+            ->whereHas('member', fn (Builder $q) => $q->whereRaw('tenant_id = ?', [$company->tenant_id]))
+            ->exists();
+        if (! $enrollmentExists) {
+            return response()->json(['error' => ['message' => 'Enrollment not found']], 404);
+        }
 
         $transactionData = [
             'amount' => (float) $validated['amount'],
