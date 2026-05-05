@@ -42,16 +42,18 @@ File: `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchReposito
 | `findByUuid` | `BatchController::findBatchOrFail` (post-load `$batch->company_id` check) and `BatchTraceabilityController` (post-load company check) | Upstream-protected. Cross-tenant company-context coercion is blocked by `CompanyContextMiddleware`. |
 | `findByBatchNumber` | `BatchController::store` (passes `$companyId` from `CompanyContext`) and the duplicate-check inside `store` | Caller-scoped. Method already takes `companyId` as first arg. |
 | `getByCompany` | `BatchController::index` (passes `$companyId` from `CompanyContext`) | Caller-scoped. |
-| `markAsExpired` | `DailyExpiryCheck` console command (iterates per-company already; callsite passes the right batch id) | Caller-scoped. Console command already filters batches by company_id before invoking. |
-| `recall` | `BatchController::recall` (uses `findBatchOrFail` first) | Upstream-protected. |
+| `markAsExpired` | No current callsite found; `DailyExpiryCheck` updates `Batch` records directly, not through this repository method. | Unused repository method; no public route-param path currently reaches it. |
+| `recall` | No current repository callsite found; `BatchController::recall` uses `findBatchOrFail` and then `Batch::recall()` on the guarded entity. | Unused repository method; public recall route is upstream-protected. |
 | `delete` | `BatchController::destroy` (uses `findBatchOrFail` first) | Upstream-protected. |
 | `update` | `BatchController::update` (uses `findBatchOrFail` first) | Upstream-protected. |
 
 No queue job, listener, or service path was found that calls these
 repository methods directly without first resolving a Batch through
-`findBatchOrFail` or a `CompanyContext`-scoped method. The repository is
-not API-symmetric (some methods take companyId, others don't) but the
-asymmetry is currently safe given upstream guards.
+`findBatchOrFail` or a `CompanyContext`-scoped method; the id-only
+repository write helpers are currently unused. The repository is not
+API-symmetric (some methods take companyId, others don't) but the
+asymmetry is currently safe given upstream guards or absence of
+callers.
 
 Status: **upstream-protected**. Future refactor candidate: tighten the
 interface so every repository method requires `$tenantId` + `$companyId`
