@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
@@ -62,6 +63,7 @@ final class VoucherLedgerPushService
 {
     public function __construct(
         private readonly VoucherRedemptionService $redemptionService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -83,24 +85,34 @@ final class VoucherLedgerPushService
             return $this->failed($payload->id, 'event_kind_not_supported_in_offline_path');
         }
 
-        // 2. Load the voucher scoped to the requesting terminal's tenant.
-        // api.pos-stabilization.027 — defense-in-depth: derive tenant from
-        // the requesting terminal and pin the SELECT predicate. The downstream
-        // redeemable_at_terminal_id guard at step 3 already catches the
-        // cross-tenant case (a tenant-A push of a tenant-B voucher whose
-        // redeemable_at_terminal_id is a tenant-B terminal will fail there),
-        // but pinning tenant_id on the find also surfaces the leak as
-        // voucher_not_found instead of voucher_not_for_this_terminal — a
-        // tighter signal that aligns with the Treasury invariant for any
-        // service-tier Eloquent find reachable from an HTTP path.
+        // 2. Resolve the requesting terminal scoped by AUTHENTICATED
+        // CompanyContext (NOT by the request-body terminal_id, which is
+        // attacker-controllable). api.pos-stabilization.027 round-2 Opus
+        // Finding 1 (path a): the previous version sourced tenant_id from
+        // the untrusted $payload->terminalId itself, so the Voucher SELECT's
+        // tenant predicate was a tighter error message but not a tighter
+        // security guard. Now the Terminal lookup pins tenant_id +
+        // company_id from the authenticated CompanyContext set by the
+        // SetPermissionsTeam + CompanyContextMiddleware on
+        // VoucherSyncController::pushVoucherLedger. A cross-tenant
+        // requestingTerminalId resolves to null (tenant-A user passing
+        // tenant-B's terminal_id never matches the where('tenant_id',
+        // $companyContext->tenantId) predicate) → voucher_not_found.
+        $company = $this->companyContext->requireCompany();
+
         /** @var Terminal|null $terminal */
         $terminal = Terminal::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $requestingTerminalId)
             ->first();
         if ($terminal === null) {
             return $this->failed($payload->id, 'voucher_not_found');
         }
 
+        // Voucher SELECT now pins tenant_id from authenticated context (via
+        // the verified terminal). This is a real defense-in-depth guard,
+        // not just a tighter error message.
         /** @var Voucher|null $voucher */
         $voucher = Voucher::query()
             ->where('tenant_id', $terminal->tenant_id)

@@ -10,6 +10,7 @@ use App\Modules\Catalog\Domain\Enums\SelectionType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -783,6 +784,82 @@ final class PosStabilizationTenantIsolationTest extends TestCase
     }
 
     // =========================================================================
+    // Round-2 Opus Finding 1 — VoucherLedgerSyncRequest scoped terminal_id
+    // =========================================================================
+
+    /**
+     * Round-2 Opus Finding 1: cross-tenant entries.*.terminal_id submitted
+     * to POST /api/v1/pos/voucher-ledger/sync must be rejected at the
+     * validator (ScopedExists::tenantAndCompany on pos_terminals) BEFORE
+     * VoucherLedgerPushService::push runs. Belt-and-braces with the
+     * service-tier Terminal lookup that now also pins tenant + company
+     * from authenticated CompanyContext.
+     */
+    public function test_voucher_ledger_sync_refuses_cross_tenant_terminal_id_via_validator(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/voucher-ledger/sync', [
+                'entries' => [[
+                    'id' => Str::uuid()->toString(),
+                    'voucher_id' => $this->voucherA->id,
+                    'event' => 'Redeemed',
+                    'amount' => '5.00',
+                    'currency' => 'EUR',
+                    'receipt_id' => null,
+                    // Cross-tenant terminal_id — must be denied at validator.
+                    'terminal_id' => $this->terminalB->id,
+                    'user_id' => $this->userA->id,
+                    'occurred_at' => now()->toIso8601String(),
+                ]],
+            ]);
+        $this->assertApiValidationErrors($response, ['entries.0.terminal_id']);
+    }
+
+    /**
+     * Round-2 Opus Finding 1: even if a payload bypasses the validator (e.g.
+     * via a programmatic caller constructing VoucherLedgerPushPayload
+     * directly), VoucherLedgerPushService::push now resolves the requesting
+     * Terminal scoped by AUTHENTICATED CompanyContext (NOT by the request-
+     * body terminal_id). A cross-tenant requesting_terminal_id resolves to
+     * null and the push fails with `voucher_not_found`. No Voucher row is
+     * mutated.
+     */
+    public function test_voucher_ledger_push_service_rejects_cross_tenant_terminal_via_company_context(): void
+    {
+        // Pin authenticated CompanyContext to tenant-A.
+        /** @var CompanyContext $context */
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+
+        $payload = new VoucherLedgerPushPayload(
+            id: Str::uuid()->toString(),
+            voucherId: $this->voucherA->id,
+            event: VoucherEvent::Redeemed,
+            amount: '5.00000',
+            currency: 'EUR',
+            receiptId: null,
+            terminalId: $this->terminalB->id,
+            userId: $this->userA->id,
+            occurredAt: now()->toIso8601String(),
+        );
+
+        /** @var VoucherLedgerPushService $service */
+        $service = app(VoucherLedgerPushService::class);
+
+        // Pass tenant-B's terminal_id as $requestingTerminalId; the service
+        // scopes the Terminal lookup by tenant-A's CompanyContext, so the
+        // tenant-B terminal is unfindable → voucher_not_found.
+        $result = $service->push($payload, $this->terminalB->id);
+
+        $this->assertSame('failed', $result['status']);
+        $this->assertSame('voucher_not_found', $result['error']);
+
+        // The voucher itself MUST NOT have been mutated.
+        $this->voucherA->refresh();
+        $this->assertSame('50.00000', $this->voucherA->current_balance);
+    }
+
+    // =========================================================================
     // Group 4 — LoyaltyPOSController + processing services (5 manual stubs)
     // =========================================================================
     //
@@ -1007,19 +1084,17 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_voucher_ledger_push_service_voucher_lookup_query_includes_tenant_predicate(): void
     {
-        // VoucherLedgerPushService::push has a downstream
-        // redeemable_at_terminal_id guard that catches cross-terminal pushes,
-        // so the security risk is small. The fix adds tenant scoping on the
-        // Voucher::find for defense in depth, mirroring the Treasury invariant
-        // that any service-tier Eloquent find runnable from an HTTP path
-        // includes tenant_id in the SELECT predicate.
+        // Round-2 Opus Finding 1 (path a): VoucherLedgerPushService::push now
+        // resolves the requesting Terminal via authenticated CompanyContext
+        // tenant + company predicates, then derives the Voucher SELECT's
+        // tenant predicate from the verified terminal. Pin the resulting SQL
+        // shape: pos_terminals SELECT must carry tenant_id + company_id, and
+        // the subsequent vouchers SELECT must carry tenant_id.
+        /** @var CompanyContext $context */
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+
         DB::enableQueryLog();
-        // A synthetic POST of the right shape will exercise the find — but
-        // since wiring this up requires VoucherLedgerPushPayload + signed
-        // request infra, we instead pin the SQL pattern by directly
-        // resolving the service from the container and invoking it with
-        // the tenant-A terminal + a synthetic payload aimed at tenant-A's
-        // voucher.
         $payload = new VoucherLedgerPushPayload(
             id: Str::uuid()->toString(),
             voucherId: $this->voucherA->id,
