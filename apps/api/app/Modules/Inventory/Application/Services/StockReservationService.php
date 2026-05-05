@@ -363,8 +363,13 @@ class StockReservationService implements InventoryReservationServiceInterface
         ?int $priority = 0,
         ?string $notes = null,
     ): Collection {
-        // Check if product requires batch tracking
-        $product = Product::findOrFail($productId);
+        // Check if product requires batch tracking — scoped to caller's
+        // tenant + company so a foreign productId can never satisfy the
+        // lookup, even if upstream validators were bypassed.
+        $product = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($productId);
 
         if (! $product->requires_batch_tracking) {
             // Product doesn't require batch tracking, create single aggregate reservation

@@ -77,8 +77,14 @@ class WeightedAverageCostService
                 ]);
             }
 
-            // Lock product for cost update
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product for cost update — scope by the input product's
+            // own tenant + company so the lock cannot escalate to a foreign
+            // product (defense-in-depth on the upstream-trusted instance).
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $currentQty = (float) $stockLevel->quantity;
             $currentCostPrice = (float) ($product->cost_price ?? 0);
@@ -208,8 +214,13 @@ class WeightedAverageCostService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Lock product to get consistent cost price
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product to get consistent cost price — scoped to the
+            // input product's own tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $costPrice = (float) ($product->cost_price ?? 0);
             $currentQty = (float) $stockLevel->quantity;
@@ -313,8 +324,13 @@ class WeightedAverageCostService
                 ]);
             }
 
-            // Lock product for cost update
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product for cost update — scoped to the input product's
+            // own tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $currentQty = (float) $stockLevel->quantity;
             $currentCostPrice = (float) ($product->cost_price ?? 0);

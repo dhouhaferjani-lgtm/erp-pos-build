@@ -9,6 +9,7 @@ use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\StockReservation;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -168,8 +169,8 @@ class StockReservationController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $validated = $request->validate([
-            'product_id' => ['required', 'uuid', 'exists:products,id'],
-            'location_id' => ['required', 'uuid', 'exists:locations,id'],
+            'product_id' => ['required', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            'location_id' => ['required', 'uuid', ScopedExists::company('locations', $company->id)],
             'quantity' => ['required', 'numeric', 'min:0.0001'],
             'source_type' => ['required', Rule::enum(ReservationSource::class)],
             'source_id' => ['required', 'uuid'],
@@ -256,8 +257,8 @@ class StockReservationController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $validated = $request->validate([
-            'product_id' => ['required', 'uuid', 'exists:products,id'],
-            'location_id' => ['required', 'uuid', 'exists:locations,id'],
+            'product_id' => ['required', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            'location_id' => ['required', 'uuid', ScopedExists::company('locations', $company->id)],
         ]);
 
         $reservations = StockReservation::query()

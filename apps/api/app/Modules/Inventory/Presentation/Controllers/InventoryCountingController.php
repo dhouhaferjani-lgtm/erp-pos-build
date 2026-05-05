@@ -484,7 +484,8 @@ class InventoryCountingController extends Controller
      */
     public function addProduct(string $id, AddProductToCountingRequest $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
 
         /** @var InventoryCounting $counting */
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($id);
@@ -540,9 +541,14 @@ class InventoryCountingController extends Controller
         $counting->last_modified_by_user_id = (string) $authUser->id;
         $counting->save();
 
-        // Load product details for response
+        // Load product details for response — scoped by the caller's
+        // tenant + company so a forged barcode-resolved or body-supplied
+        // productId cannot leak a foreign product's name/sku/barcode.
         /** @var Product $product */
-        $product = Product::findOrFail($productId);
+        $product = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $companyId)
+            ->findOrFail($productId);
 
         return response()->json([
             'data' => [

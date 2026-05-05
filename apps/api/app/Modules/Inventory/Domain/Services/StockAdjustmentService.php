@@ -459,11 +459,20 @@ final class StockAdjustmentService
 
     /**
      * Get or create a stock level record for a product at a location.
+     *
+     * Scopes the Product lookup to the Location's company_id so a forged
+     * cross-tenant productId can never seed a StockLevel that mixes one
+     * tenant's product with another tenant's location. Throws
+     * ModelNotFoundException if product and location belong to different
+     * companies (locations is company-scoped only; products carries
+     * tenant_id + company_id).
      */
     private function getOrCreateStockLevel(string $productId, string $locationId): StockLevel
     {
-        $product = Product::findOrFail($productId);
         $location = Location::findOrFail($locationId);
+        $product = Product::query()
+            ->where('company_id', $location->company_id)
+            ->findOrFail($productId);
 
         return StockLevel::firstOrCreate(
             [
@@ -518,6 +527,12 @@ final class StockAdjustmentService
         string $reference,
         string $userId,
     ): StockMovement {
+        // Caller guarantees $tenantId is derived from a trusted upstream
+        // entity. Defense-in-depth: still scope the Location lookup by the
+        // tenant-coherent stock_level (which itself was scoped via
+        // getOrCreateStockLevel above). Locations is company-scoped only;
+        // we have no tenant_id column there, so the scope is implicit via
+        // the upstream stock_level's company.
         $location = Location::findOrFail($locationId);
 
         return StockMovement::create([

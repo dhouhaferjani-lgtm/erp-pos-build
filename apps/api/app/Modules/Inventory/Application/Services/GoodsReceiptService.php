@@ -82,7 +82,14 @@ final class GoodsReceiptService
                     continue;
                 }
 
-                $product = Product::lockForUpdate()->find($line->product_id);
+                // Scope by the purchase order's tenant + company so a forged
+                // line.product_id (cross-tenant) cannot escalate the lock to
+                // a foreign product.
+                $product = Product::query()
+                    ->where('tenant_id', $purchaseOrder->tenant_id)
+                    ->where('company_id', $purchaseOrder->company_id)
+                    ->lockForUpdate()
+                    ->find($line->product_id);
                 if ($product === null || ! $product->isPhysical()) {
                     continue;
                 }
