@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: d23c98514e0907f3c2ef13e0f53f53a2da5ffd857763485b3366c37773f0fd2e
+  yaml_sha256: c473b03584555a086c1a9b4766c46120f59d02686bd4fda4496ed6e75861fa6b
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -152,7 +152,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -2480,15 +2480,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:08Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -2557,6 +2557,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:08Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d23c98514e0907f3c2ef13e0f53f53a2da5ffd857763485b3366c37773f0fd2e
+        new_yaml_sha256: ddfe1be0ba9c21fb2eb70d6ef741eedacd0f836adad2e76f24949eaa148bb237
+        target_ids:
+          - api.taxation.001
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.002
     stable_key: 'sha256:b42e8f6252c5ddef7979ec10aa442f81d86d52c2aeaff22d9f9c4f1e36b05539'
@@ -2574,15 +2591,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:09Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -2651,6 +2668,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:09Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ddfe1be0ba9c21fb2eb70d6ef741eedacd0f836adad2e76f24949eaa148bb237
+        new_yaml_sha256: a99a3c6b6264f78dd639761ed9c8459298caf0ffc64725bec1f4185940141bb1
+        target_ids:
+          - api.taxation.002
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.003
     stable_key: 'sha256:e94b042623a127af19c66e7649110d8eb0dd3f1d7ac9d852b7a9d440eb9d075e'
@@ -2668,15 +2702,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:09Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -2745,6 +2779,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:09Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a99a3c6b6264f78dd639761ed9c8459298caf0ffc64725bec1f4185940141bb1
+        new_yaml_sha256: 5f1b09a8797966babc7187a6450ca7d30453c20c5eb85ef9aaea53df38d3c581
+        target_ids:
+          - api.taxation.003
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.004
     stable_key: 'sha256:75fa90fa442fb314074f8786fe667a7a37925a8d688b180cd6a1fb170fc708eb'
@@ -2762,15 +2813,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:10Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -2839,6 +2890,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:10Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5f1b09a8797966babc7187a6450ca7d30453c20c5eb85ef9aaea53df38d3c581
+        new_yaml_sha256: 9b054684ae05ed2fcdc7fee495a42d1986ce49a8a56f212eaf6f2ef30d94638a
+        target_ids:
+          - api.taxation.004
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.005
     stable_key: 'sha256:79fea91c91eb16472a36f81e28da79f65e6fa654034c47fce4cdb5e9f8bcbcfe'
@@ -2856,15 +2924,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:11Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -2933,6 +3001,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:11Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9b054684ae05ed2fcdc7fee495a42d1986ce49a8a56f212eaf6f2ef30d94638a
+        new_yaml_sha256: e88fbae2ac4feddaab1c52d2c635546015e9bdaea08ad6901412bf72e5aa4c67
+        target_ids:
+          - api.taxation.005
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.006
     stable_key: 'sha256:e88319cfec5d67bda38ddc507dc7b0e6384961efdb2f2d88b2a7923d93a9316c'
@@ -2950,15 +3035,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:11Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -3027,6 +3112,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:12Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e88fbae2ac4feddaab1c52d2c635546015e9bdaea08ad6901412bf72e5aa4c67
+        new_yaml_sha256: 928c6d40c90ac0096b4ea16c2e59909d2f431fffd18b6512b4b960b3d04ad919
+        target_ids:
+          - api.taxation.006
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.007
     stable_key: 'sha256:2ae10635018c9f81cd82e0d707b7db65a0c5028dab7abb43b25091c2cbcc9b88'
@@ -3044,15 +3146,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:12Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -3121,6 +3223,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:12Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 928c6d40c90ac0096b4ea16c2e59909d2f431fffd18b6512b4b960b3d04ad919
+        new_yaml_sha256: a5664063d6ddab6df57147f4a7f6f084ce7292fd22045e12932ac215afe91366
+        target_ids:
+          - api.taxation.007
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.001
     stable_key: 'sha256:747409ac7d11e21a4c7ec45453e305b5b0e4d9fa831e30b2d4456a4030fc3e36'
@@ -10046,15 +10165,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:13Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10123,6 +10242,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:13Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a5664063d6ddab6df57147f4a7f6f084ce7292fd22045e12932ac215afe91366
+        new_yaml_sha256: 10245e5dd97eb6e5e6cb7c2560cb8f364e4ed9373841d1a1a093511774c25697
+        target_ids:
+          - api.taxation.008
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.009
     stable_key: 'sha256:1ecedd8e39f50d1b93b8804fade90a73dc0a239ce32b96c4f5f309d68307333a'
@@ -10140,15 +10276,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:13Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10217,6 +10353,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:14Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 10245e5dd97eb6e5e6cb7c2560cb8f364e4ed9373841d1a1a093511774c25697
+        new_yaml_sha256: e1e7902697ba493d5e0b3d779b67d106e97e896442dabab66d9308fc24562487
+        target_ids:
+          - api.taxation.009
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.010
     stable_key: 'sha256:4ac40f8aab76d0670eb4d669101cac3b409c566a2c23283add64a05fb9b501be'
@@ -10234,15 +10387,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:14Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10311,6 +10464,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:14Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e1e7902697ba493d5e0b3d779b67d106e97e896442dabab66d9308fc24562487
+        new_yaml_sha256: 33e448f9192345e3b91090a20ac124c54115df8af4a34be96f8aec805e804a8a
+        target_ids:
+          - api.taxation.010
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.011
     stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
@@ -10328,15 +10498,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:15Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10405,6 +10575,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:15Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 33e448f9192345e3b91090a20ac124c54115df8af4a34be96f8aec805e804a8a
+        new_yaml_sha256: f016d9356202b008c1da2a0602e951cf0cade7eb8c1a1bce072c64d3060b22ac
+        target_ids:
+          - api.taxation.011
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.012
     stable_key: 'sha256:a8691f51eac7bc94258ca86d5e9a87c6921c0c80803cec82f31de043c9e5833a'
@@ -10422,15 +10609,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:16Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10499,6 +10686,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:16Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f016d9356202b008c1da2a0602e951cf0cade7eb8c1a1bce072c64d3060b22ac
+        new_yaml_sha256: 9ae5481746e59293a9d4902701d4440844da92b6a2598b22f8bc6e88bc13536c
+        target_ids:
+          - api.taxation.012
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.013
     stable_key: 'sha256:959ab0650901d034897837116609b8d6cc99118e83c12557bf581ffcdc4386ba'
@@ -10516,15 +10720,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T00:14:16Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
     blocked_reason: null
@@ -10593,6 +10797,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T00:14:16Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9ae5481746e59293a9d4902701d4440844da92b6a2598b22f8bc6e88bc13536c
+        new_yaml_sha256: c473b03584555a086c1a9b4766c46120f59d02686bd4fda4496ed6e75861fa6b
+        target_ids:
+          - api.taxation.013
+          - api.taxation
+        from_status: under_review
+        to_status: fixed
+        commit: 02b38192b86a10c7779d84d997ebf7f59cab4a42
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+        review_commit: e7a2f543
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.004
     stable_key: 'sha256:5eaa60d88d9a4feeefcb1660ae2e53af02d0d579457ebf2095d5116f7657ebc4'
