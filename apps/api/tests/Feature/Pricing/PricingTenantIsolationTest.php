@@ -7,6 +7,12 @@ namespace Tests\Feature\Pricing;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Coupon\Application\Services\CouponApplicationService;
+use App\Modules\Coupon\Domain\Entities\Coupon;
+use App\Modules\Coupon\Domain\Entities\CouponUsage;
+use App\Modules\Coupon\Domain\Enums\CouponStatus;
+use App\Modules\Coupon\Domain\Enums\CouponType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -18,7 +24,9 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -670,6 +678,185 @@ final class PricingTenantIsolationTest extends TestCase
             '"company_id"',
             $priceListQuery,
             'PriceList route-anchored lookup must filter by company_id. Got SQL: '.$priceListQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // CouponApplicationService::recordUsage — service-tier scoped guard
+    // (api.unmapped.017 — reassigned to api.pricing).
+    //
+    // Pre-fix: `Coupon::findOrFail($couponId)` had no tenant/company
+    // predicate, so a service caller pinned to tenant-A could decrement
+    // / mark-exhaust a foreign-tenant coupon by passing its UUID. Post-fix:
+    // the service derives the tenant + company from the injected
+    // CompanyContext and rejects cross-tenant couponIds with
+    // ModelNotFoundException before any usage row is created.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_record_usage_rejects_cross_tenant_coupon_id(): void
+    {
+        /** @var Coupon $couponB */
+        $couponB = Coupon::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Coupon B',
+            'code' => 'COUPONB',
+            'type' => CouponType::Standard,
+            'status' => CouponStatus::Active,
+            'discount_type' => 'percentage',
+            'discount_value' => '10.00',
+            'max_uses' => 5,
+            'use_count' => 0,
+        ]);
+
+        // Pin company context to tenant-A; the tenant-B coupon must NOT
+        // be findable.
+        /** @var CompanyContext $context */
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+
+        /** @var CouponApplicationService $service */
+        $service = app(CouponApplicationService::class);
+
+        $thrown = null;
+        try {
+            $service->recordUsage(
+                couponId: $couponB->id,
+                receiptId: Str::uuid()->toString(),
+                partnerId: null,
+                discountAmount: '5.00',
+            );
+        } catch (ModelNotFoundException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertNotNull(
+            $thrown,
+            'recordUsage must reject cross-tenant coupon id with ModelNotFoundException.',
+        );
+
+        // Post-condition: the foreign coupon's use_count must NOT have
+        // incremented and no CouponUsage row must reference it.
+        $couponB->refresh();
+        $this->assertSame(
+            0,
+            $couponB->use_count,
+            'Cross-tenant recordUsage must NOT decrement use_count on the foreign coupon.',
+        );
+        $this->assertSame(
+            CouponStatus::Active,
+            $couponB->status,
+            'Cross-tenant recordUsage must NOT change status on the foreign coupon.',
+        );
+        $this->assertSame(
+            0,
+            CouponUsage::where('coupon_id', $couponB->id)->count(),
+            'Cross-tenant recordUsage must NOT create a CouponUsage row for the foreign coupon.',
+        );
+    }
+
+    public function test_record_usage_accepts_same_tenant_coupon_id(): void
+    {
+        /** @var Coupon $couponA */
+        $couponA = Coupon::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Coupon A',
+            'code' => 'COUPONA',
+            'type' => CouponType::Standard,
+            'status' => CouponStatus::Active,
+            'discount_type' => 'percentage',
+            'discount_value' => '10.00',
+            'max_uses' => 5,
+            'use_count' => 0,
+        ]);
+
+        /** @var CompanyContext $context */
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+
+        /** @var CouponApplicationService $service */
+        $service = app(CouponApplicationService::class);
+
+        $service->recordUsage(
+            couponId: $couponA->id,
+            receiptId: Str::uuid()->toString(),
+            partnerId: null,
+            discountAmount: '5.00',
+        );
+
+        $couponA->refresh();
+        $this->assertSame(
+            1,
+            $couponA->use_count,
+            'Same-tenant recordUsage must increment use_count on the local coupon.',
+        );
+        $this->assertSame(
+            1,
+            CouponUsage::where('coupon_id', $couponA->id)->count(),
+            'Same-tenant recordUsage must create a CouponUsage row.',
+        );
+    }
+
+    public function test_record_usage_query_includes_tenant_and_company_predicates(): void
+    {
+        /** @var Coupon $couponA */
+        $couponA = Coupon::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Coupon A SQL',
+            'code' => 'COUPONAQL',
+            'type' => CouponType::Standard,
+            'status' => CouponStatus::Active,
+            'discount_type' => 'percentage',
+            'discount_value' => '10.00',
+            'max_uses' => 5,
+            'use_count' => 0,
+        ]);
+
+        /** @var CompanyContext $context */
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->companyA->id);
+
+        DB::enableQueryLog();
+        /** @var CouponApplicationService $service */
+        $service = app(CouponApplicationService::class);
+        $service->recordUsage(
+            couponId: $couponA->id,
+            receiptId: Str::uuid()->toString(),
+            partnerId: null,
+            discountAmount: '5.00',
+        );
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $couponLookupQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "coupons"')
+                && str_contains($sql, '"id" =')
+                && ! str_contains($sql, 'count(*)')
+            ) {
+                $couponLookupQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $couponLookupQuery,
+            'CouponApplicationService::recordUsage Coupon lookup query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $couponLookupQuery,
+            'recordUsage must filter Coupon lookup by tenant_id. Got SQL: '.$couponLookupQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $couponLookupQuery,
+            'recordUsage must filter Coupon lookup by company_id. Got SQL: '.$couponLookupQuery,
         );
     }
 

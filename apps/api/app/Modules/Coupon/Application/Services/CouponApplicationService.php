@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Coupon\Application\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Coupon\Domain\Contracts\CouponValidatorContract;
 use App\Modules\Coupon\Domain\Entities\Coupon;
 use App\Modules\Coupon\Domain\Enums\CouponStatus;
@@ -16,6 +17,7 @@ final class CouponApplicationService implements CouponValidatorContract
 {
     public function __construct(
         private readonly CouponValidationService $validationService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -41,6 +43,12 @@ final class CouponApplicationService implements CouponValidatorContract
 
     /**
      * Record coupon usage after successful checkout.
+     *
+     * api.unmapped.017 (api.pricing): the lookup is scoped by the caller's
+     * CompanyContext (tenant_id + company_id). A cross-tenant couponId
+     * triggers ModelNotFoundException before any usage row is created or
+     * use_count is mutated. Mirrors the api.pricing service-tier
+     * defense-in-depth pattern (PricingService::getPrice).
      */
     public function recordUsage(
         string $couponId,
@@ -48,7 +56,11 @@ final class CouponApplicationService implements CouponValidatorContract
         ?string $partnerId,
         string $discountAmount,
     ): void {
-        $coupon = Coupon::findOrFail($couponId);
+        $company = $this->companyContext->requireCompany();
+        $coupon = Coupon::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($couponId);
 
         $coupon->usages()->create([
             'receipt_id' => $receiptId,
