@@ -268,6 +268,49 @@ final class AccountingTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // api.accounting (round-3 Opus remediation) — sibling controller
+    // route-driven exploits closed by the same RequiresCompanyAccess trait
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_account_purpose_index_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/companies/{$this->companyB->id}/accounts/purposes");
+        $cross->assertStatus(404);
+    }
+
+    public function test_account_purpose_validate_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/companies/{$this->companyB->id}/accounts/purposes/validate");
+        $cross->assertStatus(404);
+    }
+
+    public function test_opening_balance_batches_index_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$this->companyB->id}/opening-batches");
+        $cross->assertStatus(404);
+    }
+
+    public function test_opening_balance_batches_status_route_refuses_foreign_company(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->getJson("/api/v1/companies/{$this->companyB->id}/opening-batches/status");
+        $cross->assertStatus(404);
+    }
+
+    public function test_opening_balance_batches_post_route_refuses_foreign_company(): void
+    {
+        // The fiscal hash chain mutation route — the highest-impact exploit
+        // surface. A tenant-A user must NOT be able to post a batch into
+        // tenant-B's accounting ledger via this endpoint.
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson("/api/v1/companies/{$this->companyB->id}/opening-batches/fake-batch-id/post");
+        $cross->assertStatus(404);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // api.accounting.006 — GeneralLedgerReportService::getAccountDetails
     // ──────────────────────────────────────────────────────────────────
 

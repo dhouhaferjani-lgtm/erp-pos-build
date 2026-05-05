@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
+use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\ArApOpeningService;
 use App\Modules\Inventory\Application\Services\InventoryOpeningService;
@@ -28,6 +29,8 @@ use RuntimeException;
  */
 class OpeningBalanceBatchController extends Controller
 {
+    use RequiresCompanyAccess;
+
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly AccountingOpeningService $accountingOpeningService,
@@ -40,8 +43,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * List all opening balance batches for a company.
      */
-    public function index(string $companyId): JsonResponse
+    public function index(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batches = $this->batchService->getBatchesForCompany($companyId);
 
         return response()->json([
@@ -58,8 +63,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * Get details of a specific batch.
      */
-    public function show(string $companyId, string $batchId): JsonResponse
+    public function show(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatchWithRows($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -103,6 +110,8 @@ class OpeningBalanceBatchController extends Controller
      */
     public function store(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $validated = $request->validate([
             'type' => [
                 'required',
@@ -159,8 +168,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * Delete a draft batch.
      */
-    public function destroy(string $companyId, string $batchId): JsonResponse
+    public function destroy(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         try {
             $batch = $this->batchService->getBatch($batchId);
 
@@ -202,6 +213,8 @@ class OpeningBalanceBatchController extends Controller
      */
     public function rows(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -236,6 +249,8 @@ class OpeningBalanceBatchController extends Controller
      */
     public function lock(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -289,8 +304,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * Get opening balance status for all types.
      */
-    public function status(string $companyId): JsonResponse
+    public function status(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $types = OpeningBatchType::cases();
         $status = [];
 
@@ -354,6 +371,8 @@ class OpeningBalanceBatchController extends Controller
      */
     public function import(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -430,8 +449,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * Validate all rows in a batch.
      */
-    public function validateBatch(string $companyId, string $batchId): JsonResponse
+    public function validateBatch(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -474,8 +495,10 @@ class OpeningBalanceBatchController extends Controller
      *
      * Preview what will be posted from a batch.
      */
-    public function preview(string $companyId, string $batchId): JsonResponse
+    public function preview(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {
@@ -520,6 +543,8 @@ class OpeningBalanceBatchController extends Controller
      */
     public function post(Request $request, string $companyId, string $batchId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $batch = $this->batchService->getBatch($batchId);
 
         if ($batch->company_id !== $companyId) {

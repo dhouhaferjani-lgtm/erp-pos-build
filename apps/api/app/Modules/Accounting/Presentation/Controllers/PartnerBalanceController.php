@@ -6,12 +6,10 @@ namespace App\Modules\Accounting\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Identity\Domain\User;
+use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Controller for partner balance and subledger operations.
@@ -34,6 +32,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class PartnerBalanceController extends Controller
 {
+    use RequiresCompanyAccess;
+
     public function __construct(
         private readonly PartnerBalanceService $balanceService
     ) {}
@@ -208,26 +208,5 @@ class PartnerBalanceController extends Controller
                 'timestamp' => now()->toIso8601String(),
             ],
         ]);
-    }
-
-    /**
-     * api.accounting (round-2 Codex remediation): refuse the request if the
-     * authenticated user has no UserCompanyMembership row for the URL
-     * `{companyId}`. Returns 404 (not 403) to avoid disclosing that the
-     * companyId exists in some other tenant.
-     */
-    private function assertCompanyAccess(Request $request, string $companyId): void
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $hasAccess = UserCompanyMembership::query()
-            ->where('user_id', $user->id)
-            ->where('company_id', $companyId)
-            ->exists();
-
-        if (! $hasAccess) {
-            throw new NotFoundHttpException('Company not found.');
-        }
     }
 }
