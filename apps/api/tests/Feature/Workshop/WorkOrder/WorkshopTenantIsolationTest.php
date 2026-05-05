@@ -70,6 +70,8 @@ final class WorkshopTenantIsolationTest extends TestCase
 
     private Vehicle $vehicleA;
 
+    private Vehicle $vehicleB;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -126,6 +128,11 @@ final class WorkshopTenantIsolationTest extends TestCase
         $this->vehicleA = Vehicle::factory()->create([
             'tenant_id' => $this->tenantA->id,
             'company_id' => $this->companyA->id,
+        ]);
+
+        $this->vehicleB = Vehicle::factory()->create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
         ]);
 
         // resolveOpenedByUserId() picks the first User in the tenant.
@@ -207,6 +214,28 @@ final class WorkshopTenantIsolationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // Round-2 Codex finding (sibling api.scheduling-store-validators) —
+    // defense-in-depth assertVehicleInScope refuses cross-tenant vehicle.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_create_from_appointment_refuses_cross_tenant_vehicle(): void
+    {
+        $creation = $this->app->make(WorkOrderCreationServiceInterface::class);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('refusing cross-tenant work order creation');
+
+        $creation->createFromAppointment(
+            appointmentId: $this->makeAppointment()->id,
+            plannedServices: [],
+            vehicleId: $this->vehicleB->id, // foreign tenant
+            partnerId: $this->partnerA->id,
+            tenantId: $this->tenantA->id,
+            companyId: $this->companyA->id,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // api.workshop.001/002/003/004 — happy-path passes through the
     // scoped reads and produces a WO in the supplied tenant + company.
     // ──────────────────────────────────────────────────────────────────
@@ -282,6 +311,54 @@ final class WorkshopTenantIsolationTest extends TestCase
             '"company_id"',
             $partnerGuardQuery,
             'assertPartnerInScope must also filter by company_id. Got SQL: '.$partnerGuardQuery,
+        );
+    }
+
+    public function test_create_from_appointment_vehicle_guard_query_includes_tenant_and_company_predicates(): void
+    {
+        DB::enableQueryLog();
+
+        $creation = $this->app->make(WorkOrderCreationServiceInterface::class);
+        $creation->createFromAppointment(
+            appointmentId: $this->makeAppointment()->id,
+            plannedServices: [],
+            vehicleId: $this->vehicleA->id,
+            partnerId: $this->partnerA->id,
+            tenantId: $this->tenantA->id,
+            companyId: $this->companyA->id,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Locate the vehicle-existence guard (assertVehicleInScope) — the
+        // first `from "vehicles"` EXISTS shape inside this transaction.
+        $vehicleGuardQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "vehicles"')
+                && str_contains($sql, '"id" =')
+            ) {
+                $vehicleGuardQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $vehicleGuardQuery,
+            'Vehicle-existence guard query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $vehicleGuardQuery,
+            'assertVehicleInScope must filter by tenant_id. Got SQL: '.$vehicleGuardQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $vehicleGuardQuery,
+            'assertVehicleInScope must also filter by company_id. Got SQL: '.$vehicleGuardQuery,
         );
     }
 

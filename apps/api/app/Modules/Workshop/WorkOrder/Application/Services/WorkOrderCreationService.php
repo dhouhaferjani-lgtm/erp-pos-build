@@ -7,6 +7,7 @@ namespace App\Modules\Workshop\WorkOrder\Application\Services;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Vehicle\Domain\Vehicle;
 use App\Modules\Workshop\WorkOrder\Application\Commands\AddBundleCommand;
 use App\Modules\Workshop\WorkOrder\Application\Commands\AddLineCommand;
 use App\Modules\Workshop\WorkOrder\Application\Commands\CreateWorkOrderCommand;
@@ -58,6 +59,16 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
             // by a malicious appointment row or a future cross-tenant write
             // path) is rejected here rather than leaking into the work order.
             $this->assertPartnerInScope($partnerId, $tenantId, $companyId);
+
+            // Defense-in-depth (round-2 Codex finding) — the vehicle_id
+            // supplied by the appointment is likewise verified to belong to
+            // the same tenant + company. Root-cause fix for the unscoped
+            // vehicle_id validator lives in api.scheduling-store-validators
+            // (StoreAppointmentRequest accepts any UUID); this guard mirrors
+            // the partner-scope precedent so a foreign vehicle_id cannot
+            // propagate into a work order regardless of how the appointment
+            // entered the system.
+            $this->assertVehicleInScope($vehicleId, $tenantId, $companyId);
 
             // Appointment carries the when + who + specialty, but the public
             // contract only exposes ids (vehicle + partner). Scheduling
@@ -149,6 +160,30 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
         if (! $exists) {
             throw new RuntimeException(
                 "Partner {$partnerId} not found in tenant={$tenantId} company={$companyId} — refusing cross-tenant work order creation."
+            );
+        }
+    }
+
+    /**
+     * Round-2 Codex finding (api.workshop-vehicle / api.scheduling-store-
+     * validators sibling) — defense-in-depth: refuse a vehicle_id that does
+     * not belong to the active tenant + company. The structural protection
+     * lives in the appointment-store validator (Scheduling cluster); this
+     * mirror keeps WorkOrderCreationService safe even when entered from
+     * non-HTTP code paths (queue workers, event listeners, console commands)
+     * that bypass the validator entirely.
+     */
+    private function assertVehicleInScope(string $vehicleId, string $tenantId, string $companyId): void
+    {
+        $exists = Vehicle::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($vehicleId)
+            ->exists();
+
+        if (! $exists) {
+            throw new RuntimeException(
+                "Vehicle {$vehicleId} not found in tenant={$tenantId} company={$companyId} — refusing cross-tenant work order creation."
             );
         }
     }
