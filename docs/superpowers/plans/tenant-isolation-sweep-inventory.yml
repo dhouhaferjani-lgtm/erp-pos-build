@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: c473b03584555a086c1a9b4766c46120f59d02686bd4fda4496ed6e75861fa6b
+  yaml_sha256: cf7dbeba4e69159b26b229c3bca5a3a61cd236c3ff2875be352223429e707ea2
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -11691,7 +11691,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -11700,8 +11700,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11752,6 +11752,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:17Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c473b03584555a086c1a9b4766c46120f59d02686bd4fda4496ed6e75861fa6b
+        new_yaml_sha256: 2b7757f9784b4c51cae4a8c0a2c52a393410dd1aac85bc9f9a045be319296bf4
+        target_ids:
+          - api.document.014
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.015
     stable_key: 'sha256:2170bfecfa24e23d3d1b5b80d746d3c166e6897b3771677c2ff255b0417bba09'
@@ -11769,7 +11785,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -11778,8 +11794,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11830,6 +11846,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2b7757f9784b4c51cae4a8c0a2c52a393410dd1aac85bc9f9a045be319296bf4
+        new_yaml_sha256: 3ea210e9078ddf35fc916653566761cf02a855a8a23f70c17d3833c4ba3cf154
+        target_ids:
+          - api.document.015
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.016
     stable_key: 'sha256:d909ea58678d711c688c7a60be3f6259e2881a9a580a2b57bb593d1fdffadeca'
@@ -11847,7 +11879,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -11856,8 +11888,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11908,6 +11940,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3ea210e9078ddf35fc916653566761cf02a855a8a23f70c17d3833c4ba3cf154
+        new_yaml_sha256: 36396748b0fab996516cefd66f8bce219c6db3dd0a1c8205e7d9e2bfaab5e98f
+        target_ids:
+          - api.document.016
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.017
     stable_key: 'sha256:8be09f001658b207ce0dc850903842d1ac9f17d41214e122a83cf2ffd1c20f41'
@@ -11925,7 +11973,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -11934,8 +11982,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -11986,6 +12034,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 36396748b0fab996516cefd66f8bce219c6db3dd0a1c8205e7d9e2bfaab5e98f
+        new_yaml_sha256: 613406e1aca0fe21a0bdddc93323895c52e40ccec4c1077d18b469cf6b501d28
+        target_ids:
+          - api.document.017
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.018
     stable_key: 'sha256:7768361088d05e399f73e255c73fa02b5accd3dcf38b811fbad691b43aae5c4e'
@@ -12003,7 +12067,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12012,8 +12076,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12064,6 +12128,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:20Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 613406e1aca0fe21a0bdddc93323895c52e40ccec4c1077d18b469cf6b501d28
+        new_yaml_sha256: b0a2eb4b157734843816ff061370d475fd9f33137e0a7300f87048a252dd9cf0
+        target_ids:
+          - api.document.018
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.019
     stable_key: 'sha256:784fa9712550b150556e9776f1882fdf7993a53aa74abfc277a6514196960a0a'
@@ -12081,7 +12161,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12090,8 +12170,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12142,6 +12222,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b0a2eb4b157734843816ff061370d475fd9f33137e0a7300f87048a252dd9cf0
+        new_yaml_sha256: eced38033bcdedff1179f2bcbeb03eb239204c3a1c724ab63914b1514f3629bd
+        target_ids:
+          - api.document.019
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.020
     stable_key: 'sha256:e5db68c814235797cc131d05c805a29f102f63f932cc802e82c8217ac4660ce6'
@@ -12315,7 +12411,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12324,8 +12420,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12376,6 +12472,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: eced38033bcdedff1179f2bcbeb03eb239204c3a1c724ab63914b1514f3629bd
+        new_yaml_sha256: 2dbc74f09c1795e2d2eb4c6c460cdb1a20483fe93756dfcb5f79e8b6d1bc4f04
+        target_ids:
+          - api.document.022
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.023
     stable_key: 'sha256:78f78575d0c4c093e2fa27e16fa6c9c382abe60c78488b4fb0fc42c2572b9709'
@@ -12393,7 +12505,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12402,8 +12514,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12454,6 +12566,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:22Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2dbc74f09c1795e2d2eb4c6c460cdb1a20483fe93756dfcb5f79e8b6d1bc4f04
+        new_yaml_sha256: 021ff1cf0ede9b7b997a343674e6ea7dfad8dfe5da2b903cdfb366343e8e7fa3
+        target_ids:
+          - api.document.023
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.024
     stable_key: 'sha256:0efd8d8d856315f255b8af5613b4b94f47103c0c73b4bf550555eee51f873f44'
@@ -12471,7 +12599,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12480,8 +12608,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12532,6 +12660,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:23Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 021ff1cf0ede9b7b997a343674e6ea7dfad8dfe5da2b903cdfb366343e8e7fa3
+        new_yaml_sha256: 7832ce6269837804b3a1cf525c1ac3b07255534b2e4dff9f37d04eb3562634df
+        target_ids:
+          - api.document.024
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.025
     stable_key: 'sha256:7f714660897d4c20cf07ad8b0834372465df98938ee8b69daa0c9de3db2069ed'
@@ -12549,7 +12693,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12558,8 +12702,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12610,6 +12754,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:24Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7832ce6269837804b3a1cf525c1ac3b07255534b2e4dff9f37d04eb3562634df
+        new_yaml_sha256: 64b763736a9262d53e58fe0b1a6827053f7a93ca59652e2808d6a018e27a3349
+        target_ids:
+          - api.document.025
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.026
     stable_key: 'sha256:e5a7c0a1ae360be87948faec3af1f2c3edf2fa2cb977d61884a7ef014bd8905f'
@@ -12627,7 +12787,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12636,8 +12796,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12688,6 +12848,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:24Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 64b763736a9262d53e58fe0b1a6827053f7a93ca59652e2808d6a018e27a3349
+        new_yaml_sha256: ee0e4b9f747cd5df8e2023c192e55b5b8c90f4bd943bbe116a0e431d258d2e62
+        target_ids:
+          - api.document.026
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.027
     stable_key: 'sha256:607142a882e008cf5ec3b360a74b47a842cda2778396ccfd88894f7ed4a6c807'
@@ -12705,7 +12881,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12714,8 +12890,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12766,6 +12942,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:25Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ee0e4b9f747cd5df8e2023c192e55b5b8c90f4bd943bbe116a0e431d258d2e62
+        new_yaml_sha256: de88e3c80fe2e91c90957cfd48624858b1dbaefad609f9cfadbe74c02d9071bb
+        target_ids:
+          - api.document.027
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.028
     stable_key: 'sha256:f88efe25fa7e75d92e0520777aae13f55bfeca870e3bb8943787a1cfe382b797'
@@ -12783,7 +12975,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12792,8 +12984,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12844,6 +13036,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:26Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: de88e3c80fe2e91c90957cfd48624858b1dbaefad609f9cfadbe74c02d9071bb
+        new_yaml_sha256: e3b07bf3d79f6959c38b0c5bb9a30a8d3bd0ab5371cc1d911c3f6191e6a36c11
+        target_ids:
+          - api.document.028
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.029
     stable_key: 'sha256:e0c1a2fd2d3754228f88b6bc995bac780a3f9d1376f036707f712d5024005ad0'
@@ -12861,7 +13069,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12870,8 +13078,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -12922,6 +13130,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:27Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e3b07bf3d79f6959c38b0c5bb9a30a8d3bd0ab5371cc1d911c3f6191e6a36c11
+        new_yaml_sha256: aad63129192b7f6e03ebf62dd1c6df159dd9422a115630d39fb177e4312fe4b9
+        target_ids:
+          - api.document.029
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.030
     stable_key: 'sha256:1e02592b0d56ef09a55a3cb936b146202eac7ab4a926aae7b5d423d01582ca5d'
@@ -12939,7 +13163,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -12948,8 +13172,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -13000,6 +13224,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:27Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aad63129192b7f6e03ebf62dd1c6df159dd9422a115630d39fb177e4312fe4b9
+        new_yaml_sha256: 59099f3def69f5b8bb1318da7fa3cd68f62905692626481cdfbb649cc9640ecc
+        target_ids:
+          - api.document.030
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.031
     stable_key: 'sha256:d02de606c676b7b0c639f7fecbd0b1d9d7d6d5cb30863b3fc6cffb3fb2f74f84'
@@ -13017,7 +13257,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -13026,8 +13266,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -13078,6 +13318,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:28Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 59099f3def69f5b8bb1318da7fa3cd68f62905692626481cdfbb649cc9640ecc
+        new_yaml_sha256: e838df5418b79d4185d6585641826190f172748938e676b2f89ae25186c470b8
+        target_ids:
+          - api.document.031
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.032
     stable_key: 'sha256:61448c8fe6a2eb1985682f2702ab87a60b6da93a7d1874b251ebac01ce0a7667'
@@ -13095,7 +13351,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -13104,8 +13360,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -13156,6 +13412,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:29Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e838df5418b79d4185d6585641826190f172748938e676b2f89ae25186c470b8
+        new_yaml_sha256: 5352e77610bb5feae0f26f4e68640114df087602f5e7a0a929d4b12a4a6c551f
+        target_ids:
+          - api.document.032
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.033
     stable_key: 'sha256:87b819324d40aea1a6f568afd20ee6a9f419fed08413769c715a755de46a093a'
@@ -13173,7 +13445,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -13182,8 +13454,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -13234,6 +13506,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:29Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5352e77610bb5feae0f26f4e68640114df087602f5e7a0a929d4b12a4a6c551f
+        new_yaml_sha256: 0371523b6f6b224e5c5569b449f5697cfcc9d231e6b12325c87980c3911ce7e7
+        target_ids:
+          - api.document.033
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.034
     stable_key: 'sha256:b5ef2d6453df36416e4257b37760b1a90af0ca86962203c18dc0395118e33769'
@@ -19730,7 +20018,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -19739,8 +20027,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '5174e756'
+    regression_test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -19791,6 +20079,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T01:49:30Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0371523b6f6b224e5c5569b449f5697cfcc9d231e6b12325c87980c3911ce7e7
+        new_yaml_sha256: cf7dbeba4e69159b26b229c3bca5a3a61cd236c3ff2875be352223429e707ea2
+        target_ids:
+          - api.document.041
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: apps/api/tests/Feature/Document/DocumentConversionTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.document.042
     stable_key: 'sha256:0c76fb93ad41c60e45e9e7533a4bd4e56e1a646ff67d6fc74108d4b01f01e768'
