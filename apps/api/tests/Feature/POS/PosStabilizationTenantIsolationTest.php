@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Enums\SelectionType;
@@ -781,6 +782,56 @@ final class PosStabilizationTenantIsolationTest extends TestCase
                 'pin' => '1234',
             ]);
         $this->assertApiValidationErrors($response, ['user_id']);
+    }
+
+    // =========================================================================
+    // Round-2 Opus Finding 2 — composite_items in StoreReceiptRequest
+    // =========================================================================
+
+    public function test_store_receipt_refuses_cross_tenant_composite_item_id_on_lines(): void
+    {
+        // Lazy-seed composite items per tenant — kept out of the shared
+        // setUp since only this round-2 test exercises them.
+        $compositeA = $this->seedCompositeItem($this->tenantA->id, $this->companyA->id, 'CompA');
+        $compositeB = $this->seedCompositeItem($this->tenantB->id, $this->companyB->id, 'CompB');
+
+        // Cross-tenant composite_item_id submitted by tenant-A → 422 from
+        // ScopedExists::tenantAndCompany('composite_items', tenantA, companyA).
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'composite_item_id' => $compositeB->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+            ]);
+        $this->assertApiValidationErrors($cross, ['lines.0.composite_item_id']);
+
+        // Same-tenant control: tenant-A's own composite_item_id is accepted.
+        $same = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/receipts', [
+                'terminal_id' => $this->terminalA->id,
+                'lines' => [[
+                    'composite_item_id' => $compositeA->id,
+                    'quantity' => '1',
+                    'unit_price' => '10.00',
+                ]],
+            ]);
+        $this->assertNoValidationErrorFor($same, 'lines.0.composite_item_id');
+    }
+
+    private function seedCompositeItem(string $tenantId, string $companyId, string $code): CompositeItem
+    {
+        return CompositeItem::create([
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'code' => $code.'-'.Str::random(4),
+            'name' => "Composite {$code}",
+            'vertical_type' => 'generic',
+            'base_price' => '12.50',
+            'is_active' => true,
+        ]);
     }
 
     // =========================================================================

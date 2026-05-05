@@ -129,6 +129,15 @@ final class ReceiptSyncService
         if ($existing !== null) {
             // Refresh the terminal so the echo reflects the current persisted state
             // (not the idempotency-hit terminal's pre-modification state).
+            //
+            // KNOWN GAP (Opus round-1 review of api.pos-stabilization, Finding 4,
+            // 2026-05-04): this Terminal::where lookup is unscoped — the
+            // anchoring `$existing->terminal_id` field comes from a Receipt row
+            // already persisted under company-scoped lock-for-update, so the
+            // attack surface is structurally protected. Pre-existing, NOT
+            // introduced by the api.pos-stabilization sweep. Tracked for a
+            // future scanner-blind-spot follow-up; see
+            // docs/superpowers/audits/2026-05-04-bare-where-scanner-gap.md.
             $terminalForEcho = Terminal::where('id', $existing->terminal_id)->first();
 
             return SyncReceiptResult::duplicate(
@@ -232,7 +241,16 @@ final class ReceiptSyncService
                         $taxRate = CurrencyScale::bcformat($product->tax_rate ?? '0', 2);
                     }
                 } elseif ($compositeItemId !== null) {
-                    $compositeItem = CompositeItem::find($compositeItemId);
+                    // Round-2 Opus Finding 2 — composite_items has T+C cols.
+                    // Scope by anchoring terminal's tenant + company to keep
+                    // the Treasury invariant on every service-tier find that
+                    // a foreign sellable snapshot cannot leak into the
+                    // receipt write. Cross-tenant composite_item_id resolves
+                    // to null and falls through to 'Unknown Product' default.
+                    $compositeItem = CompositeItem::query()
+                        ->where('tenant_id', $terminal->tenant_id)
+                        ->where('company_id', $terminal->company_id)
+                        ->find($compositeItemId);
                     if ($compositeItem !== null) {
                         $sellableName = $compositeItem->getSellableName();
                         $sellableCode = $compositeItem->code;

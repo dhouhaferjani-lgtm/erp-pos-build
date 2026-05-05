@@ -56,9 +56,12 @@ final class StoreReceiptRequest extends FormRequest
                 ScopedExists::tenantAndCompany('products', $tenantId, $companyId),
                 'required_without:lines.*.composite_item_id',
             ],
-            // composite_items not in inventory; keep bare exists (existing behavior).
+            // Round-2 Opus Finding 2 — composite_items HAS both tenant_id
+            // and company_id (per migration 2026_02_19_100001). Same scope
+            // as the sibling product_id field above.
             'lines.*.composite_item_id' => [
-                'nullable', 'uuid', 'exists:composite_items,id',
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('composite_items', $tenantId, $companyId),
                 'required_without:lines.*.product_id',
             ],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
