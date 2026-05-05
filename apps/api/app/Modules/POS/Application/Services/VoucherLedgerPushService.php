@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
@@ -82,9 +83,28 @@ final class VoucherLedgerPushService
             return $this->failed($payload->id, 'event_kind_not_supported_in_offline_path');
         }
 
-        // 2. Load the voucher; voucher_not_found is a hard failure.
+        // 2. Load the voucher scoped to the requesting terminal's tenant.
+        // api.pos-stabilization.027 — defense-in-depth: derive tenant from
+        // the requesting terminal and pin the SELECT predicate. The downstream
+        // redeemable_at_terminal_id guard at step 3 already catches the
+        // cross-tenant case (a tenant-A push of a tenant-B voucher whose
+        // redeemable_at_terminal_id is a tenant-B terminal will fail there),
+        // but pinning tenant_id on the find also surfaces the leak as
+        // voucher_not_found instead of voucher_not_for_this_terminal — a
+        // tighter signal that aligns with the Treasury invariant for any
+        // service-tier Eloquent find reachable from an HTTP path.
+        /** @var Terminal|null $terminal */
+        $terminal = Terminal::query()
+            ->where('id', $requestingTerminalId)
+            ->first();
+        if ($terminal === null) {
+            return $this->failed($payload->id, 'voucher_not_found');
+        }
+
         /** @var Voucher|null $voucher */
-        $voucher = Voucher::query()->find($payload->voucherId);
+        $voucher = Voucher::query()
+            ->where('tenant_id', $terminal->tenant_id)
+            ->find($payload->voucherId);
 
         if ($voucher === null) {
             return $this->failed($payload->id, 'voucher_not_found');

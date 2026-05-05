@@ -504,8 +504,16 @@ final class ReceiptCreationService
             $partnerId = null;
             $resolvedContactId = null;
 
+            // api.pos-stabilization.022 — scope Contact::find by caller tenant + company.
+            // api.pos-stabilization.023 — scope Partner::find similarly.
+            // Cross-tenant ids resolve to null; the receipt persists without
+            // the foreign customer name/contact reference.
+            $callerTenantId = $this->companyContext->requireCompany()->tenant_id;
             if ($contactId !== null) {
-                $contact = Contact::find($contactId);
+                $contact = Contact::query()
+                    ->where('tenant_id', $callerTenantId)
+                    ->where('company_id', $companyId)
+                    ->find($contactId);
                 if ($contact !== null) {
                     $customerName = $contact->full_name;
                     $customerIdentifier = $contact->phone ?? $contact->email ?? null;
@@ -520,7 +528,10 @@ final class ReceiptCreationService
             }
 
             if ($customerName === null && $customerId !== null) {
-                $partner = Partner::find($customerId);
+                $partner = Partner::query()
+                    ->where('tenant_id', $callerTenantId)
+                    ->where('company_id', $companyId)
+                    ->find($customerId);
                 if ($partner !== null) {
                     $customerName = $partner->name;
                     $customerIdentifier = $partner->phone ?? $partner->email ?? null;
@@ -843,7 +854,14 @@ final class ReceiptCreationService
         $available = $stockLevel->getAvailableQuantity();
         /** @var numeric-string $quantity */
         if (bccomp($available, $quantity, 4) < 0) {
-            $product = Product::find($productId);
+            // api.pos-stabilization.024 — scope Product::find by tenant + company
+            // (the decrementStock arg list already carries both, so no change to
+            // the call sites; this is a defense-in-depth gap closer that pins
+            // the SQL shape against any future regression).
+            $product = Product::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->find($productId);
             $productName = $product->name ?? $productId;
             throw new \RuntimeException(
                 "Insufficient stock for '{$productName}'. Available: {$available}, Requested: {$quantity}"

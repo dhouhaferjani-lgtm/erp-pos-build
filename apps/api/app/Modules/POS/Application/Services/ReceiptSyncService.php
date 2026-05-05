@@ -214,7 +214,14 @@ final class ReceiptSyncService
                 $taxRate = '0.00';
 
                 if ($productId !== null) {
-                    $product = Product::find($productId);
+                    // api.pos-stabilization.025 — scope Product::find by the
+                    // anchoring terminal's tenant + company. Cross-tenant
+                    // product_id resolves to null and the sellable snapshot
+                    // falls back to its 'Unknown Product' default.
+                    $product = Product::query()
+                        ->where('tenant_id', $terminal->tenant_id)
+                        ->where('company_id', $terminal->company_id)
+                        ->find($productId);
                     if ($product !== null) {
                         $sellableName = $product->name;
                         $sellableCode = $product->sku ?? $product->barcode ?? '';
@@ -431,7 +438,14 @@ final class ReceiptSyncService
             //     is the only acceptable input — anything else risks silent hash-
             //     input substitution that the audit explicitly flagged.
             foreach ($payload->payments as $entry) {
-                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+                // api.pos-stabilization.026 — scope PaymentMethod::findOrFail
+                // by the anchoring terminal's tenant + company. Cross-tenant
+                // payment_method_id raises ModelNotFoundException, aborting
+                // the sync transaction before any ReceiptPayment row is written.
+                $method = PaymentMethod::query()
+                    ->where('tenant_id', $terminal->tenant_id)
+                    ->where('company_id', $terminal->company_id)
+                    ->findOrFail($entry['payment_method_id']);
 
                 // Codex review B4 (2026-04-30): defense-in-depth at the sync
                 // writer. The HTTP request validator (SyncReceiptsRequest)

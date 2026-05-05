@@ -94,7 +94,13 @@ final class OrderManagementService
             $customerIdentifier = null;
             $resolvedPartnerId = null;
             if ($partnerId !== null) {
-                $partner = Partner::find($partnerId);
+                // api.pos-stabilization.020 — scope Partner::find by tenant + company.
+                // Cross-tenant partner_id resolves to null, suppressing the
+                // customer info enrichment without disrupting order creation.
+                $partner = Partner::query()
+                    ->where('tenant_id', $company->tenant_id)
+                    ->where('company_id', $company->id)
+                    ->find($partnerId);
                 if ($partner !== null) {
                     $customerName = $customerName ?? $partner->name;
                     $customerIdentifier = $partner->phone ?? $partner->email ?? null;
@@ -178,8 +184,14 @@ final class OrderManagementService
                 throw new \RuntimeException('Cannot add lines to a non-open order');
             }
 
+            // api.pos-stabilization.021 — scope Product::findOrFail by the
+            // anchoring order's tenant + company. Cross-tenant product_id
+            // raises ModelNotFoundException before any OrderLine is written.
             /** @var Product $product */
-            $product = Product::findOrFail($productId);
+            $product = Product::query()
+                ->where('tenant_id', $order->tenant_id)
+                ->where('company_id', $order->company_id)
+                ->findOrFail($productId);
 
             // Calculate line totals
             $lineCalc = $this->calculateLineTotals($quantity, $unitPrice, $taxRate, $discountAmount);
