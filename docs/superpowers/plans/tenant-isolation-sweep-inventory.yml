@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-05T16:04:57Z'
+  generated_at: '2026-05-05T19:38:40Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+  yaml_sha256: 03e1e35b76f1bdd0774660b6a23c1296eae00591af1116ecff7872922536b7ac
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -6098,7 +6098,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -6176,6 +6176,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.008
+        from_status: under_review
+        to_status: under_review
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.009
     stable_key: 'sha256:fe4bc5a18d60151d1549f65cf2e40c876590e6b782dfca8b0e0c50a9563993a5'
@@ -6192,7 +6208,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -6270,6 +6286,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.009
+        from_status: under_review
+        to_status: under_review
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.010
     stable_key: 'sha256:e580489f6aa7778e11bda44aa34870c888dca8f8f3e21771a471b969e4bb9135'
@@ -6492,12 +6524,12 @@ callsites:
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.012
-    stable_key: 'sha256:e8cc28361b617b6a0c55239a990d4f3e0c3d2fb944630e4864985d3c110ff9b7'
+    stable_key: 'sha256:a790b27e4c828399b12b8dd539f97ecfd5dd385fc80527541e6bab8eaca8e64b'
     surface: api
     cluster_id: api.pos-stabilization
     scanner: php_presentation_exists
     file: apps/api/app/Modules/POS/Presentation/Requests/StoreReceiptRequest.php
-    line: 41
+    line: 74
     symbol: 'App\Modules\POS\Presentation\Requests\StoreReceiptRequest::rules'
     pattern_type: bare_exists_validator
     resource: modifiers
@@ -6507,7 +6539,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -6600,6 +6632,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.012
+        from_status: under_review
+        to_status: needs_recheck
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pos-stabilization.013
     stable_key: 'sha256:ba796b87f34651a09925824caaf8b4440bc5e9123e6c69b2fc47616393b9288d'
@@ -20279,7 +20327,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -20357,6 +20405,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.025
+        from_status: under_review
+        to_status: under_review
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.026
     stable_key: 'sha256:c896c85d6cb50ac0f6fe0b839de966abbd0d84f30d5cdce4506109f245f672f1'
@@ -20373,7 +20437,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -20451,6 +20515,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.026
+        from_status: under_review
+        to_status: under_review
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.027
     stable_key: 'sha256:20eced31ddcd748718de2c4db365b33458a332902d7858587269dbdde290b1e1'
@@ -32679,6 +32759,382 @@ callsites:
         to_status: under_review
         commit: d91c0d3a
         test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_table_refuses_cross_tenant_floor_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.042
+    stable_key: 'manual:api.pos-stabilization:receipt-sync-cross-tenant-sellable-id-leak'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Presentation/Requests/SyncReceiptsRequest.php
+    line: 58
+    symbol: 'App\Modules\POS\Presentation\Requests\SyncReceiptsRequest::rules + App\Modules\POS\Application\Services\ReceiptSyncService::syncSingleReceipt'
+    pattern_type: bare_exists_validator+service_method_persists_unscoped_fk
+    resource: products+composite_items
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: receipts.*.lines.*.product_id and ...composite_item_id were validated only as nullable UUIDs. ReceiptSyncService correctly refused to LOAD a cross-tenant Product/CompositeItem snapshot but persisted the raw payload UUIDs into pos_receipt_lines.product_id / composite_item_id, leaving tenant-A receipt lines referencing tenant-B sellable rows. Round-3: (1) constructor-inject CompanyContext into SyncReceiptsRequest; replace UUID-only validation with ScopedExists::tenantAndCompany('products',...) and ScopedExists::tenantAndCompany('composite_items',...); (2) defense-in-depth at ReceiptSyncService::syncSingleReceipt — persist the SCOPED-RESOLVED entity ids ($resolvedProductId / $resolvedCompositeItemId), so any FK that fails scoped resolution is stored as NULL alongside the existing 'Unknown Product' snapshot fallback."
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-05T19:40:03Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: c2f37aea
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_sync_receipts_refuses_cross_tenant_product_id_via_validator'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.042
+        from_status: null
+        to_status: pending
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-05T19:40:03Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        new_yaml_sha256: 16784399def09d0b9d6a57fb12d3849c67268526e2ea8a88c4ea42f660b6be07
+        target_ids:
+          - api.pos-stabilization.042
+        from_status: pending
+        to_status: claimed
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T19:40:13Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a07c18377d14dfb7afd9ee2c4677209697a0223c9c446f86077305070b558777
+        new_yaml_sha256: d0d3ec6c94483c4e1abc7c9216c4c9a3615c3c585bb58ef1bce97afd1d2907fd
+        target_ids:
+          - api.pos-stabilization.042
+        from_status: claimed
+        to_status: in_progress
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T19:40:34Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fdf5a8773ad7ba3438a88b12544a73dbf509aefc377b92c50f6c3a502311b5c8
+        new_yaml_sha256: 2a399794eeae6974382ddb8407393c64f655e68731ab76ec699c3a702729b89e
+        target_ids:
+          - api.pos-stabilization.042
+        from_status: in_progress
+        to_status: under_review
+        commit: c2f37aea
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_sync_receipts_refuses_cross_tenant_product_id_via_validator'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.043
+    stable_key: 'manual:api.pos-stabilization:receipt-sync-idempotency-key-echo-leak'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php
+    line: 128
+    symbol: 'App\Modules\POS\Application\Services\ReceiptSyncService::syncSingleReceipt'
+    pattern_type: service_method_unscoped_idempotency_lookup
+    resource: receipts
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: Receipt::where('idempotency_key',$payload->idempotencyKey)->first() ran BEFORE company context was applied, so a tenant-A submitter with a tenant-B idempotency_key received the foreign receipt id, fiscal_hash, and terminal hash state via the duplicate-response branch — a live fiscal-data leak. Round-3: scope the SELECT by authenticated tenant_id + company_id from CompanyContext (already injected). Cross-tenant collisions resolve to null → request proceeds as a fresh insert. Also tightened the duplicate-echo Terminal lookup (Round-1 Finding 4 KNOWN GAP closure) to anchor on $existing->tenant_id + $existing->company_id, removing the open scanner-blind-spot annotation since the F2 scoping makes $existing structurally same-company."
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-05T19:40:04Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: a7860ef4
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_receipt_sync_idempotency_key_lookup_is_scoped_by_tenant_and_company'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.043
+        from_status: null
+        to_status: pending
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-05T19:40:04Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 16784399def09d0b9d6a57fb12d3849c67268526e2ea8a88c4ea42f660b6be07
+        new_yaml_sha256: b38274d1796b6f29b39b5b2d8c5c97efe0d9f3d24a998f0bf310f32aefcbd02c
+        target_ids:
+          - api.pos-stabilization.043
+        from_status: pending
+        to_status: claimed
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T19:40:13Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d0d3ec6c94483c4e1abc7c9216c4c9a3615c3c585bb58ef1bce97afd1d2907fd
+        new_yaml_sha256: 9fd2204bd994e730b01cc11312e5174e262ff98ffb6f16b76bf4e439ff36ea14
+        target_ids:
+          - api.pos-stabilization.043
+        from_status: claimed
+        to_status: in_progress
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T19:40:35Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2a399794eeae6974382ddb8407393c64f655e68731ab76ec699c3a702729b89e
+        new_yaml_sha256: 169ba8272706386adec27b456f10514747a227ff50e299c0d840ebc2f7a2b500
+        target_ids:
+          - api.pos-stabilization.043
+        from_status: in_progress
+        to_status: under_review
+        commit: a7860ef4
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_receipt_sync_idempotency_key_lookup_is_scoped_by_tenant_and_company'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.044
+    stable_key: 'manual:api.pos-stabilization:table-release-cross-tenant-mutation'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Application/Services/TableManagementService.php
+    line: 184
+    symbol: 'App\Modules\POS\Application\Services\TableManagementService::releaseTable + ::assignOrderToTable'
+    pattern_type: service_method_unscoped_locked_row_select
+    resource: pos_tables
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: releaseTable and assignOrderToTable each ran Table::lockForUpdate()->findOrFail($tableId) without tenant or company predicates. POST /api/v1/pos/tables/{id}/release let a tenant-A operator release a tenant-B occupied table and read back the foreign resource. Round-3: anchor each locked-row SELECT on authenticated tenant_id + company_id (resolved via CompanyContext + resolveTenantId, matching sibling methods). Cross-tenant ids surface as ModelNotFoundException → Laravel 404, no mutation. Sibling-method audit confirmed only releaseTable/assignOrderToTable were unscoped; CRUD methods (create/update/delete table + floor + setTableStatus) already used ::where('company_id',...)->findOrFail."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-05T19:40:04Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 6ca27b7a
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_release_table_refuses_cross_tenant_table_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.044
+        from_status: null
+        to_status: pending
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-05T19:40:05Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b38274d1796b6f29b39b5b2d8c5c97efe0d9f3d24a998f0bf310f32aefcbd02c
+        new_yaml_sha256: 42c19351b23cc640db5fc9faf2dc0c7c13815e3d7a679cb0d2293210ad73bcbd
+        target_ids:
+          - api.pos-stabilization.044
+        from_status: pending
+        to_status: claimed
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T19:40:14Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9fd2204bd994e730b01cc11312e5174e262ff98ffb6f16b76bf4e439ff36ea14
+        new_yaml_sha256: 20f5e6f031b8b6acd7190561bc90f7ed60eefc574adc1e28f6421dbef95d8097
+        target_ids:
+          - api.pos-stabilization.044
+        from_status: claimed
+        to_status: in_progress
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T19:40:36Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 169ba8272706386adec27b456f10514747a227ff50e299c0d840ebc2f7a2b500
+        new_yaml_sha256: d9bb0a6443ab83f0ec20be9346a8e2c2e7f97c753eb6ffaf96636b79a16c37d2
+        target_ids:
+          - api.pos-stabilization.044
+        from_status: in_progress
+        to_status: under_review
+        commit: 6ca27b7a
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_release_table_refuses_cross_tenant_table_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.045
+    stable_key: 'manual:api.pos-stabilization:order-create-cross-tenant-table-assignment'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Presentation/Requests/CreateOrderRequest.php
+    line: 50
+    symbol: 'App\Modules\POS\Presentation\Requests\CreateOrderRequest::rules + App\Modules\POS\Application\Services\OrderManagementService::createOrder'
+    pattern_type: bare_uuid_validator+service_method_unscoped_locked_row_select
+    resource: pos_tables
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: CreateOrderRequest validated table_id only as ['nullable','uuid']; OrderController passed it through; OrderManagementService::createOrder ran Table::lockForUpdate()->findOrFail($tableId) without tenant/company predicates while persisting the foreign table_id onto the tenant-A order. Same table-mutation bug as Finding 3 reached through a different production HTTP path. Round-3: (1) ScopedExists::tenantAndCompany('pos_tables',$tenantId,$companyId) on table_id (CompanyContext + ScopedExists imports already present from .008/.009 callsites); (2) defense-in-depth at OrderManagementService::createOrder — anchor the locked-row SELECT on the already-resolved $terminal's tenant + company predicates."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-05T19:40:05Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 4e5edc2c
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_table_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T19:38:40Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4287ddd9ede491bdc063492e954aec2702ab7c78cd38ae0377634c320af1149d
+        new_yaml_sha256: 3361cb2d87158a611cf0ee4b64e7cd497877a62f3327dcd9d0aa79c9664d6baf
+        target_ids:
+          - api.pos-stabilization.045
+        from_status: null
+        to_status: pending
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-05T19:40:05Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 42c19351b23cc640db5fc9faf2dc0c7c13815e3d7a679cb0d2293210ad73bcbd
+        new_yaml_sha256: a07c18377d14dfb7afd9ee2c4677209697a0223c9c446f86077305070b558777
+        target_ids:
+          - api.pos-stabilization.045
+        from_status: pending
+        to_status: claimed
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-05T19:40:15Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 20f5e6f031b8b6acd7190561bc90f7ed60eefc574adc1e28f6421dbef95d8097
+        new_yaml_sha256: fdf5a8773ad7ba3438a88b12544a73dbf509aefc377b92c50f6c3a502311b5c8
+        target_ids:
+          - api.pos-stabilization.045
+        from_status: claimed
+        to_status: in_progress
+        commit: 4e5edc2c45682cf3cff48c0bad7cf5e0fceb405c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T19:40:38Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d9bb0a6443ab83f0ec20be9346a8e2c2e7f97c753eb6ffaf96636b79a16c37d2
+        new_yaml_sha256: 03e1e35b76f1bdd0774660b6a23c1296eae00591af1116ecff7872922536b7ac
+        target_ids:
+          - api.pos-stabilization.045
+        from_status: in_progress
+        to_status: under_review
+        commit: 4e5edc2c
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_table_id'
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
