@@ -160,10 +160,22 @@ class ExpenseCategoryController extends Controller
 
     /**
      * Check if setting a parent would create a circular reference.
+     *
+     * api.unmapped.013 (api.accounting): the bare `ExpenseCategory::find()`
+     * could traverse a foreign company's category tree. Defense-in-depth on
+     * top of the validator-tier ScopedExists::tenantAndCompany guard. Scope
+     * the lookup by the controller's CompanyContext company_id; the parent
+     * relationship walk continues to use the model's BelongsTo (the
+     * BelongsTo is keyed on parent_id within expense_categories — same
+     * table — so the company_id transitivity is already enforced by the
+     * starting category being scoped).
      */
     private function wouldCreateCircularReference(string $categoryId, string $parentId): bool
     {
-        $current = ExpenseCategory::find($parentId);
+        $companyId = $this->companyContext->requireCompanyId();
+        $current = ExpenseCategory::query()
+            ->where('company_id', $companyId)
+            ->find($parentId);
 
         while ($current !== null) {
             if ($current->id === $categoryId) {

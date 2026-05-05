@@ -11,16 +11,20 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -442,6 +446,234 @@ final class AccountingTenantIsolationTest extends TestCase
         );
         $this->assertStringContainsString('"tenant_id"', $accountQuery, 'SQL: '.$accountQuery);
         $this->assertStringContainsString('"company_id"', $accountQuery, 'SQL: '.$accountQuery);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // ExpenseRequest validators (api.unmapped.001-003 reassigned to
+    // api.accounting). Pre-fix, the FormRequest used bare exists rules
+    // for expense_category_id, payment_method_id, payment_repository_id —
+    // any cross-tenant id with a valid UUID could satisfy the FK
+    // validator, allowing arbitrary cross-tenant Treasury / Expense
+    // resource assignment in newly created expenses. Post-fix, all three
+    // are ScopedExists::tenantAndCompany using CompanyContext-derived
+    // tenant + company.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_expense_create_rejects_cross_tenant_expense_category_id(): void
+    {
+        /** @var ExpenseCategory $expenseCategoryB */
+        $expenseCategoryB = ExpenseCategory::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Office Expenses B',
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expenses', [
+                'expense_category_id' => $expenseCategoryB->id,
+                'total' => '10.00',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('expense_category_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_expense_create_rejects_cross_tenant_payment_method_id(): void
+    {
+        /** @var PaymentMethod $paymentMethodB */
+        $paymentMethodB = PaymentMethod::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'CASH-B',
+            'name' => 'Cash B',
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expenses', [
+                'payment_method_id' => $paymentMethodB->id,
+                'total' => '10.00',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('payment_method_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_expense_create_rejects_cross_tenant_payment_repository_id(): void
+    {
+        /** @var PaymentRepository $paymentRepoB */
+        $paymentRepoB = PaymentRepository::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'CASH-DRW-B',
+            'name' => 'Cash Drawer B',
+            'type' => 'cash_register',
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expenses', [
+                'payment_repository_id' => $paymentRepoB->id,
+                'total' => '10.00',
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('payment_repository_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // ExpenseCategoryRequest validators (api.unmapped.004-005 reassigned
+    // to api.accounting). Pre-fix, the FormRequest used bare exists for
+    // parent_id (self-ref expense_categories) and account_id (accounts).
+    // Cross-tenant assignment of either was structurally possible.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_expense_category_create_rejects_cross_tenant_parent_id(): void
+    {
+        /** @var ExpenseCategory $expenseCategoryB */
+        $expenseCategoryB = ExpenseCategory::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Parent B',
+            'is_active' => true,
+        ]);
+
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expense-categories', [
+                'name' => 'Child of Foreign Parent',
+                'parent_id' => $expenseCategoryB->id,
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('parent_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_expense_category_create_rejects_cross_tenant_account_id(): void
+    {
+        $cross = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expense-categories', [
+                'name' => 'Cross-Account Category',
+                'account_id' => $this->accountB->id, // foreign-tenant account
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('account_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // ExpenseCategoryController::wouldCreateCircularReference (api.unmapped.013
+    // reassigned to api.accounting). The private helper used bare
+    // ExpenseCategory::find($parentId) to walk parent chain; without a
+    // company_id predicate, a cross-tenant parent_id passed to the
+    // update() route could cause the circular-reference check to traverse
+    // a foreign tenant's category tree (information disclosure: detect a
+    // foreign uuid is present, optionally trigger 422 vs missing-parent
+    // 404). Post-fix, the find is scoped to the same company_id as the
+    // route's category. Note: api.unmapped.004 above already validates
+    // parent_id at the validator tier; this is defense-in-depth.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_expense_category_update_circular_check_does_not_walk_foreign_tenant_tree(): void
+    {
+        // Same-tenant child category that the user owns and is updating.
+        /** @var ExpenseCategory $sameTenantChild */
+        $sameTenantChild = ExpenseCategory::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Same-Tenant Child',
+            'is_active' => true,
+        ]);
+
+        // Foreign-tenant parent. Even though the validator should reject
+        // this at the parent_id rule, the SQL captured here pins the
+        // post-fix wouldCreateCircularReference scope. Pre-fix would emit
+        // an unscoped `select * from expense_categories where id = ?`;
+        // post-fix the helper either is short-circuited by the validator
+        // or, if reached, scopes by company_id.
+        /** @var ExpenseCategory $foreignParent */
+        $foreignParent = ExpenseCategory::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Foreign Parent',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAsForCompany($this->userA, $this->companyA)
+            ->putJson("/api/v1/expense-categories/{$sameTenantChild->id}", [
+                'name' => 'Renamed Same-Tenant',
+                'parent_id' => $foreignParent->id,
+            ]);
+        // Validator should 422 (api.unmapped.004 fix); confirms the
+        // attack is short-circuited.
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('parent_id', $response->json('error.errors') ?? []);
+
+        // Post-condition: the foreign parent's tree must not have been
+        // mutated, and no cross-tenant category was hit by the helper.
+        $this->assertSame(
+            'Same-Tenant Child',
+            $sameTenantChild->fresh()?->name,
+            'Same-tenant child must NOT have been renamed.',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Structural-SQL-log invariants (bar-raising) — pin SQL shape of
+    // the new ScopedExists FormRequest validators.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_expense_create_validators_query_includes_tenant_and_company_predicates(): void
+    {
+        /** @var ExpenseCategory $expenseCategoryA */
+        $expenseCategoryA = ExpenseCategory::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Office Expenses A',
+            'is_active' => true,
+        ]);
+
+        DB::enableQueryLog();
+
+        $this->actingAsForCompany($this->userA, $this->companyA)
+            ->postJson('/api/v1/expenses', [
+                'expense_category_id' => $expenseCategoryA->id,
+                'total' => '10.00',
+            ]);
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Find the expense_categories validator query (count(*) with id =).
+        $expenseCategoryValidator = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "expense_categories"')
+                && str_contains($sql, 'count(*)')
+            ) {
+                $expenseCategoryValidator = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $expenseCategoryValidator,
+            'expense_categories exists-validation query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $expenseCategoryValidator,
+            'ExpenseRequest expense_category_id validator must filter by tenant_id. Got SQL: '.$expenseCategoryValidator,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $expenseCategoryValidator,
+            'ExpenseRequest expense_category_id validator must filter by company_id. Got SQL: '.$expenseCategoryValidator,
+        );
     }
 
     private function actingAsForCompany(User $user, Company $company): self

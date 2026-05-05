@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Identity\Domain\User;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -14,6 +17,12 @@ use Illuminate\Validation\Rule;
  */
 class ExpenseRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -29,19 +38,30 @@ class ExpenseRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var User $user */
+        $user = $this->user();
+        $tenantId = $user->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
+
         $rules = [
             'vendor_name' => ['nullable', 'string', 'max:255'],
+            // api.unmapped.001 (api.accounting): expense_categories carries
+            // tenant_id + company_id; scope the FK validator by both.
             'expense_category_id' => [
                 'nullable',
-                Rule::exists('expense_categories', 'id'),
+                ScopedExists::tenantAndCompany('expense_categories', $tenantId, $companyId),
             ],
+            // api.unmapped.002 (api.accounting): payment_methods carries
+            // tenant_id + company_id; scope the FK validator by both.
             'payment_method_id' => [
                 'nullable',
-                Rule::exists('payment_methods', 'id'),
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
             ],
+            // api.unmapped.003 (api.accounting): payment_repositories carries
+            // tenant_id + company_id; scope the FK validator by both.
             'payment_repository_id' => [
                 'nullable',
-                Rule::exists('payment_repositories', 'id'),
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
             ],
             'payment_date' => ['nullable', 'date'],
             'receipt_number' => ['nullable', 'string', 'max:255'],
