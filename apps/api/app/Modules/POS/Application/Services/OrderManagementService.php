@@ -111,10 +111,19 @@ final class OrderManagementService
             $cashierName = $shift->cashier->name ?? 'Unknown';
             $currency = $company->currency ?? 'TND';
 
-            // Validate and lock table if provided
+            // Validate and lock table if provided.
+            // Round-3 Codex Finding 4 — anchor the locked-row SELECT on the
+            // anchoring terminal's tenant + company so a programmatic caller
+            // bypassing the FormRequest validator (queue retry, backfill)
+            // cannot mutate or assign a foreign tenant's table.
             if ($tableId !== null) {
                 /** @var Table $table */
-                $table = Table::lockForUpdate()->findOrFail($tableId);
+                $table = Table::query()
+                    ->where('tenant_id', $terminal->tenant_id)
+                    ->where('company_id', $terminal->company_id)
+                    ->where('id', $tableId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
                 if (! $table->isAvailable()) {
                     throw new \RuntimeException('Table is not available for assignment.');

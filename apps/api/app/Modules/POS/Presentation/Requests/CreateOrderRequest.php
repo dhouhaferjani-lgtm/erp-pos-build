@@ -47,7 +47,14 @@ final class CreateOrderRequest extends FormRequest
             // pos_shifts not in inventory; defer to a future sweep. Keep
             // bare exists so existing functionality remains intact.
             'shift_id' => ['required', 'uuid', 'exists:pos_shifts,id'],
-            'table_id' => ['nullable', 'uuid'],
+            // Round-3 Codex Finding 4 — pos_tables has both tenant_id and
+            // company_id; bare uuid validation let tenant-A reference
+            // tenant-B's table id, which OrderManagementService::createOrder
+            // then mutated and persisted onto the tenant-A order.
+            'table_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('pos_tables', $company->tenant_id, $company->id),
+            ],
             // api.pos-stabilization.009 — scope partners by caller tenant + company.
             'partner_id' => [
                 'nullable', 'uuid',

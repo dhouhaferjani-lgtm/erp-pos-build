@@ -1689,6 +1689,40 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         );
     }
 
+    // =========================================================================
+    // Round-3 Codex Finding 4 — Order creation can assign a foreign table
+    // =========================================================================
+    //
+    // Path: POST /api/v1/pos/orders
+    // Pre-fix: CreateOrderRequest validates table_id only as `['nullable',
+    // 'uuid']`. OrderController passes through; OrderManagementService::
+    // createOrder runs Table::lockForUpdate()->findOrFail($tableId) and
+    // updates the table without tenant/company predicates while persisting
+    // the foreign table_id onto the tenant-A order.
+    // Fix: ScopedExists::tenantAndCompany('pos_tables', ...) on table_id +
+    // service-tier scoped lookup as defense-in-depth.
+    // =========================================================================
+
+    public function test_create_order_refuses_cross_tenant_table_id(): void
+    {
+        $floorB = $this->seedPosFloor($this->tenantB->id, $this->companyB->id, 'F4-B');
+        $tableB = Table::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'floor_id' => $floorB->id,
+            'table_number' => 'F4-B-1',
+            'seats' => 4,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/orders', [
+                'terminal_id' => $this->terminalA->id,
+                'shift_id' => Str::uuid()->toString(),
+                'table_id' => $tableB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['table_id']);
+    }
+
     public function test_setup_creates_per_tenant_resources_correctly(): void
     {
         // Tenant A side
