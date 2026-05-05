@@ -11,6 +11,7 @@ use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Presentation\Requests\StoreRecipeLineRequest;
 use App\Modules\Catalog\Presentation\Rules\NoCircularCompositeItemReference;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -67,15 +68,22 @@ class RecipeLineController extends Controller
 
         $recipe = Recipe::with('compositeItem')->findOrFail($recipeId);
 
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($recipe->compositeItem->company_id !== $companyId) {
+        $company = $this->companyContext->requireCompany();
+        if ($recipe->compositeItem->company_id !== $company->id) {
             abort(403);
         }
 
         $line = RecipeLine::where('recipe_id', $recipe->id)->findOrFail($lineId);
 
         $componentType = $request->input('component_type', $line->component_type->value);
-        $existsTable = $componentType === 'composite_item' ? 'composite_items' : 'products';
+
+        // Both branches scope to the caller's tenant + company. The dynamic
+        // table-name interpolation prior to this fix allowed a cross-tenant
+        // products / composite_items id to satisfy the validator and be
+        // persisted as recipe_lines.component_id (Codex round-1 Finding 1).
+        $componentExistsRule = $componentType === ComponentType::CompositeItem->value
+            ? ScopedExists::tenantAndCompany('composite_items', $company->tenant_id, $company->id)
+            : ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id);
 
         $circularRule = $componentType === ComponentType::CompositeItem->value
             ? [new NoCircularCompositeItemReference($recipe->composite_item_id)]
@@ -83,7 +91,7 @@ class RecipeLineController extends Controller
 
         $validated = $request->validate([
             'component_type' => ['sometimes', new Enum(ComponentType::class)],
-            'component_id' => ['sometimes', 'uuid', "exists:{$existsTable},id", ...$circularRule],
+            'component_id' => ['sometimes', 'uuid', $componentExistsRule, ...$circularRule],
             'quantity' => ['sometimes', 'numeric', 'min:0.0001'],
             'unit_id' => ['nullable', 'uuid', 'exists:units,id'],
             'is_optional' => ['sometimes', 'boolean'],

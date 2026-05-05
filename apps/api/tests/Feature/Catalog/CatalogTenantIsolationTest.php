@@ -8,6 +8,8 @@ use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
+use App\Modules\Catalog\Domain\Entities\Recipe;
+use App\Modules\Catalog\Domain\Entities\RecipeLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -623,6 +625,100 @@ final class CatalogTenantIsolationTest extends TestCase
             $modifierQuery,
             'Modifier whereHas must filter by group.company_id. Got SQL: '.$modifierQuery,
         );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Recipe-line dynamic component_id (Codex round-1 Finding 1) —
+    // both branches (product, composite_item) must reject cross-tenant ids.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_create_recipe_line_rejects_cross_tenant_product_component_id(): void
+    {
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 1,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'product',
+                'component_id' => $this->productB->id,
+                'quantity' => 1.0,
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('component_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_create_recipe_line_rejects_cross_tenant_composite_item_component_id(): void
+    {
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 1,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+        /** @var CompositeItem $foreignComposite */
+        $foreignComposite = CompositeItem::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'CI-B-RL',
+            'name' => 'Foreign Composite',
+            'base_price' => 1.00,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'composite_item',
+                'component_id' => $foreignComposite->id,
+                'quantity' => 1.0,
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('component_id', $cross->json('error.errors') ?? []);
+    }
+
+    public function test_update_recipe_line_rejects_cross_tenant_component_id(): void
+    {
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 1,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+        /** @var Product $sameTenantProduct */
+        $sameTenantProduct = Product::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Product A2',
+            'sku' => 'SKU-A2-RL',
+            'type' => 'part',
+            'is_active' => true,
+        ]);
+        /** @var RecipeLine $line */
+        $line = RecipeLine::create([
+            'recipe_id' => $recipeA->id,
+            'component_type' => 'product',
+            'component_id' => $sameTenantProduct->id,
+            'quantity' => 1.0,
+            'is_optional' => false,
+            'is_scalable' => true,
+            'wastage_percent' => 0,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/recipes/{$recipeA->id}/lines/{$line->id}", [
+                'component_type' => 'product',
+                'component_id' => $this->productB->id,
+            ]);
+        $cross->assertStatus(422);
+        $cross->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('component_id', $cross->json('error.errors') ?? []);
     }
 
     /**
