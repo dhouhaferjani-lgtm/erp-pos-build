@@ -360,6 +360,175 @@ final class PosStabilizationTenantIsolationTest extends TestCase
      * for the same reason — the seeder is broken.
      */
     // =========================================================================
+    // Group 1a — FormRequest validators: Terminal CRUD + Report verification
+    // =========================================================================
+    //
+    // 7 callsites; all bare-exists scoped via ScopedExists per the canonical
+    // RefundPrepaymentRequest pattern.
+    //
+    //   .001 ClaimTerminalRequest       terminal_id   → pos_terminals (T+C)
+    //   .002 UpdateTerminalRequest      location_id   → locations     (C)
+    //   .004 RequestTerminalRequest     location_id   → locations     (C)
+    //   .007 CreateTerminalRequest      location_id   → locations     (C)
+    //   .016 ReportController X         terminal_id   → pos_terminals (T+C)
+    //   .017 ReportController verifyZ   terminal_id   → pos_terminals (T+C)
+    //   .018 ReportController verifyR   terminal_id   → pos_terminals (T+C)
+    // =========================================================================
+
+    /**
+     * Inventory: api.pos-stabilization.001 — ClaimTerminalRequest::rules
+     * bare `exists:pos_terminals,id`.
+     */
+    public function test_claim_terminal_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/claim', [
+                'terminal_id' => $this->terminalB->id,
+                'hardware_identifier' => 'HW-FOREIGN',
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    public function test_claim_terminal_accepts_same_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/claim', [
+                'terminal_id' => $this->terminalA->id,
+                'hardware_identifier' => 'HW-LOCAL',
+            ]);
+        $this->assertNoValidationErrorFor($response, 'terminal_id');
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.002 — UpdateTerminalRequest::rules
+     * bare `exists:locations,id`. Endpoint: PATCH /api/v1/pos/terminals/{id}.
+     */
+    public function test_update_terminal_refuses_cross_tenant_location_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/pos/terminals/{$this->terminalA->id}", [
+                'location_id' => $this->locationB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['location_id']);
+    }
+
+    public function test_update_terminal_accepts_same_tenant_location_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/pos/terminals/{$this->terminalA->id}", [
+                'location_id' => $this->locationA->id,
+            ]);
+        $this->assertNoValidationErrorFor($response, 'location_id');
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.004 — RequestTerminalRequest::rules.
+     * Endpoint: POST /api/v1/pos/terminals/request.
+     */
+    public function test_request_terminal_refuses_cross_tenant_location_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/request', [
+                'location_id' => $this->locationB->id,
+                'hardware_identifier' => 'HW-REQ',
+                'suggested_name' => 'Foreign-Loc Terminal',
+            ]);
+        $this->assertApiValidationErrors($response, ['location_id']);
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.007 — CreateTerminalRequest::rules.
+     * Endpoint: POST /api/v1/pos/terminals.
+     */
+    public function test_create_terminal_refuses_cross_tenant_location_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals', [
+                'name' => 'Cross-tenant terminal',
+                'location_id' => $this->locationB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['location_id']);
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.016 — ReportController::generateXReport
+     * inline validate. Endpoint: POST /api/v1/pos/reports/x.
+     */
+    public function test_generate_x_report_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/x', [
+                'terminal_id' => $this->terminalB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.017 — ReportController::verifyZReportChain.
+     * Endpoint: POST /api/v1/pos/reports/z/verify-chain.
+     */
+    public function test_verify_z_report_chain_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/z/verify-chain', [
+                'terminal_id' => $this->terminalB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    /**
+     * Inventory: api.pos-stabilization.018 — ReportController::verifyReceiptChain.
+     * Endpoint: POST /api/v1/pos/reports/receipts/verify-chain.
+     */
+    public function test_verify_receipt_chain_refuses_cross_tenant_terminal_id(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/reports/receipts/verify-chain', [
+                'terminal_id' => $this->terminalB->id,
+            ]);
+        $this->assertApiValidationErrors($response, ['terminal_id']);
+    }
+
+    /**
+     * Structural-SQL-log invariant for the pos_terminals exists rule used by
+     * the Group 1a ClaimTerminalRequest — the post-fix exists subquery MUST
+     * include both tenant_id and company_id literals. Pre-fix: bare query.
+     */
+    public function test_claim_terminal_exists_query_includes_tenant_and_company(): void
+    {
+        DB::enableQueryLog();
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/pos/terminals/claim', [
+                'terminal_id' => $this->terminalA->id,
+                'hardware_identifier' => 'HW-PIN',
+            ]);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $relevant = collect($queries)->filter(
+            fn (array $q): bool => str_contains($q['query'], 'pos_terminals') && str_contains($q['query'], 'count(')
+        )->values();
+
+        $this->assertNotEmpty(
+            $relevant,
+            'Expected validator exists() count query against pos_terminals.',
+        );
+        $first = $relevant->first();
+        $this->assertNotNull($first);
+        $existsQuery = $first['query'];
+        $this->assertStringContainsString(
+            'tenant_id',
+            $existsQuery,
+            'pos_terminals exists() must scope by tenant_id. Query: '.$existsQuery,
+        );
+        $this->assertStringContainsString(
+            'company_id',
+            $existsQuery,
+            'pos_terminals exists() must scope by company_id. Query: '.$existsQuery,
+        );
+    }
+
+    // =========================================================================
     // Group 2 — Controller-tier route-anchored finds
     // =========================================================================
     //
