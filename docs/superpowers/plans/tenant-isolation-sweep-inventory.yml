@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-04T20:09:01Z'
+  generated_at: '2026-05-05T09:40:53Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 6b5ece3a20126bd21066112b326dd39a8055ef19801bd8552ad828a7368cc480
+  yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -2098,12 +2098,12 @@ callsites:
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.002
-    stable_key: 'sha256:1472ec6ff79d4adadde23399cf46f1f669989d0e0db3b0efc5ad5a0a2f54506f'
+    stable_key: 'sha256:19bb1ada711b4025cf14f2f7cf94ec177a7263e0754795b52ed95cb04a418168'
     surface: api
     cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Catalog/Presentation/Requests/UpdateCompositeItemRequest.php
-    line: 45
+    line: 58
     symbol: 'App\Modules\Catalog\Presentation\Requests\UpdateCompositeItemRequest::rules'
     pattern_type: bare_exists_validator
     resource: tax_configurations
@@ -2113,7 +2113,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -2207,6 +2207,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.002
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.003
     stable_key: 'sha256:9329ea64c5b5a85d2f6690dc21740e80fd7a5219df465ae57d68e29cfa2acca5'
@@ -2334,7 +2350,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -2429,6 +2445,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.004
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.005
     stable_key: 'sha256:c62aec5cec47de6ec631986a006ac71fcf7da792e091bc00e31df2458bf67664'
@@ -2445,7 +2477,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -2540,6 +2572,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.005
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.006
     stable_key: 'sha256:0d5330410c251b2e17ffda1e2447a27f3a0cf66d321fdec650140d8bc21a4471'
@@ -2667,7 +2715,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -2762,6 +2810,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.007
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.taxation.001
     stable_key: 'sha256:47cd6b9d7a87c5280fc2b14dba3ca8a9ad26b25692fbb3353d0e06edbc923439'
@@ -3430,12 +3494,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.taxation.007
-    stable_key: 'sha256:2ae10635018c9f81cd82e0d707b7db65a0c5028dab7abb43b25091c2cbcc9b88'
+    stable_key: 'sha256:fa50858cca423cfef1208e805147920f0f950416beef5fbb9263f57824d1086a'
     surface: api
     cluster_id: api.taxation
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/TaxConfigurationController.php
-    line: 152
+    line: 176
     symbol: 'App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController::reorder'
     pattern_type: bare_exists_validator
     resource: tax_configurations
@@ -3445,7 +3509,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -3539,6 +3603,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.taxation.007
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.document.001
     stable_key: 'sha256:747409ac7d11e21a4c7ec45453e305b5b0e4d9fa831e30b2d4456a4030fc3e36'
@@ -3874,12 +3954,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.001
-    stable_key: 'sha256:2d2ddef9bf28ec941101400e0367e73b14c26e2465754fedf32c7833ed973c12'
+    stable_key: 'sha256:252699e745f8faf4f2ff2ee20d27bb3ea31483f7703b8f15278ce512a5770c6a'
     surface: api
     cluster_id: api.loyalty
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Loyalty/Presentation/Requests/CreateStampCardRequest.php
-    line: 37
+    line: 49
     symbol: 'App\Modules\Loyalty\Presentation\Requests\CreateStampCardRequest::rules'
     pattern_type: bare_exists_validator
     resource: loyalty_rewards
@@ -3889,7 +3969,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -3983,6 +4063,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.001
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.002
     stable_key: 'sha256:da21fb02f4c0dc67a11cef5eafee822bd9e7b4f2406e1d6bd03410b24d15f6de'
@@ -4096,12 +4192,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.003
-    stable_key: 'sha256:246837d9a7442e4590f708f8bd8f03fc2ac71ead938ad9bf997458a6e907e41a'
+    stable_key: 'sha256:b451732639fa95257c22fab848a1837b7d131db3974a3f523c8ebdc89fc8fe44'
     surface: api
     cluster_id: api.loyalty
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Loyalty/Presentation/Requests/UpdateStampCardRequest.php
-    line: 37
+    line: 56
     symbol: 'App\Modules\Loyalty\Presentation\Requests\UpdateStampCardRequest::rules'
     pattern_type: bare_exists_validator
     resource: loyalty_rewards
@@ -4111,7 +4207,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -4205,6 +4301,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.003
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.004
     stable_key: 'sha256:9f2c35dbda30c2c16e41b0dccce74649d5e95ad79f0cfd8675053469803050e1'
@@ -4429,12 +4541,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.011
-    stable_key: 'sha256:f03bb9de9b862120d95be08549850dc9c6e283b4d71082c6023d7c583e27971b'
+    stable_key: 'sha256:a1313c0be86d2afcafc0ad2a92746c46de688958f05a031b461738be2cde3e01'
     surface: api
     cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Product/Presentation/Requests/UpdateProductRequest.php
-    line: 55
+    line: 63
     symbol: 'App\Modules\Product\Presentation\Requests\UpdateProductRequest::rules'
     pattern_type: bare_exists_validator
     resource: tax_configurations
@@ -4444,9 +4556,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: needs_recheck
+    owner: codex
+    claimed_at: '2026-05-05T09:32:54Z'
     review:
       reviewer: null
       verdict: null
@@ -4491,14 +4603,62 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.011 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:32:54Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6b5ece3a20126bd21066112b326dd39a8055ef19801bd8552ad828a7368cc480
+        new_yaml_sha256: 99839c3def7cad0c52c333cdc1b0dfce58aa6c093cff03b8fcba47547a898798
+        target_ids:
+          - api.unmapped.011
+        from_status: pending
+        to_status: claimed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:33:03Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: af2f3f38222ab456de69dcd2f35c3957664511442a70ec10e080b7a5ff59a699
+        new_yaml_sha256: a27675d3b269fd3dc8b1aed7c45ed5d7a7d56f36a847522db81d4eede7ba2462
+        target_ids:
+          - api.unmapped.011
+        from_status: claimed
+        to_status: in_progress
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.unmapped.011
+        from_status: in_progress
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.012
-    stable_key: 'sha256:63995f5bb688382354449e114b6aa1432635cd6e0c723e0af82e65833c63b456'
+    stable_key: 'sha256:bc7185c910b4dfc098be7273ad9aaad50f221097e0516dbf715a02795892cd99'
     surface: api
     cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Product/Presentation/Requests/CreateProductRequest.php
-    line: 53
+    line: 61
     symbol: 'App\Modules\Product\Presentation\Requests\CreateProductRequest::rules'
     pattern_type: bare_exists_validator
     resource: tax_configurations
@@ -4508,9 +4668,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: needs_recheck
+    owner: codex
+    claimed_at: '2026-05-05T09:32:55Z'
     review:
       reviewer: null
       verdict: null
@@ -4555,6 +4715,54 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.012 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:32:55Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 99839c3def7cad0c52c333cdc1b0dfce58aa6c093cff03b8fcba47547a898798
+        new_yaml_sha256: c8de6b031c8468e30db16d291e477d21e429d37f164254c14d864cdb68609b19
+        target_ids:
+          - api.unmapped.012
+        from_status: pending
+        to_status: claimed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:33:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a27675d3b269fd3dc8b1aed7c45ed5d7a7d56f36a847522db81d4eede7ba2462
+        new_yaml_sha256: d17d0de04209708ba7deb22e8e17e4845dc79a21f6a09d83b8a52de0dd39e228
+        target_ids:
+          - api.unmapped.012
+        from_status: claimed
+        to_status: in_progress
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.unmapped.012
+        from_status: in_progress
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pos-stabilization.001
     stable_key: 'sha256:a17880df79993c0917b03ab9ae0de97f5821cdc521a9863790631e4a4340afb6'
@@ -10981,7 +11189,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -11076,6 +11284,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.011
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.012
     stable_key: 'sha256:3000b7a49dd21167ba2be8fd04c16c25f0e41339aa7daa8453b7cb03af64713d'
@@ -11092,7 +11316,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -11187,6 +11411,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.012
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.013
     stable_key: 'sha256:0b4c65fd10c951badf47fc3de4aa2f58c97ab96400b1b6c2809a10eae9ccad7a'
@@ -11203,7 +11443,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -11298,6 +11538,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.013
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
@@ -11392,12 +11648,12 @@ callsites:
         note: 'initial detection'
   -
     id: api.taxation.008
-    stable_key: 'sha256:f6892c90fad3583748120bf57f7a4ff717cb62c73f9d16b59221dafc7ef33661'
+    stable_key: 'sha256:496783c190bf60bbac1d3e805bafd1a9505bb9c31fbdd38d08a078876563b755'
     surface: api
     cluster_id: api.taxation
     scanner: php_ast_find
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/TaxConfigurationController.php
-    line: 51
+    line: 60
     symbol: 'App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController::show'
     pattern_type: unscoped_eloquent_findOrFail
     resource: TaxConfiguration
@@ -11407,7 +11663,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -11501,14 +11757,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.taxation.008
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.009
-    stable_key: 'sha256:1ecedd8e39f50d1b93b8804fade90a73dc0a239ce32b96c4f5f309d68307333a'
+    stable_key: 'sha256:cea9cf5f7a88a95ee256ed0bb76362dc47ac6ff07e9ddc0b72523400a0bd5a5b'
     surface: api
     cluster_id: api.taxation
     scanner: php_ast_find
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/TaxConfigurationController.php
-    line: 111
+    line: 123
     symbol: 'App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController::update'
     pattern_type: unscoped_eloquent_findOrFail
     resource: TaxConfiguration
@@ -11518,7 +11790,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -11612,14 +11884,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.taxation.009
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.010
-    stable_key: 'sha256:4ac40f8aab76d0670eb4d669101cac3b409c566a2c23283add64a05fb9b501be'
+    stable_key: 'sha256:63fc81b2759e4f8c96d6bc398c54400772a225ea7b45dee14ed1c14b7ac2a9e1'
     surface: api
     cluster_id: api.taxation
     scanner: php_ast_find
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/TaxConfigurationController.php
-    line: 137
+    line: 152
     symbol: 'App\Modules\Taxation\Presentation\Controllers\TaxConfigurationController::destroy'
     pattern_type: unscoped_eloquent_findOrFail
     resource: TaxConfiguration
@@ -11629,7 +11917,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -11723,6 +12011,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.taxation.010
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.011
     stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
@@ -12849,7 +13153,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -12944,6 +13248,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
         review_commit: 8bd2b13a
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.011
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.012
     stable_key: 'sha256:9fad80a63578eb43f67e2d508a8e23b0a562872e598b5a7e55de2e1a14f2f14a'
@@ -12960,7 +13280,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -13055,6 +13375,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
         review_commit: 8bd2b13a
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.012
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.013
     stable_key: 'sha256:781663173de03fba3cf28338fa6a751b9c6835f493bf09fc5758724074413e66'
@@ -13071,7 +13407,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -13166,6 +13502,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
         review_commit: 8bd2b13a
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.013
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.014
     stable_key: 'sha256:644ac8df6e6c6bc301d80ca9e4806d659281da895ddcd92edfc1df94dbd7b91f'
@@ -16179,7 +16531,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
@@ -16274,6 +16626,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.006
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.loyalty.007
     stable_key: 'sha256:45fc9daa0d1957eb6f52673938d9f9bd2c1cf6f7657e3e57453b70f68b484bb0'
@@ -16290,7 +16658,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
@@ -16385,14 +16753,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.007
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.loyalty.008
-    stable_key: 'sha256:cecbe3345cdf1f06b15b839d8cc2f11258ad556c213927794bb3af799650154c'
+    stable_key: 'sha256:47108d2f9a0b5b4cdbfa14cd79d94086f43f4648d7bdadf99022be8d6dae8937'
     surface: api
     cluster_id: api.loyalty
     scanner: php_ast_find
     file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
-    line: 171
+    line: 217
     symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::enrollments'
     pattern_type: unscoped_eloquent_findOrFail
     resource: LoyaltyMember
@@ -16402,7 +16786,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -16496,14 +16880,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.008
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.009
-    stable_key: 'sha256:b71128e43321e9c6b5137a102241a1400fa2f77cd331efdad541c08823590940'
+    stable_key: 'sha256:e3e835fecdf12f81411b8227b9ea6a2d50575a97494fd8b4d69b64546f22d247'
     surface: api
     cluster_id: api.loyalty
     scanner: php_ast_find
     file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
-    line: 183
+    line: 236
     symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::transactions'
     pattern_type: unscoped_eloquent_findOrFail
     resource: LoyaltyMember
@@ -16513,7 +16913,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -16607,14 +17007,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.009
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.010
-    stable_key: 'sha256:68a403b88ea84a5025656daab95d5e692e05684a6f9527b2ee4e4c1504f371ec'
+    stable_key: 'sha256:d8124cb311d178a6d5643b7503367af7fa6598db86877bf6f4ddfa34acd23952'
     surface: api
     cluster_id: api.loyalty
     scanner: php_ast_find
     file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
-    line: 207
+    line: 265
     symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::adjust'
     pattern_type: unscoped_eloquent_findOrFail
     resource: LoyaltyMember
@@ -16624,7 +17040,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -16718,6 +17134,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
         review_commit: 74ffc022
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.010
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.017
     stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
@@ -16847,9 +17279,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:32:56Z'
     review:
       reviewer: null
       verdict: null
@@ -16894,6 +17326,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.018 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:32:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c8de6b031c8468e30db16d291e477d21e429d37f164254c14d864cdb68609b19
+        new_yaml_sha256: 05b5184a31c9ced97d1cddb8ffe03b92f46d30b57537c7b8e630f83604070e1f
+        target_ids:
+          - api.unmapped.018
+        from_status: pending
+        to_status: claimed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:33:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d17d0de04209708ba7deb22e8e17e4845dc79a21f6a09d83b8a52de0dd39e228
+        new_yaml_sha256: 9d3f1e16ea912b7efb15ee70f557a006c88715890dee7d9030752115a30b75d0
+        target_ids:
+          - api.unmapped.018
+        from_status: claimed
+        to_status: in_progress
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.unmapped.019
     stable_key: 'sha256:18277095aed0a56ae35ad878d6e4c0c4f5b40ec2e5946be3ac8fe3aa72256b4c'
@@ -16911,9 +17375,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-05T09:32:57Z'
     review:
       reviewer: null
       verdict: null
@@ -16958,6 +17422,38 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.catalog. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.catalog, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.019 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-05T09:32:57Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 05b5184a31c9ced97d1cddb8ffe03b92f46d30b57537c7b8e630f83604070e1f
+        new_yaml_sha256: af2f3f38222ab456de69dcd2f35c3957664511442a70ec10e080b7a5ff59a699
+        target_ids:
+          - api.unmapped.019
+        from_status: pending
+        to_status: claimed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T09:33:05Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9d3f1e16ea912b7efb15ee70f557a006c88715890dee7d9030752115a30b75d0
+        new_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        target_ids:
+          - api.unmapped.019
+        from_status: claimed
+        to_status: in_progress
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: api.compliance.001
     stable_key: 'sha256:f783b2d1725bd0b9b116e53122affd578ad73d150fdf2e378af4096886991572'
@@ -17832,7 +18328,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -17927,6 +18423,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.011
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.012
     stable_key: 'sha256:0d76dfeee0f3646ddc7e5b7d9478b00488550bca02e9704e7a6e80976d662c39'
@@ -17943,7 +18455,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -18038,6 +18550,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.012
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.013
     stable_key: 'sha256:6fbec0da7da06be62946b5e823d671d351e97ad549c96d9c0988810d6a46dacd'
@@ -18054,7 +18582,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -18149,6 +18677,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.013
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.014
     stable_key: 'sha256:131843ff334cb2805083457feebe16fc6d19e55c542441521aceec885716c58c'
@@ -18165,7 +18709,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -18260,6 +18804,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.014
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.015
     stable_key: 'sha256:ce975496ebbac1efd3b3129a4ec223b58dc62cab6a7bfc3c4fc7392149dc58cc'
@@ -18484,12 +19044,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.inventory.017
-    stable_key: 'sha256:dea6be20e9cca53bbdbaa38a4415c2d43c06fc67ded4d4dbbb242cc315c55cba'
+    stable_key: 'sha256:be6d3d94a30c2f45802fb932736379cc2e5ed063d0b5745fb7d73514e076ed38'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php
-    line: 466
+    line: 472
     symbol: 'App\Modules\Inventory\Domain\Services\StockAdjustmentService::getOrCreateStockLevel'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Location
@@ -18499,7 +19059,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -18593,14 +19153,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.017
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.018
-    stable_key: 'sha256:fe55cecb4de835f62d7ead0aaf01ced9bd3dfdc3cbacff7b68ef61562843a702'
+    stable_key: 'sha256:7dceeb8f2e0b91e0f6c78e7baa618a887204d7cfcba8c0a9c2a99d0b098c0183'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php
-    line: 521
+    line: 536
     symbol: 'App\Modules\Inventory\Domain\Services\StockAdjustmentService::recordMovement'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Location
@@ -18610,7 +19186,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -18704,6 +19280,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.018
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.019
     stable_key: 'sha256:0f270dc672878a8227cad9c64d284120b3f6dbff01a611a82b4d3bbbfecac3a6'
@@ -18720,7 +19312,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -18815,6 +19407,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.019
+        from_status: fixed
+        to_status: fixed
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.cart.001
     stable_key: 'sha256:30a335e5ee26f353f011d6ee78e5c4693bcd3836b3381bdfd13ed10491f002a3'
@@ -27681,6 +28289,1294 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-compliance-cluster-opus-round3-review.md
         review_commit: 009bd760
         note: "retro-tracked: surface fix landed at 009bd760 in round 1/2/3; manual-stub generated post-fix and flipped pending→fixed via one-shot mutate (bypasses claim/start/submit/review pipeline because the workflow doesn't support a pending→fixed transition for already-remediated surfaces)."
+  -
+    id: api.loyalty.011
+    stable_key: 'sha256:3839a69b89f7cd3349e54b60c0b1cdbdc668243ab3edcdca637a4897f63964ae'
+    surface: api
+    cluster_id: api.loyalty
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
+    line: 150
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::enroll'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: LoyaltyMember
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.011
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.loyalty.012
+    stable_key: 'sha256:08ea23c8a6837cce6c129a87280ee5ad61c9f75ab3bc373ee10d8fcff9e4edf8'
+    surface: api
+    cluster_id: api.loyalty
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
+    line: 178
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::optOut'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: LoyaltyMember
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.012
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.loyalty.013
+    stable_key: 'sha256:f93dacd02dec9c9e87a80bece19624d20c113aa704525c558f56e5a2c0c77103'
+    surface: api
+    cluster_id: api.loyalty
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
+    line: 197
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::reactivate'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: LoyaltyMember
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.loyalty.013
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.043
+    stable_key: 'manual:api.document:draft-persistence-add-lines-batch-product-unscoped'
+    surface: api
+    cluster_id: api.document
+    scanner: manual
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 422
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Product
+    expected_scope: tenant_and_company
+    expected_fix: 'Scope Product::whereIn by document tenant_id + companyId so foreign product names are not snapshotted into local draft lines via /auto-save batch path.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.043
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.044
+    stable_key: 'manual:api.document:draft-persistence-add-lines-batch-service-unscoped'
+    surface: api
+    cluster_id: api.document
+    scanner: manual
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 425
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Service
+    expected_scope: tenant_and_company
+    expected_fix: 'Scope Service::whereIn by document tenant_id + companyId so foreign service names are not snapshotted into local draft lines via /auto-save batch path.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.044
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.045
+    stable_key: 'manual:api.document:draft-persistence-persists-raw-foreign-product-service-fk'
+    surface: api
+    cluster_id: api.document
+    scanner: manual
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 239
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLine'
+    pattern_type: persists_unverified_foreign_key
+    resource: DocumentLine
+    expected_scope: tenant_and_company
+    expected_fix: 'Persist scoped Product/Service lookup result (?->id) into document_lines, not the raw request UUID. Same fix in addLinesBatch.'
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.document.045
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.018
+    stable_key: 'manual:api.catalog:composite-item-controller-bare-where-chains'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    line: null
+    symbol: App\Modules\Catalog\Presentation\Controllers\CompositeItemController
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to all CompositeItem::where('company_id', $companyId)->findOrFail($id) chains (lines 73, 101, 116, 132, 182). composite_items has both tenant_id and company_id — missing tenant_id violates the Treasury Finding-14 invariant."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.018
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.019
+    stable_key: 'manual:api.catalog:recipe-controller-bare-where-chains'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeController.php
+    line: null
+    symbol: App\Modules\Catalog\Presentation\Controllers\RecipeController
+    pattern_type: bare_where_company_only
+    resource: CompositeItem+Recipe
+    expected_scope: tenant_and_company
+    expected_fix: "Lines 33, 70: scope CompositeItem::where('company_id', ...) by tenant_id too. Lines 51, 97, 116, 142: Recipe::with('compositeItem')->findOrFail($id) is unscoped — verify via compositeItem.company_id (and tenant_id) before mutating."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.019
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.020
+    stable_key: 'manual:api.catalog:recipe-line-controller-store-bare-where-chain'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeLineController.php
+    line: 33
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\RecipeLineController::store'
+    pattern_type: unscoped_eloquent_with_findOrFail
+    resource: Recipe
+    expected_scope: tenant_and_company
+    expected_fix: "Recipe::with('compositeItem')->findOrFail($recipeId) is unscoped. The compositeItem.company_id manual check at line 36-38 catches cross-company but not cross-tenant within a same-id collision (UUID prevents); add scoped Recipe lookup via composite_items.tenant_id + company_id."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.020
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.021
+    stable_key: 'manual:api.catalog:composite-item-variant-controller-bare-where-chain'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemVariantController.php
+    line: 31
+    symbol: App\Modules\Catalog\Presentation\Controllers\CompositeItemVariantController
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId) chain at line 31. composite_items has both columns."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.021
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.022
+    stable_key: 'manual:api.catalog:units-bare-exists-eight-callsites'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation
+    line: null
+    symbol: '8 validators using exists:units,id'
+    pattern_type: bare_exists_validator
+    resource: units
+    expected_scope: tenant_only
+    expected_fix: 'units has nullable tenant_id (system row + tenant rows). ScopedExists::tenant excludes system units. Need a custom rule that allows tenant_id=$callerTenantId OR tenant_id IS NULL. Affected: StoreCompositeItemRequest:48, UpdateCompositeItemRequest:50, StoreModifierRequest:30, ModifierController:71, StoreRecipeRequest, UpdateRecipeRequest, StoreRecipeLineRequest:34, RecipeLineController:88.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.022
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.023
+    stable_key: 'manual:api.catalog:tax-configurations-country-guard-overstated'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Requests/StoreCompositeItemRequest.php
+    line: 48
+    symbol: 'StoreCompositeItemRequest::rules + UpdateCompositeItemRequest::rules'
+    pattern_type: annotation_inaccurate
+    resource: tax_configurations
+    expected_scope: parent_context
+    expected_fix: 'tax_configurations is country-scoped but the annotation claimed tax-application enforces country_code. Verify the actual enforcement point in Tax/Document/Billing — if absent, add a country_code-coherence check at composite-item save time. UpdateCompositeItemRequest comment was softened in 91c6a9e9; StoreCompositeItemRequest comment still claims the strong guard.'
+    severity: low
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.023
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.024
+    stable_key: 'manual:api.catalog:modifier-controller-component-type-not-enum'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
+    line: 65
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
+    pattern_type: validation_asymmetry
+    resource: null
+    expected_scope: tenant_and_company
+    expected_fix: "Replace 'component_type' => ['nullable', 'string'] with ['nullable', new Enum(ComponentType::class)] to match StoreModifierRequest's validation. component_id is already tenant+company scoped to products, so no cross-tenant persistence leak — just an integrity bug."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.024
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.025
+    stable_key: 'manual:api.catalog:composite-item-check-availability-location-unscoped'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    line: 175
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemController::checkAvailability'
+    pattern_type: forwards_request_fk_without_scoped_validation
+    resource: locations
+    expected_scope: company_only
+    expected_fix: "Add ScopedExists::company('locations', $companyId) to the location_id validator. Returns 0 stock for foreign locations (no leak), but breaks the invariant that user-supplied FKs pass through ScopedExists before use."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.025
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.026
+    stable_key: 'manual:api.catalog:no-circular-composite-reference-unscoped-find'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Catalog/Presentation/Rules/NoCircularCompositeItemReference.php
+    line: 52
+    symbol: 'App\Modules\Catalog\Presentation\Rules\NoCircularCompositeItemReference::passes'
+    pattern_type: unscoped_eloquent_find
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    expected_fix: "CompositeItem::with('activeRecipe.lines')->find($compositeItemId) is unscoped. Pass the caller's tenant + company into the rule's constructor and scope the lookup. No persistence leak (the new ScopedExists in StoreRecipeLineRequest still rejects the id), but the unscoped read inside this rule violates the invariant."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.catalog.026
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.029
+    stable_key: 'manual:api.inventory:counting-item-controller-trigger-third-count-bare-exists'
+    surface: api
+    cluster_id: api.inventory
+    scanner: manual
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/CountingItemController.php
+    line: 242
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\CountingItemController::triggerThirdCount'
+    pattern_type: bare_exists_validator
+    resource: inventory_counting_items
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare 'exists:inventory_counting_items,id' with ScopedExists scoped via the parent counting_id. Structurally protected today by InventoryCountingService::whereIn(...)->where('counting_id', $counting->id)->update(...) — but the validator surface is a sibling-controller blind spot."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.029
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.030
+    stable_key: 'manual:api.inventory:fraud-triggered-counting-system-user-fallback'
+    surface: api
+    cluster_id: api.inventory
+    scanner: manual
+    file: apps/api/app/Modules/Inventory/Application/Services/FraudTriggeredCountingService.php
+    line: 56
+    symbol: 'App\Modules\Inventory\Application\Services\FraudTriggeredCountingService::createCountingFromAlert'
+    pattern_type: cross_tenant_fallback_user_first
+    resource: users
+    expected_scope: tenant_only
+    expected_fix: "User::where('email', 'system@autoerp.local')->first() ?? User::first() can pick a User from a different tenant when the system user is missing. Triggered by the scheduled fraud:detect command. Audit-trail integrity issue: created_by_user_id may be cross-tenant from the alert's company. Replace fallback with a per-tenant system-user lookup or fail-loud."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.030
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.031
+    stable_key: 'manual:api.inventory:inventory-counting-create-draft-tenant-id-not-set'
+    surface: api
+    cluster_id: api.inventory
+    scanner: manual
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php
+    line: 422
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\InventoryCountingController::createDraft'
+    pattern_type: tenant_id_not_set_on_create
+    resource: inventory_countings
+    expected_scope: tenant_and_company
+    expected_fix: 'Persist company.tenant_id alongside company_id when creating a draft inventory_counting (column is nullable but should always be set for audit consistency). Reads remain company-coherent because company_id is set.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.031
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.032
+    stable_key: 'manual:api.inventory:wac-stock-level-lock-tuple-missing-company-id'
+    surface: api
+    cluster_id: api.inventory
+    scanner: manual
+    file: apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+    line: 62
+    symbol: App\Modules\Inventory\Application\Services\WeightedAverageCostService
+    pattern_type: defense_in_depth_gap
+    resource: stock_levels
+    expected_scope: tenant_and_company
+    expected_fix: 'Lock tuples at lines 62, 211, 309 do not include company_id. Defense-in-depth gap; not exploitable today because the stock_levels (tenant_id, product_id, location_id) unique key + product re-lock by tenant+company at lines 83-87/219-223/329-333 catch the leak. Add company_id for symmetry.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.032
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.033
+    stable_key: 'manual:api.inventory:release-by-source-not-tenant-scoped'
+    surface: api
+    cluster_id: api.inventory
+    scanner: manual
+    file: apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php
+    line: 237
+    symbol: 'App\Modules\Inventory\Application\Services\StockReservationService::releaseBySource'
+    pattern_type: missing_caller_scope
+    resource: stock_reservations
+    expected_scope: tenant_and_company
+    expected_fix: "releaseBySource (and releaseForWorkOrder which delegates to it) lack tenantId+companyId predicates. Practical risk is negligible (UUID v4 source_id collision) but mirror the reserveForWorkOrder hardening pattern: take caller scope and filter by it. Cross-module surface (reachable via Workshop's InventoryReservationAdapter::releaseFor)."
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.inventory.033
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.workshop.005
+    stable_key: 'manual:api.workshop:eloquent-work-order-repository-find-no-tenant-id'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Persistence/EloquentWorkOrderRepository.php
+    line: null
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderRepository::findById|findForUpdate'
+    pattern_type: missing_tenant_predicate
+    resource: work_orders
+    expected_scope: tenant_and_company
+    expected_fix: "Repository finders only filter by company_id (controller checks company access). Add tenant_id predicate so a same-tenant cross-company access through a future caller path cannot leak. api.workshop cluster's responsibility — flagged here from the api.inventory round-3 Opus review."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.workshop.005
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.workshop.006
+    stable_key: 'manual:api.workshop:bundle-expansion-adapter-raw-find'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/BundleExpansionAdapter.php
+    line: null
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\BundleExpansionAdapter::pricingModeOf|bundleName'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    expected_fix: 'ServiceBundle::find($bundleId) is unscoped; Workshop should pass and use its own tenant/company scope when resolving cross-module bundle metadata.'
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.workshop.006
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.workshop.007
+    stable_key: 'manual:api.workshop:document-generation-adapter-raw-find'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/DocumentGenerationAdapter.php
+    line: null
+    symbol: App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\DocumentGenerationAdapter
+    pattern_type: unscoped_eloquent_find
+    resource: Document
+    expected_scope: tenant_and_company
+    expected_fix: 'Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id.'
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.workshop.007
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.034
+    stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-preview-earning-unscoped-enrollment'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 78
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::previewEarning'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    expected_fix: "Validator must scope enrollment_id by member.tenant_id (Rule::exists('loyalty_enrollments','id') with whereIn subquery on loyalty_members.tenant_id) OR pre-load Enrollment tenant-scoped in controller before delegating to EarningProcessingService::previewEarning. Underlying EarningProcessingService::previewEarning calls EloquentEnrollmentRepository::findById which is unscoped Enrollment::find()."
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.pos-stabilization.034
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.035
+    stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-earn-unscoped-enrollment'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 174
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::earn'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    expected_fix: "Same fix pattern as previewEarning. Without scoping, tenant-A can write loyalty_transactions and decrement balance against tenant-B's enrollment via POST /loyalty/pos/earn. EarningProcessingService::earnPoints (line 51) calls EloquentEnrollmentRepository::findById — unscoped Enrollment::find()."
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.pos-stabilization.035
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.036
+    stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-redeem-unscoped-enrollment-reward'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 147
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::redeem'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments+loyalty_rewards
+    expected_scope: tenant_and_company
+    expected_fix: "Scope BOTH enrollment_id and reward_id. enrollment_id: validator subquery on loyalty_members.tenant_id (and company_id). reward_id: validator subquery on loyalty_programs.tenant_id+company_id. Underlying RedemptionProcessingService::redeemReward calls EloquentEnrollmentRepository::findById (line 47) and EloquentRewardRepository::findById (line 53) — both unscoped. Allows tenant-A to redeem tenant-B's reward inventory."
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.pos-stabilization.036
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.037
+    stable_key: 'manual:api.pos-stabilization:earning-processing-service-find-by-id-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/Loyalty/Application/Services/EarningProcessingService.php
+    line: 168
+    symbol: 'App\Modules\Loyalty\Application\Services\EarningProcessingService::previewEarning|earnPoints'
+    pattern_type: service_method_unscoped
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    expected_fix: 'Both previewEarning (line 168) and earnPoints (line 51) call EloquentEnrollmentRepository::findById($enrollmentId), which is unscoped Enrollment::find. Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input and scope the lookup. Add CompanyContext (or required tenantId+companyId args) and scope via member.tenant_id.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.pos-stabilization.037
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.038
+    stable_key: 'manual:api.pos-stabilization:redemption-processing-service-find-by-id-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/Loyalty/Application/Services/RedemptionProcessingService.php
+    line: 47
+    symbol: 'App\Modules\Loyalty\Application\Services\RedemptionProcessingService::redeemReward|previewRedemption'
+    pattern_type: service_method_unscoped
+    resource: loyalty_enrollments+loyalty_rewards
+    expected_scope: tenant_and_company
+    expected_fix: 'redeemReward (lines 47 + 53) and the sibling preview method (lines 132 + 141) call EloquentEnrollmentRepository::findById and EloquentRewardRepository::findById — both unscoped. Add CompanyContext and tenant-scope both lookups (Enrollment via member.tenant_id; Reward via program.tenant_id) before mutating points/inventory.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-05T09:40:53Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a4cc30a33c7bc37756ec13d0a929c9aaf8125cbf95aaae65084b8a382d6d73c3
+        new_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        target_ids:
+          - api.pos-stabilization.038
+        from_status: null
+        to_status: pending
+        commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
 progress:
   total_callsites: 0
   total_clusters: 29

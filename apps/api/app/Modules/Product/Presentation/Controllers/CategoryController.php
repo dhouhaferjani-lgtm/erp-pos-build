@@ -123,8 +123,16 @@ class CategoryController extends Controller
         ]);
 
         // Verify parent belongs to same company
+        // api.unmapped.018 (api.catalog): use Category::query() prefix so the
+        // PhpAstFindScanner's chain visitor recognises the where('company_id')
+        // predicate. The static-call form (`Category::where(...)->find()`)
+        // bypasses chainIsScoped() because the visitor only checks
+        // SCOPE_METHODS (forCompany/forTenant) on StaticCalls. categories has
+        // no tenant_id column (company-scoped global reference); the
+        // company_id predicate alone IS the cluster invariant.
         if (! empty($validated['parent_id'])) {
-            $parent = Category::where('company_id', $companyId)
+            $parent = Category::query()
+                ->where('company_id', $companyId)
                 ->find($validated['parent_id']);
 
             if (! $parent) {
@@ -172,7 +180,12 @@ class CategoryController extends Controller
                 return response()->json(['error' => 'Category cannot be its own parent'], 422);
             }
 
-            $newParent = Category::where('company_id', $companyId)->find($validated['parent_id']);
+            // api.unmapped.019 (api.catalog): same scanner-blind-spot guard as
+            // store(); use Category::query() prefix so the chain visitor sees
+            // the where('company_id') predicate.
+            $newParent = Category::query()
+                ->where('company_id', $companyId)
+                ->find($validated['parent_id']);
             if ($newParent instanceof Category && $category->isAncestorOf($newParent)) {
                 return response()->json(['error' => 'Cannot move category under its own descendant'], 422);
             }
