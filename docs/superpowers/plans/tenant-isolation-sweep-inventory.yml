@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-04T20:09:01Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+  yaml_sha256: bc72508f132c0b52b6955f98d9071af97598e3e9092bdf38f7965f31ed8cc03f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -127,9 +127,9 @@ clusters:
     id: api.inventory
     display_name: Inventory
     surface: api
-    owner: null
+    owner: codex
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -5111,17 +5111,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5140,6 +5140,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.001
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        new_yaml_sha256: 368a799491e51923c11084d117708d7e1836c15eb3160f3dc69309e3d32c0908
+        target_ids:
+          - api.inventory.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.002
     stable_key: 'sha256:390c9adcb443b844f7eab12bcc6447198c0975d65ee79624a33264b095db2c27'
@@ -5157,17 +5205,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5186,6 +5234,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.002
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:44Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 368a799491e51923c11084d117708d7e1836c15eb3160f3dc69309e3d32c0908
+        new_yaml_sha256: 449725ceac18f007d309467787ce1a59515fb35e24c1bbef7ad07957d0aa78ce
+        target_ids:
+          - api.inventory.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.003
     stable_key: 'sha256:585ac3b00534ed00e655b979ab6e2107a4db58c337ddd882e794e07a02a52f91'
@@ -5203,17 +5299,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5232,6 +5328,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.003
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 449725ceac18f007d309467787ce1a59515fb35e24c1bbef7ad07957d0aa78ce
+        new_yaml_sha256: 347de6c10c44ad169d0fd9f6fce0998ce022dd165beb0b0baf755e9a37a5333a
+        target_ids:
+          - api.inventory.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.004
     stable_key: 'sha256:7c526c8589d9415e2d337debbfaebd048fc9cc7d13f3040497fc3401b5eec5f6'
@@ -5249,17 +5393,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5278,6 +5422,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.004
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 347de6c10c44ad169d0fd9f6fce0998ce022dd165beb0b0baf755e9a37a5333a
+        new_yaml_sha256: 8b129940d326bc4e79153842d2b92df541f519458d0f4bd6763fbff1d7b05991
+        target_ids:
+          - api.inventory.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.005
     stable_key: 'sha256:605f2f0c31c801e26857d4d37ebd380bf21870bb13c1baf51ca3c0fd9e43c02a'
@@ -5295,17 +5487,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5324,6 +5516,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.005
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:46Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8b129940d326bc4e79153842d2b92df541f519458d0f4bd6763fbff1d7b05991
+        new_yaml_sha256: 2f5b3bedddf69e81c35e285e8625d88c488ccea93e557404008e65acef0ad895
+        target_ids:
+          - api.inventory.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.006
     stable_key: 'sha256:c9bf1882b08a265aa80f54cef505ba6921e5b9911246c1bf83417e1b6198f960'
@@ -5341,17 +5581,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5370,6 +5610,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.006
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:47Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2f5b3bedddf69e81c35e285e8625d88c488ccea93e557404008e65acef0ad895
+        new_yaml_sha256: cd7eb7beebd7aa7e07cab71ae066a5f72ecef04ad6fb80ebb3b50d337298f6eb
+        target_ids:
+          - api.inventory.006
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.007
     stable_key: 'sha256:e6928db5e9b0ca12db2550794615ed8357ed3cdacc288d9a4a0f10b01d1e6274'
@@ -5387,17 +5675,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5416,6 +5704,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.007
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:48Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cd7eb7beebd7aa7e07cab71ae066a5f72ecef04ad6fb80ebb3b50d337298f6eb
+        new_yaml_sha256: 236d52d48eea34f1e9ce1998df691508727b08941842b5bd1353db13131256d2
+        target_ids:
+          - api.inventory.007
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.008
     stable_key: 'sha256:c9df01b56f3e8e9d35346a7f9f4c52aa978f059afd314b4bdfc6dcac036b77d7'
@@ -5433,17 +5769,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5462,6 +5798,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.008
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:48Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 236d52d48eea34f1e9ce1998df691508727b08941842b5bd1353db13131256d2
+        new_yaml_sha256: 0284bdc561869180fbda6fe401c0f2ffe33e52b23dce82616935f9e7278c2609
+        target_ids:
+          - api.inventory.008
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.009
     stable_key: 'sha256:bd5289c33d6267d13daafb194d204b20bbdb305d5104c20c117065019a2f5219'
@@ -5479,17 +5863,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5508,6 +5892,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.009
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:49Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0284bdc561869180fbda6fe401c0f2ffe33e52b23dce82616935f9e7278c2609
+        new_yaml_sha256: d8c70d8afbb31cda2fea859078651cc993b295fe8ea532be0b7bb6b3394c5180
+        target_ids:
+          - api.inventory.009
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.010
     stable_key: 'sha256:8c121eb85aadc07250dacb05e69b69082bfff0264a4bc186cdceff363762073a'
@@ -5525,17 +5957,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -5554,6 +5986,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.010
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:50Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d8c70d8afbb31cda2fea859078651cc993b295fe8ea532be0b7bb6b3394c5180
+        new_yaml_sha256: 368d77714224373bc460e8505c34a0c7766fd927112fe67673bd27f1f5352726
+        target_ids:
+          - api.inventory.010
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.treasury.001
     stable_key: 'sha256:9744c704bac225d2679ff27e9803a9d9aaaeb63bca26c6a80423f4d5816f28fb'
@@ -16540,17 +17020,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16569,6 +17049,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.011
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.011
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 368d77714224373bc460e8505c34a0c7766fd927112fe67673bd27f1f5352726
+        new_yaml_sha256: f8cd4fd66f96fd83f04f7a0a247ba6e2799da4885a5933f487534214f1e896b7
+        target_ids:
+          - api.inventory.011
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.012
     stable_key: 'sha256:0d76dfeee0f3646ddc7e5b7d9478b00488550bca02e9704e7a6e80976d662c39'
@@ -16586,17 +17114,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16615,6 +17143,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.012
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.012
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:52Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f8cd4fd66f96fd83f04f7a0a247ba6e2799da4885a5933f487534214f1e896b7
+        new_yaml_sha256: f9f89d7a176b18414b39cc56565c1e338d35f60c669beff5a6146d70f703956e
+        target_ids:
+          - api.inventory.012
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.013
     stable_key: 'sha256:6fbec0da7da06be62946b5e823d671d351e97ad549c96d9c0988810d6a46dacd'
@@ -16632,17 +17208,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16661,6 +17237,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.013
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.013
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f9f89d7a176b18414b39cc56565c1e338d35f60c669beff5a6146d70f703956e
+        new_yaml_sha256: 4289e292dd34aa4d74876edaa8d083bf72240af7ee8ca70c8afae5a46aefa546
+        target_ids:
+          - api.inventory.013
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.014
     stable_key: 'sha256:131843ff334cb2805083457feebe16fc6d19e55c542441521aceec885716c58c'
@@ -16678,17 +17302,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16707,6 +17331,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.014
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.014
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4289e292dd34aa4d74876edaa8d083bf72240af7ee8ca70c8afae5a46aefa546
+        new_yaml_sha256: 01e72c561ff0948adde285508e7ae2e03bb82b1ec83e82dbff76762eac8e108c
+        target_ids:
+          - api.inventory.014
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.015
     stable_key: 'sha256:ce975496ebbac1efd3b3129a4ec223b58dc62cab6a7bfc3c4fc7392149dc58cc'
@@ -16724,17 +17396,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16753,6 +17425,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.015
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.015
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:54Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 01e72c561ff0948adde285508e7ae2e03bb82b1ec83e82dbff76762eac8e108c
+        new_yaml_sha256: 5d5b00c628254bcacc12d1a291341eccfaa862ddb03e8e265fb2f3fa03a8780e
+        target_ids:
+          - api.inventory.015
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.016
     stable_key: 'sha256:f20a05dcdedd07bfc2a49da2c11e09a6ece7e52b717f57171cdffa85aa9ae2c8'
@@ -16770,17 +17490,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16799,6 +17519,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.016
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.016
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5d5b00c628254bcacc12d1a291341eccfaa862ddb03e8e265fb2f3fa03a8780e
+        new_yaml_sha256: 5f990a73065b819de6b597bc33dc8eac92a9c50f2ff3b1b8b96308cf33144f78
+        target_ids:
+          - api.inventory.016
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.017
     stable_key: 'sha256:dea6be20e9cca53bbdbaa38a4415c2d43c06fc67ded4d4dbbb242cc315c55cba'
@@ -16816,17 +17584,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16845,6 +17613,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.017
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.017
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5f990a73065b819de6b597bc33dc8eac92a9c50f2ff3b1b8b96308cf33144f78
+        new_yaml_sha256: e721b8c6aa0c20f34f93735f3e168799bf702e2070c9af5e6d6af953b73ae689
+        target_ids:
+          - api.inventory.017
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.018
     stable_key: 'sha256:fe55cecb4de835f62d7ead0aaf01ced9bd3dfdc3cbacff7b68ef61562843a702'
@@ -16862,17 +17678,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16891,6 +17707,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.018
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.018
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:56Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e721b8c6aa0c20f34f93735f3e168799bf702e2070c9af5e6d6af953b73ae689
+        new_yaml_sha256: cd4010ee03f35b84fa20115a444577d05b7933a3516948039217204d8376f33a
+        target_ids:
+          - api.inventory.018
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.019
     stable_key: 'sha256:0f270dc672878a8227cad9c64d284120b3f6dbff01a611a82b4d3bbbfecac3a6'
@@ -16908,17 +17772,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -16937,6 +17801,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.019
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.019
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:57Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cd4010ee03f35b84fa20115a444577d05b7933a3516948039217204d8376f33a
+        new_yaml_sha256: 84bbdb5ac06d4d35694390dac24c1a59e1e0005a4283ca2ebf1cd88af564423c
+        target_ids:
+          - api.inventory.019
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.cart.001
     stable_key: 'sha256:30a335e5ee26f353f011d6ee78e5c4693bcd3836b3381bdfd13ed10491f002a3'
@@ -23526,17 +24438,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23555,6 +24467,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.020
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.020
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:58Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 84bbdb5ac06d4d35694390dac24c1a59e1e0005a4283ca2ebf1cd88af564423c
+        new_yaml_sha256: 7b3beb2ee57437459888961dcbe0226792ee660e55b0b8891a1b8e024cc16e49
+        target_ids:
+          - api.inventory.020
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.021
     stable_key: 'sha256:6a0c90e14f4ffb686f0780a42be742ab0dc14aaca8a8f6c24ff31cf64ec4f2c4'
@@ -23572,17 +24532,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23601,6 +24561,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.021
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.021
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:22:59Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7b3beb2ee57437459888961dcbe0226792ee660e55b0b8891a1b8e024cc16e49
+        new_yaml_sha256: f349656e641a81e88024f6a17d4f4e9d5285e925931af305ad974a33f8c6e962
+        target_ids:
+          - api.inventory.021
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.022
     stable_key: 'sha256:a657c0eaac57a19edfa478bb130f1503a2c8b16b1c3c01e174de57de739f3213'
@@ -23618,17 +24626,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23647,6 +24655,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.022
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.022
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:00Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f349656e641a81e88024f6a17d4f4e9d5285e925931af305ad974a33f8c6e962
+        new_yaml_sha256: 3ddbb5a19fc14d47b385ff18840b0888d435b852ba1e8b81b36926fc2f6d8b8a
+        target_ids:
+          - api.inventory.022
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.023
     stable_key: 'sha256:f84ac666f3a1fa47bdf5bb643f9761ca0ffc9ffaa022f159eb0246a1cb3e16b3'
@@ -23664,17 +24720,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23693,6 +24749,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.023
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.023
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:00Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3ddbb5a19fc14d47b385ff18840b0888d435b852ba1e8b81b36926fc2f6d8b8a
+        new_yaml_sha256: d50947115fc218a73203423a45a4be0cb487a4a4bc71b7ab275ed2a926ed053f
+        target_ids:
+          - api.inventory.023
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.024
     stable_key: 'sha256:8fad2cba2691ae8c8bd3bc312ad89559995fa1acf2e98c7c4c5a9b2869378be5'
@@ -23710,17 +24814,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23739,6 +24843,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.024
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.024
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:01Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d50947115fc218a73203423a45a4be0cb487a4a4bc71b7ab275ed2a926ed053f
+        new_yaml_sha256: b35aa62c2330a4dce965e387545e2b3014c218a615f8fc68825f9be13b8e51f8
+        target_ids:
+          - api.inventory.024
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.025
     stable_key: 'sha256:d623bf08e2a3f9d4923293d50d2e7205471c84f9865727d278afba3229a897c9'
@@ -23756,17 +24908,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23785,6 +24937,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.025
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.025
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:02Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b35aa62c2330a4dce965e387545e2b3014c218a615f8fc68825f9be13b8e51f8
+        new_yaml_sha256: 6fd9c2514acc0a2df6484ed1236fbe3b57ba39cb43dc67eee93f6c2d106517ea
+        target_ids:
+          - api.inventory.025
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.026
     stable_key: 'sha256:8b5e9f8fe5255e9021bbaafae42807477baae1ce4356aba9f5ea2788e95cb9ed'
@@ -23802,17 +25002,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23831,6 +25031,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.026
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.026
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:03Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6fd9c2514acc0a2df6484ed1236fbe3b57ba39cb43dc67eee93f6c2d106517ea
+        new_yaml_sha256: 6e4398e07e3837e6a9f07696c9073a4a71c744d1991da304fdb0d8f4133439cd
+        target_ids:
+          - api.inventory.026
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.027
     stable_key: 'sha256:8b907e5a3535e7d59e351233bc5a825175604c62a5dc772d7a9470a31f07ea3e'
@@ -23848,17 +25096,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23877,6 +25125,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.027
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.027
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:03Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6e4398e07e3837e6a9f07696c9073a4a71c744d1991da304fdb0d8f4133439cd
+        new_yaml_sha256: fa14645073a4ff22ec863f10b07ca468cf33839b50e9ebec87065062d02652cf
+        target_ids:
+          - api.inventory.027
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.inventory.028
     stable_key: 'sha256:1f8523a6449f20f8fe46bafad293e6b479915ffa5488ceb52317dec6b5e92c99'
@@ -23894,17 +25190,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-05T04:22:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1eada1cb
+    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -23923,6 +25219,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T04:22:41Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaee6208479b6a0b23e25b2e7b6784489f7c26df5a9f350cc7de6e7f0df7f0d2
+        new_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        target_ids:
+          - api.inventory.028
+        from_status: pending
+        to_status: claimed
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-05T04:22:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52dc4a9547cda7adf23016b56acd3a6f6172a9fcda5e22f6f1518e5764fd3bed
+        new_yaml_sha256: 9d07c9c4883cd93384e7eb7b3445edf9a5ed14c820d7b123b25646efa7e36a45
+        target_ids:
+          - api.inventory.028
+        from_status: claimed
+        to_status: in_progress
+        commit: 4a4fa56b405ad4ebaeb904a1e3e4c54b5d09f662
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T04:23:04Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fa14645073a4ff22ec863f10b07ca468cf33839b50e9ebec87065062d02652cf
+        new_yaml_sha256: bc72508f132c0b52b6955f98d9071af97598e3e9092bdf38f7965f31ed8cc03f
+        target_ids:
+          - api.inventory.028
+        from_status: in_progress
+        to_status: under_review
+        commit: 1eada1cb
+        test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.treasury.056
     stable_key: 'sha256:a528753f8a8a413667d47af15c4133713d73a6ce79856c81d42f7094ccb358b6'
