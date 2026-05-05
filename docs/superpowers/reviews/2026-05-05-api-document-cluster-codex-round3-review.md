@@ -1,4 +1,4 @@
-APPROVE
+Verdict: APPROVE
 
 Round-3 second-layer review for the api.document cluster after remediation commits:
 
