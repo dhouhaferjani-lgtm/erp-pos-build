@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-05T09:40:53Z'
+  generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+  yaml_sha256: 4ac25f42903c49df8dfc53c5cb55f588c05e9fb797abd30f88bab8dd3980a21c
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -590,11 +590,10 @@ clusters:
     surface: api
     owner: null
     required_owner: null
-    status: blocked
-    blocked_by:
-      - api.treasury
-    blocked_by_external: pos_orchestrator_branch
-    blocked_reason: 'POS orchestrator owns all apps/pos and apps/api/app/Modules/POS work per 2026-04-30-pos-consolidation-checkpoint.md. Unblock when POS branch merges OR orchestrator explicitly transfers ownership.'
+    status: pending
+    blocked_by: {  }
+    blocked_by_external: null
+    blocked_reason: null
     blocks: {  }
     is_reference: false
     expected_callsite_count: null
@@ -2463,12 +2462,12 @@ callsites:
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.005
-    stable_key: 'sha256:c62aec5cec47de6ec631986a006ac71fcf7da792e091bc00e31df2458bf67664'
+    stable_key: 'sha256:0e2af6a733f23a82ed2b041ce4b93a464b7c29f85a0ca9e2c48570470ae24edd'
     surface: api
     cluster_id: api.catalog
     scanner: php_presentation_exists
     file: apps/api/app/Modules/Catalog/Presentation/Requests/StoreCompositeItemRequest.php
-    line: 43
+    line: 51
     symbol: 'App\Modules\Catalog\Presentation\Requests\StoreCompositeItemRequest::rules'
     pattern_type: bare_exists_validator
     resource: tax_configurations
@@ -2478,7 +2477,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -2588,6 +2587,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T09:43:13Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        new_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        target_ids:
+          - api.catalog.005
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.006
     stable_key: 'sha256:0d5330410c251b2e17ffda1e2447a27f3a0cf66d321fdec650140d8bc21a4471'
@@ -4809,6 +4824,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-05T09:43:56Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:unblock-cluster (one-shot)'
+        previous_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        new_yaml_sha256: 4ac25f42903c49df8dfc53c5cb55f588c05e9fb797abd30f88bab8dd3980a21c
+        target_ids:
+          - api.pos-stabilization
+          - api.pos-stabilization.001
+        from_status: pending
+        to_status: pending
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster unblocked: api.pos-stabilization. Originally blocked (blocked_by_external: pos_orchestrator_branch; blocked_by: [api.treasury]) because the POS orchestrator branch owned apps/pos and apps/api/app/Modules/POS work concurrently with the tenant-isolation sweep. The POS-stabilization session has paused offline-first / perf hardening to fold in tenant-scoping cleanup as the primary track (per 2026-05-05 session prompt). api.treasury reference cluster closed at d7184178 (Section 7 LOCKED, both reviewers APPROVE round 5), satisfying the prior cluster-level dependency. Cluster status flips from blocked → pending; per-callsite claims will roll aggregate forward.'
   -
     id: api.pos-stabilization.002
     stable_key: 'sha256:5a7ce8eb4f2b6ef5a24e47cbc4e95a6f92c1583c9973de12405b1ec2736f7045'
@@ -11302,12 +11334,12 @@ callsites:
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.012
-    stable_key: 'sha256:3000b7a49dd21167ba2be8fd04c16c25f0e41339aa7daa8453b7cb03af64713d'
+    stable_key: 'sha256:decd02b0fb0cdd4d78ac7389236f0954ceb29aecc04e34f462fe3c129dc17dd8'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
-    line: 46
+    line: 54
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Modifier
@@ -11317,7 +11349,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -11427,14 +11459,30 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T09:43:13Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        new_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        target_ids:
+          - api.catalog.012
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.013
-    stable_key: 'sha256:0b4c65fd10c951badf47fc3de4aa2f58c97ab96400b1b6c2809a10eae9ccad7a'
+    stable_key: 'sha256:318ecdc76cad66fa44610a0219e623ba236c1029b6b65cfdf181c58efc5bfb63'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
-    line: 77
+    line: 91
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::destroy'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Modifier
@@ -11444,7 +11492,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -11554,6 +11602,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T09:43:13Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        new_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        target_ids:
+          - api.catalog.013
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
@@ -16517,12 +16581,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.006
-    stable_key: 'sha256:6992e6566414bb6b658d9da208e330f82ea3a604118d4836a8176f2b03346937'
+    stable_key: 'sha256:127cbc23fd6cab86318cc8b5d821290e01bde340943de1468ca751830cedf33e'
     surface: api
     cluster_id: api.loyalty
     scanner: php_ast_find
     file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
-    line: 82
+    line: 87
     symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::show'
     pattern_type: unscoped_eloquent_findOrFail
     resource: LoyaltyMember
@@ -16532,7 +16596,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -16642,14 +16706,30 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T09:43:13Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        new_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        target_ids:
+          - api.loyalty.006
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.007
-    stable_key: 'sha256:45fc9daa0d1957eb6f52673938d9f9bd2c1cf6f7657e3e57453b70f68b484bb0'
+    stable_key: 'sha256:b1737131161c1c4a1b2ed832d10f94cbfac9ebb9f04aeb686723f694ada75b47'
     surface: api
     cluster_id: api.loyalty
     scanner: php_ast_find
     file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyMemberController.php
-    line: 114
+    line: 124
     symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController::update'
     pattern_type: unscoped_eloquent_findOrFail
     resource: LoyaltyMember
@@ -16659,7 +16739,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
@@ -16769,6 +16849,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-05T09:43:13Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        new_yaml_sha256: ad163bbf01f5d07c5bb4ed73dc9e818ccb0eeb55d1a5d90c6f405ee32ffe3e74
+        target_ids:
+          - api.loyalty.007
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 0abc08d5d61ff01e4fcc88528f8222523443e15a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.loyalty.008
     stable_key: 'sha256:47108d2f9a0b5b4cdbfa14cd79d94086f43f4648d7bdadf99022be8d6dae8937'
@@ -17279,7 +17375,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:32:56Z'
     review:
@@ -17288,8 +17384,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: f88ad4a5
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_category_parent_lookup_query_includes_company_predicate'
     blocked_reason: null
     history:
       -
@@ -17358,6 +17454,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T09:41:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 504be500b8cc59ddd4cc9161c613b0b047cc795b84e096725d9070953d9f70ef
+        new_yaml_sha256: e8a4ed9765c591df1ca364e0a220bf9e6a62f88c25f974293f7b4eca0b37f883
+        target_ids:
+          - api.unmapped.018
+        from_status: in_progress
+        to_status: under_review
+        commit: f88ad4a5
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_category_parent_lookup_query_includes_company_predicate'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.unmapped.019
     stable_key: 'sha256:18277095aed0a56ae35ad878d6e4c0c4f5b40ec2e5946be3ac8fe3aa72256b4c'
@@ -17375,7 +17487,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T09:32:57Z'
     review:
@@ -17384,8 +17496,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: f88ad4a5
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_category_parent_lookup_query_includes_company_predicate'
     blocked_reason: null
     history:
       -
@@ -17454,6 +17566,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-05T09:41:38Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e8a4ed9765c591df1ca364e0a220bf9e6a62f88c25f974293f7b4eca0b37f883
+        new_yaml_sha256: 9c3b137bce332bc37aaca5e29effd6e5a1d1b371004690286bd0f397d562a535
+        target_ids:
+          - api.unmapped.019
+        from_status: in_progress
+        to_status: under_review
+        commit: f88ad4a5
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_category_parent_lookup_query_includes_company_predicate'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: api.compliance.001
     stable_key: 'sha256:f783b2d1725bd0b9b116e53122affd578ad73d150fdf2e378af4096886991572'
