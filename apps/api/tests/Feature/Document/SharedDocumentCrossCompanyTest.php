@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 /**
@@ -337,7 +338,7 @@ final class SharedDocumentCrossCompanyTest extends TestCase
     }
 
     /**
-     * @param  TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
+     * @param  TestResponse<Response>  $response
      * @return array<string, mixed>
      */
     private function extractErrors(TestResponse $response): array
