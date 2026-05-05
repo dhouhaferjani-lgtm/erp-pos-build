@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T09:43:13Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 7f27d5d2687e55c7a7b42546aa4ed89ccdf7f5dfe3e47321a07fb20ba52fc3e6
+  yaml_sha256: 4721f5ae5f90c0de1263af6d4071427b620c45a9efb59dd4bde9c948d507b8d1
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -6760,7 +6760,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -6769,8 +6769,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 184576c2
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_refuses_cross_tenant_location_via_validator'
     blocked_reason: null
     history:
       -
@@ -6821,6 +6821,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:29:49Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7f27d5d2687e55c7a7b42546aa4ed89ccdf7f5dfe3e47321a07fb20ba52fc3e6
+        new_yaml_sha256: c832743617fb5fe65239e53c2398d28f6b6671e1fff3d3d5e07f5ab656717388
+        target_ids:
+          - api.pos-stabilization.019
+        from_status: in_progress
+        to_status: under_review
+        commit: 184576c2
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_refuses_cross_tenant_location_via_validator'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.001
     stable_key: 'sha256:d361456f9b08507ad6ec843d26a9b772f75b703d8672e44a4ef79b8ec578805f'
@@ -19915,7 +19931,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -19924,8 +19940,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 184576c2
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_locations_query_includes_company_predicate'
     blocked_reason: null
     history:
       -
@@ -19976,6 +19992,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-05T10:29:50Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c832743617fb5fe65239e53c2398d28f6b6671e1fff3d3d5e07f5ab656717388
+        new_yaml_sha256: 4721f5ae5f90c0de1263af6d4071427b620c45a9efb59dd4bde9c948d507b8d1
+        target_ids:
+          - api.pos-stabilization.028
+        from_status: in_progress
+        to_status: under_review
+        commit: 184576c2
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_locations_query_includes_company_predicate'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.011
     stable_key: 'sha256:3fbc312a694546c888c58872f9317b6238cdd279fcefd06e6b5e6a7c9441a4bb'
