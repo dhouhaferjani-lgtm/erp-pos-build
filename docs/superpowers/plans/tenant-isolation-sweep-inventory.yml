@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-05T16:04:57Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 488235274faa5f671aced381eba92618f6d383af779ed6ea0bad13ce75608821
+  yaml_sha256: 8c85fc5617f704d5aba3a66795a660ea9a05af3e044fa4aebb5c1652eaf9111a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -198,7 +198,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -1139,15 +1139,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:21Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:20:54Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_create_rejects_cross_tenant_expense_category_id'
     blocked_reason: null
@@ -1234,6 +1234,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:20:54Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 488235274faa5f671aced381eba92618f6d383af779ed6ea0bad13ce75608821
+        new_yaml_sha256: 1ec400909542bdb73700158f88325483525596f36bb068d4bf721e6244c4e29c
+        target_ids:
+          - api.unmapped.001
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.002
     stable_key: 'sha256:72350b9cf2c178afe921713d9487b0d0870caba304cee6cc89bca5cc449782f8'
@@ -1251,15 +1268,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:22Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:20:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_create_rejects_cross_tenant_payment_method_id'
     blocked_reason: null
@@ -1346,6 +1363,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:20:55Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1ec400909542bdb73700158f88325483525596f36bb068d4bf721e6244c4e29c
+        new_yaml_sha256: 1c20435a51343bdd98ec98fcaa5476d2068234b6268bdcc3a49ddbee6e607b39
+        target_ids:
+          - api.unmapped.002
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.003
     stable_key: 'sha256:173eee51df286927b592146a15c6423b4b69d27c6cd1b4cbaa30c95034dee8b2'
@@ -1363,15 +1397,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:22Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:20:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_create_rejects_cross_tenant_payment_repository_id'
     blocked_reason: null
@@ -1458,6 +1492,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:20:56Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1c20435a51343bdd98ec98fcaa5476d2068234b6268bdcc3a49ddbee6e607b39
+        new_yaml_sha256: 5a4ade569bf8fd69143974759361b448780b4be8c70e96a067d36f8b45685150
+        target_ids:
+          - api.unmapped.003
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.004
     stable_key: 'sha256:5080abc2b13c6b4f9ed62e0fcf52fa4fac9bfb330688c363fdfb1378da69c496'
@@ -1475,15 +1526,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:23Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:20:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_category_create_rejects_cross_tenant_parent_id'
     blocked_reason: null
@@ -1570,6 +1621,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:20:57Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5a4ade569bf8fd69143974759361b448780b4be8c70e96a067d36f8b45685150
+        new_yaml_sha256: e0d7a15da4d3a7456b9956f75ce68a2ff0075c5d7f9c37be8456ed3d39e0f732
+        target_ids:
+          - api.unmapped.004
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.005
     stable_key: 'sha256:394858fe87ceb9f4d0e576c09df8903a6d59a126b6557fc88ebfc21ed1c0dd4a'
@@ -1587,15 +1655,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:24Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:20:57Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_category_create_rejects_cross_tenant_account_id'
     blocked_reason: null
@@ -1682,6 +1750,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:20:57Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e0d7a15da4d3a7456b9956f75ce68a2ff0075c5d7f9c37be8456ed3d39e0f732
+        new_yaml_sha256: 941990907db9f6bb4495831de19feed9728e1434babade1c7d95c0df12ee1785
+        target_ids:
+          - api.unmapped.005
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.contact.001
     stable_key: 'sha256:62ee1ee7b86adaffcd5cf6e845d741b7e63bcdc5adc242a947389b9d2ce8717b'
@@ -12313,15 +12398,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:47:25Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-05T19:22:58Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+      review_commit: c6f8a4b1
     fix_commit: c6f8a4b1
     regression_test: 'tests/Feature/Accounting/AccountingTenantIsolationTest.php::test_expense_category_update_circular_check_does_not_walk_foreign_tenant_tree'
     blocked_reason: null
@@ -12408,6 +12493,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-05T19:22:58Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 941990907db9f6bb4495831de19feed9728e1434babade1c7d95c0df12ee1785
+        new_yaml_sha256: 8c85fc5617f704d5aba3a66795a660ea9a05af3e044fa4aebb5c1652eaf9111a
+        target_ids:
+          - api.unmapped.013
+          - api.accounting
+        from_status: under_review
+        to_status: fixed
+        commit: a7860ef4344814b93ed9cb7bcf2bd73208168495
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-accounting-reassigned-cluster-codex-round2-review.md
+        review_commit: c6f8a4b1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.014
     stable_key: 'sha256:0317818b70152c33922658704cf0e8f0a58318d0e6cbf0db17f5e749c11bc467'
