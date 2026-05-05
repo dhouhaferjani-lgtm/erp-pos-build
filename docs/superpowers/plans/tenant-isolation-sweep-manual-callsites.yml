@@ -216,7 +216,7 @@ manual_callsites:
     symbol: '8 validators using exists:units,id'
     pattern_type: bare_exists_validator
     resource: units
-    expected_scope: tenant_only_or_system
+    expected_scope: tenant_only
     severity: low
     fiscal_path: false
     cross_module: false
@@ -230,7 +230,7 @@ manual_callsites:
     symbol: 'StoreCompositeItemRequest::rules + UpdateCompositeItemRequest::rules'
     pattern_type: annotation_inaccurate
     resource: tax_configurations
-    expected_scope: country_scoped
+    expected_scope: parent_context
     severity: low
     fiscal_path: true
     cross_module: false
@@ -244,7 +244,7 @@ manual_callsites:
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
     pattern_type: validation_asymmetry
     resource: null
-    expected_scope: enum_validation
+    expected_scope: tenant_and_company
     severity: low
     fiscal_path: false
     cross_module: false
@@ -385,3 +385,77 @@ manual_callsites:
     fiscal_path: false
     cross_module: true
     expected_fix: "Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id."
+
+  # api.pos-stabilization — Loyalty POS cross-cluster blind spot deferred from
+  # api.loyalty cluster (2026-05-04 cross-cluster blind spots audit Finding B,
+  # Codex round-1 Finding 3 / Opus round-2 Finding B). LoyaltyPOSController is
+  # apps/api/app/Modules/Loyalty/Presentation/Controllers — NOT under
+  # apps/api/app/Modules/POS — but the surface is reachable only from POS
+  # routes (POST /api/v1/loyalty/pos/{previewEarning,earn,redeem}) and the
+  # cluster owner is api.pos-stabilization per the deferral. Fix lands here
+  # because the POS-stabilization session has been folded into the tenant-
+  # scoping cleanup (2026-05-05).
+  - cluster_id: api.pos-stabilization
+    slug: loyalty-pos-controller-preview-earning-unscoped-enrollment
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 78
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::previewEarning'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Validator must scope enrollment_id by member.tenant_id (Rule::exists('loyalty_enrollments','id') with whereIn subquery on loyalty_members.tenant_id) OR pre-load Enrollment tenant-scoped in controller before delegating to EarningProcessingService::previewEarning. Underlying EarningProcessingService::previewEarning calls EloquentEnrollmentRepository::findById which is unscoped Enrollment::find()."
+
+  - cluster_id: api.pos-stabilization
+    slug: loyalty-pos-controller-earn-unscoped-enrollment
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 174
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::earn'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Same fix pattern as previewEarning. Without scoping, tenant-A can write loyalty_transactions and decrement balance against tenant-B's enrollment via POST /loyalty/pos/earn. EarningProcessingService::earnPoints (line 51) calls EloquentEnrollmentRepository::findById — unscoped Enrollment::find()."
+
+  - cluster_id: api.pos-stabilization
+    slug: loyalty-pos-controller-redeem-unscoped-enrollment-reward
+    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
+    line: 147
+    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::redeem'
+    pattern_type: trusts_request_input_unscoped_id
+    resource: loyalty_enrollments+loyalty_rewards
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Scope BOTH enrollment_id and reward_id. enrollment_id: validator subquery on loyalty_members.tenant_id (and company_id). reward_id: validator subquery on loyalty_programs.tenant_id+company_id. Underlying RedemptionProcessingService::redeemReward calls EloquentEnrollmentRepository::findById (line 47) and EloquentRewardRepository::findById (line 53) — both unscoped. Allows tenant-A to redeem tenant-B's reward inventory."
+
+  - cluster_id: api.pos-stabilization
+    slug: earning-processing-service-find-by-id-unscoped
+    file: apps/api/app/Modules/Loyalty/Application/Services/EarningProcessingService.php
+    line: 168
+    symbol: 'App\Modules\Loyalty\Application\Services\EarningProcessingService::previewEarning|earnPoints'
+    pattern_type: service_method_unscoped
+    resource: loyalty_enrollments
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Both previewEarning (line 168) and earnPoints (line 51) call EloquentEnrollmentRepository::findById($enrollmentId), which is unscoped Enrollment::find. Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input and scope the lookup. Add CompanyContext (or required tenantId+companyId args) and scope via member.tenant_id."
+
+  - cluster_id: api.pos-stabilization
+    slug: redemption-processing-service-find-by-id-unscoped
+    file: apps/api/app/Modules/Loyalty/Application/Services/RedemptionProcessingService.php
+    line: 47
+    symbol: 'App\Modules\Loyalty\Application\Services\RedemptionProcessingService::redeemReward|previewRedemption'
+    pattern_type: service_method_unscoped
+    resource: loyalty_enrollments+loyalty_rewards
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "redeemReward (lines 47 + 53) and the sibling preview method (lines 132 + 141) call EloquentEnrollmentRepository::findById and EloquentRewardRepository::findById — both unscoped. Add CompanyContext and tenant-scope both lookups (Enrollment via member.tenant_id; Reward via program.tenant_id) before mutating points/inventory."
