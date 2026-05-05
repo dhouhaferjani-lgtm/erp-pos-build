@@ -860,6 +860,88 @@ final class PricingTenantIsolationTest extends TestCase
         );
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // CouponController route-anchored reads — Codex round-1 second-layer
+    // finding: pre-fix chains were `Coupon::query()->forCompany($companyId)
+    // ->findOrFail($id)` (company-only scope; missing tenant_id predicate
+    // per the cluster invariant). Round-2 remediation adds forTenant()
+    // to the chain in show/update/destroy/revoke/reactivate (5 routes).
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_coupon_query_includes_tenant_and_company_predicates(): void
+    {
+        /** @var Coupon $couponA */
+        $couponA = Coupon::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Coupon A Show SQL',
+            'code' => 'COUPONASQL',
+            'type' => CouponType::Standard,
+            'status' => CouponStatus::Active,
+            'discount_type' => 'percentage',
+            'discount_value' => '10.00',
+            'max_uses' => 5,
+            'use_count' => 0,
+        ]);
+
+        DB::enableQueryLog();
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/coupons/{$couponA->id}")
+            ->assertStatus(200);
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $couponQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "coupons"')
+                && str_contains($sql, '"id" =')
+                && ! str_contains($sql, 'count(*)')
+            ) {
+                $couponQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $couponQuery,
+            'CouponController::show coupon lookup query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $couponQuery,
+            'CouponController::show must filter coupon lookup by tenant_id. Got SQL: '.$couponQuery,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $couponQuery,
+            'CouponController::show must also filter coupon lookup by company_id. Got SQL: '.$couponQuery,
+        );
+    }
+
+    public function test_show_coupon_rejects_cross_tenant_id(): void
+    {
+        /** @var Coupon $couponB */
+        $couponB = Coupon::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'name' => 'Coupon B',
+            'code' => 'COUPONB-CROSS',
+            'type' => CouponType::Standard,
+            'status' => CouponStatus::Active,
+            'discount_type' => 'percentage',
+            'discount_value' => '10.00',
+            'max_uses' => 5,
+            'use_count' => 0,
+        ]);
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/coupons/{$couponB->id}")
+            ->assertStatus(404);
+    }
+
     /**
      * Authenticate `$user` and pin the company context header to `$company`.
      */

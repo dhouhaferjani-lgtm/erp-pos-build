@@ -33,8 +33,9 @@ class CouponController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
-        $query = Coupon::query()->forCompany($companyId);
+        $query = Coupon::query()->forTenant($tenantId)->forCompany($companyId);
 
         if ($request->has('search')) {
             $search = $request->input('search');
@@ -68,12 +69,13 @@ class CouponController extends Controller
     public function show(string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $coupon = Coupon::query()->forCompany($companyId)->findOrFail($id);
+        $coupon = Coupon::query()->forTenant($tenantId)->forCompany($companyId)->findOrFail($id);
 
         return response()->json(['data' => CouponData::fromModel($coupon)]);
     }
@@ -94,12 +96,13 @@ class CouponController extends Controller
     public function update(UpdateCouponRequest $request, string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $coupon = Coupon::query()->forCompany($companyId)->findOrFail($id);
+        $coupon = Coupon::query()->forTenant($tenantId)->forCompany($companyId)->findOrFail($id);
         $coupon->update($request->validated());
 
         return response()->json(['data' => CouponData::fromModel($coupon)]);
@@ -108,12 +111,13 @@ class CouponController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $coupon = Coupon::query()->forCompany($companyId)->findOrFail($id);
+        $coupon = Coupon::query()->forTenant($tenantId)->forCompany($companyId)->findOrFail($id);
         $coupon->delete();
 
         return response()->json(null, 204);
@@ -179,12 +183,13 @@ class CouponController extends Controller
     public function revoke(string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $coupon = Coupon::query()->forCompany($companyId)->findOrFail($id);
+        $coupon = Coupon::query()->forTenant($tenantId)->forCompany($companyId)->findOrFail($id);
 
         try {
             $this->managementService->revoke($coupon);
@@ -200,12 +205,13 @@ class CouponController extends Controller
     public function reactivate(string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $coupon = Coupon::query()->forCompany($companyId)->findOrFail($id);
+        $coupon = Coupon::query()->forTenant($tenantId)->forCompany($companyId)->findOrFail($id);
 
         try {
             $this->managementService->reactivate($coupon);
