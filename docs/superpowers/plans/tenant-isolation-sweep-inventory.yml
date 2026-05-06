@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
+  yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -34306,6 +34306,144 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.console-commands.001
+    stable_key: 'manual:api.console-commands:nf525-export-jet'
+    surface: api
+    cluster_id: api.console-commands
+    scanner: manual
+    file: apps/api/app/Modules/Compliance/Commands/ExportNf525JetCommand.php
+    line: 40
+    symbol: 'App\Modules\Compliance\Commands\ExportNf525JetCommand::handle'
+    pattern_type: unscoped_artisan_command_singleshot
+    resource: fiscal_export
+    expected_scope: tenant_and_company
+    expected_fix: 'Extend new TenantScopedCommand base class. Validate --tenant=<uuid> via ScopedExists::tenant; validate --company=<uuid> via ScopedExists::tenantAndCompany; bind CompanyContext for the run. Add feature test asserting cross-tenant inputs are rejected and same-tenant inputs succeed (tests/Feature/Console/ConsoleCommandTenantIsolationTest.php).'
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T10:46:13Z'
+        actor: claude
+        action: generate
+        command: 'sweep:inventory:add-manual-callsites (one-shot)'
+        previous_yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
+        new_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        target_ids:
+          - api.console-commands.001
+        from_status: null
+        to_status: pending
+        commit: d259232e1f7ae41caa17ede4f3afa1ae350b0561
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'manual callsite added by api.console-commands cluster — cat-(a-singleshot) classification per docs/superpowers/audits/2026-05-06-api-console-commands-triage.md'
+  -
+    id: api.console-commands.002
+    stable_key: 'manual:api.console-commands:scheduling-appointment-reminders'
+    surface: api
+    cluster_id: api.console-commands
+    scanner: manual
+    file: apps/api/app/Modules/Scheduling/Infrastructure/Commands/ScheduleAppointmentReminders.php
+    line: 44
+    symbol: 'App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders::handle'
+    pattern_type: unscoped_artisan_command_scheduler
+    resource: appointment_reminders
+    expected_scope: tenant_and_company
+    expected_fix: "Two tracks: (1) wrap command body in per-tenant iteration (Tenant::all()->each(fn ($t) => $t->run(fn () => …))) so the upcoming-appointment query is bound per-tenant; (2) fix DispatchAppointmentReminder::handle() to rebind CompanyContext from the reminder's stored tenant_id BEFORE calling find(). Feature test asserts the scheduler does not leak appointments across tenants and the dispatched job does not silently read across tenants."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T10:46:13Z'
+        actor: claude
+        action: generate
+        command: 'sweep:inventory:add-manual-callsites (one-shot)'
+        previous_yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
+        new_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        target_ids:
+          - api.console-commands.002
+        from_status: null
+        to_status: pending
+        commit: d259232e1f7ae41caa17ede4f3afa1ae350b0561
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'manual callsite added by api.console-commands cluster — cat-(a-per-tenant-iter) flipped from cat-(b) after Task 1 dispatched-job inspection; per kickoff Task 1 verdict.'
+  -
+    id: api.console-commands.003
+    stable_key: 'manual:api.console-commands:workshop-check-expiring-certifications'
+    surface: api
+    cluster_id: api.console-commands
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/Technician/Infrastructure/Commands/CheckExpiringCertifications.php
+    line: 34
+    symbol: 'App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications::handle'
+    pattern_type: unscoped_artisan_command_scheduler
+    resource: technician_certifications
+    expected_scope: tenant_and_company
+    expected_fix: 'Two tracks: (1) tighten TechnicianCertificationRepositoryInterface::findExpiringWithin contract to take a tenant/company id (or return per-tenant batches); (2) wrap command body in per-tenant iteration so the synchronous TechnicianCertificationExpiring listeners run under bound context. Feature test asserts cross-tenant certs are not surfaced when scheduling per a single tenant.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T10:46:13Z'
+        actor: claude
+        action: generate
+        command: 'sweep:inventory:add-manual-callsites (one-shot)'
+        previous_yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
+        new_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        target_ids:
+          - api.console-commands.003
+        from_status: null
+        to_status: pending
+        commit: d259232e1f7ae41caa17ede4f3afa1ae350b0561
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'manual callsite added by api.console-commands cluster — cat-(a-per-tenant-iter) flipped from cat-(b) after Task 1 repository-contract inspection; per kickoff Task 1 verdict.'
 progress:
   total_callsites: 0
   total_clusters: 29

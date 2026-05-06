@@ -1,0 +1,12 @@
+[
+    {
+        "class": "App\\Modules\\POS\\Commands\\VerifyPosChainCommand",
+        "deferred_to_cluster": "api.pos-stabilization",
+        "tracked_in": "docs/superpowers/audits/2026-05-06-catalog-pos-cluster-residuals.md"
+    },
+    {
+        "class": "App\\Modules\\POS\\Infrastructure\\Commands\\ExpireHeldOrdersCommand",
+        "deferred_to_cluster": "api.pos-stabilization",
+        "tracked_in": "docs/superpowers/audits/2026-05-06-catalog-pos-cluster-residuals.md"
+    }
+]

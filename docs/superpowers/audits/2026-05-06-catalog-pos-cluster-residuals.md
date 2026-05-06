@@ -76,4 +76,36 @@ A future round (likely after the architectural/bespoke clusters close) can pick 
 - api.catalog round-2 verdict: `docs/superpowers/reviews/2026-05-06-api-catalog-reassigned-cluster-codex-round2-review.md`
 - api.pos-stabilization round-4 verdict: `docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md`
 - Inventory-residuals precedent (same deferral pattern): `docs/superpowers/audits/2026-05-05-inventory-cluster-residuals.md`
+
+## Round-5+ additions from api.console-commands triage (2026-05-06)
+
+The `api.console-commands` cluster (orchestrator: claude) classified every Artisan
+command class under `apps/api/app/Console/Commands/` and `apps/api/app/Modules/**/Commands/`
+into cat-(a) / cat-(b) per master plan §14. Two POS-module Artisan commands fall
+outside the cluster's scope (POS surface invariant) and are deferred to
+`api.pos-stabilization`. Both are tracked in
+`apps/api/tests/Architecture/fixtures/console-command-deferrals.json` so the new
+console-command tenant-context architecture test (Step 7 of api.console-commands)
+skips them at scan time.
+
+### Deferred commands
+
+- **`pos:verify-chains`** (`App\Modules\POS\Commands\VerifyPosChainCommand`)
+  - File: `apps/api/app/Modules/POS/Commands/VerifyPosChainCommand.php`
+  - Stable-key hint: `manual:api.pos-stabilization:pos-verify-chains`
+  - Likely classification when handled: **cat-(b)** (`@cross-tenant-by-design Iterates Terminal::active()->orderBy('code')->get() across all companies for fiscal hash chain integrity verification.`)
+  - Scope note: the existing `--company` option is purely a narrowing filter; the design intent is fleet-wide chain integrity for NF525 audit. No semantic change required when the POS orchestrator picks it up — only the §9 grammar annotation.
+
+- **`pos:expire-held-orders`** (`App\Modules\POS\Infrastructure\Commands\ExpireHeldOrdersCommand`)
+  - File: `apps/api/app/Modules/POS/Infrastructure/Commands/ExpireHeldOrdersCommand.php`
+  - Stable-key hint: `manual:api.pos-stabilization:pos-expire-held-orders`
+  - Verified classification: **cat-(a) needing real per-tenant iteration**, NOT by-design.
+  - Evidence: the command delegates to `HeldOrderService::expireOrders()` (`apps/api/app/Modules/POS/Application/Services/HeldOrderService.php:153-159`), which executes a fleet-wide `HeldOrder::where('status', Held)->whereNotNull('expires_at')->where('expires_at', '<', now())->update(['status' => Expired])` with NO `tenant_id` / `company_id` predicate. **Accidentally cross-tenant; a real tenant-isolation bug, not by-design.**
+  - Scope note for the POS orchestrator: when handling, EITHER add `tenant_id` + `company_id` predicates to the UPDATE (defense-in-depth) AND wrap the command body in per-tenant iteration so `CompanyContext` is bound; OR change the contract so the command takes `--tenant=<id>` + `--company=<id>` and runs once per scheduled invocation per company. The first option preserves the scheduler shape; the second is more invasive.
+
+### Tracking
+
+- Architecture deferrals fixture: `apps/api/tests/Architecture/fixtures/console-command-deferrals.json` (created by api.console-commands cluster).
+- Triage doc: `docs/superpowers/audits/2026-05-06-api-console-commands-triage.md`.
+- This residuals doc is the single source of truth for the deferral; api.console-commands does NOT mutate the api.pos-stabilization YAML.
 - Taxation-residuals precedent: `docs/superpowers/audits/2026-05-04-taxation-cross-cluster-blind-spots.md`
