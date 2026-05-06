@@ -16,6 +16,8 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Category;
+use App\Modules\Product\Domain\EnrichmentResult;
+use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -899,45 +901,301 @@ final class CatalogTenantIsolationTest extends TestCase
         $log = DB::getQueryLog();
         DB::disableQueryLog();
 
-        // The pre-fix unscoped chain would emit `from "categories" where "id" = ?`
-        // (no company_id) for the parent-verify lookup. The post-fix chain
-        // emits `from "categories" where "company_id" = ? and "categories"."id" = ?`.
-        // Assert that NO categories single-row find query lacks company_id.
-        // Filtering: match SELECT * with `id` predicate; tolerate the ancestor
-        // BelongsTo lazy-load which uses the relationship without scope.
-        // The Domain::booted() updated() hook fires `parent` BelongsTo on the
-        // primary category — that is a separate model-tier concern (tracked
-        // for follow-up); the assertion here pins ONLY the explicit
-        // `Category::where('company_id')->find($parent_id)` chain at line 175.
-        $explicitParentVerifyQuery = null;
+        // Round-2 tightening (Codex Finding 2 NON-BLOCKING): the previous
+        // matcher captured the LAST `from "categories" where "company_id" = ?
+        // and "categories"."id" = ?` query, which let a regression that drops
+        // company_id from the explicit parent-verify still pass — the primary
+        // load (line 164-166) would still match.
+        //
+        // New invariant: count the post-fix shape — `from "categories" ...
+        // "company_id" = ? ... "categories"."id" = ? ... select * ... limit 1`
+        // (ignoring count(*) and the unscoped `parent` BelongsTo lazy-load
+        // fired by Category::booted()::updated → updatePath, which emits
+        // `where "categories"."id" = ?` with NO company_id and is a separate
+        // domain-tier concern tracked outside this cluster).
+        //
+        // CategoryController::update emits TWO of those scoped lookups:
+        //   1. Primary load (line 164-166): findOrFail($id) on a query already
+        //      scoped to company_id.
+        //   2. Parent-verify (line 186-188): find($parent_id) on the same
+        //      scoped query.
+        // Pre-fix parent-verify was `Category::where('id', $parent_id)
+        // ->where('company_id', $companyId)->first()` — emitted `where "id" = ?
+        // and "company_id" = ?` (column "id", NOT table-qualified). A future
+        // regression that drops `where('company_id', ...)` from this chain
+        // would emit `where "id" = ?` only and the count below would drop to
+        // 1, failing the invariant.
+        $scopedCategoryLookups = [];
         foreach ($log as $entry) {
             $sql = (string) $entry['query'];
-            // Match exactly the post-fix shape: `where "company_id" = ?` AND
-            // `"categories"."id" = ?` (note the table-qualified id from
-            // SoftDeletes) — this is the explicit `where('company_id')->find()`
-            // chain. The primary load query also matches; the parent-verify
-            // query overrides it via assertion-on-LAST since both have the
-            // same shape (controller emits TWO of these in update flow).
             if (
                 str_contains($sql, 'from "categories"')
                 && str_contains($sql, '"company_id" = ?')
                 && str_contains($sql, '"categories"."id" = ?')
+                && str_contains($sql, 'select * from')
+                && str_contains($sql, 'limit 1')
                 && ! str_contains($sql, 'count(*)')
             ) {
-                $explicitParentVerifyQuery = $sql;
+                $scopedCategoryLookups[] = $sql;
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(
+            2,
+            count($scopedCategoryLookups),
+            'CategoryController::update must emit at least 2 scoped single-row category SELECTs '
+                .'(primary load + parent-verify, both scoped by company_id with table-qualified id). '
+                .'A regression that drops company_id from the explicit parent-verify lookup would '
+                .'leave only the primary load matching. Captured: '
+                .json_encode($scopedCategoryLookups)
+                .' Full log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // ProductController + EnrichmentReviewController bare-where reads
+    // (Codex round-1 Finding 1 BLOCKING — scanner StaticCall blind spot).
+    //
+    // Pre-fix shape:
+    //   Product::where('company_id', $companyId)->where('id', $product)->first()
+    //   EnrichmentResult::where('company_id', $companyId)->where('id', $id)->first()
+    //
+    // The static-call form is invisible to the chained MethodCall AST visitor
+    // and `products` / `enrichment_results` both carry tenant_id + company_id.
+    // Round-2 fix prepends `::query()` and adds `where('tenant_id', ...)` so
+    // the scanner sees both predicates and a same-tenant cross-company is
+    // structurally blocked even before the company_id filter.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_product_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/products/{$this->productB->id}");
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'PRODUCT_NOT_FOUND');
+
+        $same = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/products/{$this->productA->id}");
+        $same->assertStatus(200);
+    }
+
+    public function test_update_product_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/products/{$this->productB->id}", [
+                'name' => 'Hijacked',
+            ]);
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'PRODUCT_NOT_FOUND');
+
+        $this->assertSame(
+            'Product B',
+            $this->productB->fresh()?->name,
+            'Cross-tenant update must NOT have mutated the foreign product.',
+        );
+    }
+
+    public function test_destroy_product_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/products/{$this->productB->id}");
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'PRODUCT_NOT_FOUND');
+
+        $this->assertNotNull(
+            $this->productB->fresh(),
+            'Cross-tenant product must NOT have been soft-deleted.',
+        );
+    }
+
+    public function test_stock_levels_rejects_cross_tenant_product_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/products/{$this->productB->id}/stock-levels");
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'PRODUCT_NOT_FOUND');
+    }
+
+    public function test_show_product_query_includes_tenant_and_company_predicates(): void
+    {
+        DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/products/{$this->productA->id}")
+            ->assertStatus(200);
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $productLookup = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "products"')
+                && str_contains($sql, '"id" = ?')
+                && str_contains($sql, 'limit 1')
+                && ! str_contains($sql, 'count(*)')
+                && ! str_contains($sql, 'inner join')
+            ) {
+                $productLookup = $sql;
+                break;
             }
         }
 
         $this->assertNotNull(
-            $explicitParentVerifyQuery,
-            'CategoryController::update parent-verify lookup with company_id predicate must be captured. Log: '
+            $productLookup,
+            'ProductController::show product lookup must be captured. Log: '
                 .json_encode(array_map(static fn ($e) => $e['query'], $log)),
         );
         $this->assertStringContainsString(
-            '"company_id" = ?',
-            $explicitParentVerifyQuery,
-            'CategoryController::update parent-verify must filter by company_id. Got SQL: '.$explicitParentVerifyQuery,
+            '"tenant_id"',
+            $productLookup,
+            'ProductController::show must filter by tenant_id. Got SQL: '.$productLookup,
         );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $productLookup,
+            'ProductController::show must filter by company_id. Got SQL: '.$productLookup,
+        );
+    }
+
+    public function test_show_enrichment_result_rejects_cross_tenant_id(): void
+    {
+        $resultB = $this->seedEnrichmentResultForTenantB();
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/enrichment-results/{$resultB->id}");
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'ENRICHMENT_RESULT_NOT_FOUND');
+    }
+
+    public function test_accept_enrichment_result_rejects_cross_tenant_id(): void
+    {
+        $resultB = $this->seedEnrichmentResultForTenantB();
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/enrichment-results/{$resultB->id}/accept", [
+                'accepted_fields' => ['name'],
+            ]);
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'ENRICHMENT_RESULT_NOT_FOUND');
+
+        $this->assertSame(
+            EnrichmentReviewStatus::PendingReview,
+            $resultB->fresh()?->status,
+            'Cross-tenant accept must NOT have transitioned the foreign enrichment result.',
+        );
+    }
+
+    public function test_reject_enrichment_result_rejects_cross_tenant_id(): void
+    {
+        $resultB = $this->seedEnrichmentResultForTenantB();
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/enrichment-results/{$resultB->id}/reject", [
+                'reason' => 'cross-tenant attempt',
+            ]);
+        $cross->assertStatus(404);
+        $cross->assertJsonPath('error.code', 'ENRICHMENT_RESULT_NOT_FOUND');
+
+        $this->assertSame(
+            EnrichmentReviewStatus::PendingReview,
+            $resultB->fresh()?->status,
+            'Cross-tenant reject must NOT have transitioned the foreign enrichment result.',
+        );
+    }
+
+    public function test_show_enrichment_result_query_includes_tenant_and_company_predicates(): void
+    {
+        $resultA = $this->seedEnrichmentResultForTenantA();
+
+        DB::enableQueryLog();
+
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/enrichment-results/{$resultA->id}")
+            ->assertStatus(200);
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $enrichmentLookup = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "enrichment_results"')
+                && str_contains($sql, '"id" = ?')
+                && str_contains($sql, 'limit 1')
+                && ! str_contains($sql, 'count(*)')
+                && ! str_contains($sql, 'inner join')
+            ) {
+                $enrichmentLookup = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $enrichmentLookup,
+            'EnrichmentReviewController::show enrichment_results lookup must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"tenant_id"',
+            $enrichmentLookup,
+            'EnrichmentReviewController::show must filter by tenant_id. Got SQL: '.$enrichmentLookup,
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $enrichmentLookup,
+            'EnrichmentReviewController::show must filter by company_id. Got SQL: '.$enrichmentLookup,
+        );
+    }
+
+    private function seedEnrichmentResultForTenantA(): EnrichmentResult
+    {
+        return EnrichmentResult::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'tracking_id' => Str::uuid()->toString(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => $this->buildEnrichedProductData('Product A enriched'),
+            'enrichment_quality' => 'good',
+        ]);
+    }
+
+    private function seedEnrichmentResultForTenantB(): EnrichmentResult
+    {
+        return EnrichmentResult::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'product_id' => $this->productB->id,
+            'tracking_id' => Str::uuid()->toString(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => $this->buildEnrichedProductData('Product B enriched'),
+            'enrichment_quality' => 'good',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildEnrichedProductData(string $name): array
+    {
+        return [
+            'name' => $name,
+            'brand' => null,
+            'description' => null,
+            'classification' => [],
+            'ingredients' => [],
+            'images' => [],
+            'confidence_score' => 75,
+            'enrichment_tier' => null,
+            'field_confidence' => null,
+            'enrichment_sources' => null,
+            'assigned_barcode' => null,
+            'assigned_barcode_type' => null,
+        ];
     }
 
     /**
