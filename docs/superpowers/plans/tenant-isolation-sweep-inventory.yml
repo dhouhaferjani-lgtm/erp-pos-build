@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-05T19:38:40Z'
+  generated_at: '2026-05-06T06:22:03Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+  yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -6623,7 +6623,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: stale_orphan
+    stale_state: active
     status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -33237,6 +33237,664 @@ callsites:
         to_status: under_review
         commit: 4e5edc2c
         test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_table_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.027
+    stable_key: 'manual:api.catalog:product-controller-show-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 219
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::show'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->with('primaryImage')->first() — invisible to the AST chain visitor (StaticCall blind spot tracked in audit 2026-05-04-bare-where-scanner-gap.md), and missed the products.tenant_id defense-in-depth predicate. Round-2: Product::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $product) — chain visitor now detects scope; cross-tenant route-param ids 404 instead of leaking. Pinned by tests/Feature/Catalog/CatalogTenantIsolationTest::test_show_product_rejects_cross_tenant_id + ::test_show_product_query_includes_tenant_and_company_predicates."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:37Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_product_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.027
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:37Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        new_yaml_sha256: 3ad43fe7120d7aeaf0adee1a56c4261e91b0b2d156703c158fe74a737cce0aa4
+        target_ids:
+          - api.catalog.027
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:48Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: baac0bbd34d790fd69da2300b7f8ec48c8d01adc26aa20f720bb08b8d09a6180
+        new_yaml_sha256: 662ea8be1d4fe8928f7c83ace7e726b28e1789891158f1bb16fc9c5c7c58bfa6
+        target_ids:
+          - api.catalog.027
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:03Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fce3ce35f8a7b22e37592be390d47aec4b283083d56d3a2067978c28f81a9a45
+        new_yaml_sha256: 9fe07488b55238a47bf5bb64a9b2e187cca7e86663cff633440b0638cd462cc6
+        target_ids:
+          - api.catalog.027
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_product_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.028
+    stable_key: 'manual:api.catalog:product-controller-update-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 384
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::update'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->first() before $productModel->update($validated). Round-2: Product::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $product) — cross-tenant id returns 404; foreign product cannot be mutated. Pinned by ::test_update_product_rejects_cross_tenant_id."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:38Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_product_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.028
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:38Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3ad43fe7120d7aeaf0adee1a56c4261e91b0b2d156703c158fe74a737cce0aa4
+        new_yaml_sha256: 428e69843cd219068606da311460a8cc2f60f6a0d115b4d72f0f3b3573784f37
+        target_ids:
+          - api.catalog.028
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:49Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 662ea8be1d4fe8928f7c83ace7e726b28e1789891158f1bb16fc9c5c7c58bfa6
+        new_yaml_sha256: 8979c1402e99946fd8ab250733d9f857a7cad86d60be9746b211126b0419a550
+        target_ids:
+          - api.catalog.028
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:04Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9fe07488b55238a47bf5bb64a9b2e187cca7e86663cff633440b0638cd462cc6
+        new_yaml_sha256: 289426dafacd4d96e257fdfd7271c299457c4eb3c102b86031b6dddb21ed2a4f
+        target_ids:
+          - api.catalog.028
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_product_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.029
+    stable_key: 'manual:api.catalog:product-controller-destroy-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 524
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::destroy'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->first() before $productModel->delete(). Round-2 fix anchors the lookup on tenant_id + company_id via the chained MethodCall pattern; cross-tenant DELETE returns 404 and does not soft-delete the foreign row. Pinned by ::test_destroy_product_rejects_cross_tenant_id."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:39Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_destroy_product_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.029
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:39Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 428e69843cd219068606da311460a8cc2f60f6a0d115b4d72f0f3b3573784f37
+        new_yaml_sha256: 9970e50871114eeb0be91c667a7bb515e99e2a3b527a6814040cf4fbef340a11
+        target_ids:
+          - api.catalog.029
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:50Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8979c1402e99946fd8ab250733d9f857a7cad86d60be9746b211126b0419a550
+        new_yaml_sha256: 8b7600bf55174629a185ad95ba1770cfbada97f1c83df3113fae87119de82ec7
+        target_ids:
+          - api.catalog.029
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:05Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 289426dafacd4d96e257fdfd7271c299457c4eb3c102b86031b6dddb21ed2a4f
+        new_yaml_sha256: 9bd23a10b7020e13d86b5b5b91a26ffab0af3d0fd273e24bad681a81d308cc7d
+        target_ids:
+          - api.catalog.029
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_destroy_product_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.030
+    stable_key: 'manual:api.catalog:product-controller-stock-levels-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 565
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::stockLevels'
+    pattern_type: bare_where_company_only_static_call
+    resource: products+stock_levels
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: BOTH the Product lookup (Product::where('company_id',...)->where('id',$product)->first()) AND the StockLevel aggregate read (StockLevel::where('product_id',$productModel->id)->where('company_id',$companyId)) lacked tenant_id. Round-2: chained MethodCall + tenant_id on each. stock_levels carries tenant_id + company_id, so leading with both predicates makes the cross-tenant invariant visible. Pinned by ::test_stock_levels_rejects_cross_tenant_product_id."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:40Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_stock_levels_rejects_cross_tenant_product_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.030
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:40Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 9970e50871114eeb0be91c667a7bb515e99e2a3b527a6814040cf4fbef340a11
+        new_yaml_sha256: 8e3b9a6102148a7cf7b8f4d323f92ed9a6f12479ebe93d67c4355fddd8f5d53d
+        target_ids:
+          - api.catalog.030
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:51Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b7600bf55174629a185ad95ba1770cfbada97f1c83df3113fae87119de82ec7
+        new_yaml_sha256: c3aa51586f91d18aef7f7f054fad444115c2c2217659f483a4d20294fb389560
+        target_ids:
+          - api.catalog.030
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:06Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9bd23a10b7020e13d86b5b5b91a26ffab0af3d0fd273e24bad681a81d308cc7d
+        new_yaml_sha256: ca933837a54bbb2d45c8f08de2fd53e5d3cf531c16c30707c605d13cd355a818
+        target_ids:
+          - api.catalog.030
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_stock_levels_rejects_cross_tenant_product_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.031
+    stable_key: 'manual:api.catalog:enrichment-review-controller-show-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 100
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::show'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: EnrichmentResult::where('company_id', $companyId)->where('id', $id)->with('product')->first() — invisible to the AST chain visitor (StaticCall) and lacked enrichment_results.tenant_id. Round-2: EnrichmentResult::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $id) — cross-tenant 404 + scanner-visible scope. Pinned by ::test_show_enrichment_result_rejects_cross_tenant_id + ::test_show_enrichment_result_query_includes_tenant_and_company_predicates."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:41Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_enrichment_result_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.031
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:41Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8e3b9a6102148a7cf7b8f4d323f92ed9a6f12479ebe93d67c4355fddd8f5d53d
+        new_yaml_sha256: ae772cc6d0e89904e20e18b52ed5124cd9e67a179b1e8dbbeb90e438725e238c
+        target_ids:
+          - api.catalog.031
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:52Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c3aa51586f91d18aef7f7f054fad444115c2c2217659f483a4d20294fb389560
+        new_yaml_sha256: a0e98bc835aac3f2f2fac20a325d3fa22f5526f98e163a1fa2f480bb0f536653
+        target_ids:
+          - api.catalog.031
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:07Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ca933837a54bbb2d45c8f08de2fd53e5d3cf531c16c30707c605d13cd355a818
+        new_yaml_sha256: 43b5b5fc46ecdf884aff5c4eea946d88277300132b8c46ff9e900a572fe19e90
+        target_ids:
+          - api.catalog.031
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_enrichment_result_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.032
+    stable_key: 'manual:api.catalog:enrichment-review-controller-accept-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 170
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::accept'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: same StaticCall bare-where shape as show() before the accept() state transition (PendingReview → Accepted). A tenant-A user could pass tenant-B's enrichment_result UUID and trigger the foreign accept mutation. Round-2 fix anchors the read on tenant_id + company_id; cross-tenant returns 404 and does not transition the foreign row. Pinned by ::test_accept_enrichment_result_rejects_cross_tenant_id."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:42Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_accept_enrichment_result_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.032
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:42Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ae772cc6d0e89904e20e18b52ed5124cd9e67a179b1e8dbbeb90e438725e238c
+        new_yaml_sha256: b23deb0ab2a7952362fb3087c9c73399ea6ad07e169d00c8080c2283b88572d6
+        target_ids:
+          - api.catalog.032
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:53Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a0e98bc835aac3f2f2fac20a325d3fa22f5526f98e163a1fa2f480bb0f536653
+        new_yaml_sha256: 3322268a56389de4cbeea9ee202fcbc4d87ad217bf2097c7cc7464668d093762
+        target_ids:
+          - api.catalog.032
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:08Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 43b5b5fc46ecdf884aff5c4eea946d88277300132b8c46ff9e900a572fe19e90
+        new_yaml_sha256: da0cfddc2f796f114527023a72cfe2bc0d4469866f68d550eea0bb3d9d636f92
+        target_ids:
+          - api.catalog.032
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_accept_enrichment_result_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.catalog.033
+    stable_key: 'manual:api.catalog:enrichment-review-controller-reject-bare-where-route-anchored-read'
+    surface: api
+    cluster_id: api.catalog
+    scanner: manual
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 244
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::reject'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    expected_fix: 'Pre-fix: same StaticCall bare-where shape before the reject() state transition (PendingReview → Rejected). Round-2 fix mirrors accept(); cross-tenant returns 404 and the foreign row stays in PendingReview. Pinned by ::test_reject_enrichment_result_rejects_cross_tenant_id.'
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:25:43Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+    regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_reject_enrichment_result_rejects_cross_tenant_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:22:03Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: a8ae717d0658000cfbae41b3e710cd68db8acf4d5211a2f3c9b2025083e2c4e4
+        new_yaml_sha256: 38d30fd687133b41a9fab0b6cebe713fb6ef027587edafa0a8d8e56dcb5cfdfe
+        target_ids:
+          - api.catalog.033
+        from_status: null
+        to_status: pending
+        commit: 4ad53489d8cdb27a03dd6faa20521c5c6f902f7c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:25:43Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b23deb0ab2a7952362fb3087c9c73399ea6ad07e169d00c8080c2283b88572d6
+        new_yaml_sha256: baac0bbd34d790fd69da2300b7f8ec48c8d01adc26aa20f720bb08b8d09a6180
+        target_ids:
+          - api.catalog.033
+        from_status: pending
+        to_status: claimed
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=api.catalog round-2 Claude remediation per orchestrator prompt 2026-05-06 (Codex round-1 Finding 1 BLOCKING — ProductController + EnrichmentReviewController bare-where reads)'
+      -
+        at: '2026-05-06T06:25:53Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3322268a56389de4cbeea9ee202fcbc4d87ad217bf2097c7cc7464668d093762
+        new_yaml_sha256: fce3ce35f8a7b22e37592be390d47aec4b283083d56d3a2067978c28f81a9a45
+        target_ids:
+          - api.catalog.033
+        from_status: claimed
+        to_status: in_progress
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:26:09Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: da0cfddc2f796f114527023a72cfe2bc0d4469866f68d550eea0bb3d9d636f92
+        new_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        target_ids:
+          - api.catalog.033
+        from_status: in_progress
+        to_status: under_review
+        commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_reject_enrichment_result_rejects_cross_tenant_id'
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
