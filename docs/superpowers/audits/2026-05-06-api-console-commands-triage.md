@@ -123,6 +123,90 @@ Planned commits, in order:
 8. **Architecture test** — `tests/Architecture/ConsoleCommandTenantContextTest.php` (reads the deferrals JSON fixture; enforces classification on every non-abstract concrete `Illuminate\Console\Command` subclass).
 9. **Submit + Codex adversarial review** — submit the 3 callsites, dispatch Codex headless review with the §14 invariants as the contract.
 
+## Step 4.5 — caller-scope verification findings (2026-05-06)
+
+Pre-Step-5 verification per the kickoff: confirm the FULL caller-scope of the two
+contract changes the cat-(a) flips imply, plus the cron schedule of the deferred
+POS command.
+
+### 4.5.1 — `TechnicianCertificationRepositoryInterface::findExpiringWithin`
+
+`grep -rn 'findExpiringWithin' apps/api/ --include='*.php'`:
+
+| Caller | Path | Type |
+|---|---|---|
+| `CheckExpiringCertifications::handle` | `apps/api/app/Modules/Workshop/Technician/Infrastructure/Commands/CheckExpiringCertifications.php:44` | **command (in scope)** |
+| `EloquentTechnicianCertificationRepository::findExpiringWithin` | `apps/api/app/Modules/Workshop/Technician/Infrastructure/Persistence/EloquentTechnicianCertificationRepository.php:41` | **interface implementation** (not a caller) |
+| `ConsoleCommandTenantIsolationTest` | `apps/api/tests/Feature/Console/ConsoleCommandTenantIsolationTest.php` | test (out-of-scope for caller-impact) |
+
+**Result: exactly 1 non-test caller (the command itself). No other code depends on the unscoped form.**
+
+**Recommendation:** tighten the contract directly. Change the signature to
+`findExpiringWithin(int $days, string $tenantId): Collection` (tenant-only is
+the right anchor since `workshop_technician_certifications` table has only
+`tenant_id`, no `company_id` — see migration `2026_04_19_120002_create_workshop_technician_certifications_table.php:22`).
+The single caller (`CheckExpiringCertifications`) gets refactored to wrap the
+call in per-tenant iteration: `Tenant::all()->each(fn ($t) => $repo->findExpiringWithin($days, $t->id))`.
+
+**Scope impact:** 1 interface signature change + 1 implementation update + 1
+command body refactor. No additional manual rows needed; the existing
+`api.console-commands.003` row covers it.
+
+### 4.5.2 — `DispatchAppointmentReminder` job dispatchers + tenant anchor
+
+`grep -rn 'DispatchAppointmentReminder' apps/api --include='*.php' | grep -v '/tests/'`:
+
+| Site | Path | Kind |
+|---|---|---|
+| `use` import + `@see` docblock | `apps/api/app/Modules/Scheduling/Application/Services/AppointmentReminderService.php:12,27` | references only, NOT a dispatch |
+| `use` import + `::dispatch($reminder->id)` | `apps/api/app/Modules/Scheduling/Infrastructure/Commands/ScheduleAppointmentReminders.php:12,101` | **only actual dispatcher (in scope)** |
+| `final class DispatchAppointmentReminder` | `apps/api/app/Modules/Scheduling/Infrastructure/Jobs/DispatchAppointmentReminder.php:33` | declaration |
+
+**Result: exactly 1 non-test dispatcher (the scheduler command itself).** The job runs ONLY in the scheduler context. After the scheduler refactor binds per-tenant context, the dispatch happens under bound context — but for defense-in-depth, the job should ALSO rebind from its own anchor.
+
+**Tenant anchor confirmation:** `AppointmentReminder.tenant_id` column EXISTS
+(migration `2026_04_19_140007_create_scheduling_appointment_reminders_table.php:34`:
+`$table->foreignUuid('tenant_id')->constrained('tenants')->cascadeOnDelete();`).
+The job can read `$reminder->tenant_id` and bind context for subsequent reads.
+
+**Recommended fix shape:** Two-track defense-in-depth.
+
+1. **Scheduler-side (load-bearing):** wrap the appointment query + dispatch loop in `Tenant::all()->each(fn ($t) => Tenant::find($t->id)->run(fn () => …))` so each dispatch happens with a bound `CompanyContext`. (Tenancy::run binds the multi-tenancy package's context; for the shared-DB phase we ALSO need to set `CompanyContext::setCompanyId(...)` if a company-scoped helper applies — note that appointments live at the `tenant_id + company_id` grain but dispatched reminders live at `tenant_id` only.)
+2. **Job-side (defense-in-depth):** the first lookup is unavoidably by primary key (UUID; globally unique). After loading the reminder, read `$reminder->tenant_id` and bind via `Tenant::find($reminder->tenant_id)?->run(fn () => …)` for subsequent reads (the parent appointment relationship traversal at `DispatchAppointmentReminder.php:59`).
+
+**Scope impact:** 1 scheduler command refactor + 1 job rebind; both stay within the existing `api.console-commands.002` manual row.
+
+### 4.5.3 — `ExpireHeldOrdersCommand` cron schedule (bonus urgency context)
+
+`grep -rnE 'pos:expire-held-orders|ExpireHeldOrdersCommand' apps/api --include='*.php'`:
+
+`apps/api/app/Modules/POS/Providers/HeldOrderServiceProvider.php:40`:
+```php
+$schedule->command('pos:expire-held-orders')->everyFifteenMinutes();
+```
+
+**Cron schedule: every 15 minutes (96 invocations / day).** Each invocation runs
+the fleet-wide UPDATE confirmed in Task 3:
+
+```php
+return HeldOrder::where('status', HeldOrderStatus::Held)
+    ->whereNotNull('expires_at')
+    ->where('expires_at', '<', now())
+    ->update(['status' => HeldOrderStatus::Expired]);
+```
+
+with no tenant_id / company_id predicate.
+
+**Urgency context for the api.pos-stabilization owner:** this is a high-frequency
+cross-tenant write that fires constantly in production. While the side effect (status
+flip from `held` → `expired` on already-expired orders) is benign in single-tenant
+test environments, multi-tenant production fires it 96 times/day across every
+tenant simultaneously. Documenting in the residuals doc so the POS owner can
+prioritize accordingly.
+
+This is captured in `docs/superpowers/audits/2026-05-06-catalog-pos-cluster-residuals.md`
+under the "Round-5+ additions" section.
+
 ## Out-of-scope tracker
 
 - **`InventoryService::mutate()` chain-orphan hardening** (audit `2026-05-04-inventory-mutate-orphan-gap.md`, option 1: refuse no-event data change). Standalone ~30-line chore for a future fresh commit; this cluster's manual-row script appends history events per row (the documented safe path).

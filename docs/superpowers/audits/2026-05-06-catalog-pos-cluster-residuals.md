@@ -101,6 +101,7 @@ skips them at scan time.
   - Stable-key hint: `manual:api.pos-stabilization:pos-expire-held-orders`
   - Verified classification: **cat-(a) needing real per-tenant iteration**, NOT by-design.
   - Evidence: the command delegates to `HeldOrderService::expireOrders()` (`apps/api/app/Modules/POS/Application/Services/HeldOrderService.php:153-159`), which executes a fleet-wide `HeldOrder::where('status', Held)->whereNotNull('expires_at')->where('expires_at', '<', now())->update(['status' => Expired])` with NO `tenant_id` / `company_id` predicate. **Accidentally cross-tenant; a real tenant-isolation bug, not by-design.**
+  - **Cron schedule (urgency context):** `everyFifteenMinutes()` per `apps/api/app/Modules/POS/Providers/HeldOrderServiceProvider.php:40`. **96 cross-tenant UPDATE invocations per day in production.** While the side effect is benign in single-tenant tests (status flips on already-expired rows), multi-tenant production fires this against every tenant's HeldOrder rows simultaneously, every quarter-hour.
   - Scope note for the POS orchestrator: when handling, EITHER add `tenant_id` + `company_id` predicates to the UPDATE (defense-in-depth) AND wrap the command body in per-tenant iteration so `CompanyContext` is bound; OR change the contract so the command takes `--tenant=<id>` + `--company=<id>` and runs once per scheduled invocation per company. The first option preserves the scheduler shape; the second is more invasive.
 
 ### Tracking
