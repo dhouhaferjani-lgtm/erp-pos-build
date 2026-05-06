@@ -48,9 +48,18 @@ These are NOT live cross-tenant leaks: the mutation paths are closed and the com
 
 Cluster: api.pos-stabilization (POS module).
 
-Suggested round-5 remediation:
-- Add `tenant_id` predicate to controller reload reads in OrderController + KitchenDisplayController.
-- Replace service-tier `$order->fresh(['lines'])` with a scoped `Order::query()->where('tenant_id', ...)->where('company_id', ...)->where('id', $order->id)->with('lines')->firstOrFail()` (or document each `fresh` call as structurally protected by the prior scoped lock).
+Suggested round-5 remediation (with concrete file:line targets from the round-4 implementer report):
+- Add `tenant_id` predicate to controller reload reads in OrderController + KitchenDisplayController:
+  - `OrderController::addLine:180`, `modifyLine:237`, `removeLine:281`
+  - `OrderController::show:98` (route {id} read; currently company_id-only scope)
+  - `KitchenDisplayController::updateLineStatus:64`, `bump:100`, `served:129`
+- Replace service-tier `$order->fresh(['lines'])` with a scoped chain (or document each `fresh` call as structurally protected by the prior scoped lock):
+  - `OrderManagementService.php:404` (sendToKitchen)
+  - `OrderManagementService.php:460` (closeOrder)
+  - `OrderManagementService.php:516` (cancelOrder)
+  - `OrderManagementService.php:611` (markOrderServed)
+  - `OrderManagementService.php:663` (bumpOrder)
+- Inventory classification fix: stubs `api.pos-stabilization.048` and `.049` were recorded with `expected_scope: company_only` but should be `tenant_and_company` to match the cluster invariant. One-shot mutate to update the field; ALWAYS append a history event in the same cycle (per `2026-05-04-inventory-mutate-orphan-gap.md`).
 - Add structural-SQL-log invariant tests for the reload paths.
 
 ## Why these are deferred
