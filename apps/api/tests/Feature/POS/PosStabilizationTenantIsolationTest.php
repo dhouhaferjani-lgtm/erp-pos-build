@@ -29,12 +29,18 @@ use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
 use App\Modules\POS\Application\Services\ReceiptSyncService;
 use App\Modules\POS\Application\Services\VoucherLedgerPushService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\OrderLineStatus;
+use App\Modules\POS\Domain\Enums\OrderStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\SyncStatus;
 use App\Modules\POS\Domain\Enums\TableStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Floor;
+use App\Modules\POS\Domain\Order;
+use App\Modules\POS\Domain\OrderLine;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Table;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -1721,6 +1727,251 @@ final class PosStabilizationTenantIsolationTest extends TestCase
                 'table_id' => $tableB->id,
             ]);
         $this->assertApiValidationErrors($response, ['table_id']);
+    }
+
+    // =========================================================================
+    // Round-4 Codex Finding — Order/kitchen mutation routes use unscoped
+    // Order::lockForUpdate()->findOrFail (LIVE cross-tenant order MUTATION).
+    // =========================================================================
+    //
+    // Pre-fix: OrderManagementService routes called from OrderController and
+    // KitchenDisplayController (addLine, modifyLine, removeLine, sendToKitchen,
+    // closeOrder, cancelOrder, updateLineStatus, bumpOrder, markOrderServed)
+    // and the controller-tier reload reads each ran
+    //   Order::lockForUpdate()[->with(...)]->findOrFail($routeOrderId)
+    // with no tenant_id/company_id predicates. A tenant-A POS operator who
+    // knows a tenant-B open/kitchen order UUID could mutate that foreign
+    // order (cancel, send-to-kitchen, close-to-receipt, bump, modify lines)
+    // and read back the foreign resource. closeOrder + cancelOrder ALSO
+    // released `Table::where('id', $order->table_id)` without scope.
+    //
+    // Fix: anchor every route-anchored Order lookup on authenticated
+    // CompanyContext tenant + company predicates (resolved via the existing
+    // injection on OrderManagementService) BEFORE lockForUpdate/with/find.
+    // Cross-tenant ids surface as ModelNotFoundException → Laravel's default
+    // 404 with no mutation. closeOrder + cancelOrder Table release derives
+    // from the already-scoped $order's tenant + company.
+    // =========================================================================
+
+    /**
+     * Seed a tenant-B open POS order (with one open line) so tenant-A can
+     * try to mutate it cross-tenant. Returns [order, line, table, shift].
+     *
+     * @return array{0: Order, 1: OrderLine, 2: Table, 3: Shift}
+     */
+    private function seedTenantBOpenOrderWithLine(): array
+    {
+        $floorB = $this->seedPosFloor($this->tenantB->id, $this->companyB->id, 'F4-OB');
+        $tableB = Table::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'floor_id' => $floorB->id,
+            'table_number' => 'F4-OB-1',
+            'seats' => 4,
+            'status' => TableStatus::Occupied,
+        ]);
+
+        $shiftB = Shift::create([
+            'terminal_id' => $this->terminalB->id,
+            'cashier_id' => $this->userB->id,
+            'shift_number' => 'SHIFT-B-'.Str::random(4),
+            'opened_at' => now()->subHour(),
+            'opening_cash' => '50.00',
+            'status' => ShiftStatus::Open,
+        ]);
+
+        /** @var Order $orderB */
+        $orderB = Order::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'location_id' => $this->locationB->id,
+            'terminal_id' => $this->terminalB->id,
+            'shift_id' => $shiftB->id,
+            'table_id' => $tableB->id,
+            'order_number' => '#001',
+            'status' => OrderStatus::Open,
+            'cashier_id' => $this->userB->id,
+            'cashier_name' => 'B Cashier',
+            'subtotal' => '10.0000',
+            'tax_amount' => '0.0000',
+            'discount_amount' => '0.0000',
+            'total' => '10.0000',
+            'currency' => 'EUR',
+            'opened_at' => now(),
+        ]);
+
+        $lineB = OrderLine::create([
+            'order_id' => $orderB->id,
+            'line_number' => 1,
+            'product_id' => $this->productB->id,
+            'product_name' => 'Product B',
+            'quantity' => '1',
+            'unit_price' => '10.00',
+            'discount_amount' => '0.00',
+            'tax_rate' => '0',
+            'tax_amount' => '0.00',
+            'line_total' => '10.00',
+            'status' => OrderLineStatus::Pending,
+        ]);
+
+        $tableB->update(['current_order_id' => $orderB->id]);
+
+        return [$orderB, $lineB, $tableB, $shiftB];
+    }
+
+    public function test_cancel_order_refuses_cross_tenant_order_id(): void
+    {
+        [$orderB, , $tableB] = $this->seedTenantBOpenOrderWithLine();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/orders/{$orderB->id}/cancel", ['reason' => 'foreign']);
+
+        $this->assertSame(404, $response->status());
+
+        // Tenant-B order + table state on disk: untouched.
+        $orderB->refresh();
+        $this->assertSame(OrderStatus::Open, $orderB->status);
+        $this->assertNull($orderB->cancelled_at);
+        $tableB->refresh();
+        $this->assertSame(TableStatus::Occupied, $tableB->status);
+        $this->assertNotNull($tableB->current_order_id);
+    }
+
+    public function test_send_to_kitchen_refuses_cross_tenant_order_id(): void
+    {
+        [$orderB] = $this->seedTenantBOpenOrderWithLine();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/orders/{$orderB->id}/send-to-kitchen");
+
+        $this->assertSame(404, $response->status());
+
+        $orderB->refresh();
+        $this->assertSame(OrderStatus::Open, $orderB->status);
+        $this->assertNull($orderB->sent_at);
+    }
+
+    public function test_close_order_refuses_cross_tenant_order_id(): void
+    {
+        [$orderB, , $tableB] = $this->seedTenantBOpenOrderWithLine();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/orders/{$orderB->id}/close");
+
+        $this->assertSame(404, $response->status());
+
+        $orderB->refresh();
+        $this->assertSame(OrderStatus::Open, $orderB->status);
+        $this->assertNull($orderB->closed_at);
+        $this->assertNull($orderB->receipt_id);
+        // closeOrder also performs unscoped Table::where('id',...)->update; no
+        // mutation to the foreign table either.
+        $tableB->refresh();
+        $this->assertSame(TableStatus::Occupied, $tableB->status);
+    }
+
+    public function test_remove_line_refuses_cross_tenant_order_id(): void
+    {
+        [$orderB, $lineB] = $this->seedTenantBOpenOrderWithLine();
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/pos/orders/{$orderB->id}/lines/{$lineB->id}");
+
+        $this->assertSame(404, $response->status());
+
+        // Tenant-B's order line still exists on disk.
+        $this->assertNotNull(OrderLine::find($lineB->id));
+    }
+
+    public function test_kitchen_bump_refuses_cross_tenant_order_id(): void
+    {
+        // Move the seeded order to SentToKitchen so the bump precondition
+        // would otherwise be satisfied (proves the deny is by tenant scope,
+        // not by the canBeBumped guard).
+        [$orderB] = $this->seedTenantBOpenOrderWithLine();
+        $orderB->update([
+            'status' => OrderStatus::SentToKitchen,
+            'sent_at' => now(),
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/kitchen/orders/{$orderB->id}/bump");
+
+        $this->assertSame(404, $response->status());
+
+        $orderB->refresh();
+        $this->assertSame(OrderStatus::SentToKitchen, $orderB->status);
+        $this->assertNull($orderB->ready_at);
+    }
+
+    /**
+     * Structural-SQL-log invariant: the route-anchored Order locked-row
+     * SELECT MUST carry tenant_id + company_id literals (post-fix). Pre-fix:
+     * bare `where "pos_orders"."id" = ?` only.
+     */
+    public function test_cancel_order_lookup_includes_tenant_and_company_predicates(): void
+    {
+        // Seed a tenant-A open order so the same-tenant control reaches the
+        // service-tier locked SELECT.
+        $shiftA = Shift::create([
+            'terminal_id' => $this->terminalA->id,
+            'cashier_id' => $this->userA->id,
+            'shift_number' => 'SHIFT-A-'.Str::random(4),
+            'opened_at' => now()->subHour(),
+            'opening_cash' => '50.00',
+            'status' => ShiftStatus::Open,
+        ]);
+        /** @var Order $orderA */
+        $orderA = Order::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'location_id' => $this->locationA->id,
+            'terminal_id' => $this->terminalA->id,
+            'shift_id' => $shiftA->id,
+            'order_number' => '#A001',
+            'status' => OrderStatus::Open,
+            'cashier_id' => $this->userA->id,
+            'cashier_name' => 'A Cashier',
+            'subtotal' => '0.0000',
+            'tax_amount' => '0.0000',
+            'discount_amount' => '0.0000',
+            'total' => '0.0000',
+            'currency' => 'EUR',
+            'opened_at' => now(),
+        ]);
+
+        DB::enableQueryLog();
+        $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/pos/orders/{$orderA->id}/cancel", ['reason' => 'unit-test']);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // The locked-row SELECT against pos_orders must carry tenant_id +
+        // company_id literals. Pre-fix: bare where("id" = ?) only.
+        $orderSelects = collect($queries)->filter(
+            fn (array $q): bool => str_contains($q['query'], 'pos_orders')
+                && str_contains($q['query'], 'select')
+                && ! str_contains($q['query'], 'count(')
+        )->values();
+
+        $this->assertNotEmpty(
+            $orderSelects,
+            'Expected at least one SELECT against pos_orders during cancel. Queries: '.
+                collect($queries)->pluck('query')->implode(' || '),
+        );
+        $first = $orderSelects->first();
+        $this->assertNotNull($first);
+        $sql = $first['query'];
+        $this->assertStringContainsString(
+            'tenant_id',
+            $sql,
+            'pos_orders locked-row SELECT must scope by tenant_id. Query: '.$sql,
+        );
+        $this->assertStringContainsString(
+            'company_id',
+            $sql,
+            'pos_orders locked-row SELECT must scope by company_id. Query: '.$sql,
+        );
     }
 
     public function test_setup_creates_per_tenant_resources_correctly(): void

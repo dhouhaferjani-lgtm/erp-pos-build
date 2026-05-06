@@ -16,6 +16,7 @@ use App\Modules\POS\Presentation\Requests\CreateOrderRequest;
 use App\Modules\POS\Presentation\Requests\ModifyOrderLineRequest;
 use App\Modules\POS\Presentation\Resources\OrderLineResource;
 use App\Modules\POS\Presentation\Resources\OrderResource;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -132,6 +133,11 @@ final class OrderController extends Controller
             return response()->json([
                 'data' => new OrderResource($order),
             ], 201);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -165,9 +171,15 @@ final class OrderController extends Controller
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
 
-            // Reload the order to return updated totals
+            // Reload the order to return updated totals.
+            // Round-4 — anchor on authenticated company so the response
+            // resource cannot echo a foreign tenant's order even if the
+            // service-tier scope had been bypassed.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::with('lines')->findOrFail($id);
+            $order = Order::where('company_id', $companyId)
+                ->with('lines')
+                ->findOrFail($id);
 
             return response()->json([
                 'data' => [
@@ -175,6 +187,11 @@ final class OrderController extends Controller
                     'order' => new OrderResource($order),
                 ],
             ], 201);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -213,8 +230,13 @@ final class OrderController extends Controller
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
 
+            // Round-4 — scope the post-mutation reload by authenticated
+            // company so the response resource cannot echo a foreign order.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::with('lines')->findOrFail($id);
+            $order = Order::where('company_id', $companyId)
+                ->with('lines')
+                ->findOrFail($id);
 
             return response()->json([
                 'data' => [
@@ -222,6 +244,11 @@ final class OrderController extends Controller
                     'order' => new OrderResource($order),
                 ],
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -247,12 +274,22 @@ final class OrderController extends Controller
                 lineId: $lineId,
             );
 
+            // Round-4 — scope the post-mutation reload by authenticated
+            // company.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::with('lines')->findOrFail($id);
+            $order = Order::where('company_id', $companyId)
+                ->with('lines')
+                ->findOrFail($id);
 
             return response()->json([
                 'data' => new OrderResource($order),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -285,6 +322,11 @@ final class OrderController extends Controller
             return response()->json([
                 'data' => new OrderResource($order),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -310,6 +352,11 @@ final class OrderController extends Controller
             return response()->json([
                 'data' => new OrderResource($order),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [
@@ -347,6 +394,11 @@ final class OrderController extends Controller
             return response()->json([
                 'data' => new OrderResource($order),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [

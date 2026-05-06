@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\Enums\OrderStatus;
 use App\Modules\POS\Domain\Order;
 use App\Modules\POS\Presentation\Requests\UpdateLineStatusRequest;
 use App\Modules\POS\Presentation\Resources\OrderResource;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
@@ -56,8 +57,13 @@ final class KitchenDisplayController
 
             $line = $this->orderService->updateLineStatus($orderId, $lineId, $newStatus);
 
+            // Round-4 — scope the post-mutation reload by authenticated
+            // company so the response cannot echo a foreign order.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::with(['lines', 'table.floor'])->findOrFail($orderId);
+            $order = Order::where('company_id', $companyId)
+                ->with(['lines', 'table.floor'])
+                ->findOrFail($orderId);
 
             return response()->json([
                 'data' => [
@@ -69,6 +75,10 @@ final class KitchenDisplayController
                     'order' => (new OrderResource($order))->resolve(),
                 ],
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -83,12 +93,21 @@ final class KitchenDisplayController
         try {
             $order = $this->orderService->bumpOrder($orderId);
 
+            // Round-4 — scope the post-mutation reload by authenticated
+            // company.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $freshOrder */
-            $freshOrder = Order::with(['lines', 'table.floor'])->findOrFail($order->id);
+            $freshOrder = Order::where('company_id', $companyId)
+                ->with(['lines', 'table.floor'])
+                ->findOrFail($order->id);
 
             return response()->json([
                 'data' => (new OrderResource($freshOrder))->resolve(),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -103,12 +122,21 @@ final class KitchenDisplayController
         try {
             $order = $this->orderService->markOrderServed($orderId);
 
+            // Round-4 — scope the post-mutation reload by authenticated
+            // company.
+            $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $freshOrder */
-            $freshOrder = Order::with(['lines', 'table.floor'])->findOrFail($order->id);
+            $freshOrder = Order::where('company_id', $companyId)
+                ->with(['lines', 'table.floor'])
+                ->findOrFail($order->id);
 
             return response()->json([
                 'data' => (new OrderResource($freshOrder))->resolve(),
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-4 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler.
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
