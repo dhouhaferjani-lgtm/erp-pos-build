@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+  yaml_sha256: 1e639bb3fe7e8e77161fe80a2657467141ca66053b5d43260ab05657690aeaa7
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -495,9 +495,9 @@ clusters:
     id: api.console-commands
     display_name: 'Console commands'
     surface: api
-    owner: null
+    owner: claude
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -34323,9 +34323,9 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-06T10:47:00Z'
     review:
       reviewer: null
       verdict: null
@@ -34352,6 +34352,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added by api.console-commands cluster — cat-(a-singleshot) classification per docs/superpowers/audits/2026-05-06-api-console-commands-triage.md'
+      -
+        at: '2026-05-06T10:47:00Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        new_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        target_ids:
+          - api.console-commands.001
+        from_status: pending
+        to_status: claimed
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-06 kickoff: Claude implements (TenantScopedCommand base + arch test design), Codex performs adversarial review.'
+      -
+        at: '2026-05-06T10:47:05Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        new_yaml_sha256: 1e639bb3fe7e8e77161fe80a2657467141ca66053b5d43260ab05657690aeaa7
+        target_ids:
+          - api.console-commands.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.console-commands.002
     stable_key: 'manual:api.console-commands:scheduling-appointment-reminders'
@@ -34369,9 +34401,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-06T10:47:00Z'
     review:
       reviewer: null
       verdict: null
@@ -34398,6 +34430,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added by api.console-commands cluster — cat-(a-per-tenant-iter) flipped from cat-(b) after Task 1 dispatched-job inspection; per kickoff Task 1 verdict.'
+      -
+        at: '2026-05-06T10:47:00Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        new_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        target_ids:
+          - api.console-commands.002
+        from_status: pending
+        to_status: claimed
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-06 kickoff: Claude implements (TenantScopedCommand base + arch test design), Codex performs adversarial review.'
+      -
+        at: '2026-05-06T10:47:05Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        new_yaml_sha256: 1e639bb3fe7e8e77161fe80a2657467141ca66053b5d43260ab05657690aeaa7
+        target_ids:
+          - api.console-commands.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
   -
     id: api.console-commands.003
     stable_key: 'manual:api.console-commands:workshop-check-expiring-certifications'
@@ -34415,9 +34479,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-06T10:47:00Z'
     review:
       reviewer: null
       verdict: null
@@ -34444,6 +34508,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added by api.console-commands cluster — cat-(a-per-tenant-iter) flipped from cat-(b) after Task 1 repository-contract inspection; per kickoff Task 1 verdict.'
+      -
+        at: '2026-05-06T10:47:00Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3ebc0e68cee91908fe13713150596083b02b7cd1b6963a8eba5fe4ca03fcd223
+        new_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        target_ids:
+          - api.console-commands.003
+        from_status: pending
+        to_status: claimed
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-06 kickoff: Claude implements (TenantScopedCommand base + arch test design), Codex performs adversarial review.'
+      -
+        at: '2026-05-06T10:47:05Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9bc8cca8f34925fc3d0f2661862da726d9ed14154dda10530b8038d9f9fff55d
+        new_yaml_sha256: 1e639bb3fe7e8e77161fe80a2657467141ca66053b5d43260ab05657690aeaa7
+        target_ids:
+          - api.console-commands.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 694eb6052caf0e0ee3e1da1ed5f404d879a3f34c
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29
