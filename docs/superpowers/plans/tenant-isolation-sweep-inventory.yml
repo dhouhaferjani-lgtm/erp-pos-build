@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-06T06:22:03Z'
+  generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+  yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -19959,7 +19959,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -20037,6 +20037,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.020
+        from_status: under_review
+        to_status: under_review
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.021
     stable_key: 'sha256:ca8a2b86f695c2f5159bf71c1599ad5f042e945bd07916186b4ae976e7d263c4'
@@ -20053,7 +20069,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: under_review
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
@@ -20131,6 +20147,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.021
+        from_status: under_review
+        to_status: under_review
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.022
     stable_key: 'sha256:a059ef5c27fc6889077ef6f5ad8a6adbcfef861b51126f93a7bb85405ea9d2b6'
@@ -33895,6 +33927,382 @@ callsites:
         to_status: under_review
         commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
         test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_reject_enrichment_result_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.046
+    stable_key: 'manual:api.pos-stabilization:order-management-service-route-order-lookups-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 190
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::addLine + ::modifyLine + ::removeLine + ::sendToKitchen + ::closeOrder + ::cancelOrder + ::updateLineStatus + ::bumpOrder + ::markOrderServed'
+    pattern_type: service_method_unscoped_locked_row_select
+    resource: pos_orders
+    expected_scope: tenant_and_company
+    expected_fix: 'Pre-fix: 9 OrderManagementService methods reachable from OrderController + KitchenDisplayController each ran Order::lockForUpdate()->[with(...)]->findOrFail($routeOrderId) with no tenant_id/company_id predicates. A tenant-A POS operator who knew a tenant-B open/kitchen order UUID could mutate that foreign order (cancel, send-to-kitchen, close-to-receipt, bump, modify lines, markServed) and read back the foreign resource. Round-4: anchor every locked-row SELECT on authenticated CompanyContext tenant + company predicates (resolved via the already-injected CompanyContext, new private tenantAndCompany() helper). Cross-tenant ids surface as ModelNotFoundException → 404 with no mutation.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:28:31Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: de7078d0
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_cancel_order_refuses_cross_tenant_order_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.046
+        from_status: null
+        to_status: pending
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:28:31Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        new_yaml_sha256: ba1499d851a8afb0fd26f29fb03ab1da1bdb33ab97971664777ceb4b24d60167
+        target_ids:
+          - api.pos-stabilization.046
+        from_status: pending
+        to_status: claimed
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-06T06:28:44Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 0dc16252e951815887ea8f1985359a3272f504df2140820a18b4efff0bdeb9f6
+        new_yaml_sha256: 1198fa046f5ec02d5210ecbf2031228fd5b65c65ba4d3a395b6697cb6de17aac
+        target_ids:
+          - api.pos-stabilization.046
+        from_status: claimed
+        to_status: in_progress
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:28:56Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cfe9d9cd14359c303e34a4a9a5157a6b847361ec307eaf9d69a359a337ba4258
+        new_yaml_sha256: 29c7aade4fc2a9fbccbb2c071f1eb405768328e598b7905acef3daaa9b6f632d
+        target_ids:
+          - api.pos-stabilization.046
+        from_status: in_progress
+        to_status: under_review
+        commit: de7078d0
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_cancel_order_refuses_cross_tenant_order_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.047
+    stable_key: 'manual:api.pos-stabilization:close-cancel-order-table-release-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 388
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::closeOrder + ::cancelOrder Table release'
+    pattern_type: service_method_unscoped_table_release
+    resource: pos_tables
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: closeOrder + cancelOrder ran Table::where('id', $order->table_id)->update([...]) without tenant_id/company_id predicates. A foreign $order->table_id (post-Round-3 the order is itself scoped, but defense-in-depth still matters) could mutate a foreign tenant's table. Round-4: anchor on the already-scoped $order->tenant_id + $order->company_id alongside id."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:28:32Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: de7078d0
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_close_order_refuses_cross_tenant_order_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.047
+        from_status: null
+        to_status: pending
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:28:32Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ba1499d851a8afb0fd26f29fb03ab1da1bdb33ab97971664777ceb4b24d60167
+        new_yaml_sha256: 24fe6f1eba3897171ff327572449d3f672b6a67c4f96641e2cf34d0d7c74cd38
+        target_ids:
+          - api.pos-stabilization.047
+        from_status: pending
+        to_status: claimed
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-06T06:28:45Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1198fa046f5ec02d5210ecbf2031228fd5b65c65ba4d3a395b6697cb6de17aac
+        new_yaml_sha256: 370ef6f858f5eff2df69fb4e2be577ab95e57bd940adf41898e07edb90c92241
+        target_ids:
+          - api.pos-stabilization.047
+        from_status: claimed
+        to_status: in_progress
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:28:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 29c7aade4fc2a9fbccbb2c071f1eb405768328e598b7905acef3daaa9b6f632d
+        new_yaml_sha256: 677a1c440955412cacff53ff55effe0e48de879b175eec0b6270c3482ed1d832
+        target_ids:
+          - api.pos-stabilization.047
+        from_status: in_progress
+        to_status: under_review
+        commit: de7078d0
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_close_order_refuses_cross_tenant_order_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.048
+    stable_key: 'manual:api.pos-stabilization:order-controller-reload-reads-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Presentation/Controllers/OrderController.php
+    line: 170
+    symbol: 'App\Modules\POS\Presentation\Controllers\OrderController::addLine + ::modifyLine + ::removeLine reload'
+    pattern_type: controller_reload_unscoped
+    resource: pos_orders
+    expected_scope: company_only
+    expected_fix: "Pre-fix: OrderController.php:170, 217, 251 each ran Order::with('lines')->findOrFail($id) without company predicate after the (post-Round-4 scoped) service mutation. Round-4: scope reload by authenticated companyContext->requireCompanyId() so the response resource cannot echo a foreign order even if the service-tier guard had been bypassed. Also added catch (ModelNotFoundException) to bubble cross-tenant misses to Laravel's default 404 handler instead of being swallowed by the broad RuntimeException catch as 422."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:28:33Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: de7078d0
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_remove_line_refuses_cross_tenant_order_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.048
+        from_status: null
+        to_status: pending
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:28:34Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 24fe6f1eba3897171ff327572449d3f672b6a67c4f96641e2cf34d0d7c74cd38
+        new_yaml_sha256: 0602875ab304582cf7ca2ea68d54bf341668687676cc40d656a43a0355197c91
+        target_ids:
+          - api.pos-stabilization.048
+        from_status: pending
+        to_status: claimed
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-06T06:28:46Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 370ef6f858f5eff2df69fb4e2be577ab95e57bd940adf41898e07edb90c92241
+        new_yaml_sha256: 57bad9664d7bc2fb60f036436902e37227c17f5082ea7089b7ea5e586f3dc452
+        target_ids:
+          - api.pos-stabilization.048
+        from_status: claimed
+        to_status: in_progress
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:28:59Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 677a1c440955412cacff53ff55effe0e48de879b175eec0b6270c3482ed1d832
+        new_yaml_sha256: f9dde844be6902289f9c0ca1c7187ef48aa68191809d277999a3466c2fbe7dbf
+        target_ids:
+          - api.pos-stabilization.048
+        from_status: in_progress
+        to_status: under_review
+        commit: de7078d0
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_remove_line_refuses_cross_tenant_order_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+  -
+    id: api.pos-stabilization.049
+    stable_key: 'manual:api.pos-stabilization:kitchen-display-controller-reload-reads-unscoped'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: manual
+    file: apps/api/app/Modules/POS/Presentation/Controllers/KitchenDisplayController.php
+    line: 60
+    symbol: 'App\Modules\POS\Presentation\Controllers\KitchenDisplayController::updateLineStatus + ::bump + ::served reload'
+    pattern_type: controller_reload_unscoped
+    resource: pos_orders
+    expected_scope: company_only
+    expected_fix: "Pre-fix: KitchenDisplayController.php:60, 87, 107 each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) without company predicate. Round-4: same scoped-reload pattern as OrderController + ModelNotFoundException catch for clean 404."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-06T06:28:34Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: de7078d0
+    regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_kitchen_bump_refuses_cross_tenant_order_id'
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-06T06:28:15Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 4a51ca18937b7c665cb41c1f1e53ac4581f0dafafe3b34d7481e2bd4d273c362
+        new_yaml_sha256: 7bcd9603b1c4dbb23993663938a41ee9a55c0416c6680a1a14cc776101055355
+        target_ids:
+          - api.pos-stabilization.049
+        from_status: null
+        to_status: pending
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-06T06:28:35Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0602875ab304582cf7ca2ea68d54bf341668687676cc40d656a43a0355197c91
+        new_yaml_sha256: 0dc16252e951815887ea8f1985359a3272f504df2140820a18b4efff0bdeb9f6
+        target_ids:
+          - api.pos-stabilization.049
+        from_status: pending
+        to_status: claimed
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-06T06:28:47Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 57bad9664d7bc2fb60f036436902e37227c17f5082ea7089b7ea5e586f3dc452
+        new_yaml_sha256: cfe9d9cd14359c303e34a4a9a5157a6b847361ec307eaf9d69a359a337ba4258
+        target_ids:
+          - api.pos-stabilization.049
+        from_status: claimed
+        to_status: in_progress
+        commit: de7078d0cd544908ac310b596c4e8daa9cc8f7e3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-06T06:29:00Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f9dde844be6902289f9c0ca1c7187ef48aa68191809d277999a3466c2fbe7dbf
+        new_yaml_sha256: 349e86510cf0f5e99f3800b696945374f449c6829063c3477249c4e083f73703
+        target_ids:
+          - api.pos-stabilization.049
+        from_status: in_progress
+        to_status: under_review
+        commit: de7078d0
+        test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_kitchen_bump_refuses_cross_tenant_order_id'
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'

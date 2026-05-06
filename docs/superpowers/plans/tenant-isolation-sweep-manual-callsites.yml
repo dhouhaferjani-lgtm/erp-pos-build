@@ -655,3 +655,62 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Pre-fix: same StaticCall bare-where shape before the reject() state transition (PendingReview → Rejected). Round-2 fix mirrors accept(); cross-tenant returns 404 and the foreign row stays in PendingReview. Pinned by ::test_reject_enrichment_result_rejects_cross_tenant_id."
+
+  # api.pos-stabilization round-4 Codex round-3 Findings (verdict at
+  # docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md).
+  # Single Codex round-3 finding closed in the round-4 remediation: every
+  # OrderManagementService route-anchored Order lookup (and the closeOrder/
+  # cancelOrder Table release + the OrderController/KitchenDisplayController
+  # reload reads) was unscoped, allowing tenant-A operators to mutate tenant-B
+  # orders if they knew the order UUID.
+  - cluster_id: api.pos-stabilization
+    slug: order-management-service-route-order-lookups-unscoped
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 190
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::addLine + ::modifyLine + ::removeLine + ::sendToKitchen + ::closeOrder + ::cancelOrder + ::updateLineStatus + ::bumpOrder + ::markOrderServed'
+    pattern_type: service_method_unscoped_locked_row_select
+    resource: pos_orders
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: 9 OrderManagementService methods reachable from OrderController + KitchenDisplayController each ran Order::lockForUpdate()->[with(...)]->findOrFail($routeOrderId) with no tenant_id/company_id predicates. A tenant-A POS operator who knew a tenant-B open/kitchen order UUID could mutate that foreign order (cancel, send-to-kitchen, close-to-receipt, bump, modify lines, markServed) and read back the foreign resource. Round-4: anchor every locked-row SELECT on authenticated CompanyContext tenant + company predicates (resolved via the already-injected CompanyContext, new private tenantAndCompany() helper). Cross-tenant ids surface as ModelNotFoundException → 404 with no mutation."
+
+  - cluster_id: api.pos-stabilization
+    slug: close-cancel-order-table-release-unscoped
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 388
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::closeOrder + ::cancelOrder Table release'
+    pattern_type: service_method_unscoped_table_release
+    resource: pos_tables
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: closeOrder + cancelOrder ran Table::where('id', $order->table_id)->update([...]) without tenant_id/company_id predicates. A foreign $order->table_id (post-Round-3 the order is itself scoped, but defense-in-depth still matters) could mutate a foreign tenant's table. Round-4: anchor on the already-scoped $order->tenant_id + $order->company_id alongside id."
+
+  - cluster_id: api.pos-stabilization
+    slug: order-controller-reload-reads-unscoped
+    file: apps/api/app/Modules/POS/Presentation/Controllers/OrderController.php
+    line: 170
+    symbol: 'App\Modules\POS\Presentation\Controllers\OrderController::addLine + ::modifyLine + ::removeLine reload'
+    pattern_type: controller_reload_unscoped
+    resource: pos_orders
+    expected_scope: company_only
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: OrderController.php:170, 217, 251 each ran Order::with('lines')->findOrFail($id) without company predicate after the (post-Round-4 scoped) service mutation. Round-4: scope reload by authenticated companyContext->requireCompanyId() so the response resource cannot echo a foreign order even if the service-tier guard had been bypassed. Also added catch (ModelNotFoundException) to bubble cross-tenant misses to Laravel's default 404 handler instead of being swallowed by the broad RuntimeException catch as 422."
+
+  - cluster_id: api.pos-stabilization
+    slug: kitchen-display-controller-reload-reads-unscoped
+    file: apps/api/app/Modules/POS/Presentation/Controllers/KitchenDisplayController.php
+    line: 60
+    symbol: 'App\Modules\POS\Presentation\Controllers\KitchenDisplayController::updateLineStatus + ::bump + ::served reload'
+    pattern_type: controller_reload_unscoped
+    resource: pos_orders
+    expected_scope: company_only
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: KitchenDisplayController.php:60, 87, 107 each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) without company predicate. Round-4: same scoped-reload pattern as OrderController + ModelNotFoundException catch for clean 404."
