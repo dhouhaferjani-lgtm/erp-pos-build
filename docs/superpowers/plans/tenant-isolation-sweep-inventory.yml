@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-07T10:54:14Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 371d8a35f96cdee4317d9d2111316e372023df91dd8ff73168cce5fe4c31cbff
+  yaml_sha256: ab6c07a328f931f9a082041c8c0ec7da29592d78bb35e9b92633835a4b75edf9
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -35192,7 +35192,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-07T10:55:04Z'
     review:
@@ -35201,8 +35201,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b059bb2c
+    regression_test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_import_job_handle_only_reads_tenant_scoped_import_jobs'
     blocked_reason: null
     history:
       -
@@ -35253,6 +35253,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T11:45:58Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 371d8a35f96cdee4317d9d2111316e372023df91dd8ff73168cce5fe4c31cbff
+        new_yaml_sha256: c27c98a5b0964cc0dea46f11b847de069d1367e2d8307a6b5a7a18de71766dcd
+        target_ids:
+          - api.scheduled-jobs.001
+        from_status: in_progress
+        to_status: under_review
+        commit: b059bb2c
+        test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_import_job_handle_only_reads_tenant_scoped_import_jobs'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.scheduled-jobs.002
     stable_key: 'manual:api.scheduled-jobs:import-process-product-image-import'
@@ -35270,7 +35286,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-07T10:55:04Z'
     review:
@@ -35279,8 +35295,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b059bb2c
+    regression_test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_product_image_import_handle_only_reads_tenant_scoped_import_jobs'
     blocked_reason: null
     history:
       -
@@ -35331,6 +35347,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T11:45:59Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c27c98a5b0964cc0dea46f11b847de069d1367e2d8307a6b5a7a18de71766dcd
+        new_yaml_sha256: ab6c07a328f931f9a082041c8c0ec7da29592d78bb35e9b92633835a4b75edf9
+        target_ids:
+          - api.scheduled-jobs.002
+        from_status: in_progress
+        to_status: under_review
+        commit: b059bb2c
+        test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_product_image_import_handle_only_reads_tenant_scoped_import_jobs'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
