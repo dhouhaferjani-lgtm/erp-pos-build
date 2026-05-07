@@ -174,8 +174,12 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
      */
     public function test_schedule_appointment_reminders_query_is_tenant_scoped(): void
     {
-        // Seed one upcoming appointment in each tenant so the scheduler has
-        // rows to query (otherwise the SELECT may not appear at all).
+        // Seed one upcoming appointment in each tenant. Schedule them >24h
+        // out (but within the default 48h horizon) so AppointmentReminder
+        // Service::scheduleFor() actually exercises its existing-reminder
+        // lookup — otherwise the service returns early via its 24h-window
+        // guard and the unscoped reminder read is never reached (Codex
+        // round-1 finding 2).
         $this->seedUpcomingAppointment($this->tenantA, $this->companyA);
         $this->seedUpcomingAppointment($this->tenantB, $this->companyB);
 
@@ -197,6 +201,12 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
                 && stripos($q['query'], 'select') === 0,
         ));
 
+        $reminderSelects = array_values(array_filter(
+            $log,
+            static fn (array $q): bool => str_contains($q['query'], 'scheduling_appointment_reminders')
+                && stripos($q['query'], 'select') === 0,
+        ));
+
         DB::disableQueryLog();
 
         $this->assertNotEmpty(
@@ -209,6 +219,22 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
                 'tenant_id',
                 $q['query'],
                 'Every scheduling_appointments select must filter by tenant_id after per-tenant iteration refactor. Query: '.$q['query'],
+            );
+        }
+
+        // Codex round-1 finding 1 + 2: the scheduler reaches AppointmentReminder
+        // Service::scheduleFor() which previously did an unscoped existing-
+        // reminder lookup. After the fix, that lookup carries tenant_id too.
+        $this->assertNotEmpty(
+            $reminderSelects,
+            'Expected at least one SELECT against scheduling_appointment_reminders during the scheduler run (otherwise the test does not exercise the existing-reminder lookup branch).',
+        );
+
+        foreach ($reminderSelects as $q) {
+            $this->assertStringContainsString(
+                'tenant_id',
+                $q['query'],
+                'Every scheduling_appointment_reminders select must filter by tenant_id after the AppointmentReminderService fix. Query: '.$q['query'],
             );
         }
     }
@@ -398,7 +424,10 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
             ]);
         }
 
-        $start = Carbon::now()->addHours(20); // inside the default 48h horizon
+        // Pick a start >24h out (so AppointmentReminderService::scheduleFor()'s
+        // 24h-before-start guard does NOT short-circuit) AND <48h out (so
+        // it falls within the scheduler's default horizon).
+        $start = Carbon::now()->addHours(36);
         $end = $start->copy()->addHour();
 
         $appointment = new Appointment;

@@ -71,6 +71,7 @@ final class AppointmentReminderService
         DB::transaction(function () use ($appointment, $channels, $scheduledForImmutable, &$rows): void {
             foreach ($channels as $channel) {
                 $existing = AppointmentReminder::query()
+                    ->where('tenant_id', $appointment->tenant_id)
                     ->where('appointment_id', $appointment->id)
                     ->where('channel', $channel->value)
                     ->where('scheduled_for', $scheduledForImmutable)
