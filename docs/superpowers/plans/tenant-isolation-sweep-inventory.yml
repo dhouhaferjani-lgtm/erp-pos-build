@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 6f773747a60da3390cc2e3a8cbf7197e1b21110821ece5230d1c4fb5be3c3bc2
+  yaml_sha256: fd58b44669cb44c0505b31255aba53c046aabeda78e4e321cff6c1d4e0acccc9
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -34355,7 +34355,7 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
@@ -34364,8 +34364,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 0f51492f
+    regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_export_jet_rejects_cross_tenant_company'
     blocked_reason: null
     history:
       -
@@ -34416,6 +34416,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:15:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6f773747a60da3390cc2e3a8cbf7197e1b21110821ece5230d1c4fb5be3c3bc2
+        new_yaml_sha256: e163578a7ffc775695b56fe2255d4925500bcbcf9c14a1504be5bbb85193b39f
+        target_ids:
+          - api.console-commands.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 0f51492f
+        test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_export_jet_rejects_cross_tenant_company'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.console-commands.002
     stable_key: 'manual:api.console-commands:scheduling-appointment-reminders'
@@ -34433,7 +34449,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
@@ -34442,8 +34458,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 0f51492f
+    regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_dispatch_appointment_reminder_job_rebinds_tenant_scope'
     blocked_reason: null
     history:
       -
@@ -34494,6 +34510,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:15:14Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e163578a7ffc775695b56fe2255d4925500bcbcf9c14a1504be5bbb85193b39f
+        new_yaml_sha256: f4b31c7cd4ebd0fad9e1f956f81f9a46c5d2d7e90f45598dbec24c9ca8026f5e
+        target_ids:
+          - api.console-commands.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 0f51492f
+        test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_dispatch_appointment_reminder_job_rebinds_tenant_scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.console-commands.003
     stable_key: 'manual:api.console-commands:workshop-check-expiring-certifications'
@@ -34511,7 +34543,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
@@ -34520,8 +34552,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 0f51492f
+    regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_check_expiring_certifications_query_is_tenant_scoped'
     blocked_reason: null
     history:
       -
@@ -34572,6 +34604,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:15:16Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f4b31c7cd4ebd0fad9e1f956f81f9a46c5d2d7e90f45598dbec24c9ca8026f5e
+        new_yaml_sha256: fd58b44669cb44c0505b31255aba53c046aabeda78e4e321cff6c1d4e0acccc9
+        target_ids:
+          - api.console-commands.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 0f51492f
+        test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_check_expiring_certifications_query_is_tenant_scoped'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.050
     stable_key: 'manual:api.pos-stabilization:held-order-expire-orders-fleet-wide'
