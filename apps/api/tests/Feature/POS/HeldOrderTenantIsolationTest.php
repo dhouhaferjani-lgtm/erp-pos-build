@@ -148,6 +148,30 @@ final class HeldOrderTenantIsolationTest extends TestCase
     // =========================================================================
 
     /**
+     * GET /api/v1/pos/held-orders?terminal_id=… must filter the SELECT by
+     * BOTH tenant_id AND company_id. Round-5 round-2 — codex Finding 1:
+     * the listHeldOrders service-tier query was company_id-only. With a
+     * misconfigured row (foreign tenant_id, local company_id) the list
+     * endpoint would return that row pre-fix.
+     *
+     * Pre-fix: misconfigured row appears in list → count >= 1. RED.
+     * Post-fix: tenant_id predicate filters it out → count == 0. GREEN.
+     *
+     * Inventory: api.pos-stabilization.052 (held-order-recall-discard scope
+     * expanded informally to cover listHeldOrders defense-in-depth).
+     */
+    public function test_list_does_not_surface_cross_tenant_held_order(): void
+    {
+        $foreignId = $this->seedMisconfiguredHeldOrder($this->tenantB, $this->companyA, $this->terminalA, $this->shiftA, $this->userA);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/pos/held-orders?terminal_id='.$this->terminalA->id);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissing(['id' => $foreignId]);
+    }
+
+    /**
      * GET /api/v1/pos/held-orders/{id} must filter by BOTH tenant_id AND
      * company_id. To make the test genuinely RED, seed a row with
      * tenant_id=tenantB BUT company_id=companyA (an artificial cross-tenant

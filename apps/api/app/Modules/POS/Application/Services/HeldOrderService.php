@@ -128,9 +128,11 @@ final class HeldOrderService
      */
     public function listHeldOrders(string $terminalId, ?string $shiftId = null): Collection
     {
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
-        $query = HeldOrder::where('company_id', $companyId)
+        $query = HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->forTerminal($terminalId)
             ->held()
             ->where(function ($q): void {

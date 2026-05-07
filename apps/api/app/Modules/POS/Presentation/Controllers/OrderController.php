@@ -43,9 +43,11 @@ final class OrderController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $tenantId = $this->companyContext->requireTenantId();
+        $companyId = $this->companyContext->requireCompanyId();
 
-        $query = Order::where('company_id', $companyId)
+        $query = Order::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['lines', 'terminal', 'table.floor']);
 
         if ($request->filled('terminal_id')) {

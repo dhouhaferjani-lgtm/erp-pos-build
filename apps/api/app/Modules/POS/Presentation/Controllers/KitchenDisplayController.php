@@ -29,9 +29,11 @@ final class KitchenDisplayController
     public function index(): AnonymousResourceCollection
     {
         Gate::authorize('pos.operate_terminal');
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
-        $orders = Order::where('company_id', $companyId)
+        $orders = Order::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->whereIn('status', [
                 OrderStatus::SentToKitchen,
                 OrderStatus::Ready,
