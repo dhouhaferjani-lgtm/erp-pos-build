@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a1cc2a1ce87c0f23b6d67b5e1d96b22065a673eb39ae23cd8ad5c0090e254791
+  yaml_sha256: 92bbf8720a2becd3f0774833094f0998cb9216fa1129579a0564a717bcdb569f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -34126,11 +34126,11 @@ callsites:
     scanner: manual
     file: apps/api/app/Modules/POS/Presentation/Controllers/OrderController.php
     line: 170
-    symbol: 'App\Modules\POS\Presentation\Controllers\OrderController::addLine + ::modifyLine + ::removeLine reload'
+    symbol: 'App\Modules\POS\Presentation\Controllers\OrderController::addLine + ::modifyLine + ::removeLine + ::show reload'
     pattern_type: controller_reload_unscoped
     resource: pos_orders
-    expected_scope: company_only
-    expected_fix: "Pre-fix: OrderController.php:170, 217, 251 each ran Order::with('lines')->findOrFail($id) without company predicate after the (post-Round-4 scoped) service mutation. Round-4: scope reload by authenticated companyContext->requireCompanyId() so the response resource cannot echo a foreign order even if the service-tier guard had been bypassed. Also added catch (ModelNotFoundException) to bubble cross-tenant misses to Laravel's default 404 handler instead of being swallowed by the broad RuntimeException catch as 422."
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: OrderController.php:98 (show), :180 (addLine), :237 (modifyLine), :281 (removeLine) each ran Order::with('lines')->findOrFail($id) (or company_id-only filter) without tenant_id predicate. Round-4 added company_id; round-5 adds the tenant_id predicate so the cluster invariant (BOTH tenant_id AND company_id on every route-anchored read) holds. Reload chain becomes Order::where('tenant_id', $tenantId)->where('company_id', $companyId)->with(['lines',...])->findOrFail($id). $tenantId resolved via new CompanyContext::requireTenantId() helper."
     severity: high
     fiscal_path: false
     cross_module: false
@@ -34212,6 +34212,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T09:00:14Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reclassify (one-shot)'
+        previous_yaml_sha256: a1cc2a1ce87c0f23b6d67b5e1d96b22065a673eb39ae23cd8ad5c0090e254791
+        new_yaml_sha256: 92bbf8720a2becd3f0774833094f0998cb9216fa1129579a0564a717bcdb569f
+        target_ids:
+          - api.pos-stabilization.048
+        from_status: under_review
+        to_status: under_review
+        commit: 0ac5faba8a8181dfb951d784d046fa8e3da85c84
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'round-5 classification flip: expected_scope company_only → tenant_and_company; symbol/expected_fix expanded to include show:98 (was uncovered in round-4). Cluster invariant requires BOTH predicates.'
   -
     id: api.pos-stabilization.049
     stable_key: 'manual:api.pos-stabilization:kitchen-display-controller-reload-reads-unscoped'
@@ -34223,8 +34239,8 @@ callsites:
     symbol: 'App\Modules\POS\Presentation\Controllers\KitchenDisplayController::updateLineStatus + ::bump + ::served reload'
     pattern_type: controller_reload_unscoped
     resource: pos_orders
-    expected_scope: company_only
-    expected_fix: "Pre-fix: KitchenDisplayController.php:60, 87, 107 each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) without company predicate. Round-4: same scoped-reload pattern as OrderController + ModelNotFoundException catch for clean 404."
+    expected_scope: tenant_and_company
+    expected_fix: "Pre-fix: KitchenDisplayController.php:60 (updateLineStatus), :87 (bump), :107 (served) each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) with company_id-only filter (post-round-4) and no tenant_id. Round-5 adds tenant_id predicate so the cluster invariant holds. Reload chain: Order::where('tenant_id', $tenantId)->where('company_id', $companyId)->with(['lines','table.floor'])->findOrFail($id)."
     severity: high
     fiscal_path: false
     cross_module: false
@@ -34306,6 +34322,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T09:00:14Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reclassify (one-shot)'
+        previous_yaml_sha256: a1cc2a1ce87c0f23b6d67b5e1d96b22065a673eb39ae23cd8ad5c0090e254791
+        new_yaml_sha256: 92bbf8720a2becd3f0774833094f0998cb9216fa1129579a0564a717bcdb569f
+        target_ids:
+          - api.pos-stabilization.049
+        from_status: under_review
+        to_status: under_review
+        commit: 0ac5faba8a8181dfb951d784d046fa8e3da85c84
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'round-5 classification flip: expected_scope company_only → tenant_and_company. Cluster invariant requires BOTH predicates.'
   -
     id: api.console-commands.001
     stable_key: 'manual:api.console-commands:nf525-export-jet'

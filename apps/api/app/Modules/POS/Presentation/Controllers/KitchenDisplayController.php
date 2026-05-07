@@ -57,11 +57,12 @@ final class KitchenDisplayController
 
             $line = $this->orderService->updateLineStatus($orderId, $lineId, $newStatus);
 
-            // Round-4 — scope the post-mutation reload by authenticated
-            // company so the response cannot echo a foreign order.
+            // Round-5 — anchor on BOTH tenant_id and company_id.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::where('company_id', $companyId)
+            $order = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with(['lines', 'table.floor'])
                 ->findOrFail($orderId);
 
@@ -93,11 +94,12 @@ final class KitchenDisplayController
         try {
             $order = $this->orderService->bumpOrder($orderId);
 
-            // Round-4 — scope the post-mutation reload by authenticated
-            // company.
+            // Round-5 — anchor on BOTH tenant_id and company_id.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $freshOrder */
-            $freshOrder = Order::where('company_id', $companyId)
+            $freshOrder = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with(['lines', 'table.floor'])
                 ->findOrFail($order->id);
 
@@ -122,11 +124,12 @@ final class KitchenDisplayController
         try {
             $order = $this->orderService->markOrderServed($orderId);
 
-            // Round-4 — scope the post-mutation reload by authenticated
-            // company.
+            // Round-5 — anchor on BOTH tenant_id and company_id.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $freshOrder */
-            $freshOrder = Order::where('company_id', $companyId)
+            $freshOrder = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with(['lines', 'table.floor'])
                 ->findOrFail($order->id);
 

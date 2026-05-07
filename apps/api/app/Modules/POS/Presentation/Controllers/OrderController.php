@@ -92,10 +92,12 @@ final class OrderController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $tenantId = $this->companyContext->requireTenantId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         /** @var Order $order */
-        $order = Order::where('company_id', $companyId)
+        $order = Order::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['lines', 'terminal', 'table.floor'])
             ->findOrFail($id);
 
@@ -172,12 +174,14 @@ final class OrderController extends Controller
             );
 
             // Reload the order to return updated totals.
-            // Round-4 — anchor on authenticated company so the response
-            // resource cannot echo a foreign tenant's order even if the
-            // service-tier scope had been bypassed.
+            // Round-5 — anchor on BOTH tenant_id and company_id so the
+            // response resource cannot echo a foreign tenant's order even
+            // if the service-tier scope had been bypassed.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::where('company_id', $companyId)
+            $order = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with('lines')
                 ->findOrFail($id);
 
@@ -230,11 +234,12 @@ final class OrderController extends Controller
                 specialInstructions: $validated['special_instructions'] ?? null,
             );
 
-            // Round-4 — scope the post-mutation reload by authenticated
-            // company so the response resource cannot echo a foreign order.
+            // Round-5 — anchor on BOTH tenant_id and company_id.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::where('company_id', $companyId)
+            $order = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with('lines')
                 ->findOrFail($id);
 
@@ -274,11 +279,12 @@ final class OrderController extends Controller
                 lineId: $lineId,
             );
 
-            // Round-4 — scope the post-mutation reload by authenticated
-            // company.
+            // Round-5 — anchor on BOTH tenant_id and company_id.
+            $tenantId = $this->companyContext->requireTenantId();
             $companyId = $this->companyContext->requireCompanyId();
             /** @var Order $order */
-            $order = Order::where('company_id', $companyId)
+            $order = Order::where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->with('lines')
                 ->findOrFail($id);
 

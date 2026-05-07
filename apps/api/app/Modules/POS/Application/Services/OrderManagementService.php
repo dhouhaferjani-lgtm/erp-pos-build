@@ -400,6 +400,10 @@ final class OrderManagementService
                 OrderSentToKitchen::dispatch($order->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -456,6 +460,10 @@ final class OrderManagementService
                 OrderClosed::dispatch($order->id, $receipt->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -512,6 +520,10 @@ final class OrderManagementService
                     ]);
             }
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -607,6 +619,10 @@ final class OrderManagementService
                     'status' => OrderLineStatus::Served,
                 ]);
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -659,6 +675,10 @@ final class OrderManagementService
                 OrderReady::dispatch($order->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
