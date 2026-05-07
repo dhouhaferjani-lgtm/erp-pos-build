@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-07T21:56:45Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 5ed68cc39ff75dab3e00894d59dc75bbdd253c65f0885703042557c4d0df142a
+  yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -428,7 +428,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -36229,15 +36229,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T22:32:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+      review_commit: '00360386'
     fix_commit: '00360386'
     regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
@@ -36306,6 +36306,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T22:32:56Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5ed68cc39ff75dab3e00894d59dc75bbdd253c65f0885703042557c4d0df142a
+        new_yaml_sha256: 181c634657647936568141c5117612c92ea7f554c7de9cfc679999ce09f16797
+        target_ids:
+          - api.webhooks-incoming.001
+          - api.webhooks-incoming
+        from_status: under_review
+        to_status: fixed
+        commit: fa81840ced95dcfcf80975683d17bc8d764d665f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+        review_commit: '00360386'
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.webhooks-incoming.002
     stable_key: 'manual:api.webhooks-incoming:enrichment-webhook-controller-cross-tenant-by-design'
@@ -36323,15 +36340,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T22:32:57Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+      review_commit: '00360386'
     fix_commit: '00360386'
     regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
@@ -36400,6 +36417,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T22:32:57Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 181c634657647936568141c5117612c92ea7f554c7de9cfc679999ce09f16797
+        new_yaml_sha256: ec4030a59b959b3c60081866d02581d369aec0c8ee65e61e59a6e6eec96ffec5
+        target_ids:
+          - api.webhooks-incoming.002
+          - api.webhooks-incoming
+        from_status: under_review
+        to_status: fixed
+        commit: fa81840ced95dcfcf80975683d17bc8d764d665f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+        review_commit: '00360386'
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.webhooks-incoming.003
     stable_key: 'manual:api.webhooks-incoming:purchase-hub-webhook-controller-stub-cross-tenant-by-design'
@@ -36417,15 +36451,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T22:32:58Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+      review_commit: '00360386'
     fix_commit: '00360386'
     regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
@@ -36494,6 +36528,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T22:32:58Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ec4030a59b959b3c60081866d02581d369aec0c8ee65e61e59a6e6eec96ffec5
+        new_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        target_ids:
+          - api.webhooks-incoming.003
+          - api.webhooks-incoming
+        from_status: under_review
+        to_status: fixed
+        commit: fa81840ced95dcfcf80975683d17bc8d764d665f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
+        review_commit: '00360386'
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29
