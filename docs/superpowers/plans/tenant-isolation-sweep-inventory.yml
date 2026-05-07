@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-06T06:28:15Z'
+  generated_at: '2026-05-07T10:54:14Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 5beeecbe8e2519a9b0d660146c3b258c5e1c26d3bb1d84419b9fb9b02f44f507
+  yaml_sha256: 371d8a35f96cdee4317d9d2111316e372023df91dd8ff73168cce5fe4c31cbff
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -472,9 +472,9 @@ clusters:
     id: api.scheduled-jobs
     display_name: 'Scheduled jobs'
     surface: api
-    owner: null
+    owner: claude
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -35175,6 +35175,162 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-07-api-pos-stabilization-cluster-codex-round5-rereview.md
         review_commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
         note: 'review verdict=APPROVE by codex (round-5 round-2 APPROVE; original review at docs/superpowers/reviews/2026-05-07-api-pos-stabilization-cluster-codex-round5-rereview.md)'
+  -
+    id: api.scheduled-jobs.001
+    stable_key: 'manual:api.scheduled-jobs:import-process-import-job'
+    surface: api
+    cluster_id: api.scheduled-jobs
+    scanner: manual
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessImportJob.php
+    line: 61
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessImportJob::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    expected_fix: 'Two tracks: (1) introduce App\Jobs\Concerns\BindsTenantContext trait providing protected string $tenantId + protected withTenantContext(callable $fn): mixed wrapping in Tenant::find($this->tenantId)?->run($fn) (fail-loud on null); (2) apply trait to ProcessImportJob — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:435 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts handle() with tenant-A binding cannot read or write tenant-B import_jobs / data.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-07T10:55:04Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-07T10:54:14Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5beeecbe8e2519a9b0d660146c3b258c5e1c26d3bb1d84419b9fb9b02f44f507
+        new_yaml_sha256: bd616a6917d142b63f57292eab94528bc22f0d3461256f0d9474981498a15a97
+        target_ids:
+          - api.scheduled-jobs.001
+        from_status: null
+        to_status: pending
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-07T10:55:04Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: bd616a6917d142b63f57292eab94528bc22f0d3461256f0d9474981498a15a97
+        new_yaml_sha256: 94a6587c87049db9140fb40f54ea1b6ca1de536dfc428365428a361c80f9f8dc
+        target_ids:
+          - api.scheduled-jobs.001
+        from_status: pending
+        to_status: claimed
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-07 kickoff: Claude implements (BindsTenantContext trait + 2 cat-(a) fixes + QueueJobTenantContextTest), Codex performs adversarial review.'
+      -
+        at: '2026-05-07T10:55:09Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 94a6587c87049db9140fb40f54ea1b6ca1de536dfc428365428a361c80f9f8dc
+        new_yaml_sha256: 371d8a35f96cdee4317d9d2111316e372023df91dd8ff73168cce5fe4c31cbff
+        target_ids:
+          - api.scheduled-jobs.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.scheduled-jobs.002
+    stable_key: 'manual:api.scheduled-jobs:import-process-product-image-import'
+    surface: api
+    cluster_id: api.scheduled-jobs
+    scanner: manual
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessProductImageImport.php
+    line: 53
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessProductImageImport::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    expected_fix: 'Apply BindsTenantContext trait — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:555 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts the ZIP-extraction path cannot leak across tenants.'
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-07T10:55:04Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-07T10:54:14Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5beeecbe8e2519a9b0d660146c3b258c5e1c26d3bb1d84419b9fb9b02f44f507
+        new_yaml_sha256: bd616a6917d142b63f57292eab94528bc22f0d3461256f0d9474981498a15a97
+        target_ids:
+          - api.scheduled-jobs.002
+        from_status: null
+        to_status: pending
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-07T10:55:04Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: bd616a6917d142b63f57292eab94528bc22f0d3461256f0d9474981498a15a97
+        new_yaml_sha256: 94a6587c87049db9140fb40f54ea1b6ca1de536dfc428365428a361c80f9f8dc
+        target_ids:
+          - api.scheduled-jobs.002
+        from_status: pending
+        to_status: claimed
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-07 kickoff: Claude implements (BindsTenantContext trait + 2 cat-(a) fixes + QueueJobTenantContextTest), Codex performs adversarial review.'
+      -
+        at: '2026-05-07T10:55:09Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 94a6587c87049db9140fb40f54ea1b6ca1de536dfc428365428a361c80f9f8dc
+        new_yaml_sha256: 371d8a35f96cdee4317d9d2111316e372023df91dd8ff73168cce5fe4c31cbff
+        target_ids:
+          - api.scheduled-jobs.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 9686080f1f5b8043709371efdcd7fccc26d31aaf
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29

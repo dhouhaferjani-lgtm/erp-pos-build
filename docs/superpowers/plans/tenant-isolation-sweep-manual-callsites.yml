@@ -714,3 +714,30 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Pre-fix: KitchenDisplayController.php:60, 87, 107 each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) without company predicate. Round-4: same scoped-reload pattern as OrderController + ModelNotFoundException catch for clean 404."
+
+  # api.scheduled-jobs — cat-(a) classification per docs/superpowers/audits/2026-05-07-api-scheduled-jobs-triage.md
+  - cluster_id: api.scheduled-jobs
+    slug: import-process-import-job
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessImportJob.php
+    line: 61
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessImportJob::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Two tracks: (1) introduce App\\Jobs\\Concerns\\BindsTenantContext trait providing protected string $tenantId + protected withTenantContext(callable $fn): mixed wrapping in Tenant::find($this->tenantId)?->run($fn) (fail-loud on null); (2) apply trait to ProcessImportJob — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:435 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts handle() with tenant-A binding cannot read or write tenant-B import_jobs / data."
+
+  - cluster_id: api.scheduled-jobs
+    slug: import-process-product-image-import
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessProductImageImport.php
+    line: 53
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessProductImageImport::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Apply BindsTenantContext trait — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:555 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts the ZIP-extraction path cannot leak across tenants."
