@@ -5,9 +5,18 @@ Branch tip reviewed: 99b6f5aa
 Reviewer: codex (round-2 cross-agent review of Claude's follow-up implementation)
 
 Verdict: APPROVE
-Commit reviewed: 99b6f5aa
+Commit reviewed: 0f51492f
 Round-1 review: docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-review.md
 Round-1 commit reviewed: ff7ebbc5
+Round-2 follow-up commit (round-1 BLOCKER remediation): 99b6f5aa
+
+Per the multi-batch fix-commit convention from the kickoff: the
+`Commit reviewed:` line above pins the most-common fix_commit across the
+cluster's callsites (api.console-commands.001/002/003 all carry
+fix_commit=0f51492f from initial submission). The round-2 follow-up
+commit `99b6f5aa` extends the original fix on api.console-commands.002
+(AppointmentReminderService::scheduleFor() tenant_id predicate + test
+strengthening). Both commits combined constitute the approved fix surface.
 
 ## Verdict
 APPROVE. The two round-1 BLOCKER findings are closed at 99b6f5aa, and no new findings emerged from the round-2 hostile audit of the three cat-(a) console command paths.
