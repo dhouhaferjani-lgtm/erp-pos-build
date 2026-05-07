@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 92bbf8720a2becd3f0774833094f0998cb9216fa1129579a0564a717bcdb569f
+  yaml_sha256: 6f773747a60da3390cc2e3a8cbf7197e1b21110821ece5230d1c4fb5be3c3bc2
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -34589,17 +34589,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-07T09:08:12Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+    regression_test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_expire_orders_does_not_flip_other_tenants_held_orders'
     blocked_reason: null
     history:
       -
@@ -34618,6 +34618,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added for round-5 — accidentally cross-tenant UPDATE on every-15-min cron, surfaced by api.console-commands triage; per docs/superpowers/audits/2026-05-06-catalog-pos-cluster-residuals.md "Round-5+ additions" section.'
+      -
+        at: '2026-05-07T09:08:13Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 92bbf8720a2becd3f0774833094f0998cb9216fa1129579a0564a717bcdb569f
+        new_yaml_sha256: 827e519e433c0f107978eacdd18dd56bd7f802213c16dbb136e6d34a7a48ab7e
+        target_ids:
+          - api.pos-stabilization.050
+        from_status: pending
+        to_status: claimed
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-07T09:08:31Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9db0865fd9463bc614148746bd7d006af0dfdc031ba778a1fcf0d16c6acc70bc
+        new_yaml_sha256: adcb81714ce48ed9d20f2ee613d920e83a53d9976c4ea6c95631b65a77a6e164
+        target_ids:
+          - api.pos-stabilization.050
+        from_status: claimed
+        to_status: in_progress
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:08:52Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2ca3149ac983a7b4c9db25afc3d4e752882956523115b13905878d8e4a147afc
+        new_yaml_sha256: 86e066aea9444688d8548450b34335fd24cb732c5820b5ecdaabe7d6f64bb070
+        target_ids:
+          - api.pos-stabilization.050
+        from_status: in_progress
+        to_status: under_review
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_expire_orders_does_not_flip_other_tenants_held_orders'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.051
     stable_key: 'manual:api.pos-stabilization:held-order-controller-show'
@@ -34635,17 +34683,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-07T09:08:16Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+    regression_test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_show_rejects_cross_tenant_held_order_id'
     blocked_reason: null
     history:
       -
@@ -34664,6 +34712,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added for round-5 — defense-in-depth missing tenant_id predicate on company-scoped controller-tier reload.'
+      -
+        at: '2026-05-07T09:08:16Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 827e519e433c0f107978eacdd18dd56bd7f802213c16dbb136e6d34a7a48ab7e
+        new_yaml_sha256: 860ea55f53957e16877ad7f99af7ef94909ef5ce0d4c28c61b55e3e0a3cc89fc
+        target_ids:
+          - api.pos-stabilization.051
+        from_status: pending
+        to_status: claimed
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-07T09:08:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: adcb81714ce48ed9d20f2ee613d920e83a53d9976c4ea6c95631b65a77a6e164
+        new_yaml_sha256: 62d752f878dd78e01cd37e83ac262d80b50f48a5883f5f879b6c48cd5a338b11
+        target_ids:
+          - api.pos-stabilization.051
+        from_status: claimed
+        to_status: in_progress
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:08:55Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 86e066aea9444688d8548450b34335fd24cb732c5820b5ecdaabe7d6f64bb070
+        new_yaml_sha256: cf2dd5431d3ddc68294afba18218425983c4bd4e01705257d48854abb7d32682
+        target_ids:
+          - api.pos-stabilization.051
+        from_status: in_progress
+        to_status: under_review
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_show_rejects_cross_tenant_held_order_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.052
     stable_key: 'manual:api.pos-stabilization:held-order-recall-discard'
@@ -34681,17 +34777,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-07T09:08:19Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+    regression_test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_recall_rejects_cross_tenant_held_order_id'
     blocked_reason: null
     history:
       -
@@ -34710,6 +34806,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added for round-5 — defense-in-depth missing tenant_id predicate on service-tier recall/discard reads.'
+      -
+        at: '2026-05-07T09:08:19Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 860ea55f53957e16877ad7f99af7ef94909ef5ce0d4c28c61b55e3e0a3cc89fc
+        new_yaml_sha256: 54b5ca865d75e4bfa8170f4620f32af8f437b4691c93af91ec7e585c9d6652d6
+        target_ids:
+          - api.pos-stabilization.052
+        from_status: pending
+        to_status: claimed
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-07T09:08:37Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 62d752f878dd78e01cd37e83ac262d80b50f48a5883f5f879b6c48cd5a338b11
+        new_yaml_sha256: 3609a0341098dec10b4cf754292380c6ecaef6d2b9bff2577ccec0c84db3b0b5
+        target_ids:
+          - api.pos-stabilization.052
+        from_status: claimed
+        to_status: in_progress
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:08:58Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cf2dd5431d3ddc68294afba18218425983c4bd4e01705257d48854abb7d32682
+        new_yaml_sha256: 27dfcccd3ec23b2ea44f328c2fa079d1bf65145f5f650bada2488fa2bf2922ad
+        target_ids:
+          - api.pos-stabilization.052
+        from_status: in_progress
+        to_status: under_review
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_recall_rejects_cross_tenant_held_order_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.053
     stable_key: 'manual:api.pos-stabilization:expire-held-orders-command-iter'
@@ -34727,17 +34871,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-07T09:08:22Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+    regression_test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_command_iterates_per_tenant'
     blocked_reason: null
     history:
       -
@@ -34756,6 +34900,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'manual callsite added for round-5 — command-tier iter wrap (cat-(a-per-tenant-iter)) supersedes deferral fixture entry; entry removed in same commit.'
+      -
+        at: '2026-05-07T09:08:22Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 54b5ca865d75e4bfa8170f4620f32af8f437b4691c93af91ec7e585c9d6652d6
+        new_yaml_sha256: 9db0865fd9463bc614148746bd7d006af0dfdc031ba778a1fcf0d16c6acc70bc
+        target_ids:
+          - api.pos-stabilization.053
+        from_status: pending
+        to_status: claimed
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-07T09:08:40Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3609a0341098dec10b4cf754292380c6ecaef6d2b9bff2577ccec0c84db3b0b5
+        new_yaml_sha256: 2ca3149ac983a7b4c9db25afc3d4e752882956523115b13905878d8e4a147afc
+        target_ids:
+          - api.pos-stabilization.053
+        from_status: claimed
+        to_status: in_progress
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T09:09:01Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 27dfcccd3ec23b2ea44f328c2fa079d1bf65145f5f650bada2488fa2bf2922ad
+        new_yaml_sha256: 6f773747a60da3390cc2e3a8cbf7197e1b21110821ece5230d1c4fb5be3c3bc2
+        target_ids:
+          - api.pos-stabilization.053
+        from_status: in_progress
+        to_status: under_review
+        commit: dd8e9025e27a6e9db5fa4ad1c720cbb0a616d2cc
+        test: 'tests/Feature/POS/HeldOrderTenantIsolationTest.php::test_command_iterates_per_tenant'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
