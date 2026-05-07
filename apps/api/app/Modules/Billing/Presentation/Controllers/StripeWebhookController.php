@@ -27,6 +27,40 @@ use Illuminate\Support\Facades\Notification;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Webhook;
 
+/**
+ * @cross-tenant-by-design Webhook entry — tenant resolution shape (b) sub-form
+ * (master plan §8): tenant is derived from the verified Stripe payload via
+ * globally-unique Stripe-issued resource IDs (sub_*, in_*, pi_*) → resource
+ * lookup → resource.tenant_id stamps every downstream Notification + DB write.
+ *
+ * Signature verification fires inline at handle() lines 53-64 BEFORE any DB
+ * read, via Stripe\Webhook::constructEvent($payload, $signature, $webhookSecret)
+ * with the global STRIPE_WEBHOOK_SECRET. Failure returns 400 with no DB
+ * side-effects. Stripe's SDK enforces timestamp tolerance + HMAC-SHA256 in
+ * constant time — no replay surface.
+ *
+ * No CompanyContext::setCompanyId() binding: tenant_subscriptions,
+ * billing_invoices, billing_payments are platform-level public-schema tables
+ * (see migrations 2025_12_16_10000{1,2,4}_*) tenant-isolated by tenant_id
+ * column rather than schema, and the resolved $resource->tenant_id stamps
+ * every downstream notification/update directly. The "or equivalent"
+ * mechanism in master plan §8 step 3 covers this shape.
+ *
+ * Defense-in-depth: tenant_subscriptions.stripe_subscription_id and
+ * billing_invoices.stripe_invoice_id carry DB UNIQUE constraints
+ * (migrations lines 35 + 60). billing_payments.provider_payment_id is only
+ * composite-indexed (line 81), so the controller's
+ * Payment::where('provider_payment_id', …)->first() lookup leans on Stripe's
+ * external contract that pi_* IDs are globally unique — tracked as Finding F
+ * in the scheduled-jobs cross-cluster observations doc, slated for future
+ * api.external-id-uniqueness or api.platform-integration cluster.
+ *
+ * Out-of-scope concerns (deferred per the same observations doc):
+ *   - Finding D: handleSubscriptionCreated orWhere(stripe_customer_id)
+ *     fallback — logic-correctness within tenant, not isolation.
+ *   - Finding E: missing event-id idempotency — Stripe redelivers; defer
+ *     to future api.billing hardening cluster.
+ */
 final class StripeWebhookController extends Controller
 {
     /**
