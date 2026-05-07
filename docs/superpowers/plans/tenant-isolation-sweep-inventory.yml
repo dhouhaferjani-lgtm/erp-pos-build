@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-07T10:54:14Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ab6c07a328f931f9a082041c8c0ec7da29592d78bb35e9b92633835a4b75edf9
+  yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -474,7 +474,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -35192,15 +35192,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-07T10:55:04Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T12:08:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-scheduled-jobs-cluster-codex-round2-review.md
+      review_commit: b059bb2c
     fix_commit: b059bb2c
     regression_test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_import_job_handle_only_reads_tenant_scoped_import_jobs'
     blocked_reason: null
@@ -35269,6 +35269,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T12:08:39Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ab6c07a328f931f9a082041c8c0ec7da29592d78bb35e9b92633835a4b75edf9
+        new_yaml_sha256: e6cc88d5642ed7aaa14428351f3022e315b07509104d1217ef3f2e4fdcef3323
+        target_ids:
+          - api.scheduled-jobs.001
+          - api.scheduled-jobs
+        from_status: under_review
+        to_status: fixed
+        commit: d658a95647277cc2628b29f1b15f19ab062d3451
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-scheduled-jobs-cluster-codex-round2-review.md
+        review_commit: b059bb2c
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.scheduled-jobs.002
     stable_key: 'manual:api.scheduled-jobs:import-process-product-image-import'
@@ -35286,15 +35303,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-07T10:55:04Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T12:08:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-scheduled-jobs-cluster-codex-round2-review.md
+      review_commit: b059bb2c
     fix_commit: b059bb2c
     regression_test: 'tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php::test_process_product_image_import_handle_only_reads_tenant_scoped_import_jobs'
     blocked_reason: null
@@ -35363,6 +35380,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T12:08:40Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e6cc88d5642ed7aaa14428351f3022e315b07509104d1217ef3f2e4fdcef3323
+        new_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        target_ids:
+          - api.scheduled-jobs.002
+          - api.scheduled-jobs
+        from_status: under_review
+        to_status: fixed
+        commit: d658a95647277cc2628b29f1b15f19ab062d3451
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-scheduled-jobs-cluster-codex-round2-review.md
+        review_commit: b059bb2c
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29
