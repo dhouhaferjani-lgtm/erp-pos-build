@@ -203,8 +203,10 @@ final class QueueJobTenantContextTest extends TestCase
     }
 
     /**
-     * Walk the class's trait chain (own traits + parent traits + traits
-     * used by traits) and return true if $traitClass appears anywhere.
+     * Walk the class's trait graph fully recursively (own traits + parent
+     * traits + traits used by traits at arbitrary nesting depth) and
+     * return true if $traitClass appears anywhere. Recursion-safe via a
+     * visited-set so cyclic trait graphs (PHP allows them) don't loop.
      *
      * @param  class-string  $class
      * @param  class-string  $traitClass
@@ -216,16 +218,33 @@ final class QueueJobTenantContextTest extends TestCase
         while ($current !== false) {
             $reflection = new ReflectionClass($current);
             foreach ($reflection->getTraitNames() as $traitName) {
-                $traits[$traitName] = true;
-                // Also pull traits used by traits.
-                foreach ((new ReflectionClass($traitName))->getTraitNames() as $nested) {
-                    $traits[$nested] = true;
-                }
+                $this->collectTraitGraph($traitName, $traits);
             }
             $current = get_parent_class($current);
         }
 
         return isset($traits[$traitClass]);
+    }
+
+    /**
+     * Recursively flatten a trait's trait graph into $accumulated. The
+     * visited-set ($accumulated keys) ensures O(N) traversal even if the
+     * trait composition forms a cycle.
+     *
+     * @param  class-string  $traitName
+     * @param  array<class-string, true>  $accumulated
+     */
+    private function collectTraitGraph(string $traitName, array &$accumulated): void
+    {
+        if (isset($accumulated[$traitName])) {
+            return;
+        }
+        $accumulated[$traitName] = true;
+
+        foreach ((new ReflectionClass($traitName))->getTraitNames() as $nested) {
+            /** @var class-string $nested */
+            $this->collectTraitGraph($nested, $accumulated);
+        }
     }
 
     /**
