@@ -12,6 +12,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
+/**
+ * @cross-tenant-by-design Webhook re-dispatcher queue job — handle() does ZERO DB access, only re-dispatches the EnrichmentWebhookReceived event; the synchronous downstream listener (ProcessEnrichmentEventListener) resolves Product by the globally-unique platform_submission_id encoded in payload->trackingId. Webhook entry (EnrichmentWebhookController) is intentionally tenant-agnostic — third-party platform calls back about previously-tracked submissions, and tenant resolution chains through platform_submission_id → Product → company_id. The platform_submission_id global-uniqueness contract risk is tracked separately at docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md (Finding A) for api.platform-integration.
+ */
 final class ProcessEnrichmentWebhookJob implements ShouldQueue
 {
     use Dispatchable;

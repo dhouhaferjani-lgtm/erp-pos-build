@@ -11,6 +11,8 @@ use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Services\ImportService;
+use App\Modules\Product\Application\Services\ProductImageImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -48,8 +50,6 @@ final class ScheduledJobTenantIsolationTest extends TestCase
 
     private Company $companyA;
 
-    private Company $companyB;
-
     private User $userA;
 
     private User $userB;
@@ -62,7 +62,10 @@ final class ScheduledJobTenantIsolationTest extends TestCase
         $this->tenantB = $this->makeTenant('scheduled-jobs-tenant-b');
 
         $this->companyA = Company::factory()->create(['tenant_id' => $this->tenantA->id]);
-        $this->companyB = Company::factory()->create(['tenant_id' => $this->tenantB->id]);
+        // tenantB also seeds a Company implicitly via the import_jobs row
+        // chain; the dedicated $companyB field was dropped because nothing
+        // reads it (PHPStan property.onlyWritten).
+        Company::factory()->create(['tenant_id' => $this->tenantB->id]);
 
         $this->userA = User::factory()->create(['tenant_id' => $this->tenantA->id]);
         $this->userB = User::factory()->create(['tenant_id' => $this->tenantB->id]);
@@ -131,7 +134,7 @@ final class ScheduledJobTenantIsolationTest extends TestCase
             // is (importJobId, companyId) — instantiation will fail with a
             // TypeError until the cat-(a) fix lands. That IS the red signal.
             $instance = new ProcessImportJob($jobA->id, $this->companyA->id, $this->tenantA->id);
-            $instance->handle($this->app->make(\App\Modules\Import\Services\ImportService::class));
+            $instance->handle($this->app->make(ImportService::class));
         } catch (\Throwable) {
             // Swallow — handle() may throw for unrelated reasons (no valid
             // rows etc.). We assert on SQL shape, not on terminal status.
@@ -232,8 +235,8 @@ final class ScheduledJobTenantIsolationTest extends TestCase
                 $this->tenantA->id,
             );
             $instance->handle(
-                $this->app->make(\App\Modules\Product\Application\Services\ProductImageImportService::class),
-                $this->app->make(\App\Modules\Import\Services\ImportService::class),
+                $this->app->make(ProductImageImportService::class),
+                $this->app->make(ImportService::class),
             );
         } catch (\Throwable) {
             // Swallow — handle() catches its own exceptions and updates the

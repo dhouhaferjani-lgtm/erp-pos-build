@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\Log;
  * - Schedule in app/Console/Kernel.php
  * - Recommended frequency: every 15 minutes
  * - Queue: 'default' or 'low-priority'
+ *
+ * @cross-tenant-by-design Scheduled system-wide stock-reservation expiry sweep queue job — registered in routes/console.php:28 as Schedule::job(ExpireReservationsJob::class)->everyFifteenMinutes(); delegates to StockReservationService::expireReservations() which iterates StockReservation::expired()->get() across all tenants by design (StockReservation has no global tenant scope — verified at app/Modules/Inventory/Domain/StockReservation.php). Per-row updates carry company_id via the reservation's FK chain (decrement on BatchStock/StockLevel keyed by reservation->location_id + batch_id/product_id); the ReservationExpired event dispatched after commit explicitly carries reservation->company_id.
  */
 final class ExpireReservationsJob implements ShouldQueue
 {
