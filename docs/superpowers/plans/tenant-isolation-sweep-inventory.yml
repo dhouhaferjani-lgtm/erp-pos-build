@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-07T21:56:45Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
+  yaml_sha256: 5ed68cc39ff75dab3e00894d59dc75bbdd253c65f0885703042557c4d0df142a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -36229,7 +36229,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
@@ -36238,8 +36238,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '00360386'
+    regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36290,6 +36290,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T22:12:17Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
+        new_yaml_sha256: b36a392df401a5a86ea2e68a3b953261efb4a09aa30d404b9ac5075e259bf3f4
+        target_ids:
+          - api.webhooks-incoming.001
+        from_status: in_progress
+        to_status: under_review
+        commit: '00360386'
+        test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.webhooks-incoming.002
     stable_key: 'manual:api.webhooks-incoming:enrichment-webhook-controller-cross-tenant-by-design'
@@ -36307,7 +36323,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
@@ -36316,8 +36332,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '00360386'
+    regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36368,6 +36384,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T22:12:18Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b36a392df401a5a86ea2e68a3b953261efb4a09aa30d404b9ac5075e259bf3f4
+        new_yaml_sha256: 323dfde76b910af9ce7a16494631320f42e1f96ef1fda4e3febb8f78f425c22a
+        target_ids:
+          - api.webhooks-incoming.002
+        from_status: in_progress
+        to_status: under_review
+        commit: '00360386'
+        test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.webhooks-incoming.003
     stable_key: 'manual:api.webhooks-incoming:purchase-hub-webhook-controller-stub-cross-tenant-by-design'
@@ -36385,7 +36417,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-07T21:56:54Z'
     review:
@@ -36394,8 +36426,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: '00360386'
+    regression_test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36446,6 +36478,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-07T22:12:19Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 323dfde76b910af9ce7a16494631320f42e1f96ef1fda4e3febb8f78f425c22a
+        new_yaml_sha256: 5ed68cc39ff75dab3e00894d59dc75bbdd253c65f0885703042557c4d0df142a
+        target_ids:
+          - api.webhooks-incoming.003
+        from_status: in_progress
+        to_status: under_review
+        commit: '00360386'
+        test: 'tests/Architecture/WebhookControllerTenantContextTest.php::test_every_webhook_controller_class_is_cross_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
