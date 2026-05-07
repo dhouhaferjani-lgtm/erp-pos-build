@@ -16,6 +16,8 @@ use Illuminate\Console\Command;
  * - Identify suspicious product patterns
  * - Create fraud alerts
  * - Trigger automated actions (counting, notifications)
+ *
+ * @cross-tenant-by-design Daily scheduler that iterates Company::all() to flag draft-abandonment fraud patterns across the fleet.
  */
 class DetectFraudPatterns extends Command
 {

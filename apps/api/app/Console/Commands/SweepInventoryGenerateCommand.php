@@ -38,6 +38,8 @@ use Throwable;
  *
  * @phpstan-import-type Callsite from InventoryDocument
  * @phpstan-import-type HistoryEvent from InventoryDocument
+ *
+ * @cross-tenant-by-design Tenant-isolation sweep tooling; runs the five callsite scanners against source files and writes detection results to the inventory YAML.
  */
 final class SweepInventoryGenerateCommand extends Command
 {

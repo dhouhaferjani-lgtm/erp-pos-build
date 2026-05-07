@@ -12,6 +12,9 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
 
+/**
+ * @cross-tenant-by-design Iterates Company::all() to verify fiscal hash chain integrity; CI/audit-grade fleet-wide check for NF525 compliance.
+ */
 class VerifyFiscalChainsCommand extends Command
 {
     /**

@@ -12,6 +12,9 @@ use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @cross-tenant-by-design Polls the platform for status updates on the in-flight enrichment outbox; outbox is fleet-wide by design and each event is dispatched with the platform_submission_id for the listener to re-bind tenant context.
+ */
 final class CheckPendingEnrichmentsCommand extends Command
 {
     /**

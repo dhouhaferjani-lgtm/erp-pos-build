@@ -87,6 +87,8 @@ use Throwable;
  * @phpstan-import-type Callsite from InventoryDocument
  * @phpstan-import-type Cluster from InventoryDocument
  * @phpstan-import-type HistoryEvent from InventoryDocument
+ *
+ * @cross-tenant-by-design Tenant-isolation sweep tooling; verifies the chain integrity of the inventory YAML history events, not tenant data.
  */
 final class SweepInventoryVerifyHistoryCommand extends AbstractSweepInventoryCommand
 {

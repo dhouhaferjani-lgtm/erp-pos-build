@@ -18,6 +18,9 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
 
+/**
+ * @cross-tenant-by-design Manual dev/test command that uses Tenant::first() / Company::first() to seed fixtures; not intended for production runs.
+ */
 final class TestE2EGLPosting extends Command
 {
     protected $signature = 'test:e2e-gl-posting';

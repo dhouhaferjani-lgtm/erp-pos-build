@@ -10,6 +10,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
+/**
+ * @cross-tenant-by-design Tenant-lifecycle administrative command that creates a new tenant; operates without a bound CompanyContext because the tenant does not yet exist when the command starts.
+ */
 class CreateTenantCommand extends Command
 {
     /**

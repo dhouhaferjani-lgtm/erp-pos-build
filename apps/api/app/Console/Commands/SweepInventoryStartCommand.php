@@ -35,6 +35,8 @@ use Throwable;
  * @phpstan-import-type Callsite from InventoryDocument
  * @phpstan-import-type Cluster from InventoryDocument
  * @phpstan-import-type HistoryEvent from InventoryDocument
+ *
+ * @cross-tenant-by-design Tenant-isolation sweep tooling; operates on the inventory YAML metadata, not on tenant data.
  */
 final class SweepInventoryStartCommand extends AbstractSweepInventoryCommand
 {

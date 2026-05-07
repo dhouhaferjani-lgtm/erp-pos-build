@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  * violations are found (so CI / deploy pipelines can gate). The
  * `--dry-run` flag flips that to always-zero so a developer can inspect
  * locally without flagging the run as failed.
+ *
+ * @cross-tenant-by-design Pre-deploy CI gate that sweeps the entire documents / document_lines surface for tolerance violations; cross-tenant by design because the gate must check the whole dataset before a deploy.
  */
 final class AuditDiscountsCommand extends Command
 {

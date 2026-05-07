@@ -50,6 +50,8 @@ use Throwable;
  * @phpstan-import-type Callsite from InventoryDocument
  * @phpstan-import-type Cluster from InventoryDocument
  * @phpstan-import-type ProgressBlock from InventoryDocument
+ *
+ * @cross-tenant-by-design Tenant-isolation sweep tooling; reads the inventory YAML metadata to report cluster + callsite progress.
  */
 final class SweepInventoryStatusCommand extends AbstractSweepInventoryCommand
 {

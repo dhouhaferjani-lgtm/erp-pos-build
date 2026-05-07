@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\DB;
  *
  * IMPORTANT: This should only be run once, and the results should be verified
  * using the fiscal:verify-chains command afterward.
+ *
+ * @cross-tenant-by-design One-shot retroactive fiscal-hash backfill across all companies; iterates Company::all() with optional --company narrowing filter.
  */
 class BackfillFiscalHashesCommand extends Command
 {

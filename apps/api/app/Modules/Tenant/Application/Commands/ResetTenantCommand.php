@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @cross-tenant-by-design Tenant-lifecycle administrative command that drops and re-initializes a tenant schema by slug; operates without a bound CompanyContext and is explicitly cited in master plan §14 as a cat-(b) example.
+ */
 class ResetTenantCommand extends Command
 {
     protected $signature = 'tenant:reset
