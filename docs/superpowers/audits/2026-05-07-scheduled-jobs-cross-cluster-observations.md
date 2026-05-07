@@ -279,3 +279,70 @@ The three findings above are deferred to follow-up clusters as named.
   - `docs/superpowers/audits/2026-05-04-taxation-cross-cluster-blind-spots.md`
   - `docs/superpowers/audits/2026-05-04-loyalty-cross-cluster-blind-spots.md`
   - `docs/superpowers/audits/2026-05-06-catalog-pos-cluster-residuals.md`
+
+## Workflow gap: manual-callsites stub file accumulates post-fix entries (2026-05-07)
+
+When a manual inventory row flips to `fixed` (via either the artisan
+`sweep:inventory:review` workflow or a one-shot mutate), its corresponding
+entry in `docs/superpowers/plans/tenant-isolation-sweep-manual-callsites.yml`
+is **NOT auto-removed**. The `ManualScanner` keeps emitting the entry's
+`stable_key` from that file on every drift re-scan, and the drift detector
+matches that against the now-`fixed` YAML callsite, surfacing it as
+`yaml_says_fixed_code_unsafe` despite the underlying code being safe.
+
+### Symptom
+
+`sweep:inventory:status --drift` reports false-positive drift signals that
+conflate scanner-mechanism noise with real code regressions. Signal-to-noise
+degrades as more clusters lock — every fixed manual stub becomes a permanent
+"drift" line until manually scrubbed.
+
+### Today's drift breakdown (after `api.pos-stabilization` cleaned its own-cluster entries at lock time, dropping drift 25 → 9)
+
+- **1 × scanner blind spot on `api.pos-stabilization.012`**
+  (`StoreReceiptRequest.php:74` `Rule::exists('modifiers', 'id')->where(closure)`).
+  The `PhpPresentationExistsScanner` regex matches the bare `Rule::exists`
+  pattern and does not understand closure-based scoping (the closure
+  filters by parent `modifier_groups.tenant_id` + `company_id`). The fix
+  is structurally sound and Codex-reviewed; the scanner just can't parse
+  it. Different shape than the manual-stub gap.
+- **6 × `api.compliance` leftover stubs** (`api.compliance.006-.011`).
+  Owned by `api.compliance`; their stub-file entries persist post-fix.
+- **2 × `api.scheduled-jobs` leftover stubs** (`api.scheduled-jobs.001-.002`).
+  Owned by `api.scheduled-jobs`; their stub-file entries persist post-fix
+  (they just locked at `3f158018`).
+
+All 9 are owned by other clusters. Each has a documented explanation; none
+represent a real regression.
+
+### Recommended fix
+
+Add stub-file cleanup as a post-lock step in the cluster-close cadence.
+Two options:
+
+1. **Extend `sweep:inventory:review`** to optionally remove the
+   corresponding entry from `tenant-isolation-sweep-manual-callsites.yml`
+   when a manual row flips to `fixed`. This makes the cleanup automatic
+   and atomic with the verdict mutation.
+2. **Add a post-lock chore commit pattern** to the cluster-close runbook:
+   "After Codex APPROVE flips your cluster's manual rows to fixed, also
+   remove their entries from the manual-callsites stub file." This keeps
+   the workflow tooling unchanged but requires discipline at lock time.
+
+### Severity
+
+**LOW** — cosmetic. Doesn't affect correctness; the underlying fixes are
+real and reviewer-approved. The risk is signal degradation: a real
+regression eventually hides among noise.
+
+### Target
+
+Workflow tooling micro-chore or sweep-runbook update.
+
+### Note
+
+`api.pos-stabilization` sets the precedent of cleaning its own-cluster
+manual stubs at lock time (lock commit removes 16 entries spanning Group 4
+LoyaltyPOS, round-2 Findings 1-3, round-3 Findings 1-4, round-4 finding,
+round-5 closures). Future clusters should follow this pattern until
+option 1 above is implemented.

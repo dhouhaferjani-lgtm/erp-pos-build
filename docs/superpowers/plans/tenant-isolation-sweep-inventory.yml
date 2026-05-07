@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-07T10:54:14Z'
+  generated_at: '2026-05-07T21:56:45Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+  yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -426,9 +426,9 @@ clusters:
     id: api.webhooks-incoming
     display_name: 'Webhooks (incoming)'
     surface: api
-    owner: null
+    owner: claude
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -590,7 +590,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: null
-    status: in_progress
+    status: fixed
     blocked_by: {  }
     blocked_by_external: null
     blocked_reason: null
@@ -601,7 +601,7 @@ clusters:
     review_gate:
       required: true
       reviewer_must_differ_from_owner: true
-      review_file: docs/superpowers/reviews/2026-05-XX-pos-stabilization-cluster-claude-review.md
+      review_file: docs/superpowers/reviews/2026-05-07-api-pos-stabilization-cluster-codex-round5-rereview.md
       accepted_verdicts:
         - APPROVE
         - APPROVE-WITH-MINOR-EDITS-APPLIED
@@ -5509,15 +5509,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_claim_terminal_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -5603,6 +5603,39 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.001
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization
+        from_status: in_progress
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-07-api-pos-stabilization-cluster-codex-round5-rereview.md
+        review_commit: null
+        note: 'cluster aggregate api.pos-stabilization in_progress → fixed; review_gate.review_file repointed from placeholder 2026-05-XX-pos-stabilization-cluster-claude-review.md → docs/superpowers/reviews/2026-05-07-api-pos-stabilization-cluster-codex-round5-rereview.md (most recent cluster-wide APPROVE; supersedes the placeholder).'
   -
     id: api.pos-stabilization.002
     stable_key: 'sha256:5a7ce8eb4f2b6ef5a24e47cbc4e95a6f92c1583c9973de12405b1ec2736f7045'
@@ -5620,15 +5653,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_update_terminal_refuses_cross_tenant_location_id'
     blocked_reason: null
@@ -5697,6 +5730,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.002
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.003
     stable_key: 'sha256:cfa54d270457dcef759b152857307bff6cc278f4ebe5dd5edfa4f9cb8eb9893c'
@@ -5714,15 +5764,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_generate_z_report_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -5791,6 +5841,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.003
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.004
     stable_key: 'sha256:4bfbf29bf978c4aaea8dbe5fdf7398e637eff6fa674f0324bb7ed9a85fbafc4d'
@@ -5808,15 +5875,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_request_terminal_refuses_cross_tenant_location_id'
     blocked_reason: null
@@ -5885,6 +5952,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.004
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.005
     stable_key: 'sha256:9f79ae9a373c27c3a1727c183ad03ecbbcc93627edf831679fb9aaa7446debfa'
@@ -5902,15 +5986,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_add_order_line_refuses_cross_tenant_product_id'
     blocked_reason: null
@@ -5979,6 +6063,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.005
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.006
     stable_key: 'sha256:7a958a5e06e9c313508083926e5f6db684a7ff2d7de80a8d6b92677c92701b79'
@@ -5996,15 +6097,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_open_shift_refuses_cross_tenant_terminal_code'
     blocked_reason: null
@@ -6073,6 +6174,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.006
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.007
     stable_key: 'sha256:914055886d56aeb7632b133929422d79bda12bf69ab81edd3753feeffa7da2e1'
@@ -6090,15 +6208,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_terminal_refuses_cross_tenant_location_id'
     blocked_reason: null
@@ -6167,6 +6285,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.007
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.008
     stable_key: 'sha256:8dac8cb1c34558c953a64f14165c437fae5363a343d6c422e8dbe092f2b49b77'
@@ -6184,15 +6319,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -6277,6 +6412,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.008
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.009
     stable_key: 'sha256:fe4bc5a18d60151d1549f65cf2e40c876590e6b782dfca8b0e0c50a9563993a5'
@@ -6294,15 +6446,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_partner_id'
     blocked_reason: null
@@ -6387,6 +6539,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.009
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.010
     stable_key: 'sha256:e580489f6aa7778e11bda44aa34870c888dca8f8f3e21771a471b969e4bb9135'
@@ -6404,15 +6573,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -6497,6 +6666,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.010
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.011
     stable_key: 'sha256:4ac636b52fb08db4168cb8af5a8fd859ed1d622e68ec58c8c7616af076319ad0'
@@ -6514,15 +6700,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_product_id_on_lines'
     blocked_reason: null
@@ -6607,6 +6793,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.011
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.012
     stable_key: 'sha256:a790b27e4c828399b12b8dd539f97ecfd5dd385fc80527541e6bab8eaca8e64b'
@@ -6624,15 +6827,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_modifier_id_on_lines'
     blocked_reason: null
@@ -6733,6 +6936,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.012
+          - api.pos-stabilization
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.013
     stable_key: 'sha256:ba796b87f34651a09925824caaf8b4440bc5e9123e6c69b2fc47616393b9288d'
@@ -6750,15 +6970,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_modifier_group_id_on_lines'
     blocked_reason: null
@@ -6843,6 +7063,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.013
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.014
     stable_key: 'sha256:8a1e2e4e055c16f3532006b480e684605a3d535cb30991d345ea9f322d2b9f2d'
@@ -6860,15 +7097,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_customer_id'
     blocked_reason: null
@@ -6953,6 +7190,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.014
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.015
     stable_key: 'sha256:8d41aa940ba9c576d4423972236669a8365aedcd4136f9ab64aaca3318f4888c'
@@ -6970,15 +7224,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_contact_id'
     blocked_reason: null
@@ -7063,6 +7317,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.015
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.016
     stable_key: 'sha256:bd221c8ec5fa1a01c3ec63d0036fd2fc80ef20480c40021c01f55dee3a10bb90'
@@ -7080,15 +7351,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_generate_x_report_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -7157,6 +7428,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.016
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.017
     stable_key: 'sha256:84e1dc6776f8aad38089a53619e3f9da7cb0a11ec14bbef2d442b16222faf57a'
@@ -7174,15 +7462,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_verify_z_report_chain_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -7251,6 +7539,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.017
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.018
     stable_key: 'sha256:f15ec2471eba5edd73a8428115391dd9fefbae9bcd077efd09eb4a39c373f7b7'
@@ -7268,15 +7573,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b15ee071
     fix_commit: b15ee071
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_verify_receipt_chain_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -7345,6 +7650,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.018
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b15ee071
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.019
     stable_key: 'sha256:4b881622d1593a6a2197da22bbd6d9e35213e96de11b64dfc9521f9a5a7fd329'
@@ -7362,15 +7684,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 184576c2
     fix_commit: 184576c2
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_refuses_cross_tenant_location_via_validator'
     blocked_reason: null
@@ -7439,6 +7761,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.019
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 184576c2
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.inventory.001
     stable_key: 'sha256:d361456f9b08507ad6ec843d26a9b772f75b703d8672e44a4ef79b8ec578805f'
@@ -19960,15 +20299,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20053,6 +20392,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.020
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.021
     stable_key: 'sha256:ca8a2b86f695c2f5159bf71c1599ad5f042e945bd07916186b4ae976e7d263c4'
@@ -20070,15 +20426,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20163,6 +20519,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.021
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.022
     stable_key: 'sha256:a059ef5c27fc6889077ef6f5ad8a6adbcfef861b51126f93a7bb85405ea9d2b6'
@@ -20180,15 +20553,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20257,6 +20630,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.022
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.023
     stable_key: 'sha256:9224fbd9c430ade0e3a45cf20cabc248fa24a35d5bf8e37a8383e255ab300061'
@@ -20274,15 +20664,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20351,6 +20741,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.023
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.024
     stable_key: 'sha256:63f62137b7c7695d8965bbf502d79df1c232170273cf488773e06998a3980946'
@@ -20368,15 +20775,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20445,6 +20852,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.024
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.025
     stable_key: 'sha256:e3b3fa8c06c928244a344e6dc4de41b8235cbcc165f8fc168bee77b5653d9fe8'
@@ -20462,15 +20886,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20555,6 +20979,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.025
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.026
     stable_key: 'sha256:c896c85d6cb50ac0f6fe0b839de966abbd0d84f30d5cdce4506109f245f672f1'
@@ -20572,15 +21013,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_order_management_service_partner_find_uses_scoped_query_pattern'
     blocked_reason: null
@@ -20665,6 +21106,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.026
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.027
     stable_key: 'sha256:20eced31ddcd748718de2c4db365b33458a332902d7858587269dbdde290b1e1'
@@ -20682,15 +21140,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: b7cc96e5
     fix_commit: b7cc96e5
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_voucher_ledger_push_service_voucher_lookup_query_includes_tenant_predicate'
     blocked_reason: null
@@ -20775,6 +21233,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.027
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: b7cc96e5
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.028
     stable_key: 'sha256:b2d2a83304b615832d2377f9d560b77bf980cbf738c39147bc5579effd4ee169'
@@ -20792,15 +21267,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 184576c2
     fix_commit: 184576c2
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_get_or_create_web_terminal_locations_query_includes_company_predicate'
     blocked_reason: null
@@ -20869,6 +21344,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.028
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 184576c2
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.inventory.011
     stable_key: 'sha256:3fbc312a694546c888c58872f9317b6238cdd279fcefd06e6b5e6a7c9441a4bb'
@@ -26703,15 +27195,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_generate_z_report_refuses_cross_tenant_payment_method_id_in_cash_counts'
     blocked_reason: null
@@ -26780,6 +27272,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.029
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.030
     stable_key: 'sha256:f141ce638e2af717ae2a17474ffeeb3137cc1dc223bf41b9f0042814a47b8404'
@@ -26797,15 +27306,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_return_refuses_cross_tenant_terminal_id'
     blocked_reason: null
@@ -26874,6 +27383,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.030
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.treasury.049
     stable_key: 'sha256:3402118217d1e7044d5b5f90c34a8e19f86edf0fd1c38a93a08b62b33eeb7b05'
@@ -28667,15 +29193,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_verify_manager_pin_refuses_cross_tenant_user_id'
     blocked_reason: null
@@ -28744,6 +29270,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.031
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.032
     stable_key: 'sha256:07daf9fcc4e1fd38732e5fe7b8a4d25f91bd46bfb935c378e49d63c66a1172b5'
@@ -28761,15 +29304,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_generate_z_report_refuses_cross_tenant_manager_user_id'
     blocked_reason: null
@@ -28838,6 +29381,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.032
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.033
     stable_key: 'sha256:47edb25c456ba44a90e6c1778645b8b6f24ce87f21404323e8f5a8faf4337f90'
@@ -28855,15 +29415,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: dce4022a
     fix_commit: dce4022a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_open_shift_refuses_cross_tenant_cashier_id'
     blocked_reason: null
@@ -28932,6 +29492,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.033
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: dce4022a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.inventory.020
     stable_key: 'sha256:7ce99d6c1492f36f9195a3ba3acb3fe7a8f5993fcb22c4ad2c75cefe58dad6f9'
@@ -32161,15 +32738,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 6ef13917
     fix_commit: 6ef13917
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
     blocked_reason: null
@@ -32238,6 +32815,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.034
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 6ef13917
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.035
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-earn-unscoped-enrollment'
@@ -32255,15 +32849,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 6ef13917
     fix_commit: 6ef13917
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_earn_refuses_cross_tenant_enrollment'
     blocked_reason: null
@@ -32332,6 +32926,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.035
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 6ef13917
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.036
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-redeem-unscoped-enrollment-reward'
@@ -32349,15 +32960,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 6ef13917
     fix_commit: 6ef13917
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
     blocked_reason: null
@@ -32426,6 +33037,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.036
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 6ef13917
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.037
     stable_key: 'manual:api.pos-stabilization:earning-processing-service-find-by-id-unscoped'
@@ -32443,15 +33071,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 6ef13917
     fix_commit: 6ef13917
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_preview_earning_refuses_cross_tenant_enrollment'
     blocked_reason: null
@@ -32520,6 +33148,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.037
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 6ef13917
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.038
     stable_key: 'manual:api.pos-stabilization:redemption-processing-service-find-by-id-unscoped'
@@ -32537,15 +33182,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 6ef13917
     fix_commit: 6ef13917
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward'
     blocked_reason: null
@@ -32614,6 +33259,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.038
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 6ef13917
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.039
     stable_key: 'manual:api.pos-stabilization:voucher-ledger-push-service-terminal-lookup-unscoped'
@@ -32631,15 +33293,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T16:05:12Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: 2b314480
     fix_commit: 2b314480
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_voucher_ledger_sync_refuses_cross_tenant_terminal_id_via_validator'
     blocked_reason: null
@@ -32708,6 +33370,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.039
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: 2b314480
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.040
     stable_key: 'manual:api.pos-stabilization:store-receipt-request-composite-item-id-bare-exists'
@@ -32725,15 +33404,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T16:05:15Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: af79d7c3
     fix_commit: af79d7c3
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_store_receipt_refuses_cross_tenant_composite_item_id_on_lines'
     blocked_reason: null
@@ -32802,6 +33481,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.040
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: af79d7c3
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.041
     stable_key: 'manual:api.pos-stabilization:create-update-table-request-floor-id-bare-exists'
@@ -32819,15 +33515,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T16:05:17Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+      review_commit: d91c0d3a
     fix_commit: d91c0d3a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_table_refuses_cross_tenant_floor_id'
     blocked_reason: null
@@ -32896,6 +33592,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.041
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
+        review_commit: d91c0d3a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
   -
     id: api.pos-stabilization.042
     stable_key: 'manual:api.pos-stabilization:receipt-sync-cross-tenant-sellable-id-leak'
@@ -32913,15 +33626,15 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T19:40:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+      review_commit: c2f37aea
     fix_commit: c2f37aea
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_sync_receipts_refuses_cross_tenant_product_id_via_validator'
     blocked_reason: null
@@ -32990,6 +33703,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.042
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+        review_commit: c2f37aea
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md)'
   -
     id: api.pos-stabilization.043
     stable_key: 'manual:api.pos-stabilization:receipt-sync-idempotency-key-echo-leak'
@@ -33007,15 +33737,15 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T19:40:04Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+      review_commit: a7860ef4
     fix_commit: a7860ef4
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_receipt_sync_idempotency_key_lookup_is_scoped_by_tenant_and_company'
     blocked_reason: null
@@ -33084,6 +33814,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.043
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+        review_commit: a7860ef4
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md)'
   -
     id: api.pos-stabilization.044
     stable_key: 'manual:api.pos-stabilization:table-release-cross-tenant-mutation'
@@ -33101,15 +33848,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T19:40:04Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+      review_commit: 6ca27b7a
     fix_commit: 6ca27b7a
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_release_table_refuses_cross_tenant_table_id'
     blocked_reason: null
@@ -33178,6 +33925,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.044
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+        review_commit: 6ca27b7a
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md)'
   -
     id: api.pos-stabilization.045
     stable_key: 'manual:api.pos-stabilization:order-create-cross-tenant-table-assignment'
@@ -33195,15 +33959,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-05T19:40:05Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+      review_commit: 4e5edc2c
     fix_commit: 4e5edc2c
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_table_id'
     blocked_reason: null
@@ -33272,6 +34036,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.045
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
+        review_commit: 4e5edc2c
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md)'
   -
     id: api.catalog.027
     stable_key: 'manual:api.catalog:product-controller-show-bare-where-route-anchored-read'
@@ -33947,15 +34728,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:28:31Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
+      review_commit: de7078d0
     fix_commit: de7078d0
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_cancel_order_refuses_cross_tenant_order_id'
     blocked_reason: null
@@ -34024,6 +34805,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.046
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
+        review_commit: de7078d0
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md)'
   -
     id: api.pos-stabilization.047
     stable_key: 'manual:api.pos-stabilization:close-cancel-order-table-release-unscoped'
@@ -34041,15 +34839,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:28:32Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T14:42:32Z'
+      review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
+      review_commit: de7078d0
     fix_commit: de7078d0
     regression_test: 'apps/api/tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_close_order_refuses_cross_tenant_order_id'
     blocked_reason: null
@@ -34118,6 +34916,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T14:42:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review (one-shot — pos-stabilization rounds 1-4 administrative closure)'
+        previous_yaml_sha256: 13058d8d058c42aed9ee2298cd1033ed3488b83dea1a43512bdcb75d9a36458b
+        new_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        target_ids:
+          - api.pos-stabilization.047
+          - api.pos-stabilization
+        from_status: under_review
+        to_status: fixed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
+        review_commit: de7078d0
+        note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md)'
   -
     id: api.pos-stabilization.048
     stable_key: 'manual:api.pos-stabilization:order-controller-reload-reads-unscoped'
@@ -35397,6 +36212,240 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-07-api-scheduled-jobs-cluster-codex-round2-review.md
         review_commit: b059bb2c
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+  -
+    id: api.webhooks-incoming.001
+    stable_key: 'manual:api.webhooks-incoming:stripe-webhook-controller-cross-tenant-by-design'
+    surface: api
+    cluster_id: api.webhooks-incoming
+    scanner: manual
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 30
+    symbol: App\Modules\Billing\Presentation\Controllers\StripeWebhookController
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: tenant_subscriptions+billing_invoices+billing_payments
+    expected_scope: cross_tenant
+    expected_fix: "Add a class-level `@cross-tenant-by-design` annotation documenting shape (b) sub-form: globally-unique Stripe-issued IDs (sub_*, in_*, pi_*) → resource lookup → resource.tenant_id stamps every downstream notification/update. Signature gate is inline (Stripe SDK Webhook::constructEvent with global STRIPE_WEBHOOK_SECRET, before any DB read). DB-level UNIQUE constraints exist on tenant_subscriptions.stripe_subscription_id and billing_invoices.stripe_invoice_id; billing_payments.provider_payment_id is only composite-indexed (relies on Stripe's external uniqueness contract — tracked as Finding F in the scheduled-jobs cross-cluster observations doc). The architecture test (WebhookControllerTenantContextTest) enforces the annotation; out-of-scope concerns (orWhere fallback in handleSubscriptionCreated, missing event-id idempotency) deferred as Findings D + E."
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-07T21:56:54Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-07T21:56:45Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        new_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        target_ids:
+          - api.webhooks-incoming.001
+        from_status: null
+        to_status: pending
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-07T21:56:55Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        new_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        target_ids:
+          - api.webhooks-incoming.001
+        from_status: pending
+        to_status: claimed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-07 kickoff: Claude implements (cat-(b) annotations + WebhookControllerTenantContextTest with stub-shape body inspection), Codex performs adversarial review — same pattern as api.console-commands round-2 + api.scheduled-jobs.'
+      -
+        at: '2026-05-07T21:56:59Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        new_yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
+        target_ids:
+          - api.webhooks-incoming.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.webhooks-incoming.002
+    stable_key: 'manual:api.webhooks-incoming:enrichment-webhook-controller-cross-tenant-by-design'
+    surface: api
+    cluster_id: api.webhooks-incoming
+    scanner: manual
+    file: apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/EnrichmentWebhookController.php
+    line: 13
+    symbol: App\Modules\PlatformIntegration\Presentation\Controllers\EnrichmentWebhookController
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    expected_fix: 'Add a class-level `@cross-tenant-by-design` annotation pointing to (1) the route-level VerifySynerivaWebhookSignature middleware (HMAC-SHA256 over timestamp.body with global SYNERIVA_WEBHOOK_SECRET, 5-min freshness window, hash_equals constant-time compare) and (2) the existing job-level annotation on ProcessEnrichmentWebhookJob:16 documenting the resolution chain through platform_submission_id → Product → company_id (cross-cluster Finding A). The controller class itself does ZERO DB access; the annotation explains why and chains to the upstream signature gate + downstream job.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-07T21:56:54Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-07T21:56:45Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        new_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        target_ids:
+          - api.webhooks-incoming.002
+        from_status: null
+        to_status: pending
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-07T21:56:55Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        new_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        target_ids:
+          - api.webhooks-incoming.002
+        from_status: pending
+        to_status: claimed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-07 kickoff: Claude implements (cat-(b) annotations + WebhookControllerTenantContextTest with stub-shape body inspection), Codex performs adversarial review — same pattern as api.console-commands round-2 + api.scheduled-jobs.'
+      -
+        at: '2026-05-07T21:56:59Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        new_yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
+        target_ids:
+          - api.webhooks-incoming.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.webhooks-incoming.003
+    stable_key: 'manual:api.webhooks-incoming:purchase-hub-webhook-controller-stub-cross-tenant-by-design'
+    surface: api
+    cluster_id: api.webhooks-incoming
+    scanner: manual
+    file: apps/api/app/Modules/PurchaseHub/Presentation/Controllers/PurchaseHubWebhookController.php
+    line: 12
+    symbol: App\Modules\PurchaseHub\Presentation\Controllers\PurchaseHubWebhookController
+    pattern_type: webhook_controller_stub_no_signature_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    expected_fix: 'STUB controller — add a LOUD class-level `@cross-tenant-by-design` annotation marking the class as a stub (zero DB access, zero job/event dispatch, zero notification) AND listing the three prerequisites that MUST be satisfied before any DB/Bus/Event/Queue/Notification call is added: (1) register a signature-verification middleware on routes.php:25 (mirror VerifySynerivaWebhookSignature pattern); (2) define a tenant-resolution path from the verified payload (shape a/b/c per master plan §8); (3) update the annotation + convert this entry to cat-(a) with a manual inventory row + regression test. The architecture test (WebhookControllerTenantContextTest) enforces the stub shape via reflection-based body inspection: any forbidden call pattern (DB::, Bus::, Event::dispatch, Queue::push, Notification::send, Model:: static-call writes) in the controller body fails the test until the prerequisites above are met. Tracked as Finding G in the scheduled-jobs cross-cluster observations doc.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-07T21:56:54Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-07T21:56:45Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 63cee3087a38a5b65a6b9d514ea3e8e76134b96284ac40c00e82d7a6e5569a20
+        new_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        target_ids:
+          - api.webhooks-incoming.003
+        from_status: null
+        to_status: pending
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-07T21:56:55Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e9df9f824e03f88186d9a5d0378ebcacdcf057831bb743f37ae6cbefdac61afd
+        new_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        target_ids:
+          - api.webhooks-incoming.003
+        from_status: pending
+        to_status: claimed
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=Ownership swap per 2026-05-07 kickoff: Claude implements (cat-(b) annotations + WebhookControllerTenantContextTest with stub-shape body inspection), Codex performs adversarial review — same pattern as api.console-commands round-2 + api.scheduled-jobs.'
+      -
+        at: '2026-05-07T21:56:59Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b8477a614141dcbd786174a9dcbfeb2b652b31a6a408739a7840b4710c5111f7
+        new_yaml_sha256: 6b4c0613d328668573c94bb06e9201b26fb1ecad4d7a8a261137533267d83809
+        target_ids:
+          - api.webhooks-incoming.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 3f158018c5e5c37a699905c0a9f24b81e6528665
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29

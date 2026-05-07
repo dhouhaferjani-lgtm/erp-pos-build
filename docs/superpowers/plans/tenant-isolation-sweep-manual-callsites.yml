@@ -386,177 +386,6 @@ manual_callsites:
     cross_module: true
     expected_fix: "Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id."
 
-  # api.pos-stabilization — Loyalty POS cross-cluster blind spot deferred from
-  # api.loyalty cluster (2026-05-04 cross-cluster blind spots audit Finding B,
-  # Codex round-1 Finding 3 / Opus round-2 Finding B). LoyaltyPOSController is
-  # apps/api/app/Modules/Loyalty/Presentation/Controllers — NOT under
-  # apps/api/app/Modules/POS — but the surface is reachable only from POS
-  # routes (POST /api/v1/loyalty/pos/{previewEarning,earn,redeem}) and the
-  # cluster owner is api.pos-stabilization per the deferral. Fix lands here
-  # because the POS-stabilization session has been folded into the tenant-
-  # scoping cleanup (2026-05-05).
-  - cluster_id: api.pos-stabilization
-    slug: loyalty-pos-controller-preview-earning-unscoped-enrollment
-    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
-    line: 78
-    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::previewEarning'
-    pattern_type: trusts_request_input_unscoped_id
-    resource: loyalty_enrollments
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: true
-    expected_fix: "Validator must scope enrollment_id by member.tenant_id (Rule::exists('loyalty_enrollments','id') with whereIn subquery on loyalty_members.tenant_id) OR pre-load Enrollment tenant-scoped in controller before delegating to EarningProcessingService::previewEarning. Underlying EarningProcessingService::previewEarning calls EloquentEnrollmentRepository::findById which is unscoped Enrollment::find()."
-
-  - cluster_id: api.pos-stabilization
-    slug: loyalty-pos-controller-earn-unscoped-enrollment
-    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
-    line: 174
-    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::earn'
-    pattern_type: trusts_request_input_unscoped_id
-    resource: loyalty_enrollments
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: true
-    expected_fix: "Same fix pattern as previewEarning. Without scoping, tenant-A can write loyalty_transactions and decrement balance against tenant-B's enrollment via POST /loyalty/pos/earn. EarningProcessingService::earnPoints (line 51) calls EloquentEnrollmentRepository::findById — unscoped Enrollment::find()."
-
-  - cluster_id: api.pos-stabilization
-    slug: loyalty-pos-controller-redeem-unscoped-enrollment-reward
-    file: apps/api/app/Modules/Loyalty/Presentation/Controllers/LoyaltyPOSController.php
-    line: 147
-    symbol: 'App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController::redeem'
-    pattern_type: trusts_request_input_unscoped_id
-    resource: loyalty_enrollments+loyalty_rewards
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: true
-    expected_fix: "Scope BOTH enrollment_id and reward_id. enrollment_id: validator subquery on loyalty_members.tenant_id (and company_id). reward_id: validator subquery on loyalty_programs.tenant_id+company_id. Underlying RedemptionProcessingService::redeemReward calls EloquentEnrollmentRepository::findById (line 47) and EloquentRewardRepository::findById (line 53) — both unscoped. Allows tenant-A to redeem tenant-B's reward inventory."
-
-  - cluster_id: api.pos-stabilization
-    slug: earning-processing-service-find-by-id-unscoped
-    file: apps/api/app/Modules/Loyalty/Application/Services/EarningProcessingService.php
-    line: 168
-    symbol: 'App\Modules\Loyalty\Application\Services\EarningProcessingService::previewEarning|earnPoints'
-    pattern_type: service_method_unscoped
-    resource: loyalty_enrollments
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Both previewEarning (line 168) and earnPoints (line 51) call EloquentEnrollmentRepository::findById($enrollmentId), which is unscoped Enrollment::find. Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input and scope the lookup. Add CompanyContext (or required tenantId+companyId args) and scope via member.tenant_id."
-
-  - cluster_id: api.pos-stabilization
-    slug: redemption-processing-service-find-by-id-unscoped
-    file: apps/api/app/Modules/Loyalty/Application/Services/RedemptionProcessingService.php
-    line: 47
-    symbol: 'App\Modules\Loyalty\Application\Services\RedemptionProcessingService::redeemReward|previewRedemption'
-    pattern_type: service_method_unscoped
-    resource: loyalty_enrollments+loyalty_rewards
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "redeemReward (lines 47 + 53) and the sibling preview method (lines 132 + 141) call EloquentEnrollmentRepository::findById and EloquentRewardRepository::findById — both unscoped. Add CompanyContext and tenant-scope both lookups (Enrollment via member.tenant_id; Reward via program.tenant_id) before mutating points/inventory."
-
-  # api.pos-stabilization round-2 Opus Findings (2026-05-04 verdict at
-  # docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-opus-review.md).
-  # Three round-1 follow-ups closed in the round-2 remediation:
-  - cluster_id: api.pos-stabilization
-    slug: voucher-ledger-push-service-terminal-lookup-unscoped
-    file: apps/api/app/Modules/POS/Application/Services/VoucherLedgerPushService.php
-    line: 87
-    symbol: 'App\Modules\POS\Application\Services\VoucherLedgerPushService::push'
-    pattern_type: service_method_unscoped_anchor_from_request_input
-    resource: pos_terminals+vouchers
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: true
-    expected_fix: "Round-1 .027 fix sourced the Terminal lookup's tenant_id from request-body terminal_id (untrusted), so the Voucher SELECT's tenant predicate was a tighter error message but not a tighter security guard. Round-2 path (a): inject CompanyContext into VoucherLedgerPushService; pin Terminal lookup with where('tenant_id',$companyContextTenant)->where('company_id',$companyContextCompany); also add ScopedExists::tenantAndCompany('pos_terminals',...) on entries.*.terminal_id in VoucherLedgerSyncRequest so cross-tenant payloads 422 at validator. Both tiers anchor on authenticated CompanyContext."
-
-  - cluster_id: api.pos-stabilization
-    slug: store-receipt-request-composite-item-id-bare-exists
-    file: apps/api/app/Modules/POS/Presentation/Requests/StoreReceiptRequest.php
-    line: 60
-    symbol: 'App\Modules\POS\Presentation\Requests\StoreReceiptRequest::rules'
-    pattern_type: bare_exists_validator
-    resource: composite_items
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "lines.*.composite_item_id kept 'exists:composite_items,id' bare even though composite_items has both tenant_id + company_id (per migration 2026_02_19_100001) and the same FormRequest already constructor-injects CompanyContext for sibling product/partner/contact fields. Round-2: replace with ScopedExists::tenantAndCompany('composite_items',$tenantId,$companyId). Also scope ReceiptSyncService::syncSingleReceipt CompositeItem::find at line 235 by anchoring terminal's tenant+company so a programmatic-caller bypass cannot leak a foreign sellable snapshot into the receipt write."
-
-  - cluster_id: api.pos-stabilization
-    slug: create-update-table-request-floor-id-bare-exists
-    file: apps/api/app/Modules/POS/Presentation/Requests/CreateTableRequest.php
-    line: 19
-    symbol: 'App\Modules\POS\Presentation\Requests\CreateTableRequest::rules + UpdateTableRequest::rules'
-    pattern_type: bare_exists_validator
-    resource: pos_floors
-    expected_scope: tenant_and_company
-    severity: medium
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Both Create/UpdateTableRequest kept 'exists:pos_floors,id' bare. pos_floors has both tenant_id + company_id (per migration 2026_03_03_*_create_pos_floors_table). Round-2: constructor-inject CompanyContext on both FormRequests, replace bare exists with ScopedExists::tenantAndCompany('pos_floors',$tenantId,$companyId)."
-
-  # api.pos-stabilization round-3 Codex round-2 Findings (2026-05-04 verdict at
-  # docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md).
-  # Four round-2 follow-ups closed in the round-3 remediation:
-  - cluster_id: api.pos-stabilization
-    slug: receipt-sync-cross-tenant-sellable-id-leak
-    file: apps/api/app/Modules/POS/Presentation/Requests/SyncReceiptsRequest.php
-    line: 58
-    symbol: 'App\Modules\POS\Presentation\Requests\SyncReceiptsRequest::rules + App\Modules\POS\Application\Services\ReceiptSyncService::syncSingleReceipt'
-    pattern_type: bare_exists_validator+service_method_persists_unscoped_fk
-    resource: products+composite_items
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: true
-    cross_module: false
-    expected_fix: "Pre-fix: receipts.*.lines.*.product_id and ...composite_item_id were validated only as nullable UUIDs. ReceiptSyncService correctly refused to LOAD a cross-tenant Product/CompositeItem snapshot but persisted the raw payload UUIDs into pos_receipt_lines.product_id / composite_item_id, leaving tenant-A receipt lines referencing tenant-B sellable rows. Round-3: (1) constructor-inject CompanyContext into SyncReceiptsRequest; replace UUID-only validation with ScopedExists::tenantAndCompany('products',...) and ScopedExists::tenantAndCompany('composite_items',...); (2) defense-in-depth at ReceiptSyncService::syncSingleReceipt — persist the SCOPED-RESOLVED entity ids ($resolvedProductId / $resolvedCompositeItemId), so any FK that fails scoped resolution is stored as NULL alongside the existing 'Unknown Product' snapshot fallback."
-
-  - cluster_id: api.pos-stabilization
-    slug: receipt-sync-idempotency-key-echo-leak
-    file: apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php
-    line: 128
-    symbol: 'App\Modules\POS\Application\Services\ReceiptSyncService::syncSingleReceipt'
-    pattern_type: service_method_unscoped_idempotency_lookup
-    resource: receipts
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: true
-    cross_module: false
-    expected_fix: "Pre-fix: Receipt::where('idempotency_key',$payload->idempotencyKey)->first() ran BEFORE company context was applied, so a tenant-A submitter with a tenant-B idempotency_key received the foreign receipt id, fiscal_hash, and terminal hash state via the duplicate-response branch — a live fiscal-data leak. Round-3: scope the SELECT by authenticated tenant_id + company_id from CompanyContext (already injected). Cross-tenant collisions resolve to null → request proceeds as a fresh insert. Also tightened the duplicate-echo Terminal lookup (Round-1 Finding 4 KNOWN GAP closure) to anchor on $existing->tenant_id + $existing->company_id, removing the open scanner-blind-spot annotation since the F2 scoping makes $existing structurally same-company."
-
-  - cluster_id: api.pos-stabilization
-    slug: table-release-cross-tenant-mutation
-    file: apps/api/app/Modules/POS/Application/Services/TableManagementService.php
-    line: 184
-    symbol: 'App\Modules\POS\Application\Services\TableManagementService::releaseTable + ::assignOrderToTable'
-    pattern_type: service_method_unscoped_locked_row_select
-    resource: pos_tables
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: releaseTable and assignOrderToTable each ran Table::lockForUpdate()->findOrFail($tableId) without tenant or company predicates. POST /api/v1/pos/tables/{id}/release let a tenant-A operator release a tenant-B occupied table and read back the foreign resource. Round-3: anchor each locked-row SELECT on authenticated tenant_id + company_id (resolved via CompanyContext + resolveTenantId, matching sibling methods). Cross-tenant ids surface as ModelNotFoundException → Laravel 404, no mutation. Sibling-method audit confirmed only releaseTable/assignOrderToTable were unscoped; CRUD methods (create/update/delete table + floor + setTableStatus) already used ::where('company_id',...)->findOrFail."
-
-  - cluster_id: api.pos-stabilization
-    slug: order-create-cross-tenant-table-assignment
-    file: apps/api/app/Modules/POS/Presentation/Requests/CreateOrderRequest.php
-    line: 50
-    symbol: 'App\Modules\POS\Presentation\Requests\CreateOrderRequest::rules + App\Modules\POS\Application\Services\OrderManagementService::createOrder'
-    pattern_type: bare_uuid_validator+service_method_unscoped_locked_row_select
-    resource: pos_tables
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: CreateOrderRequest validated table_id only as ['nullable','uuid']; OrderController passed it through; OrderManagementService::createOrder ran Table::lockForUpdate()->findOrFail($tableId) without tenant/company predicates while persisting the foreign table_id onto the tenant-A order. Same table-mutation bug as Finding 3 reached through a different production HTTP path. Round-3: (1) ScopedExists::tenantAndCompany('pos_tables',$tenantId,$companyId) on table_id (CompanyContext + ScopedExists imports already present from .008/.009 callsites); (2) defense-in-depth at OrderManagementService::createOrder — anchor the locked-row SELECT on the already-resolved $terminal's tenant + company predicates."
-
   # api.catalog — round-2 Codex Finding 1 (BLOCKING): ProductController +
   # EnrichmentReviewController bare-where reads invisible to the chained
   # MethodCall AST visitor (StaticCall blind spot, see d7184178). Both tables
@@ -656,65 +485,6 @@ manual_callsites:
     cross_module: false
     expected_fix: "Pre-fix: same StaticCall bare-where shape before the reject() state transition (PendingReview → Rejected). Round-2 fix mirrors accept(); cross-tenant returns 404 and the foreign row stays in PendingReview. Pinned by ::test_reject_enrichment_result_rejects_cross_tenant_id."
 
-  # api.pos-stabilization round-4 Codex round-3 Findings (verdict at
-  # docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md).
-  # Single Codex round-3 finding closed in the round-4 remediation: every
-  # OrderManagementService route-anchored Order lookup (and the closeOrder/
-  # cancelOrder Table release + the OrderController/KitchenDisplayController
-  # reload reads) was unscoped, allowing tenant-A operators to mutate tenant-B
-  # orders if they knew the order UUID.
-  - cluster_id: api.pos-stabilization
-    slug: order-management-service-route-order-lookups-unscoped
-    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
-    line: 190
-    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::addLine + ::modifyLine + ::removeLine + ::sendToKitchen + ::closeOrder + ::cancelOrder + ::updateLineStatus + ::bumpOrder + ::markOrderServed'
-    pattern_type: service_method_unscoped_locked_row_select
-    resource: pos_orders
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: 9 OrderManagementService methods reachable from OrderController + KitchenDisplayController each ran Order::lockForUpdate()->[with(...)]->findOrFail($routeOrderId) with no tenant_id/company_id predicates. A tenant-A POS operator who knew a tenant-B open/kitchen order UUID could mutate that foreign order (cancel, send-to-kitchen, close-to-receipt, bump, modify lines, markServed) and read back the foreign resource. Round-4: anchor every locked-row SELECT on authenticated CompanyContext tenant + company predicates (resolved via the already-injected CompanyContext, new private tenantAndCompany() helper). Cross-tenant ids surface as ModelNotFoundException → 404 with no mutation."
-
-  - cluster_id: api.pos-stabilization
-    slug: close-cancel-order-table-release-unscoped
-    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
-    line: 388
-    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::closeOrder + ::cancelOrder Table release'
-    pattern_type: service_method_unscoped_table_release
-    resource: pos_tables
-    expected_scope: tenant_and_company
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: closeOrder + cancelOrder ran Table::where('id', $order->table_id)->update([...]) without tenant_id/company_id predicates. A foreign $order->table_id (post-Round-3 the order is itself scoped, but defense-in-depth still matters) could mutate a foreign tenant's table. Round-4: anchor on the already-scoped $order->tenant_id + $order->company_id alongside id."
-
-  - cluster_id: api.pos-stabilization
-    slug: order-controller-reload-reads-unscoped
-    file: apps/api/app/Modules/POS/Presentation/Controllers/OrderController.php
-    line: 170
-    symbol: 'App\Modules\POS\Presentation\Controllers\OrderController::addLine + ::modifyLine + ::removeLine reload'
-    pattern_type: controller_reload_unscoped
-    resource: pos_orders
-    expected_scope: company_only
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: OrderController.php:170, 217, 251 each ran Order::with('lines')->findOrFail($id) without company predicate after the (post-Round-4 scoped) service mutation. Round-4: scope reload by authenticated companyContext->requireCompanyId() so the response resource cannot echo a foreign order even if the service-tier guard had been bypassed. Also added catch (ModelNotFoundException) to bubble cross-tenant misses to Laravel's default 404 handler instead of being swallowed by the broad RuntimeException catch as 422."
-
-  - cluster_id: api.pos-stabilization
-    slug: kitchen-display-controller-reload-reads-unscoped
-    file: apps/api/app/Modules/POS/Presentation/Controllers/KitchenDisplayController.php
-    line: 60
-    symbol: 'App\Modules\POS\Presentation\Controllers\KitchenDisplayController::updateLineStatus + ::bump + ::served reload'
-    pattern_type: controller_reload_unscoped
-    resource: pos_orders
-    expected_scope: company_only
-    severity: high
-    fiscal_path: false
-    cross_module: false
-    expected_fix: "Pre-fix: KitchenDisplayController.php:60, 87, 107 each ran Order::with(['lines', 'table.floor'])->findOrFail($orderId|$order->id) without company predicate. Round-4: same scoped-reload pattern as OrderController + ModelNotFoundException catch for clean 404."
-
   # api.scheduled-jobs — cat-(a) classification per docs/superpowers/audits/2026-05-07-api-scheduled-jobs-triage.md
   - cluster_id: api.scheduled-jobs
     slug: import-process-import-job
@@ -741,3 +511,51 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Apply BindsTenantContext trait — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:555 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts the ZIP-extraction path cannot leak across tenants."
+
+  # api.webhooks-incoming — cat-(b) classification per docs/superpowers/audits/2026-05-07-api-webhooks-incoming-triage.md.
+  # All three webhook controllers are structurally tenant-safe today (signature
+  # verification + globally-unique resource/tracking IDs / stub-only). The
+  # cluster work is annotation-only at the controller layer plus a strict
+  # WebhookControllerTenantContextTest architecture test that enforces the
+  # invariant going forward — including, for the PurchaseHub stub, that the
+  # controller body remains stub-shaped (no DB / Bus / Event / Queue /
+  # Notification calls) until a signature middleware + tenant-resolution
+  # path is wired up.
+  - cluster_id: api.webhooks-incoming
+    slug: stripe-webhook-controller-cross-tenant-by-design
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 30
+    symbol: 'App\Modules\Billing\Presentation\Controllers\StripeWebhookController'
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: tenant_subscriptions+billing_invoices+billing_payments
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-by-design` annotation documenting shape (b) sub-form: globally-unique Stripe-issued IDs (sub_*, in_*, pi_*) → resource lookup → resource.tenant_id stamps every downstream notification/update. Signature gate is inline (Stripe SDK Webhook::constructEvent with global STRIPE_WEBHOOK_SECRET, before any DB read). DB-level UNIQUE constraints exist on tenant_subscriptions.stripe_subscription_id and billing_invoices.stripe_invoice_id; billing_payments.provider_payment_id is only composite-indexed (relies on Stripe's external uniqueness contract — tracked as Finding F in the scheduled-jobs cross-cluster observations doc). The architecture test (WebhookControllerTenantContextTest) enforces the annotation; out-of-scope concerns (orWhere fallback in handleSubscriptionCreated, missing event-id idempotency) deferred as Findings D + E."
+
+  - cluster_id: api.webhooks-incoming
+    slug: enrichment-webhook-controller-cross-tenant-by-design
+    file: apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/EnrichmentWebhookController.php
+    line: 13
+    symbol: 'App\Modules\PlatformIntegration\Presentation\Controllers\EnrichmentWebhookController'
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-by-design` annotation pointing to (1) the route-level VerifySynerivaWebhookSignature middleware (HMAC-SHA256 over timestamp.body with global SYNERIVA_WEBHOOK_SECRET, 5-min freshness window, hash_equals constant-time compare) and (2) the existing job-level annotation on ProcessEnrichmentWebhookJob:16 documenting the resolution chain through platform_submission_id → Product → company_id (cross-cluster Finding A). The controller class itself does ZERO DB access; the annotation explains why and chains to the upstream signature gate + downstream job."
+
+  - cluster_id: api.webhooks-incoming
+    slug: purchase-hub-webhook-controller-stub-cross-tenant-by-design
+    file: apps/api/app/Modules/PurchaseHub/Presentation/Controllers/PurchaseHubWebhookController.php
+    line: 12
+    symbol: 'App\Modules\PurchaseHub\Presentation\Controllers\PurchaseHubWebhookController'
+    pattern_type: webhook_controller_stub_no_signature_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "STUB controller — add a LOUD class-level `@cross-tenant-by-design` annotation marking the class as a stub (zero DB access, zero job/event dispatch, zero notification) AND listing the three prerequisites that MUST be satisfied before any DB/Bus/Event/Queue/Notification call is added: (1) register a signature-verification middleware on routes.php:25 (mirror VerifySynerivaWebhookSignature pattern); (2) define a tenant-resolution path from the verified payload (shape a/b/c per master plan §8); (3) update the annotation + convert this entry to cat-(a) with a manual inventory row + regression test. The architecture test (WebhookControllerTenantContextTest) enforces the stub shape via reflection-based body inspection: any forbidden call pattern (DB::, Bus::, Event::dispatch, Queue::push, Notification::send, Model:: static-call writes) in the controller body fails the test until the prerequisites above are met. Tracked as Finding G in the scheduled-jobs cross-cluster observations doc."
