@@ -10,8 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * @cross-tenant-by-design STUB controller — currently performs ZERO DB
- * access, ZERO Bus/Event/Queue dispatch, ZERO Notification send. Route at
+ * @cross-tenant-by-design STUB: ZERO DB access, ZERO Bus/Event/Queue
+ * dispatch, ZERO Notification send. Route at
  * Modules/PurchaseHub/Presentation/routes.php:25 has NO signature-
  * verification middleware (only the default `api` middleware group), and
  * no auth:sanctum. Today this is acceptable because the controller body
