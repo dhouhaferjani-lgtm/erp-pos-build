@@ -70,10 +70,6 @@ final class HeldOrderTenantIsolationTest extends TestCase
 
     private User $userB;
 
-    private Location $locationA;
-
-    private Location $locationB;
-
     private Terminal $terminalA;
 
     private Terminal $terminalB;
@@ -109,8 +105,8 @@ final class HeldOrderTenantIsolationTest extends TestCase
             ['role' => 'admin'],
         );
 
-        [$this->locationA, $this->terminalA, $this->shiftA] = $this->seedTerminalAndShift($this->tenantA, $this->companyA, $this->userA);
-        [$this->locationB, $this->terminalB, $this->shiftB] = $this->seedTerminalAndShift($this->tenantB, $this->companyB, $this->userB);
+        [, $this->terminalA, $this->shiftA] = $this->seedTerminalAndShift($this->tenantA, $this->companyA, $this->userA);
+        [, $this->terminalB, $this->shiftB] = $this->seedTerminalAndShift($this->tenantB, $this->companyB, $this->userB);
     }
 
     // =========================================================================

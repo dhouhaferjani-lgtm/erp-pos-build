@@ -18,6 +18,14 @@ use Illuminate\Support\Collection;
  *
  * Used for NF525 compliance auditing. Verifies that all hash chains
  * across terminals are intact and have not been tampered with.
+ *
+ * @cross-tenant-by-design Iterates Terminal::active()->orderBy('code')->get()
+ *                         across all companies for fiscal hash chain integrity
+ *                         verification (NF525 audit). The optional --company /
+ *                         --terminal options are narrowing filters, not a tenant
+ *                         scope; the canonical run path is fleet-wide. Per
+ *                         master plan §14 invariant 1, this is a cat-(b)
+ *                         legitimate cross-tenant command.
  */
 final class VerifyPosChainCommand extends Command
 {
