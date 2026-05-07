@@ -7,9 +7,12 @@ namespace Tests\Feature\Console;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentReminder;
+use App\Modules\Scheduling\Domain\Enums\AppointmentSource;
 use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
+use App\Modules\Scheduling\Domain\Enums\AppointmentType;
 use App\Modules\Scheduling\Domain\Enums\ReminderChannel;
 use App\Modules\Scheduling\Domain\Enums\ReminderDeliveryStatus;
+use App\Modules\Scheduling\Domain\Enums\WaitType;
 use App\Modules\Scheduling\Infrastructure\Jobs\DispatchAppointmentReminder;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -21,7 +24,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ReflectionMethod;
-use Symfony\Component\Console\Exception\InvalidOptionException;
 use Tests\TestCase;
 
 /**
@@ -90,20 +92,27 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
                 '--to' => '2026-03-31',
                 '--output' => $outputPath,
             ]);
-        } catch (InvalidOptionException $e) {
-            $this->fail(
-                'Command must accept --tenant option after cat-(a-singleshot) wiring lands; got: '.$e->getMessage(),
-            );
+            $output = (string) Artisan::output();
         } finally {
             if (is_file($outputPath)) {
                 @unlink($outputPath);
             }
         }
 
-        // After fix: validation passes; the exporter may legitimately fail
-        // for "no fiscal data" reasons. The contract assertion is that the
-        // unknown-option failure mode no longer happens.
-        $this->assertTrue(true, 'Exit code: '.$exitCode); // anchor — option recognized.
+        // After cat-(a-singleshot) wiring lands: validation passes (matching
+        // tenant + company), the export service may legitimately fail for
+        // "no fiscal data" reasons, but the unknown-option failure mode is
+        // gone. Concretely: exit must NOT be the option-unknown error.
+        $this->assertStringNotContainsString(
+            'option does not exist',
+            strtolower($output),
+            'Command must accept --tenant after wiring; got option-unknown error: '.$output,
+        );
+        $this->assertNotEquals(
+            -1,
+            $exitCode,
+            'Artisan must have run the command (returned an exit code, not a thrown exception). Output: '.$output,
+        );
     }
 
     /**
@@ -127,10 +136,6 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
                 '--output' => $outputPath,
             ]);
             $output = strtolower((string) Artisan::output());
-        } catch (InvalidOptionException $e) {
-            $this->fail(
-                'Command must validate --tenant against --company after cat-(a-singleshot) wiring lands; got option-unknown error instead: '.$e->getMessage(),
-            );
         } finally {
             if (is_file($outputPath)) {
                 @unlink($outputPath);
@@ -237,7 +242,7 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
         DB::flushQueryLog();
 
         try {
-            (new DispatchAppointmentReminder($reminder->id))->handle();
+            (new DispatchAppointmentReminder($reminder->id, $reminder->tenant_id))->handle();
         } catch (\Throwable) {
             // Today the job may succeed or throw; we only care about query shape.
         }
@@ -405,13 +410,13 @@ final class ConsoleCommandTenantIsolationTest extends TestCase
         $appointment->customer_name = 'Test Customer';
         $appointment->customer_phone = '+33000000000';
         $appointment->customer_email = 'customer@example.com';
-        $appointment->appointment_type = 'standard_repair';
-        $appointment->wait_type = 'drop_off';
-        $appointment->status = AppointmentStatus::Scheduled->value;
+        $appointment->appointment_type = AppointmentType::StandardRepair;
+        $appointment->wait_type = WaitType::DropOff;
+        $appointment->status = AppointmentStatus::Scheduled;
         $appointment->scheduled_start = $start;
         $appointment->scheduled_end = $end;
         $appointment->estimated_duration_minutes = 60;
-        $appointment->source = 'manual';
+        $appointment->source = AppointmentSource::Manual;
         $appointment->is_auto_confirmed = false;
         $appointment->save();
 

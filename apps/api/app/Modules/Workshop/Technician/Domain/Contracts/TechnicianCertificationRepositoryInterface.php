@@ -17,10 +17,14 @@ interface TechnicianCertificationRepositoryInterface
     public function forProfile(string $profileId): Collection;
 
     /**
-     * Returns certifications whose `expires_at` falls within `$days` days from today.
-     * Consumed by `CheckExpiringCertifications` (Task 11).
+     * Returns certifications whose `expires_at` falls within `$days` days from today,
+     * scoped to the supplied `$tenantId`. Tenant-only scope is correct here:
+     * the `workshop_technician_certifications` table has `tenant_id` only (no
+     * `company_id`) — see migration `2026_04_19_120002_create_workshop_technician_certifications_table.php:22`.
+     *
+     * Consumed by `CheckExpiringCertifications` (Task 11) which iterates per tenant.
      *
      * @return Collection<int, TechnicianCertification>
      */
-    public function findExpiringWithin(int $days): Collection;
+    public function findExpiringWithin(int $days, string $tenantId): Collection;
 }

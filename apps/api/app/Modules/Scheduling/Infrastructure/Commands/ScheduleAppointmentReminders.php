@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Scheduling\Infrastructure\Commands;
 
+use App\Console\TenantScopedCommand;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Scheduling\Application\Services\AppointmentReminderService;
 use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentReminder;
 use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
 use App\Modules\Scheduling\Domain\Enums\ReminderDeliveryStatus;
 use App\Modules\Scheduling\Infrastructure\Jobs\DispatchAppointmentReminder;
-use Illuminate\Console\Command;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 
@@ -23,11 +25,17 @@ use Illuminate\Support\Carbon;
  *      elapsed but whose `delivery_status` is still `pending`, and
  *      dispatches the queueable delivery job.
  *
- * Follows the shape established by `CheckExpiringCertifications` (Plan C):
- * a thin console command that delegates the heavy lifting to a domain
- * service / queueable job so the command itself stays test-friendly.
+ * Tenant-isolation: cat-(a-per-tenant-iter). Per master plan §14 invariant 2,
+ * the scheduler MUST iterate explicitly per tenant; it MUST NOT issue a
+ * single cross-tenant query. The previous implementation queried
+ * `Appointment::query()` and `AppointmentReminder::query()` directly across
+ * all tenants — that's been replaced with {@see TenantScopedCommand::forEachTenant()}
+ * wrapping per-tenant `where('tenant_id', …)` reads. The dispatched
+ * {@see DispatchAppointmentReminder} job receives the reminder's tenant_id
+ * as a constructor arg and re-asserts the scope on its own first read so the
+ * defense-in-depth holds even if the queue worker runs without a context.
  */
-final class ScheduleAppointmentReminders extends Command
+final class ScheduleAppointmentReminders extends TenantScopedCommand
 {
     /** @var string */
     protected $signature = 'scheduling:schedule-appointment-reminders {--horizon-hours=48}';
@@ -36,12 +44,13 @@ final class ScheduleAppointmentReminders extends Command
     protected $description = 'Schedule and dispatch 24h appointment reminders (email + SMS, per-channel idempotent).';
 
     public function __construct(
+        CompanyContext $companyContext,
         private readonly AppointmentReminderService $reminders,
     ) {
-        parent::__construct();
+        parent::__construct($companyContext);
     }
 
-    public function handle(): int
+    protected function executeCommand(): int
     {
         /** @var int $horizonHours */
         $horizonHours = (int) $this->option('horizon-hours');
@@ -51,25 +60,33 @@ final class ScheduleAppointmentReminders extends Command
             return self::INVALID;
         }
 
-        $scheduled = $this->scheduleUpcoming($horizonHours);
-        $dispatched = $this->dispatchDueReminders();
+        $totalScheduled = 0;
+        $totalDispatched = 0;
+
+        $exit = $this->forEachTenant(function (Tenant $tenant) use ($horizonHours, &$totalScheduled, &$totalDispatched): int {
+            $totalScheduled += $this->scheduleUpcomingForTenant($tenant->id, $horizonHours);
+            $totalDispatched += $this->dispatchDueRemindersForTenant($tenant->id);
+
+            return self::SUCCESS;
+        });
 
         $this->info(sprintf(
             'Scheduled %d reminder rows; dispatched %d pending reminders.',
-            $scheduled,
-            $dispatched,
+            $totalScheduled,
+            $totalDispatched,
         ));
 
-        return self::SUCCESS;
+        return $exit;
     }
 
-    private function scheduleUpcoming(int $horizonHours): int
+    private function scheduleUpcomingForTenant(string $tenantId, int $horizonHours): int
     {
         $now = Carbon::now();
         $horizon = $now->copy()->addHours($horizonHours);
 
         /** @var Collection<int, Appointment> $upcoming */
         $upcoming = Appointment::query()
+            ->where('tenant_id', $tenantId)
             ->whereIn('status', [
                 AppointmentStatus::Scheduled->value,
                 AppointmentStatus::Confirmed->value,
@@ -87,18 +104,19 @@ final class ScheduleAppointmentReminders extends Command
         return $count;
     }
 
-    private function dispatchDueReminders(): int
+    private function dispatchDueRemindersForTenant(string $tenantId): int
     {
         $now = Carbon::now();
 
         /** @var Collection<int, AppointmentReminder> $due */
         $due = AppointmentReminder::query()
+            ->where('tenant_id', $tenantId)
             ->where('delivery_status', ReminderDeliveryStatus::Pending->value)
             ->where('scheduled_for', '<=', $now)
             ->get();
 
         foreach ($due as $reminder) {
-            DispatchAppointmentReminder::dispatch($reminder->id);
+            DispatchAppointmentReminder::dispatch($reminder->id, $reminder->tenant_id);
         }
 
         return $due->count();
