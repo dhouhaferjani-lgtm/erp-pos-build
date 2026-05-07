@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-06T06:28:15Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 33425e021469e66f889cd0e5dc3807cc935240b3fc36f97032020df2bb5e4742
+  yaml_sha256: 5beeecbe8e2519a9b0d660146c3b258c5e1c26d3bb1d84419b9fb9b02f44f507
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -497,7 +497,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -34419,15 +34419,15 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T09:50:11Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+      review_commit: 0f51492f
     fix_commit: 0f51492f
     regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_export_jet_rejects_cross_tenant_company'
     blocked_reason: null
@@ -34496,6 +34496,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T09:50:11Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 33425e021469e66f889cd0e5dc3807cc935240b3fc36f97032020df2bb5e4742
+        new_yaml_sha256: ba16e9f1b29bc1f5a7abc8c4b41154d14771251ebe2c925349811187d7c4870c
+        target_ids:
+          - api.console-commands.001
+          - api.console-commands
+        from_status: under_review
+        to_status: fixed
+        commit: 779585601469216da56bfcf6d9a6ce55f5f9523a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+        review_commit: 0f51492f
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.console-commands.002
     stable_key: 'manual:api.console-commands:scheduling-appointment-reminders'
@@ -34513,15 +34530,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T09:50:12Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+      review_commit: 0f51492f
     fix_commit: 0f51492f
     regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_dispatch_appointment_reminder_job_rebinds_tenant_scope'
     blocked_reason: null
@@ -34590,6 +34607,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T09:50:12Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ba16e9f1b29bc1f5a7abc8c4b41154d14771251ebe2c925349811187d7c4870c
+        new_yaml_sha256: 9a0010c071a72eb6e8da5ebdcc9ad5dca39533c84ff24ab365c7f073f9e065c4
+        target_ids:
+          - api.console-commands.002
+          - api.console-commands
+        from_status: under_review
+        to_status: fixed
+        commit: 779585601469216da56bfcf6d9a6ce55f5f9523a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+        review_commit: 0f51492f
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.console-commands.003
     stable_key: 'manual:api.console-commands:workshop-check-expiring-certifications'
@@ -34607,15 +34641,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T10:47:00Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-07T09:50:13Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+      review_commit: 0f51492f
     fix_commit: 0f51492f
     regression_test: 'tests/Feature/Console/ConsoleCommandTenantIsolationTest.php::test_check_expiring_certifications_query_is_tenant_scoped'
     blocked_reason: null
@@ -34684,6 +34718,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-07T09:50:13Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9a0010c071a72eb6e8da5ebdcc9ad5dca39533c84ff24ab365c7f073f9e065c4
+        new_yaml_sha256: 5beeecbe8e2519a9b0d660146c3b258c5e1c26d3bb1d84419b9fb9b02f44f507
+        target_ids:
+          - api.console-commands.003
+          - api.console-commands
+        from_status: under_review
+        to_status: fixed
+        commit: 779585601469216da56bfcf6d9a6ce55f5f9523a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-07-api-console-commands-cluster-codex-round2-review.md
+        review_commit: 0f51492f
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.pos-stabilization.050
     stable_key: 'manual:api.pos-stabilization:held-order-expire-orders-fleet-wide'
