@@ -346,3 +346,251 @@ manual stubs at lock time (lock commit removes 16 entries spanning Group 4
 LoyaltyPOS, round-2 Findings 1-3, round-3 Findings 1-4, round-4 finding,
 round-5 closures). Future clusters should follow this pattern until
 option 1 above is implemented.
+
+## api.webhooks-incoming triage deferrals (2026-05-07)
+
+Surfaced during `api.webhooks-incoming` cluster triage (see
+`2026-05-07-api-webhooks-incoming-triage.md`). All four findings are
+out-of-scope for the webhooks-incoming cluster's invariant (verify
+signature → resolve tenant → bind context → defense-in-depth on a
+controller-by-controller basis); they are tracked here for the named
+target clusters to absorb. None is an exploitable cross-tenant data
+leak in the systems audited; severity reflects either a logic-correctness
+issue (D), a feature gap that becomes a security gap if amplified by
+volume (E), a defense-in-depth gap covered by an external contract (F),
+or a load-bearing future-modification blocker (G).
+
+### Finding D — `StripeWebhookController::handleSubscriptionCreated` `orWhere('stripe_customer_id', …)` fallback (LOW / logic-correctness, not tenant-isolation)
+
+**Severity**: LOW (functional, not security)
+
+**Surface**: `apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php:100-103`
+
+```php
+$subscription = TenantSubscription::where('stripe_subscription_id', $stripeSubId)
+    ->orWhere('stripe_customer_id', $stripeCustomerId)
+    ->first();
+```
+
+**Issue**: The `orWhere` fallback resolves a subscription via the Stripe
+customer ID when the subscription ID does not match. A Stripe customer
+can hold multiple subscriptions in our DB (one per Synerivia plan tier,
+or post-cancellation rows kept for audit), so the fallback can pick the
+wrong row. The subsequent `$subscription->update(['stripe_subscription_id' => $stripeSubId, …])`
+overwrites the matched row's stripe-subscription-id with the *new*
+event's id, mis-attributing future events to the wrong subscription.
+
+**Why LOW (not a tenant-isolation issue)**: a single Stripe customer is
+1:1 with a Synerivia tenant by design (one billing account per tenant).
+Multiple subscriptions on that customer all carry the same `tenant_id`,
+so the cross-tenant invariant is preserved even on the wrong-row match.
+The bug is logic-correctness on subscription state.
+
+**Recommended fix** (for the future cluster owner): drop the `orWhere`
+fallback. If `stripe_subscription_id` is the carrier-of-truth (which it
+is for `customer.subscription.created` events — Stripe always populates
+it on this event), match strictly on it. If no row matches, log a
+warning and exit (the upstream `subscribed` flow should have
+pre-created the row).
+
+**Target cluster owner**: future `api.billing` hardening cluster (no
+existing cluster covers Billing module logic per the master plan
+inventory).
+
+**Why deferred**: the `api.webhooks-incoming` cluster's invariant is
+"verify signature → resolve tenant → bind context → defense-in-depth."
+This finding does not violate that invariant — tenant resolution is
+correct; the bug is in *which subscription row gets updated within the
+correct tenant*. The fix lives in Billing-domain logic, not in webhook
+plumbing.
+
+### Finding E — `StripeWebhookController` missing event-id idempotency (MEDIUM / functional, not tenant-isolation)
+
+**Severity**: MEDIUM (functional, not security)
+
+**Surface**: `apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php` (entire `handle()` method, lines 35-88)
+
+**Issue**: Stripe webhooks are at-least-once delivery — Stripe redelivers
+events on any 5xx response, on dashboard "resend," and on signed-payload
+retry. The controller has no `event_id` deduplication table; the same
+`payment_intent.succeeded` or `charge.refunded` event will be processed
+twice, causing:
+- Double-stamped `paid_at` timestamps
+- Double notifications (`InvoicePaidNotification`, `AdminPaymentAlertNotification`)
+- Stale state if a redelivery races with a manual admin-side state change
+- For refunds specifically, `$payment->refunded_amount` overwrites instead
+  of accumulates (idempotent in numeric terms — same value re-stamped —
+  but the `refunded_at` timestamp drifts)
+
+**Why MEDIUM (not a tenant-isolation issue)**: idempotency is a
+within-tenant concern. The duplicate event still resolves to the same
+tenant via the same `stripe_subscription_id` / `stripe_invoice_id` /
+`provider_payment_id`. The cross-tenant invariant is preserved.
+
+**Recommended fix** (for the future cluster owner): introduce a
+`stripe_webhook_events` dedup table keyed on `event_id` (Stripe's `evt_*`
+identifier on the wrapper, NOT the resource id). On every event, attempt
+an INSERT IGNORE / `INSERT … ON CONFLICT DO NOTHING`; if a row already
+exists for that `event_id`, return 200 immediately without processing.
+The dedup window can be 30 days (Stripe's redelivery window) with a TTL
+sweep.
+
+**Target cluster owner**: future `api.billing` hardening cluster.
+
+**Why deferred**: same reason as Finding D — within-tenant correctness
+issue, not webhook-tenant-binding. Adding event-id dedup is a Billing
+schema change that touches migrations, not the webhooks-incoming
+controller-discipline invariant.
+
+### Finding F — `billing_payments.provider_payment_id` is composite-indexed but NOT UNIQUE (LOW / defense-in-depth)
+
+**Severity**: LOW (defense-in-depth; no observed contract violation)
+
+**Surface**: `apps/api/database/migrations/2025_12_16_100004_create_billing_payments_table.php:81`
+
+```php
+$table->index(['provider', 'provider_payment_id']);
+```
+
+**Issue**: The `(provider, provider_payment_id)` pair is indexed for
+read performance but does not have a UNIQUE constraint. Two
+`StripeWebhookController` callsites depend on the column being globally
+unique:
+- `Payment::where('provider_payment_id', $paymentIntentId)->first()`
+  (handlePaymentIntentSucceeded:415, handlePaymentIntentFailed:439,
+  handleChargeRefunded:467)
+- `Payment::updateOrCreate(['provider_payment_id' => $paymentIntentId], …)`
+  (handleInvoicePaid:243, handleInvoicePaymentFailed:319)
+
+The uniqueness guarantee rests on Stripe's external contract that
+`pi_*` IDs are globally unique. The DB does not enforce it. If two
+tenants somehow ended up with the same `provider_payment_id` in
+`billing_payments` (e.g., a future migration that imports historic data
+without dedup, an admin tool that copies rows, a CSV-import tool that
+trusts user-supplied values), `->first()` would silently pick one — the
+canonical "first row matched without scope" leak shape.
+
+**Why LOW**: the contract holds in the wild today. Stripe does not reuse
+payment-intent IDs across tenants because Synerivia uses a single Stripe
+account. The risk is amplified only by future schema changes that break
+the assumption.
+
+**Recommended fix** (for the future cluster owner): add a partial UNIQUE
+constraint:
+
+```php
+$table->unique(['provider', 'provider_payment_id'], 'billing_payments_provider_id_unique');
+```
+
+…with a one-time data-cleanup migration that removes any pre-existing
+duplicates (none expected today). Joins this finding with **Finding A**
+(`platform_submission_id` global-uniqueness contract risk in
+`ProcessEnrichmentEventListener`) under the same external-contract-trust
+pattern.
+
+**Target cluster owner**: `api.platform-integration` (carrying Finding A
+already) **OR** a unified `api.external-id-uniqueness` cluster covering
+both Finding A and this finding. Author's recommendation is the unified
+cluster — both findings share the same defense-in-depth shape and the
+fix is one schema migration each.
+
+**Why deferred**: the `api.webhooks-incoming` cluster's controller-layer
+invariant does not regulate DB schema constraints. This finding's
+mitigation is a migration plus optionally a defense-in-depth filter on
+the controller's `Payment::where(…)` lookups (which would be
+tautological today — the resolved row's `tenant_id` cannot disagree
+with itself — but would catch the corruption shape if a future row
+managed to get into `billing_payments` with a duplicate id).
+
+### Finding G — `PurchaseHubWebhookController` route lacks signature-verification middleware (HIGH future-state, LOW current-state stub)
+
+**Severity**: HIGH if any DB / Bus / Event / Queue / Notification call
+is added to the controller body, LOW today (controller is a verifiable
+stub: `Log::info` + `200 OK`).
+
+**Surface**:
+- Controller: `apps/api/app/Modules/PurchaseHub/Presentation/Controllers/PurchaseHubWebhookController.php` (whole file, 25 LOC)
+- Route: `apps/api/app/Modules/PurchaseHub/Presentation/routes.php:22-26`
+
+```php
+Route::prefix('api/webhooks')
+    ->middleware(['api'])
+    ->group(function () {
+        Route::post('purchase-hub', PurchaseHubWebhookController::class);
+    });
+```
+
+**Issue**: The route registers under `['api']` middleware only — no
+signature-verification middleware (no `VerifySynerivaWebhookSignature`
+analog exists for PurchaseHub), no `auth:sanctum`, no rate limit beyond
+the `api` group's defaults. Today this is **acceptable** because the
+controller body performs ZERO DB access, ZERO `Bus::dispatch`, ZERO
+`Event::dispatch`, ZERO `Queue::push`, ZERO `Notification::send` — it
+logs the event name and returns `{"status": "received"}`. The endpoint
+is a noop.
+
+The hint comment (`// Future: handle order.receipt_confirmed to
+auto-create PO in ERP`) signals this stub WILL grow into a real handler.
+If a developer later adds DB writes or job dispatches without first
+wiring a signature middleware AND a tenant-resolution step, the result
+is an unauthenticated cross-tenant write surface — a textbook external-
+ingress leak.
+
+**Why current-state LOW**: zero side-effects today. Verifiable by
+reading the 25-LOC file end-to-end. The architecture test added in this
+cluster (`WebhookControllerTenantContextTest`) enforces the stub shape
+via reflection-based body inspection — any forbidden call pattern in
+the controller body fails the test until the prerequisites below are
+met.
+
+**Why future-state HIGH**: external attackers can post arbitrary JSON
+to the route today. The day a developer adds `OrderReceipt::create([…])`
+inside `__invoke()`, that payload becomes unauthenticated cross-tenant
+write capability.
+
+**Recommended fix** (for the future cluster owner, BEFORE adding any
+side-effect to the controller):
+
+1. Mirror the Syneriva pattern: introduce
+   `apps/api/app/Modules/PurchaseHub/Infrastructure/Middleware/VerifyPurchaseHubWebhookSignature.php`
+   with HMAC-SHA256 over `timestamp.body`, 5-min freshness, constant-time
+   `hash_equals`, dedicated `PURCHASE_HUB_WEBHOOK_SECRET` env var. Adapt
+   the HMAC scheme to whatever PurchaseHub's outbound contract specifies
+   (per-tenant secret or globally pinned).
+2. Wire the middleware into `routes.php:22` so it runs before
+   `__invoke()`.
+3. Implement explicit tenant resolution from the verified payload
+   following one of master plan §8 shapes (a/b/c).
+4. Remove the stub-shape body-inspection guard from
+   `WebhookControllerTenantContextTest` for this controller; replace it
+   with a marker-interface (`WebhookController`) implementation that
+   asserts the new tenant-resolution path.
+5. Add a per-controller manual inventory row promoting this entry from
+   cat-(b)/stub to cat-(a), with a regression test in
+   `tests/Feature/Webhooks/`.
+
+**Target cluster owner**: `api.purchase-hub` when the stub is fleshed
+out, **OR** the architecture test catches the stub-violation transition
+first (preferred — the test fires on any commit that adds a forbidden
+call pattern, surfacing the issue at PR time rather than post-incident).
+
+**Why deferred**: today's stub satisfies the cluster invariant
+(no per-tenant operations performed). Pre-emptively wiring a signature
+middleware that handles a payload-shape we don't have yet would be
+speculative engineering. The architecture test is the load-bearing
+guard — it converts "forgot to add signature middleware" from a silent
+runtime risk into a deterministic CI failure.
+
+## Resolution
+
+The `api.webhooks-incoming` cluster closes against:
+- 3 cat-(b) annotations (StripeWebhookController, EnrichmentWebhookController, PurchaseHubWebhookController), each with class-level `@cross-tenant-by-design <justification>`.
+- New architecture test `WebhookControllerTenantContextTest` over the discovered webhook controller surface.
+- Zero cat-(a) callsites (no controller-body code change required).
+
+Findings D-G above are deferred to follow-up clusters as named.
+
+## References
+
+- `api.webhooks-incoming` triage: `docs/superpowers/audits/2026-05-07-api-webhooks-incoming-triage.md`
+- Cross-cluster precedent for the deferral pattern (this same doc, Findings A-C): `api.scheduled-jobs` cluster triage `docs/superpowers/audits/2026-05-07-api-scheduled-jobs-triage.md`
