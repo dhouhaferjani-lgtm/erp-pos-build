@@ -866,3 +866,81 @@ manual_callsites:
     fiscal_path: false
     cross_module: true
     expected_fix: "Author apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts as the queryKey-namespace invariant: static-scan every .ts/.tsx under apps/web/src extracting queryKey: [...] literals, classify by file path (under features/admin/ MUST start with 'admin'; outside MUST NOT). The test must RED on the existing leak at features/compliance/components/FraudAlertActionModals.tsx:22 (queryKey: ['admin-users']) and turn GREEN once that file's queryKey is renamed to ['users', 'admin-role'] AND the compliance-side getAdminUsers function in features/compliance/api/fraudApi.ts is renamed to getUsersWithAdminRole (disambiguating from the super-admin getAdminUsers in features/admin/api/index.ts). Verify no admin-prefixed leakage outside features/admin/ AND no domain-prefixed leakage inside features/admin/ (auth-store + adminApi wrappers are already cleanly encapsulated per audit)."
+
+  # api.module-gating — master plan §10 (narrowed) expanded to 20 line-level callsites in 6 controllers
+  # per orchestrator decision 2026-05-08 (after hostile-grep at triage Step 1 surfaced the sibling callsites
+  # outside the original Codex-S4-audited Progression module). Triage at
+  # docs/superpowers/audits/2026-05-08-api-module-gating-triage.md.
+  # Pattern lesson recorded in docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md
+  # (master plan §10 narrowing was scope-myopic — Codex SN audit's coverage limit was the load-bearing
+  # assumption; verify by hostile-grep before honoring narrowings).
+  #
+  # Two invariant flavors closed by this cluster (both HIGH severity):
+  #   (a-1) data-scoping invariant: companyId controls which records are read/written.
+  #         Raw-header-trust = direct cross-tenant data leak. (Progression × 3 + Tenant/Onboarding.)
+  #   (a-2) audit-attribution invariant: companyId is recorded in AuditEvent for forensic
+  #         reconstruction. Raw-header-trust = audit-trail evidence-tampering risk. For NF525 +
+  #         AdminAuditLog + two-tier hash chain compliance, this is independently load-bearing.
+  #         (Tenant/CompanySettings + Identity/UserController.)
+  # Plus a Growth Advisor response-id contract check (defense-in-depth on outbound-call return shape).
+  #
+  # Layering with api.super-admin-context: the universal arch test (ControllerTenantContextTest) confirms
+  # every controller method is classified by structural CompanyContext usage OR #[CrossTenantRoute].
+  # That static check correctly admits these methods today (they reference CompanyContext indirectly
+  # through the audit helper or service), but the static heuristic CANNOT enforce that every
+  # companyId-bearing argument flowing OUT of the controllers derives from CompanyContext rather than
+  # raw $request->header('X-Company-Id'). This cluster is the behavioral source-pinning layer that
+  # closes that residual gap (broadcast-channels round-3 lesson: static analysis alone has a data-flow
+  # ceiling; behavioral tests close the runtime contract).
+
+  - cluster_id: api.module-gating
+    slug: progression-controllers-companycontext-injection
+    file: apps/api/app/Modules/Progression/Presentation/Controllers/CompanyProgressionController.php
+    line: 20
+    symbol: 'App\Modules\Progression\Presentation\Controllers (CompanyProgressionController::show:20, register:45+48, milestones:69 + ModuleReadinessController::index:20, activate:38 + RecommendationController::index:20, accept:36, dismiss:56) — 8 method-level callsites'
+    pattern_type: trusts_x_company_id_header_in_controller
+    resource: growth_advisor_companies
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into all 3 Progression controllers (ModuleReadinessController, RecommendationController, CompanyProgressionController). Replace every `$request->header('X-Company-Id', '')` with `$this->companyContext->requireCompanyId()` (8 line-level callsites across the 3 files). Additionally on CompanyProgressionController::register line 48, swap `$request->header('X-Tenant-Id', '')` → `$this->companyContext->requireTenantId()`. Add class-level docblock mirroring AuditController template (api.compliance precedent at apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php:18-26): names CompanyContextMiddleware as the validator, names requireCompanyId() as the safe single source of truth, explains structural protection. Behavior-tests must drive a middleware-bypassed flow with a mock CompanyContext returning id A and a request header X-Company-Id: B (malicious) — assert ProgressionService received A, NOT B. (a-1) data-scoping invariant: companyId flows directly to the outbound Growth Advisor HTTP call URL path (e.g., GET /api/v1/companies/{companyId}/modules)."
+
+  - cluster_id: api.module-gating
+    slug: tenant-controllers-companycontext-injection
+    file: apps/api/app/Modules/Tenant/Presentation/Controllers/CompanySettingsController.php
+    line: 112
+    symbol: 'App\Modules\Tenant\Presentation\Controllers (OnboardingController::status:20 + CompanySettingsController::update:112, uploadLogo:159, deleteLogo:220) — 4 method-level callsites'
+    pattern_type: trusts_x_company_id_header_in_controller
+    resource: tenants_audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into OnboardingController and CompanySettingsController. OnboardingController::status (a-1 — primary scoping; flows to checklistService->getStatus($companyId)): replace raw header read AND remove the now-redundant `if ($companyId === null)` 400 guard (CompanyContextMiddleware already 403s on missing context, and requireCompanyId() throws on missing context). CompanySettingsController (a-2 — audit-attribution; flows to logAuditEvent only — actual settings update uses Tenant::find($user->tenant_id) which is already self-scoping): replace 3 callsites at lines 112, 159, 220 with requireCompanyId(). Leave the helper's `if ($companyId === null) return;` guard as defense-in-depth (avoid touching helper signature). Behavior-tests must pin both invariants: middleware-bypassed flow with malicious header proves source-pinning; logAuditEvent records the validated companyId, not the malicious one."
+
+  - cluster_id: api.module-gating
+    slug: identity-user-controller-companycontext-audit-attribution
+    file: apps/api/app/Modules/Identity/Presentation/Controllers/UserController.php
+    line: 177
+    symbol: 'App\Modules\Identity\Presentation\Controllers\UserController (store:177, update:263, destroy:330, activate:392, deactivate:468, setPosPin:526, setPosPin:559, resetPassword:620) — 8 method-level callsites'
+    pattern_type: trusts_x_company_id_header_for_audit_attribution
+    resource: users_audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into UserController. Replace 8 `companyId: $request->header('X-Company-Id')` calls (lines 177, 263, 330, 392, 468, 526, 559, 620) with `companyId: $this->companyContext->requireCompanyId()`. (a-2) audit-attribution invariant: data scoping is already correct (User CRUD scopes to where('tenant_id', $currentUser->tenant_id) — auth user's own tenant). The header read flows ONLY to the private logAuditEvent helper. Risk shape is audit-trail evidence-tampering: a user performing role-grant on their own tenant but tagging the AuditEvent with a foreign companyId. For NF525 + AdminAuditLog + two-tier hash chain compliance, this is independently load-bearing — not 'less severe than (a-1)' but 'different invariant, equally load-bearing for compliance contexts.' Leave the helper's `if ($companyId === null) return;` defense-in-depth guard. Behavior-tests must drive the middleware-bypassed flow + assert AuditEvent table records the validated companyId."
+
+  - cluster_id: api.module-gating
+    slug: growth-advisor-response-id-verification
+    file: apps/api/app/Modules/Progression/Application/Services/ProgressionService.php
+    line: 19
+    symbol: 'App\Modules\Progression\Application\Services\ProgressionService::getProfile + ::registerCompany'
+    pattern_type: outbound_response_no_id_match_check
+    resource: growth_advisor_companies
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add private assertResponseCompanyMatches(array $response, string $expectedCompanyId, string $context): void helper to ProgressionService — throws RuntimeException when response['id'] !== null AND response['id'] !== $expectedCompanyId. Pair with assertResponseTenantMatches for tenant_id (CompanyProfileData carries both id + tenant_id). Apply to getProfile (line 19) AND registerCompany (line 33) where Growth Advisor's CompanyProfileData response shape carries the id echo. The 6 other client methods (getMilestones, getModules, activateModule, getRecommendations, acceptRecommendation, dismissRecommendation) return DTOs that don't carry company_id in the response shape — document those as URL-bound only (mis-routing detectable only Growth-Advisor-side; tracked as Finding K's residual at api.growth-advisor-tenant-binding follow-up). The `if (responseId !== null && ...)` guard avoids false-throws on legitimate no-echo shapes. Fail-loud throw bubbles through controller's error handler as 500 — the canonical 'this should never happen' signal. Round-1 review focus: distinguish CLIENT-LAYER catch (network errors → returns null) from SERVICE-LAYER throw (contract violations → bubbles up); they don't intersect."

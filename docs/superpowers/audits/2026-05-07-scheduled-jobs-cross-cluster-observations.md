@@ -857,3 +857,108 @@ the Billing module and beyond.
 - `api.platform-integration` triage: `docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md`
 - Reference-good outbound HTTP pattern: `apps/api/app/Modules/SmartPrompts/Infrastructure/Http/RecommendationEngineHttpClient.php:84-89`
 - Platform-side auth contract: `apps/platform/app/Modules/Partners/Infrastructure/Middleware/AuthenticateApiKey.php:19`
+
+---
+
+## Master plan §10 narrowing was scope-myopic — expanded api.module-gating cluster to absorb (2026-05-08)
+
+### Pattern lesson (actionable, leading)
+
+**Master plan section narrowings — when grounded in a Codex SN
+module-bounded audit — must be paired with hostile-grep validation
+across the surrounding modules BEFORE the cluster's triage commits to
+scope.** The Codex SN audit's coverage limit IS the load-bearing
+assumption; it's wrong to assume the audit's "narrowed-to-X" conclusion
+means "no other module has the same gap." Validate by grep before
+honoring.
+
+Apply to every future cluster whose master-plan §-narrowing originated
+in a Codex S<N>-style audit. Hostile-grep the relevant anti-pattern
+across `apps/api/app` (with sensible exclusions for tests +
+middleware/structural-protector layers). If the grep surfaces sibling
+callsites in modules the SN audit didn't cover, that's not "out of
+cluster scope" — it's prima facie evidence the narrowing was
+coverage-limited, not deliberately scope-deciding.
+
+### Historical narrative (supporting context)
+
+- Master plan §10 narrowed `api.module-gating` to ProgressionService
+  + 3 controller callers, based on Codex S4 audit of the Progression
+  module.
+- Hostile-grep at cluster Step 1 (this triage, 2026-05-08) surfaced
+  12 sibling callsites in unaudited modules:
+  - `Tenant/OnboardingController.php:20` (1 callsite — primary scoping)
+  - `Tenant/CompanySettingsController.php:112,159,220` (3 callsites — audit attribution)
+  - `Identity/UserController.php:177,263,330,392,468,526,559,620` (8 callsites — audit attribution)
+- All 12 share the same `$request->header('X-Company-Id')` anti-pattern,
+  the same `auth:sanctum` + `CompanyContextMiddleware` route stack, and
+  the same uniform fix shape (constructor-inject `CompanyContext`,
+  swap to `requireCompanyId()`).
+- Codex S4 audit's coverage was bounded to the Progression module — it
+  didn't cover Tenant or Identity. The §10 narrowing was incomplete
+  coverage, not deliberate scope.
+- **Orchestrator decision (2026-05-08)**: expand cluster scope to
+  absorb all 15 method-level callsites (= 20 line-level callsites)
+  with a per-callsite a/b/c/d classification verification before fix
+  application. Final classification: 9 × (a-1) primary scoping + 11 ×
+  (a-2) audit attribution = 20 × (a) SAME-PATTERN, all uniform fix
+  shape. No (b), (c), or (d).
+- Two invariants closed with the same mechanical change:
+  - **(a-1) data-scoping invariant**: companyId controls which
+    records are read/written. Raw-header-trust = direct cross-tenant
+    data leak.
+  - **(a-2) audit-attribution invariant**: companyId is recorded in
+    `AuditEvent` for forensic reconstruction. Raw-header-trust =
+    audit-trail evidence-tampering risk. For NF525 + AdminAuditLog
+    + two-tier hash chain compliance, this is independently
+    load-bearing (not "less severe than (a-1)" but "different
+    invariant, equally load-bearing for compliance contexts").
+
+### Layering with `api.super-admin-context`
+
+The universal arch test added by `api.super-admin-context`
+(`tests/Architecture/ControllerTenantContextTest::test_every_controller_method_is_classified`)
+confirms every controller method is classified by structural
+`CompanyContext` usage OR `#[CrossTenantRoute]`. That static check
+correctly admits the 11 (a-2) callsites today (those controllers DO
+reference `CompanyContext` somewhere — through the data-scoping path
+or audit helper). The static heuristic CANNOT enforce that every
+`companyId`-bearing parameter to a downstream call (service, helper,
+audit log) derives from `CompanyContext` rather than raw
+`$request->header('X-Company-Id')` — that's the data-flow analysis
+wall PhpParser hits (api.broadcast-channels round-3 lesson).
+
+This cluster (`api.module-gating`) is the behavioral source-pinning
+layer that closes the residual gap the static layer can't reach. The
+two clusters layer cleanly:
+
+- **Static classification** (api.super-admin-context):
+  reflection-walk every public method on every concrete controller +
+  assert each is either `#[CrossTenantRoute(reason: <non-blank>)]` OR
+  matches the `CompanyContext` heuristic regex.
+- **Behavioral source-pinning** (api.module-gating): every
+  `companyId`-bearing argument flowing OUT of these controllers
+  derives from `CompanyContext::requireCompanyId()`, not from raw
+  header reads.
+
+### Severity
+
+**PROCESS-LEVEL** — informs future master-plan-narrowing decisions, not
+a code defect by itself. The 20 callsites this cluster fixes ARE code
+defects (same shape as `api.compliance` round-2 fix), but the lesson
+about narrowing-validation is the architectural takeaway.
+
+### Target
+
+Future cluster owners — apply the hostile-grep validation step
+BEFORE committing to a master-plan §-narrowing as scope.
+
+### References
+
+- `api.module-gating` triage: `docs/superpowers/audits/2026-05-08-api-module-gating-triage.md`
+- Codex S4 audit (the original narrowing source): see master plan §10
+- `api.compliance` round-2 fix (the precedent template):
+  `apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php:18-26`
+- Static-vs-behavioral layering precedent: api.broadcast-channels
+  round-3 BLOCK-NOVEL (this same doc, "Static analyzer on closure
+  bodies has unbounded attack surface" section).
