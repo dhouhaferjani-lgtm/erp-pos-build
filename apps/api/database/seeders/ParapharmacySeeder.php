@@ -52,11 +52,56 @@ use Spatie\Permission\Models\Role;
  */
 class ParapharmacySeeder extends Seeder
 {
+    /**
+     * Default catalog scale. Multiplies every category count in the
+     * `seedProducts` distribution map.
+     *
+     * Default `1` preserves the historical 1000-product fixture every
+     * existing test suite, demo, and CI run depends on. Override at
+     * runtime by setting the `PARAPHARMACY_SEEDER_SCALE` env var:
+     *   - SCALE=1  → 1000 products (default)
+     *   - SCALE=5  → 5000 products (Tier-1/Tier-2 perf-fixture target)
+     *   - SCALE=10 → 10000 products
+     *
+     * Non-numeric or sub-1 values fall back to the default — see
+     * `resolveScale()`. T1.0 (parapharmacy fixture for Tier-2 perf
+     * assertions: T2.1 paginated catalog warmup, T2.4 Slow-3G smoke).
+     */
+    private const DEFAULT_SCALE = 1;
+
     private Tenant $tenant;
 
     private Company $company;
 
     private Location $location;
+
+    /**
+     * Resolve the catalog scale at run time. Reads the
+     * `PARAPHARMACY_SEEDER_SCALE` env var; falls back to DEFAULT_SCALE
+     * when the value is missing, non-numeric, or less than 1. The
+     * fallback is silent because seeders run in many contexts (CI, demo
+     * deploys, local dev) where a hard error on a malformed env var
+     * would block unrelated work.
+     */
+    private function resolveScale(): int
+    {
+        // The `?? ?? getenv()` chain returns string|false (getenv returns
+        // false when unset), so $raw is never null after the fallback.
+        $raw = $_ENV['PARAPHARMACY_SEEDER_SCALE']
+            ?? $_SERVER['PARAPHARMACY_SEEDER_SCALE']
+            ?? getenv('PARAPHARMACY_SEEDER_SCALE');
+
+        if ($raw === false || $raw === '') {
+            return self::DEFAULT_SCALE;
+        }
+
+        $scale = filter_var($raw, FILTER_VALIDATE_INT);
+        if ($scale === false || $scale < 1) {
+            return self::DEFAULT_SCALE;
+        }
+
+        return $scale;
+    }
 
     /**
      * Run the database seeds.
@@ -107,10 +152,10 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('💰 Setting up financial foundation...');
         $this->setupFinancialFoundation($this->company);
 
-        // 5. Seed products (1000+)
+        // 5. Seed products (1000 default; T1.0: configurable via SCALE)
         $this->command->info('📦 Seeding products...');
         $products = $this->seedProducts($this->company);
-        $this->command->info('✓ Created 1000 products across 6 categories');
+        $this->command->info("✓ Created {$products->count()} products across 6 categories");
 
         // 6. Seed partners (customers and suppliers)
         $this->command->info('👥 Seeding partners...');
@@ -277,14 +322,21 @@ class ParapharmacySeeder extends Seeder
         $products = collect();
         $categoryCounters = [];
 
-        // Category distribution
+        // T1.0: catalog scale multiplies every category count
+        // proportionally. Default (SCALE=1) preserves the historical
+        // 1000-product mix every existing CI run depends on. The
+        // resolver silently falls back to 1 on invalid input so seeders
+        // never fail on a malformed env var.
+        $scale = $this->resolveScale();
+
+        // Category distribution (default counts; multiplied by $scale).
         $distribution = [
-            'supplement' => ['category' => ParapharmacyCategory::Supplement, 'count' => 350],
-            'cosmetic' => ['category' => ParapharmacyCategory::Cosmetic, 'count' => 250],
-            'medical_device' => ['category' => ParapharmacyCategory::MedicalDevice, 'count' => 100],
-            'herbal' => ['category' => ParapharmacyCategory::Herbal, 'count' => 150],
-            'baby_care' => ['category' => ParapharmacyCategory::BabyCare, 'count' => 100],
-            'sports_nutrition' => ['category' => ParapharmacyCategory::SportsNutrition, 'count' => 50],
+            'supplement' => ['category' => ParapharmacyCategory::Supplement, 'count' => 350 * $scale],
+            'cosmetic' => ['category' => ParapharmacyCategory::Cosmetic, 'count' => 250 * $scale],
+            'medical_device' => ['category' => ParapharmacyCategory::MedicalDevice, 'count' => 100 * $scale],
+            'herbal' => ['category' => ParapharmacyCategory::Herbal, 'count' => 150 * $scale],
+            'baby_care' => ['category' => ParapharmacyCategory::BabyCare, 'count' => 100 * $scale],
+            'sports_nutrition' => ['category' => ParapharmacyCategory::SportsNutrition, 'count' => 50 * $scale],
         ];
 
         foreach ($distribution as $key => $data) {
