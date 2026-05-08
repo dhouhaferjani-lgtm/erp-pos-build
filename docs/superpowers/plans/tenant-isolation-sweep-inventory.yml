@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T09:05:39Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+  yaml_sha256: 82b482be2997b2a4853cab04bb519aa83fe4ad7a9ce17908e8b5bee25279e0f9
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -38005,7 +38005,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38014,8 +38014,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+    regression_test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_platform_http_client_get_attaches_tenant_and_company_headers'
     blocked_reason: null
     history:
       -
@@ -38066,6 +38066,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:03:46Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        new_yaml_sha256: ee9d48e604c6e8aad22756aec3eaf1cb2539738827f32f477458e906915c0446
+        target_ids:
+          - api.platform-integration.001
+        from_status: in_progress
+        to_status: under_review
+        commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+        test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_platform_http_client_get_attaches_tenant_and_company_headers'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.platform-integration.002
     stable_key: 'manual:api.platform-integration:check-pending-enrichments-per-iteration-rebind'
@@ -38083,7 +38099,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38092,8 +38108,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+    regression_test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_cross_tenant_rebind_does_not_leak_prior_tenant_headers'
     blocked_reason: null
     history:
       -
@@ -38144,6 +38160,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:03:56Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ee9d48e604c6e8aad22756aec3eaf1cb2539738827f32f477458e906915c0446
+        new_yaml_sha256: 84e025ae894b67ad0283473f432133a31e47ceac2b9e7251950946baa2466e86
+        target_ids:
+          - api.platform-integration.002
+        from_status: in_progress
+        to_status: under_review
+        commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+        test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_cross_tenant_rebind_does_not_leak_prior_tenant_headers'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.platform-integration.003
     stable_key: 'manual:api.platform-integration:products-platform-submission-id-unique-migration'
@@ -38161,7 +38193,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38170,8 +38202,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+    regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_products_platform_submission_id_is_unique_at_db_level'
     blocked_reason: null
     history:
       -
@@ -38222,6 +38254,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:03:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 84e025ae894b67ad0283473f432133a31e47ceac2b9e7251950946baa2466e86
+        new_yaml_sha256: e32f7041fad22ea786b4c150545bb91fa96db3c3e953bb55f7b9ba4f59ef45ed
+        target_ids:
+          - api.platform-integration.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_products_platform_submission_id_is_unique_at_db_level'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.platform-integration.004
     stable_key: 'manual:api.platform-integration:billing-payments-provider-payment-id-unique-migration'
@@ -38239,7 +38287,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38248,8 +38296,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+    regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_billing_payments_provider_payment_id_is_unique_per_provider'
     blocked_reason: null
     history:
       -
@@ -38300,6 +38348,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:03:59Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e32f7041fad22ea786b4c150545bb91fa96db3c3e953bb55f7b9ba4f59ef45ed
+        new_yaml_sha256: b4008fb25d8215391d7c4b66b28771025d7b831e877207897319ab5243af5835
+        target_ids:
+          - api.platform-integration.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_billing_payments_provider_payment_id_is_unique_per_provider'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.platform-integration.005
     stable_key: 'manual:api.platform-integration:enrichment-listener-sole-defense-in-depth'
@@ -38317,7 +38381,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38326,8 +38390,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+    regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_enrichment_listener_swallows_not_found_gracefully'
     blocked_reason: null
     history:
       -
@@ -38378,6 +38442,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:04:01Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b4008fb25d8215391d7c4b66b28771025d7b831e877207897319ab5243af5835
+        new_yaml_sha256: 93aaf4d717b4c7fcb36827ad325c9e2912ba12b9e935a95300cb1ffc7bac8b2f
+        target_ids:
+          - api.platform-integration.005
+        from_status: in_progress
+        to_status: under_review
+        commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_enrichment_listener_swallows_not_found_gracefully'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.platform-integration.006
     stable_key: 'manual:api.platform-integration:stripe-webhook-sole-defense-in-depth-plus-provider-filter'
@@ -38395,7 +38475,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
@@ -38404,8 +38484,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+    regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_stripe_webhook_resolver_filters_by_provider'
     blocked_reason: null
     history:
       -
@@ -38456,6 +38536,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T10:04:02Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 93aaf4d717b4c7fcb36827ad325c9e2912ba12b9e935a95300cb1ffc7bac8b2f
+        new_yaml_sha256: 82b482be2997b2a4853cab04bb519aa83fe4ad7a9ce17908e8b5bee25279e0f9
+        target_ids:
+          - api.platform-integration.006
+        from_status: in_progress
+        to_status: under_review
+        commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_stripe_webhook_resolver_filters_by_provider'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
