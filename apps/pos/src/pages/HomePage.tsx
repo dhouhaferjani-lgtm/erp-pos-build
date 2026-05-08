@@ -982,6 +982,7 @@ export function HomePage() {
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
+          paymentRepositories={paymentRepositories}
           checkoutDisabled={!hashChainReady || isProcessing}
           netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
         />

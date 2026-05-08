@@ -5,7 +5,7 @@ import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
 import { useCurrency } from '@/lib/currency';
 import type { CartItem } from '@/types/cart';
-import type { PaymentMethod } from '@/types/payment';
+import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 export interface TransactionCartProps {
   items: CartItem[];
@@ -31,6 +31,7 @@ export interface TransactionCartProps {
   onEditModifiers?: (itemId: string) => void;
   onRemoveDiscount?: () => void;
   paymentMethods?: PaymentMethod[];
+  paymentRepositories?: PaymentRepository[];
   checkoutDisabled?: boolean;
   /**
    * Net amount for the refund/exchange flow (sale total minus return total).
@@ -64,6 +65,7 @@ export function TransactionCart({
   onEditModifiers,
   onRemoveDiscount,
   paymentMethods,
+  paymentRepositories,
   checkoutDisabled = false,
   netTotal,
 }: TransactionCartProps) {
@@ -235,6 +237,7 @@ export function TransactionCart({
               onAdvancedPayments={onAdvancedPayments}
               onRemoveDiscount={onRemoveDiscount}
               paymentMethods={paymentMethods}
+              paymentRepositories={paymentRepositories}
               disabled={checkoutDisabled}
             />
           )

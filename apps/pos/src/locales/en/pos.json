@@ -51,7 +51,8 @@
     "transactionRef": "Reference",
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment...",
-    "pendingSyncCount": "{{count}} sale(s) pending sync"
+    "pendingSyncCount": "{{count}} sale(s) pending sync",
+    "configNotLoaded": "Payment config not loaded — try Sync Now"
   },
   "cashPayment": {
     "back": "Back",

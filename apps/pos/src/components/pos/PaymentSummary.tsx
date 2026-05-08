@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Banknote, Wallet, X } from 'lucide-react';
-import type { PaymentMethod } from '@/types/payment';
+import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 interface PaymentSummaryProps {
   subtotal: number;
@@ -13,6 +13,7 @@ interface PaymentSummaryProps {
   onRemoveDiscount?: () => void;
   hasDiscount: boolean;
   paymentMethods?: PaymentMethod[];
+  paymentRepositories?: PaymentRepository[];
   disabled?: boolean;
 }
 
@@ -26,13 +27,31 @@ export function PaymentSummary({
   onRemoveDiscount,
   hasDiscount,
   paymentMethods = [],
+  paymentRepositories = [],
   disabled = false,
 }: PaymentSummaryProps) {
   const { t } = useTranslation(['common', 'pos']);
   const { format } = useCurrency();
 
-  // Show advanced payments button when there are 2+ active payment methods
+  // T1.2 Step 2.3: gate the cash + advanced-payments buttons on payment
+  // config readiness. Prior code allowed the cashier to press Cash
+  // before T0.5's scheduler had refreshed the in-memory payment store
+  // — pressing Cash then would call processCashCheckout, which would
+  // hit `paymentRepositories.find(r => r.kind === 'cash')` returning
+  // undefined (the recurring "no cash method" symptom from Phase 2).
+  // The existing per-method validation in processCashCheckout remains
+  // as a defense-in-depth backstop for any path that bypasses the gate.
+  const paymentConfigReady =
+    paymentMethods.length > 0 && paymentRepositories.length > 0;
+  const cashButtonDisabled = disabled || !paymentConfigReady;
+
+  // Show advanced payments button when there are 2+ active payment
+  // methods AND the payment config has fully loaded. Without the
+  // readiness gate the menu would render before paymentRepositories
+  // resolved, exposing the same broken-checkout window.
   const hasMultipleMethods = paymentMethods.filter((m) => m.is_active).length >= 2;
+  const showAdvancedPayments =
+    paymentConfigReady && hasMultipleMethods && Boolean(onAdvancedPayments);
 
   return (
     <div className="space-y-1 border-t border-gray-200 pt-1.5">
@@ -79,14 +98,18 @@ export function PaymentSummary({
       <div className="flex gap-2">
         <button
           onClick={onPayCash}
-          disabled={disabled}
+          disabled={cashButtonDisabled}
+          aria-disabled={cashButtonDisabled}
+          title={
+            !paymentConfigReady ? t('pos:payment.configNotLoaded') : undefined
+          }
           className="flex flex-[3] items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Banknote className="h-5 w-5" />
           {t('pos:payment.cashPayment')}
         </button>
 
-        {hasMultipleMethods && onAdvancedPayments && (
+        {showAdvancedPayments && (
           <button
             onClick={onAdvancedPayments}
             disabled={disabled}

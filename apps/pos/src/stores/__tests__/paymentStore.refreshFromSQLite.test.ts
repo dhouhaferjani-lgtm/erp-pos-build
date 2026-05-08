@@ -119,6 +119,127 @@ describe('paymentStore.refreshFromSQLite', () => {
     });
   });
 
+  // T1.2 T0.5-residual: equality skip-set (Codex Phase-2 prompt 2.1
+  // item 4 — deferred from T0.5). refreshFromSQLite must avoid calling
+  // `set` when the SQLite read returns the SAME methods + repositories
+  // as the in-memory state. Otherwise every 60 s scheduler tick creates
+  // new array references and forces every Zustand subscriber to
+  // re-render — a perf bug, not a correctness bug. The check is per-row
+  // shallow compare on all primitive fields; getAllPaymentMethods
+  // already filters WHERE is_active = 1, so an active→inactive flip
+  // shrinks the array (length-changed → set fires).
+  it('T1.2: refreshFromSQLite does NOT trigger a snapshot change when methods + repos unchanged', async () => {
+    const seedMethod = makePaymentMethod({ id: 'pm-cash', code: 'CASH' });
+    const seedRepo = makePaymentRepository({
+      id: 'repo-cash',
+      type: 'cash_register',
+    });
+    usePaymentStore.setState({
+      paymentMethods: [seedMethod],
+      paymentRepositories: [seedRepo],
+    });
+
+    const { getAllPaymentMethods, getAllPaymentRepositories } = await import(
+      '@/lib/db/repositories/paymentRepository'
+    );
+    // Return STRUCTURALLY-EQUAL but not reference-equal arrays so a
+    // naive Object.is check on the array reference would still trigger
+    // `set` — only a per-row shallow compare can recognize they're
+    // unchanged.
+    vi.mocked(getAllPaymentMethods).mockResolvedValueOnce([
+      makePaymentMethod({ id: 'pm-cash', code: 'CASH' }),
+    ]);
+    vi.mocked(getAllPaymentRepositories).mockResolvedValueOnce([
+      makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+    ]);
+
+    // Capture the array references BEFORE refresh — if the skip-set
+    // optimization is in place, `set` is never called, and the
+    // references remain identical (Object.is) after refresh. Without
+    // the optimization, `set` runs unconditionally and produces NEW
+    // array references, breaking Object.is.
+    const beforeMethods = usePaymentStore.getState().paymentMethods;
+    const beforeRepos = usePaymentStore.getState().paymentRepositories;
+
+    await usePaymentStore.getState().refreshFromSQLite();
+
+    const afterMethods = usePaymentStore.getState().paymentMethods;
+    const afterRepos = usePaymentStore.getState().paymentRepositories;
+
+    expect(afterMethods).toBe(beforeMethods);
+    expect(afterRepos).toBe(beforeRepos);
+  });
+
+  it('T1.2: refreshFromSQLite triggers a snapshot change when an id changes', async () => {
+    const seedMethod = makePaymentMethod({ id: 'pm-cash', code: 'CASH' });
+    const seedRepo = makePaymentRepository({
+      id: 'repo-cash',
+      type: 'cash_register',
+    });
+    usePaymentStore.setState({
+      paymentMethods: [seedMethod],
+      paymentRepositories: [seedRepo],
+    });
+
+    const { getAllPaymentMethods, getAllPaymentRepositories } = await import(
+      '@/lib/db/repositories/paymentRepository'
+    );
+    vi.mocked(getAllPaymentMethods).mockResolvedValueOnce([
+      makePaymentMethod({ id: 'pm-cash-v2', code: 'CASH' }),
+    ]);
+    vi.mocked(getAllPaymentRepositories).mockResolvedValueOnce([
+      makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+    ]);
+
+    const beforeMethods = usePaymentStore.getState().paymentMethods;
+    await usePaymentStore.getState().refreshFromSQLite();
+    const afterMethods = usePaymentStore.getState().paymentMethods;
+
+    // Reference must change (set fired) AND content must reflect the
+    // new id. If only the content check passed but the reference were
+    // the same, that would mean we mutated the array in place — a
+    // Zustand-anti-pattern that would NOT trigger subscriber re-renders.
+    expect(afterMethods).not.toBe(beforeMethods);
+    expect(afterMethods[0]!.id).toBe('pm-cash-v2');
+  });
+
+  it('T1.2: refreshFromSQLite triggers a snapshot change when a non-id field (e.g. name) changes on an existing id', async () => {
+    const seedMethod = makePaymentMethod({
+      id: 'pm-cash',
+      code: 'CASH',
+      name: 'Cash',
+    });
+    const seedRepo = makePaymentRepository({
+      id: 'repo-cash',
+      type: 'cash_register',
+    });
+    usePaymentStore.setState({
+      paymentMethods: [seedMethod],
+      paymentRepositories: [seedRepo],
+    });
+
+    const { getAllPaymentMethods, getAllPaymentRepositories } = await import(
+      '@/lib/db/repositories/paymentRepository'
+    );
+    // Same id, different name — id-set equality alone would say
+    // "unchanged" (BUG: the cashier's UI never reflects the rename
+    // until the next ref-changing tick). Per-row shallow compare
+    // catches this.
+    vi.mocked(getAllPaymentMethods).mockResolvedValueOnce([
+      makePaymentMethod({ id: 'pm-cash', code: 'CASH', name: 'Cash (renamed)' }),
+    ]);
+    vi.mocked(getAllPaymentRepositories).mockResolvedValueOnce([
+      makePaymentRepository({ id: 'repo-cash', type: 'cash_register' }),
+    ]);
+
+    const beforeMethods = usePaymentStore.getState().paymentMethods;
+    await usePaymentStore.getState().refreshFromSQLite();
+    const afterMethods = usePaymentStore.getState().paymentMethods;
+
+    expect(afterMethods).not.toBe(beforeMethods);
+    expect(afterMethods[0]!.name).toBe('Cash (renamed)');
+  });
+
   it('T0.5: paymentStore.refreshFromSQLite leaves in-memory state unchanged when SQLite returns zero methods', async () => {
     // Pre-seed in-memory state with the cashier's currently-loaded config.
     // The empty-SQLite branch must NOT clobber this — that would leave the
