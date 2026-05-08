@@ -9,6 +9,7 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
+  getReceiptByIdempotencyKey,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -31,6 +32,16 @@ interface OfflineReceiptInput {
   /** Primary payment repository (first entry in `payments`) */
   paymentRepositoryId: string;
   tenderedAmount: number;
+  /**
+   * T0.2: Caller-allocated idempotency key for this cart submission attempt.
+   * Optional for backward compatibility; if omitted, a fresh `crypto.randomUUID()`
+   * is allocated internally (legacy behavior). Production callers in
+   * paymentStore allocate the key once per submission attempt and pass it on
+   * every retry, so a cashier double-click writes two SQLite rows that share
+   * the same key — the server-side dedup-on-disk catches the second POST as
+   * a duplicate and returns the existing receipt instead of creating a new one.
+   */
+  idempotencyKey?: string;
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
   /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
   payments: Array<{
@@ -239,6 +250,30 @@ export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
 ): Promise<OfflineReceiptResult> {
+  // T0.2 (Codex review F-1): if a caller-provided idempotency key already has
+  // a persisted row, return the existing receipt without re-running the
+  // SQLite INSERT (which would throw SQLITE_CONSTRAINT_UNIQUE on
+  // offline_receipts.idempotency_key), the hash-chain advance, or the
+  // voucher-balance updates. This is the offline-side mirror of the server's
+  // dedup-on-disk: a retry with the same key returns the prior result rather
+  // than corrupting it.
+  if (input.idempotencyKey) {
+    const existing = await getReceiptByIdempotencyKey(db, input.idempotencyKey);
+    if (existing) {
+      return {
+        receiptNumber: existing.receipt_number,
+        total: existing.total,
+        subtotal: existing.subtotal,
+        taxAmount: existing.tax_amount,
+        discountAmount: existing.discount_amount,
+        changeDue: parseFloat(existing.change_due ?? '0'),
+        fiscalHash: existing.fiscal_hash,
+        idempotencyKey: existing.idempotency_key,
+        localId: existing.id,
+      };
+    }
+  }
+
   const decimals = getCurrencyDecimals(input.currency);
 
   // 1. Read terminal state
@@ -310,7 +345,10 @@ export async function createOfflineReceipt(
 
   // 5. Store offline receipt
   const receiptId = crypto.randomUUID();
-  const idempotencyKey = crypto.randomUUID();
+  // T0.2: prefer caller-provided key (paymentStore allocates once per cart
+  // submission attempt and reuses on retry); fall back to a fresh UUID for
+  // legacy callers (e.g. test fixtures) that don't supply one.
+  const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
   // tenderedAmount is a number (UI input), subtracted from string total via bcformat round-trip
   const changeDueRaw = bcsub(String(input.tenderedAmount), total);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);

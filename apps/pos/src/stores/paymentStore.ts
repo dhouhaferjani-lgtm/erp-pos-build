@@ -43,6 +43,21 @@ interface PaymentState {
   lastReceiptServerId: string | null;
 
   /**
+   * T0.2: Idempotency key for the current cart submission attempt.
+   *
+   * Allocated atomically when Confirm is first pressed for a cart, then reused
+   * on every retry until the cart is explicitly cleared (= clearLastReceipt is
+   * called by HomePage's handleNewSale on success-modal-dismiss / new-sale /
+   * manual-cancel). This prevents the cashier-double-click double-billing bug
+   * (Opus + Codex sync audits 2026-04-30): if two checkout attempts mint
+   * different keys for the same physical sale, the server can't dedup them
+   * and both finalize.
+   *
+   * In-memory only — server-side dedup-on-disk reconciles after a crash.
+   */
+  pendingIdempotencyKey: string | null;
+
+  /**
    * Voucher tender rows applied in the current sale session.
    * Each row represents one voucher being used as partial/full payment.
    * Codes are unique per transaction — addVoucherPayment guards against duplicates.
@@ -100,6 +115,19 @@ interface PaymentActions {
   ) => Promise<void>;
   reset: () => void;
   clearLastReceipt: () => void;
+  /**
+   * T0.2 (Codex round-1 finding F-2): targeted discard of `pendingIdempotencyKey`
+   * for cart-clear lifecycle transitions that are NOT post-success. Called by:
+   *   - Header void-cart actions
+   *   - holdStore recall (replacing the cart with a held one)
+   *   - shift close
+   * These transitions clear `cartStore` but should NOT also clear
+   * `lastReceipt` / `lastReceiptIdempotencyKey` (which represent the most
+   * recently SUCCESSFUL sale's print state). `discardPendingSubmission` is the
+   * narrower clear: only resets the in-flight cart submission attempt's key
+   * so the next sale gets a fresh allocation.
+   */
+  discardPendingSubmission: () => void;
 
   /**
    * Add a voucher as a tender row for the current sale.
@@ -132,6 +160,7 @@ const initialState: PaymentState = {
   error: null,
   lastReceiptIdempotencyKey: null,
   lastReceiptServerId: null,
+  pendingIdempotencyKey: null,
   voucherTenders: [],
   appliedVoucherCodes: new Set<string>(),
 };
@@ -197,6 +226,13 @@ async function createReceiptLocalFirst(
   cartItems: CartItem[],
   payments: LocalFirstPaymentLine[],
   tenderedAmount: number,
+  /**
+   * T0.2: Caller-allocated idempotency key for this cart submission attempt.
+   * Same key is reused across cashier double-clicks so the server-side
+   * dedup-on-disk catches the second POST as a duplicate. See
+   * `pendingIdempotencyKey` on PaymentState for the lifecycle.
+   */
+  idempotencyKey: string,
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
   consumptionMode?: string,
   tableId?: string | null,
@@ -235,6 +271,7 @@ async function createReceiptLocalFirst(
     paymentMethodId: primary.paymentMethodId,
     paymentRepositoryId: primary.repositoryId,
     tenderedAmount,
+    idempotencyKey,
     transactionDiscount,
     payments: payments.map((p) => ({
       methodCode: p.methodCode,
@@ -361,7 +398,38 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    set({ isProcessing: true, error: null });
+    // T0.2: atomically allocate the idempotency key AND gate concurrent
+    // entry. Same set() call flips isProcessing, allocates pendingIdempotencyKey
+    // if null, and detects a concurrent call (Codex round-2 finding F-1
+    // residual): if isProcessing is already true, a previous processX is
+    // still running. The async `await getReceiptByIdempotencyKey` inside
+    // createOfflineReceipt yields to the event loop, so two overlapping
+    // calls could both observe no existing row before either INSERT runs —
+    // one would then hit SQLITE_CONSTRAINT_UNIQUE. The gate prevents the
+    // second call from reaching the SQLite layer at all. The UI also
+    // disables the Confirm button while isProcessing is true (CashPaymentScreen
+    // line 171), so this is the secondary guard.
+    let idempotencyKey = '';
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
+    if (alreadyInFlight) {
+      // Concurrent processX call while another checkout is already running.
+      // Silently no-op; the in-flight call will complete (success or error)
+      // and the UI will reflect the result. The cashier can retry from a
+      // stable state once the first attempt resolves.
+      return;
+    }
 
     try {
       const authState = useAuthStore.getState();
@@ -381,6 +449,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           repositoryId: cashRegister.id,
         }],
         tenderedAmount,
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -435,7 +504,23 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    set({ isProcessing: true, error: null });
+    // T0.2: atomic key allocation + concurrent-call gate (see
+    // processCashCheckout for rationale).
+    let idempotencyKey = '';
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
+    if (alreadyInFlight) return;
 
     try {
       const authState = useAuthStore.getState();
@@ -457,6 +542,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           transactionReference: cardData?.reference,
         }],
         0, // tenderedAmount = 0 for card (no cash in hand)
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -487,7 +573,23 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     consumptionMode,
     tableId,
   ) => {
-    set({ isProcessing: true, error: null });
+    // T0.2: atomic key allocation + concurrent-call gate (see
+    // processCashCheckout for rationale).
+    let idempotencyKey = '';
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
+    if (alreadyInFlight) return;
 
     try {
       const authState = useAuthStore.getState();
@@ -523,6 +625,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         enriched,
         tenderedAmount,
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -545,7 +648,21 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
+    // T0.2: also clear pendingIdempotencyKey so the next sale gets a fresh
+    // key. This is the canonical post-success / new-sale lifecycle hook
+    // (called by HomePage's handleNewSale). Leaving the key populated would
+    // cause the new sale's first POST to be deduped server-side as a replay
+    // of the previous sale.
+    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null, pendingIdempotencyKey: null });
+  },
+
+  discardPendingSubmission: () => {
+    // T0.2 (Codex F-2): narrower discard than clearLastReceipt. Only resets
+    // the in-flight idempotency key — leaves `lastReceipt` /
+    // `lastReceiptIdempotencyKey` (post-success print state) intact. Called
+    // by void-cart, hold-recall, and shift-close paths so a stale key from
+    // an aborted/voided attempt cannot leak into the next sale's first POST.
+    set({ pendingIdempotencyKey: null });
   },
 
   addVoucherPayment: (code: string, amount: string) => {

@@ -183,6 +183,174 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(usePaymentStore.getState().isProcessing).toBe(false);
   });
 
+  it('reuses the same idempotency_key across two checkout attempts on the same cart', async () => {
+    // T0.2 regression: every checkout retry currently mints a fresh
+    // `crypto.randomUUID()` inside createOfflineReceipt. If the cashier clicks
+    // Confirm twice on the same cart submission attempt (e.g. mis-interprets a
+    // stalled-sync banner as failure), two distinct receipts ride two distinct
+    // keys to the server, both succeed, both finalize → direct double-billing.
+    //
+    // Fix contract: idempotency_key is allocated once when Confirm is first
+    // pressed and reused on retry until the cart is explicitly cleared (post-
+    // success or manual cancel) or a new sale is opened. Server-side dedup
+    // catches the second POST as a duplicate and returns the existing receipt.
+    //
+    // This test asserts the POSITIVE invariant: BOTH calls of createOfflineReceipt
+    // for the same cart submission attempt write the SAME idempotency_key.
+    // The mock here mirrors the real createOfflineReceipt's contract by echoing
+    // the caller-provided idempotencyKey input (if present) and otherwise
+    // generating a fresh UUID per call, so the test fails on dev tip (where
+    // there's no input field — both calls get fresh UUIDs) and passes after
+    // the paymentStore allocate-once fix.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      const inputKey = (input as { idempotencyKey?: string }).idempotencyKey;
+      const idempotencyKey = inputKey ?? crypto.randomUUID();
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey,
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    // First Confirm click: should allocate a fresh key.
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const firstKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    // Second Confirm click on the same cart submission attempt (cart NOT
+    // cleared between calls, no clearLastReceipt() in between).
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    expect(firstKey).toBeTruthy();
+    expect(secondKey).toBeTruthy();
+    expect(firstKey).toBe(secondKey);
+  });
+
+  it('gates concurrent processCashCheckout calls so only one createOfflineReceipt fires', async () => {
+    // T0.2 (Codex round-2 finding F-1 residual): two overlapping
+    // processCashCheckout calls must not race past the existence check
+    // inside createOfflineReceipt. With the isProcessing gate, the second
+    // call bails before reaching createReceiptLocalFirst, so only one
+    // SQLite INSERT runs. Without the gate, both calls would `await
+    // getReceiptByIdempotencyKey`, both observe no row, both proceed to
+    // INSERT, and one would hit SQLITE_CONSTRAINT_UNIQUE.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    let resolveFirst!: (value: unknown) => void;
+    const firstCallPending = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let callCount = 0;
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      callCount++;
+      // First call: hang until we explicitly resolve. This holds isProcessing
+      // = true while the test fires the second call.
+      await firstCallPending;
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey: input.idempotencyKey ?? 'fallback-key',
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    // Fire two overlapping checkout calls. Don't `await` between them.
+    const firstCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+
+    // Let the second call's synchronous prefix run (it should hit the
+    // isProcessing gate and bail synchronously without ever calling
+    // createOfflineReceipt).
+    await Promise.resolve();
+
+    // The first call is still hanging; the second has already returned.
+    // Only one createOfflineReceipt call must have fired.
+    expect(callCount).toBe(1);
+
+    // Now release the first call so the test can clean up.
+    resolveFirst(undefined);
+    await Promise.all([firstCallPromise, secondCallPromise]);
+
+    // Final invariant: exactly one createOfflineReceipt invocation total.
+    expect(callCount).toBe(1);
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
+  it('allocates a fresh idempotency_key after clearLastReceipt is called', async () => {
+    // T0.2 lifecycle contract: clearLastReceipt is called by HomePage's
+    // handleNewSale on success-modal-dismiss / new-sale-opened / manual-cancel.
+    // After clear, the next Confirm click MUST allocate a fresh key — otherwise
+    // a successful sale's key would leak into the next sale's first POST,
+    // causing the new sale to be (incorrectly) deduped server-side as a replay.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      const inputKey = (input as { idempotencyKey?: string }).idempotencyKey;
+      const idempotencyKey = inputKey ?? crypto.randomUUID();
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey,
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const firstSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+    // Lifecycle event: cart cleared + receipt acknowledged (= new sale starts)
+    usePaymentStore.getState().clearLastReceipt();
+
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    expect(firstSaleKey).toBeTruthy();
+    expect(secondSaleKey).toBeTruthy();
+    expect(firstSaleKey).not.toBe(secondSaleKey);
+  });
+
   it('forwards consumption_mode and table_id when provided', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 

@@ -1,0 +1,206 @@
+/**
+ * T0.2 + Codex review F-1 (2026-05-08) — real-SQLite integration test for the
+ * idempotency-key-per-retry contract.
+ *
+ * The unit test in paymentStore.offlineFirst.test.ts mocks createOfflineReceipt
+ * entirely, so it cannot detect the load-bearing failure mode where the local
+ * SQLite UNIQUE(idempotency_key) constraint throws on the second call. This
+ * suite exercises the real persistence layer:
+ *
+ *   1. Boot SqliteTestAdapter (node:sqlite in-memory).
+ *   2. Run all production migrations against it.
+ *   3. Seed a terminal_state row.
+ *   4. Call createOfflineReceipt with idempotencyKey = K → row R1 lands.
+ *   5. Call createOfflineReceipt AGAIN with the SAME idempotencyKey K and a
+ *      different cart payload → assert:
+ *        (a) NO SQLITE_CONSTRAINT_UNIQUE thrown,
+ *        (b) the result equals R1's receipt_number / total / fiscal_hash
+ *            (not a fresh insert with R2's cart),
+ *        (c) only ONE row exists in offline_receipts for that key,
+ *        (d) the fiscal hash chain is NOT advanced twice (hash_sequence
+ *            stays at the value R1 set).
+ *
+ * This catches the regression Codex flagged: pre-fix, step (5) would throw at
+ * the INSERT layer because offline_receipts.idempotency_key has UNIQUE.
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
+import { migrations } from '@/lib/db/migrations';
+import { createOfflineReceipt } from '@/lib/offline/receiptService';
+import { makeCartItem } from '@/test/helpers';
+
+vi.mock('@/lib/fiscal/hashService', () => ({
+  computeFiscalHash: vi.fn().mockResolvedValue('integration-test-fiscal-hash-' + '0'.repeat(40)),
+}));
+
+const nodeSqliteAvailable = (() => {
+  try {
+    return Boolean(require('node:sqlite').DatabaseSync);
+  } catch {
+    return false;
+  }
+})();
+
+const d = nodeSqliteAvailable ? describe : describe.skip;
+
+async function runAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
+  for (const m of migrations) {
+    if (m.run) {
+      await m.run(adapter);
+    } else if (m.sql) {
+      await adapter.execute(m.sql);
+    }
+  }
+}
+
+async function seedTerminalState(adapter: SqliteTestAdapter): Promise<void> {
+  await adapter.execute(
+    `INSERT INTO terminal_state (
+       terminal_id, terminal_code, location_code, genesis_seed,
+       last_hash, hash_sequence, manager_pin_throttle_until,
+       manager_pin_failed_attempts, fiscal_schema_version
+     ) VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7)`,
+    ['terminal-t02-int-1', 'T-T02-01', 'T02-LOC', 'genesis-seed', 'previous-hash', 0, 2],
+  );
+}
+
+d('T0.2 integration: idempotency-key retry against real SQLite', () => {
+  let adapter: SqliteTestAdapter;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    adapter = new SqliteTestAdapter();
+    await runAllMigrations(adapter);
+    await seedTerminalState(adapter);
+  });
+
+  afterEach(() => {
+    adapter.close();
+  });
+
+  it('second call with the same idempotencyKey returns the existing receipt without throwing', async () => {
+    const sharedKey = 'shared-idempotency-key-t02-test';
+
+    // First attempt: writes row R1.
+    const first = await createOfflineReceipt(adapter as never, {
+      terminalId: 'terminal-t02-int-1',
+      operatorId: 'op-int-1',
+      operatorName: 'Integration Cashier',
+      cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0' })],
+      currency: 'EUR',
+      paymentMethodId: 'pm-cash',
+      paymentRepositoryId: 'repo-cash',
+      tenderedAmount: 50,
+      idempotencyKey: sharedKey,
+      payments: [
+        {
+          methodCode: 'CASH',
+          amount: '50.00',
+          paymentMethodId: 'pm-cash',
+          repositoryId: 'repo-cash',
+        },
+      ],
+    });
+
+    expect(first.idempotencyKey).toBe(sharedKey);
+    expect(first.total).toBe('50.00');
+
+    // Second attempt with the SAME key but a DIFFERENT cart. Per T0.2 contract
+    // ("Same key MUST be reused even if cart contents change between attempts —
+    // the key is bound to 'this submission attempt', not 'this cart state'"),
+    // this MUST NOT throw and MUST return R1's data verbatim.
+    const second = await createOfflineReceipt(adapter as never, {
+      terminalId: 'terminal-t02-int-1',
+      operatorId: 'op-int-1',
+      operatorName: 'Integration Cashier',
+      // Different cart — but the contract says the FIRST attempt's data is canonical.
+      cartItems: [makeCartItem({ line_total: '99.00', tax_amount: '0.00', tax_rate: '0' })],
+      currency: 'EUR',
+      paymentMethodId: 'pm-cash',
+      paymentRepositoryId: 'repo-cash',
+      tenderedAmount: 100,
+      idempotencyKey: sharedKey,
+      payments: [
+        {
+          methodCode: 'CASH',
+          amount: '99.00',
+          paymentMethodId: 'pm-cash',
+          repositoryId: 'repo-cash',
+        },
+      ],
+    });
+
+    // (a) Did not throw.
+    // (b) Returns R1's data, not a new row's data.
+    expect(second.idempotencyKey).toBe(first.idempotencyKey);
+    expect(second.localId).toBe(first.localId);
+    expect(second.receiptNumber).toBe(first.receiptNumber);
+    expect(second.total).toBe('50.00'); // R1's cart total, not R2's 99.00
+    expect(second.fiscalHash).toBe(first.fiscalHash);
+
+    // (c) Exactly one row in offline_receipts for that key.
+    const rows = await adapter.select<Array<{ id: string; idempotency_key: string; total: string }>>(
+      'SELECT id, idempotency_key, total FROM offline_receipts WHERE idempotency_key = $1',
+      [sharedKey],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.total).toBe('50.00');
+
+    // (d) Fiscal hash chain advanced exactly once (sequence = 1, not 2).
+    const terminalRows = await adapter.select<Array<{ hash_sequence: number; last_hash: string }>>(
+      'SELECT hash_sequence, last_hash FROM terminal_state WHERE terminal_id = $1',
+      ['terminal-t02-int-1'],
+    );
+    expect(terminalRows[0]!.hash_sequence).toBe(1);
+  });
+
+  it('different idempotencyKeys produce two distinct receipts and advance the chain twice', async () => {
+    // Sanity check: the dedup is keyed strictly by idempotencyKey, not by
+    // cart contents or some other attribute. Two genuinely different sales
+    // (different keys) must each land their own row and advance the chain.
+    const first = await createOfflineReceipt(adapter as never, {
+      terminalId: 'terminal-t02-int-1',
+      operatorId: 'op-int-1',
+      operatorName: 'Integration Cashier',
+      cartItems: [makeCartItem({ line_total: '10.00', tax_amount: '0.00', tax_rate: '0' })],
+      currency: 'EUR',
+      paymentMethodId: 'pm-cash',
+      paymentRepositoryId: 'repo-cash',
+      tenderedAmount: 10,
+      idempotencyKey: 'distinct-key-A',
+      payments: [
+        { methodCode: 'CASH', amount: '10.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },
+      ],
+    });
+
+    const second = await createOfflineReceipt(adapter as never, {
+      terminalId: 'terminal-t02-int-1',
+      operatorId: 'op-int-1',
+      operatorName: 'Integration Cashier',
+      cartItems: [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0' })],
+      currency: 'EUR',
+      paymentMethodId: 'pm-cash',
+      paymentRepositoryId: 'repo-cash',
+      tenderedAmount: 20,
+      idempotencyKey: 'distinct-key-B',
+      payments: [
+        { methodCode: 'CASH', amount: '20.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },
+      ],
+    });
+
+    expect(first.localId).not.toBe(second.localId);
+    expect(first.idempotencyKey).not.toBe(second.idempotencyKey);
+
+    const rows = await adapter.select<Array<{ idempotency_key: string }>>(
+      'SELECT idempotency_key FROM offline_receipts ORDER BY hash_sequence ASC',
+    );
+    expect(rows).toHaveLength(2);
+
+    const terminalRows = await adapter.select<Array<{ hash_sequence: number }>>(
+      'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
+      ['terminal-t02-int-1'],
+    );
+    expect(terminalRows[0]!.hash_sequence).toBe(2);
+  });
+});
