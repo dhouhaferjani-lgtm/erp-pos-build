@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-07T21:56:45Z'
+  generated_at: '2026-05-08T05:13:16Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+  yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -449,9 +449,9 @@ clusters:
     id: api.broadcast-channels
     display_name: 'Broadcast channels'
     surface: api
-    owner: null
+    owner: claude
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -36545,6 +36545,1020 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-07-api-webhooks-incoming-cluster-codex-round2-review.md
         review_commit: '00360386'
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+  -
+    id: api.broadcast-channels.001
+    stable_key: 'manual:api.broadcast-channels:product-cost-price-channel-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/routes/channels.php
+    line: 19
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.product.{productId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: products+product_cost_price_events
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + productId; (2) auth callback delegates to User::canAccessChannel which verifies user.tenant_id === tenantId, user.isActive(), and an active UserCompanyMembership row for companyId; (3) the productId segment is intentionally NOT validated against (tenantId, companyId) because products carry company_id and there is no cross-company product sharing within a tenant — the company-membership gate is the upstream guard, and the productId segment is a fan-out / subscription-scoping signal only. Architecture test BroadcastChannelTenantContextTest enforces the annotation OR a known-tenant-anchored auth helper (canAccessChannel / canAccessCompanyChannel) call in the closure body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.001
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.001
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.002
+    stable_key: 'manual:api.broadcast-channels:imports-channel-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/routes/channels.php
+    line: 32
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.imports)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel (tenant_id match + active + active membership in companyId). Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.002
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.002
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.003
+    stable_key: 'manual:api.broadcast-channels:partners-channel-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/routes/channels.php
+    line: 45
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.partners)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports channel — company-level fan-out, no per-partner segmentation. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.003
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.003
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.004
+    stable_key: 'manual:api.broadcast-channels:pos-terminal-channel-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/routes/channels.php
+    line: 58
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + terminalId; (2) closure signature binds only ($user, $tenantId, $companyId) — Laravel passes only declared parameters, so the {terminalId} segment is NOT a security boundary; (3) terminals carry company_id (no cross-company terminal sharing within a tenant), so the company-membership gate via User::canAccessCompanyChannel is the upstream guard and the {terminalId} segment is a fan-out / subscription-scoping signal only. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.004
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.004
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.005
+    stable_key: 'manual:api.broadcast-channels:pos-kitchen-channel-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/routes/channels.php
+    line: 71
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.kitchen)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: kitchen_orders+order_lines
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports/partners channels — company-level fan-out for the kitchen-display-system. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.005
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.005
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.006
+    stable_key: 'manual:api.broadcast-channels:product-cost-price-updated-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/Product/Infrastructure/Broadcasting/ProductCostPriceUpdatedBroadcast.php
+    line: 20
+    symbol: App\Modules\Product\Infrastructure\Broadcasting\ProductCostPriceUpdatedBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs a PrivateChannel from constructor-property-derived tenantId / companyId / productId on the wrapped ProductCostPriceUpdated domain event, never from auth() or a request-scoped facade. ShouldBroadcastNow (synchronous) — queue-context tenant-loss is not in play, but the annotation locks the property-sourced shape so a future async-promotion does not regress. Architecture test BroadcastEventTenantContextTest enforces the property-sourcing pattern via PhpParser scan of the broadcastOn() method body.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.006
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.006
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.007
+    stable_key: 'manual:api.broadcast-channels:partner-balance-updated-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/Partner/Infrastructure/Broadcasting/PartnerBalanceUpdatedBroadcast.php
+    line: 20
+    symbol: App\Modules\Partner\Infrastructure\Broadcasting\PartnerBalanceUpdatedBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the company-level partners PrivateChannel from $this->domainEvent->{tenantId,companyId} (the wrapped PartnerBalanceUpdated domain event carries them at construction). Architecture test enforces the property-sourcing pattern.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.007
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.007
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.008
+    stable_key: 'manual:api.broadcast-channels:order-sent-to-kitchen-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderSentToKitchenBroadcast.php
+    line: 16
+    symbol: App\Modules\POS\Infrastructure\Broadcasting\OrderSentToKitchenBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored (cluster invariant in master plan §15).'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.008
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.008
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.009
+    stable_key: 'manual:api.broadcast-channels:order-ready-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderReadyBroadcast.php
+    line: 14
+    symbol: App\Modules\POS\Infrastructure\Broadcasting\OrderReadyBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.009
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.009
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.010
+    stable_key: 'manual:api.broadcast-channels:order-line-status-changed-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderLineStatusChangedBroadcast.php
+    line: 14
+    symbol: App\Modules\POS\Infrastructure\Broadcasting\OrderLineStatusChangedBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: order_lines
+    expected_scope: tenant_and_company
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored. (Discovered during Step 1 triage; not in orchestrator's enumerated five but mechanically identical to OrderSentToKitchen / OrderReady — orchestrator approved scope expansion.)"
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.010
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.010
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.011
+    stable_key: 'manual:api.broadcast-channels:terminal-activated-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/TerminalActivatedBroadcast.php
+    line: 15
+    symbol: App\Modules\POS\Infrastructure\Broadcasting\TerminalActivatedBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the per-terminal PrivateChannel from $this->event->{tenantId,companyId,terminalId} (the wrapped TerminalActivated domain event carries them). Annotation-only edit — no code/logic change; POS surface invariant honored.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.011
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.011
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.011
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.012
+    stable_key: 'manual:api.broadcast-channels:import-completed-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportCompletedBroadcast.php
+    line: 15
+    symbol: App\Modules\Import\Infrastructure\Broadcasting\ImportCompletedBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportCompleted domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.012
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.012
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.012
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.broadcast-channels.013
+    stable_key: 'manual:api.broadcast-channels:import-progress-broadcast-cross-tenant-anchored'
+    surface: api
+    cluster_id: api.broadcast-channels
+    scanner: manual
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportProgressBroadcast.php
+    line: 15
+    symbol: App\Modules\Import\Infrastructure\Broadcasting\ImportProgressBroadcast
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    expected_fix: 'Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportProgressUpdated domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T05:13:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T05:13:16Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 46929963437fbedf84444e06cbbe500d5a152bcb561176e570a9cc88b786bd8f
+        new_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        target_ids:
+          - api.broadcast-channels.013
+        from_status: null
+        to_status: pending
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T05:13:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 782664ad9fcdd024d925cc4cba764127f89cf65de1e1ac8c4e4c1104d2504ded
+        new_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        target_ids:
+          - api.broadcast-channels.013
+        from_status: pending
+        to_status: claimed
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=owner override claude per session-pattern-precedent (api.console-commands at c5150ec0, api.scheduled-jobs at 3f158018, api.webhooks-incoming at 47c2251d all completed claude-implemented + codex-reviewed despite required_owner: codex); reviewer-must-differ-from-owner constraint honored via codex headless review at Step 8'
+      -
+        at: '2026-05-08T05:13:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b1a06d683fcebc521c60dea8d236e9a95b544440af75bc180756035c4a86945
+        new_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        target_ids:
+          - api.broadcast-channels.013
+        from_status: claimed
+        to_status: in_progress
+        commit: 47c2251d59ee05ff71ab4e3465f61e6b8f931342
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29

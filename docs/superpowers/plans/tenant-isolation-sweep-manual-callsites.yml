@@ -559,3 +559,181 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "STUB controller — add a LOUD class-level `@cross-tenant-by-design` annotation marking the class as a stub (zero DB access, zero job/event dispatch, zero notification) AND listing the three prerequisites that MUST be satisfied before any DB/Bus/Event/Queue/Notification call is added: (1) register a signature-verification middleware on routes.php:25 (mirror VerifySynerivaWebhookSignature pattern); (2) define a tenant-resolution path from the verified payload (shape a/b/c per master plan §8); (3) update the annotation + convert this entry to cat-(a) with a manual inventory row + regression test. The architecture test (WebhookControllerTenantContextTest) enforces the stub shape via reflection-based body inspection: any forbidden call pattern (DB::, Bus::, Event::dispatch, Queue::push, Notification::send, Model:: static-call writes) in the controller body fails the test until the prerequisites above are met. Tracked as Finding G in the scheduled-jobs cross-cluster observations doc."
+
+  # api.broadcast-channels — 13 cat-(b) annotation sites (5 channel definitions + 8 broadcast event classes).
+  # All sites tenant-anchor on (tenantId, companyId) embedded in the channel/PrivateChannel name pattern.
+  # Annotation grammar: `@cross-tenant-anchored` PHPDoc with prose justification (different from
+  # `@cross-tenant-by-design` used on webhooks/jobs/commands — anchored vs by-design are distinct shapes).
+  # The architecture test (BroadcastChannelTenantContextTest + BroadcastEventTenantContextTest) enforces
+  # both shapes via PhpParser-based static analysis on routes/channels.php and the Broadcasting/ class tree.
+
+  # 5 channel definitions in apps/api/routes/channels.php
+  - cluster_id: api.broadcast-channels
+    slug: product-cost-price-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 19
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.product.{productId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: products+product_cost_price_events
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + productId; (2) auth callback delegates to User::canAccessChannel which verifies user.tenant_id === tenantId, user.isActive(), and an active UserCompanyMembership row for companyId; (3) the productId segment is intentionally NOT validated against (tenantId, companyId) because products carry company_id and there is no cross-company product sharing within a tenant — the company-membership gate is the upstream guard, and the productId segment is a fan-out / subscription-scoping signal only. Architecture test BroadcastChannelTenantContextTest enforces the annotation OR a known-tenant-anchored auth helper (canAccessChannel / canAccessCompanyChannel) call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: imports-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 32
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.imports)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel (tenant_id match + active + active membership in companyId). Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: partners-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 45
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.partners)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports channel — company-level fan-out, no per-partner segmentation. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: pos-terminal-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 58
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + terminalId; (2) closure signature binds only ($user, $tenantId, $companyId) — Laravel passes only declared parameters, so the {terminalId} segment is NOT a security boundary; (3) terminals carry company_id (no cross-company terminal sharing within a tenant), so the company-membership gate via User::canAccessCompanyChannel is the upstream guard and the {terminalId} segment is a fan-out / subscription-scoping signal only. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: pos-kitchen-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 71
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.kitchen)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: kitchen_orders+order_lines
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports/partners channels — company-level fan-out for the kitchen-display-system. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  # 8 broadcast event classes — class-level @cross-tenant-anchored annotation
+  - cluster_id: api.broadcast-channels
+    slug: product-cost-price-updated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Product/Infrastructure/Broadcasting/ProductCostPriceUpdatedBroadcast.php
+    line: 20
+    symbol: 'App\Modules\Product\Infrastructure\Broadcasting\ProductCostPriceUpdatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: products
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs a PrivateChannel from constructor-property-derived tenantId / companyId / productId on the wrapped ProductCostPriceUpdated domain event, never from auth() or a request-scoped facade. ShouldBroadcastNow (synchronous) — queue-context tenant-loss is not in play, but the annotation locks the property-sourced shape so a future async-promotion does not regress. Architecture test BroadcastEventTenantContextTest enforces the property-sourcing pattern via PhpParser scan of the broadcastOn() method body."
+
+  - cluster_id: api.broadcast-channels
+    slug: partner-balance-updated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Partner/Infrastructure/Broadcasting/PartnerBalanceUpdatedBroadcast.php
+    line: 20
+    symbol: 'App\Modules\Partner\Infrastructure\Broadcasting\PartnerBalanceUpdatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the company-level partners PrivateChannel from $this->domainEvent->{tenantId,companyId} (the wrapped PartnerBalanceUpdated domain event carries them at construction). Architecture test enforces the property-sourcing pattern."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-sent-to-kitchen-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderSentToKitchenBroadcast.php
+    line: 16
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderSentToKitchenBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored (cluster invariant in master plan §15)."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-ready-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderReadyBroadcast.php
+    line: 14
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderReadyBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-line-status-changed-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderLineStatusChangedBroadcast.php
+    line: 14
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderLineStatusChangedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: order_lines
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored. (Discovered during Step 1 triage; not in orchestrator's enumerated five but mechanically identical to OrderSentToKitchen / OrderReady — orchestrator approved scope expansion.)"
+
+  - cluster_id: api.broadcast-channels
+    slug: terminal-activated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/TerminalActivatedBroadcast.php
+    line: 15
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\TerminalActivatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the per-terminal PrivateChannel from $this->event->{tenantId,companyId,terminalId} (the wrapped TerminalActivated domain event carries them). Annotation-only edit — no code/logic change; POS surface invariant honored."
+
+  - cluster_id: api.broadcast-channels
+    slug: import-completed-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportCompletedBroadcast.php
+    line: 15
+    symbol: 'App\Modules\Import\Infrastructure\Broadcasting\ImportCompletedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportCompleted domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)"
+
+  - cluster_id: api.broadcast-channels
+    slug: import-progress-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportProgressBroadcast.php
+    line: 15
+    symbol: 'App\Modules\Import\Infrastructure\Broadcasting\ImportProgressBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportProgressUpdated domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)"
