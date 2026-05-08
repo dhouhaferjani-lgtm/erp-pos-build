@@ -239,8 +239,20 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       await updateReceiptStatus(db, receipt.id, 'syncing');
 
       const payload = receiptToPayload(receipt);
-      // Send as batch-of-one so the response shape is always { results: [...] }
-      const response = await apiPost<SyncReceiptBatchResponse>('/pos/receipts/sync', { receipts: [payload] });
+      // Send as batch-of-one so the response shape is always { results: [...] }.
+      // T0.3: 30s ceiling (vs the 10s default) — the receipt sync path runs
+      // server-side fiscal-hash verification, voucher resolution, and ledger
+      // writes; the longer ceiling matches that worst-case while still
+      // unblocking the JS caller if the response is dropped on the wire.
+      // On FetchTimeoutError, the catch at the bottom of this loop marks the
+      // receipt 'failed' with the typed error message; the next sync tick
+      // reconciles via T0.2's stable idempotency key (this is the T0.4
+      // chain-break-recovery downstream contract).
+      const response = await apiPost<SyncReceiptBatchResponse>(
+        '/pos/receipts/sync',
+        { receipts: [payload] },
+        { timeoutMs: 30_000 },
+      );
 
       const resultItem = response.results.find((r) => r.idempotency_key === receipt.idempotency_key);
       if (!resultItem) {
