@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T05:13:16Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 9f4dc5f0db71cd4d3756a3fc9f11ef1676213c5900f443c5251e405b10dfdc29
+  yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -451,7 +451,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -36562,15 +36562,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:09Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
@@ -36639,6 +36639,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:09Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9f4dc5f0db71cd4d3756a3fc9f11ef1676213c5900f443c5251e405b10dfdc29
+        new_yaml_sha256: 088fd004ed72f0a1dc3df995b28ced770524244f540aa8fa8d65f926aaee16ab
+        target_ids:
+          - api.broadcast-channels.001
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.002
     stable_key: 'manual:api.broadcast-channels:imports-channel-cross-tenant-anchored'
@@ -36656,15 +36673,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:10Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
@@ -36733,6 +36750,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:11Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 088fd004ed72f0a1dc3df995b28ced770524244f540aa8fa8d65f926aaee16ab
+        new_yaml_sha256: cce315289eb7d2657a2ac82192d1b6cd935a68a1888f6c32a3f2ba0376a23965
+        target_ids:
+          - api.broadcast-channels.002
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.003
     stable_key: 'manual:api.broadcast-channels:partners-channel-cross-tenant-anchored'
@@ -36750,15 +36784,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:12Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
@@ -36827,6 +36861,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:12Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: cce315289eb7d2657a2ac82192d1b6cd935a68a1888f6c32a3f2ba0376a23965
+        new_yaml_sha256: c7f7b72e0392ec5adefce919fd037759a211a96042e1ba9d30c38558cef5fec6
+        target_ids:
+          - api.broadcast-channels.003
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.004
     stable_key: 'manual:api.broadcast-channels:pos-terminal-channel-cross-tenant-anchored'
@@ -36844,15 +36895,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:13Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
@@ -36921,6 +36972,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:13Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c7f7b72e0392ec5adefce919fd037759a211a96042e1ba9d30c38558cef5fec6
+        new_yaml_sha256: f2613b3a59c8ef3d20acafaae205807a581227790f3d521d3de20e409e4d632e
+        target_ids:
+          - api.broadcast-channels.004
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.005
     stable_key: 'manual:api.broadcast-channels:pos-kitchen-channel-cross-tenant-anchored'
@@ -36938,15 +37006,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:14Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
@@ -37015,6 +37083,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:15Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f2613b3a59c8ef3d20acafaae205807a581227790f3d521d3de20e409e4d632e
+        new_yaml_sha256: aec98eb8ed9696417ff7a96082d2b4ffcc78fd0bfeb7f6ac9d2b27b990c94400
+        target_ids:
+          - api.broadcast-channels.005
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.006
     stable_key: 'manual:api.broadcast-channels:product-cost-price-updated-broadcast-cross-tenant-anchored'
@@ -37032,15 +37117,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:15Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37109,6 +37194,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:16Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: aec98eb8ed9696417ff7a96082d2b4ffcc78fd0bfeb7f6ac9d2b27b990c94400
+        new_yaml_sha256: f52065da8d91dce33293afab91a09787777fe592456cc91ec3b702851e05ea73
+        target_ids:
+          - api.broadcast-channels.006
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.007
     stable_key: 'manual:api.broadcast-channels:partner-balance-updated-broadcast-cross-tenant-anchored'
@@ -37126,15 +37228,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:17Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37203,6 +37305,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:17Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f52065da8d91dce33293afab91a09787777fe592456cc91ec3b702851e05ea73
+        new_yaml_sha256: 18740da1f89126643c0c8b553e754a2ee58fb331d7d8420d961edb398e13eede
+        target_ids:
+          - api.broadcast-channels.007
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.008
     stable_key: 'manual:api.broadcast-channels:order-sent-to-kitchen-broadcast-cross-tenant-anchored'
@@ -37220,15 +37339,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:18Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37297,6 +37416,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:18Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 18740da1f89126643c0c8b553e754a2ee58fb331d7d8420d961edb398e13eede
+        new_yaml_sha256: a355abb6aed808a8a1b691e94d3e382f048e09329caa876b397593561adee332
+        target_ids:
+          - api.broadcast-channels.008
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.009
     stable_key: 'manual:api.broadcast-channels:order-ready-broadcast-cross-tenant-anchored'
@@ -37314,15 +37450,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:19Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37391,6 +37527,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:19Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a355abb6aed808a8a1b691e94d3e382f048e09329caa876b397593561adee332
+        new_yaml_sha256: 3f615ad063281e105c5e434317486866f67e9930664303cf6bad4f31372fb653
+        target_ids:
+          - api.broadcast-channels.009
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.010
     stable_key: 'manual:api.broadcast-channels:order-line-status-changed-broadcast-cross-tenant-anchored'
@@ -37408,15 +37561,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:20Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37485,6 +37638,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:20Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3f615ad063281e105c5e434317486866f67e9930664303cf6bad4f31372fb653
+        new_yaml_sha256: b8581836bf93147341dbaab0b56e14d41fff5c3b16a15948ce5936651edb343c
+        target_ids:
+          - api.broadcast-channels.010
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.011
     stable_key: 'manual:api.broadcast-channels:terminal-activated-broadcast-cross-tenant-anchored'
@@ -37502,15 +37672,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37579,6 +37749,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:21Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b8581836bf93147341dbaab0b56e14d41fff5c3b16a15948ce5936651edb343c
+        new_yaml_sha256: 756ae2741cd6616d4e0b457a5d8ccb295dd909a6383bf5123d6753be66ee2169
+        target_ids:
+          - api.broadcast-channels.011
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.012
     stable_key: 'manual:api.broadcast-channels:import-completed-broadcast-cross-tenant-anchored'
@@ -37596,15 +37783,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:22Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37673,6 +37860,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:22Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 756ae2741cd6616d4e0b457a5d8ccb295dd909a6383bf5123d6753be66ee2169
+        new_yaml_sha256: 0bedbd34d532aec1dea922d6c48ed6a7d773174940aab9ac35d39516aeb36806
+        target_ids:
+          - api.broadcast-channels.012
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.broadcast-channels.013
     stable_key: 'manual:api.broadcast-channels:import-progress-broadcast-cross-tenant-anchored'
@@ -37690,15 +37894,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T08:12:23Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+      review_commit: dc67bcdb
     fix_commit: dc67bcdb
     regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
@@ -37767,6 +37971,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T08:12:24Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 0bedbd34d532aec1dea922d6c48ed6a7d773174940aab9ac35d39516aeb36806
+        new_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        target_ids:
+          - api.broadcast-channels.013
+          - api.broadcast-channels
+        from_status: under_review
+        to_status: fixed
+        commit: 10e95fc84a6f9d6b7bd9c0c5b4e5f09e2e408655
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
+        review_commit: dc67bcdb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29

@@ -594,3 +594,87 @@ Findings D-G above are deferred to follow-up clusters as named.
 
 - `api.webhooks-incoming` triage: `docs/superpowers/audits/2026-05-07-api-webhooks-incoming-triage.md`
 - Cross-cluster precedent for the deferral pattern (this same doc, Findings A-C): `api.scheduled-jobs` cluster triage `docs/superpowers/audits/2026-05-07-api-scheduled-jobs-triage.md`
+
+---
+
+## Static analyzer on closure bodies has unbounded attack surface (api.broadcast-channels round-1/2/3 trajectory, 2026-05-08)
+
+**What happened**: Three rounds of Codex adversarial review surfaced
+three distinct bypass classes against the PhpParser-based static
+analyzer over `Broadcast::channel(...)` closures in
+`apps/api/routes/channels.php`:
+
+  - Round 1 (BLOCKER): `@cross-tenant-anchored` PHPDoc could substitute
+    for the helper-call requirement. Closed structurally — annotation
+    became documentation-only on tenant-named channels.
+  - Round 2 (BLOCKERs ×2):
+    - Control-flow blindness: `if (false) { return $user->canAccess...(); } return true;`
+      passed because the helper-call existed somewhere in the AST.
+      Closed by walking every `Return_` and requiring helper-or-denial.
+    - Single-line bare-annotation regex captured the closing comment
+      delimiter as non-empty justification. Closed by stripping
+      docblock decorators before regex matching.
+  - Round 3 (BLOCK-NOVEL): variable reassignment to an anonymous-class
+    instance whose method returns a `Generator` (truthy, non-strict-false).
+    Laravel's `Broadcaster::verifyUserCanAccessChannel()` accepts any
+    truthy return. PhpParser cannot do data-flow / type-narrowing across
+    the assignment. **Not closeable in pure static analysis.**
+
+**Pivot applied** (per round-3 BLOCK-NOVEL escalation rule):
+
+  - Static analyzer kept as a best-effort regression catcher with a
+    class-level docblock honestly naming three known limits (data-flow
+    over reassignment, late-binding via dynamic dispatch,
+    truthy-non-bool returns). Round-3 NICE-TO-HAVE applied: outer-scope
+    Return_ scan only.
+  - Behavioral integration test added at
+    `apps/api/tests/Feature/Broadcasting/BroadcastChannelAuthEndpointTest.php`
+    as the LOAD-BEARING ground-truth check: 5 channels × 3 inputs =
+    15 tests against POST /broadcasting/auth (own_tenant_own_company →
+    200, cross_tenant → 403, cross_company_same_tenant → 403). Custom
+    `TestBroadcaster` registered in setUp() to delegate auth to
+    Laravel's real `verifyUserCanAccessChannel()` (the default `null`
+    driver bypasses the closures).
+  - Round-4 verdict: APPROVE (Codex confirmed the three round-1/2
+    mutation shapes still fail the static lint AND that the behavioral
+    tests are non-vacuous via direct mutation of `User::canAccessChannel`
+    / `User::canAccessCompanyChannel`).
+
+**Pattern lesson — informs future cluster design**:
+
+When the invariant is "this closure body correctly authorizes," static
+analysis is best-effort regression catcher; the load-bearing check is
+a behavioral integration test against the actual runtime path. PhpParser
+can verify structural shape (return-value matches a method-call shape)
+but cannot verify runtime semantics (the called method gates correctly,
+the receiver hasn't been reassigned, the return value is strict bool).
+Closing the data-flow class would require PHPStan/Psalm-grade type
+narrowing — heavy implementation cost, still incomplete (`call_user_func`,
+reflection, variable-method-name dispatch, etc., remain unbounded).
+
+**Implication for future clusters**: any similar invariant — middleware
+closures in `routes/api.php`, gate definitions in
+`AuthServiceProvider`, policy methods, broadcast auth callbacks — should
+default to a behavioral integration test as the load-bearing check from
+day one. Reach for static analysis only when the closure body's
+**structural shape** is the invariant (not its **runtime behavior**).
+Examples where static analysis IS appropriate: "every queue job
+declares `BindsTenantContext` trait OR `@cross-tenant-by-design`"
+(structural — `api.scheduled-jobs`); "every webhook controller body
+contains no `DB::`/`Bus::`/etc. patterns when annotated `STUB:`"
+(structural — `api.webhooks-incoming`). Examples where behavioral test
+is required: "this closure correctly authorizes only same-tenant
+subscribers" (runtime semantics — `api.broadcast-channels`).
+
+**Severity**: PROCESS-LEVEL (informs future cluster design, not a code
+defect).
+
+**Target**: future clusters that touch closure-body invariants.
+
+## References
+
+- `api.broadcast-channels` triage: `docs/superpowers/audits/2026-05-08-api-broadcast-channels-triage.md`
+- Round-1 review: `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-review.md`
+- Round-2 review: `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round2-review.md`
+- Round-3 review (BLOCK-NOVEL): `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round3-review.md`
+- Round-4 review (APPROVE): `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md`
