@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -314,7 +315,7 @@ class SetPosPinTest extends TestCase
             ->patchJson("/api/v1/users/{$this->cashierUser->id}/pos-pin", ['pin' => null])
             ->assertOk();
 
-        $events = \App\Modules\Compliance\Domain\AuditEvent::where('aggregate_type', 'user')
+        $events = AuditEvent::where('aggregate_type', 'user')
             ->where('aggregate_id', $this->cashierUser->id)
             ->whereIn('event_type', ['user.pos_pin_set', 'user.pos_pin_cleared'])
             ->pluck('event_type')
@@ -325,17 +326,17 @@ class SetPosPinTest extends TestCase
         // Both events must be present.
         $this->assertCount(2, $events);
 
-        $setEvent   = $events[1]; // 'user.pos_pin_set'     (alphabetically after 'cleared')
+        $setEvent = $events[1]; // 'user.pos_pin_set'     (alphabetically after 'cleared')
         $clearEvent = $events[0]; // 'user.pos_pin_cleared'
 
         // Derive the shared namespace prefix by stripping the last `_`-delimited segment.
-        $setPrefix   = implode('_', array_slice(explode('_', $setEvent), 0, -1));
+        $setPrefix = implode('_', array_slice(explode('_', $setEvent), 0, -1));
         $clearPrefix = implode('_', array_slice(explode('_', $clearEvent), 0, -1));
 
         $this->assertSame(
             $setPrefix,
             $clearPrefix,
-            "pos_pin set/clear audit events must share a common namespace prefix. " .
+            'pos_pin set/clear audit events must share a common namespace prefix. '.
             "Got '{$setEvent}' and '{$clearEvent}'."
         );
 

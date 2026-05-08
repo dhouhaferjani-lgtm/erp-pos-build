@@ -1586,7 +1586,7 @@ export type TransmissionType = 'manual' | 'automatic' | 'semi_automatic' | 'cvt'
 }
 declare namespace App.Modules.Voucher.Domain.Enums {
 export type RedemptionMode = 'bearer' | 'customer_bound';
-export type VoucherEvent = 'issued' | 'redeemed' | 'partially_redeemed' | 'expired' | 'voided' | 'reversed' | 'transferred' | 'rounding_adjustment';
+export type VoucherEvent = 'issued' | 'redeemed' | 'partially_redeemed' | 'expired' | 'voided' | 'reversed' | 'transferred' | 'rounding_adjustment' | 'expiry_extended';
 export type VoucherKind = 'MPV' | 'SPV';
 export type VoucherSource = 'refund' | 'exchange_surplus' | 'goodwill' | 'loyalty_credit' | 'gift_card_purchase' | 'promotional';
 export type VoucherStatus = 'issued' | 'partially_redeemed' | 'fully_redeemed' | 'expired' | 'voided';
