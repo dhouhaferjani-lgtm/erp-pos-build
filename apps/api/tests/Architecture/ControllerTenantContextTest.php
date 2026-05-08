@@ -145,9 +145,10 @@ final class ControllerTenantContextTest extends TestCase
             $classBodyMatchesHeuristic = $this->classBodyMatchesHeuristic($reflection);
 
             foreach ($this->methodsToScan($reflection) as $method) {
-                $key = $class.'::'.$method->getName();
+                $methodName = $method->getName();
+                $key = $class.'::'.$methodName;
 
-                if (in_array($key, $deferrals, true)) {
+                if ($this->isDeferred($deferrals, $class, $methodName)) {
                     continue;
                 }
 
@@ -542,10 +543,25 @@ final class ControllerTenantContextTest extends TestCase
      * a parallel cluster mutating the file mid-run is observable after
      * the next `git pull --ff-only`.
      *
-     * Each entry has keys `class`, `method`, `reason`. The test pairs
-     * class+method into the deferral key `<FQCN>::<method>`.
+     * Two entry shapes are supported:
      *
-     * @return list<string>
+     *   1. Per-method:  {"class": "<FQCN>", "method": "<name>", "reason": "..."}
+     *      → defers exactly that one method on that class.
+     *
+     *   2. Class-level: {"class": "<FQCN>", "method": "*", "reason": "..."}
+     *      → defers EVERY public method declared on that class. Use when
+     *      the entire controller is structurally tenant-scoped via a
+     *      shape the heuristic can't detect (service-trust delegation,
+     *      Spatie TeamScope auto-scoping, etc.) so that a per-method
+     *      enumeration would be bookkeeping noise without changing the
+     *      audit shape.
+     *
+     * Returns a closure that takes a `<FQCN>::<method>` key and returns
+     * true iff the key matches an entry (per-method or class-level
+     * wildcard).
+     *
+     * @return list<string> list of `<FQCN>` (class-level wildcard)
+     *                      AND `<FQCN>::<method>` (per-method) keys
      */
     private function loadDeferralsFresh(): array
     {
@@ -570,12 +586,39 @@ final class ControllerTenantContextTest extends TestCase
             if (! is_array($entry)) {
                 continue;
             }
-            if (! isset($entry['class'], $entry['method']) || ! is_string($entry['class']) || ! is_string($entry['method'])) {
+            if (! isset($entry['class']) || ! is_string($entry['class'])) {
                 continue;
             }
-            $keys[] = $entry['class'].'::'.$entry['method'];
+            $method = $entry['method'] ?? null;
+            if (! is_string($method)) {
+                continue;
+            }
+            if ($method === '*') {
+                // Class-level wildcard: store as bare FQCN.
+                $keys[] = $entry['class'];
+            } else {
+                $keys[] = $entry['class'].'::'.$method;
+            }
         }
 
         return $keys;
+    }
+
+    /**
+     * Returns true if the given `<FQCN>::<method>` key is deferred,
+     * either via a per-method entry OR a class-level wildcard.
+     *
+     * @param  list<string>  $deferrals
+     */
+    private function isDeferred(array $deferrals, string $class, string $methodName): bool
+    {
+        if (in_array($class.'::'.$methodName, $deferrals, true)) {
+            return true;
+        }
+        if (in_array($class, $deferrals, true)) {
+            return true;
+        }
+
+        return false;
     }
 }

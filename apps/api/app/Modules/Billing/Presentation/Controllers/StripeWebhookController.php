@@ -19,6 +19,7 @@ use App\Modules\Billing\Notifications\PaymentFailedNotification;
 use App\Modules\Billing\Notifications\PaymentSucceededNotification;
 use App\Modules\Billing\Notifications\SubscriptionCancelledNotification;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Architecture\CrossTenantRoute;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -70,6 +71,7 @@ final class StripeWebhookController extends Controller
     /**
      * Handle incoming Stripe webhooks.
      */
+    #[CrossTenantRoute(reason: 'Stripe webhook entry: tenant resolved from the verified Stripe-signed payload via globally-unique resource IDs (sub_*/in_*/pi_*) per master plan §8 shape (b); inline signature verification via Stripe\\Webhook::constructEvent fires BEFORE any DB read; see class-level @cross-tenant-by-design annotation (lines 32-67) for the full tenant-resolution proof + defense-in-depth UNIQUE-constraint pairing from api.platform-integration cluster.')]
     public function handle(Request $request): JsonResponse
     {
         $payload = $request->getContent();

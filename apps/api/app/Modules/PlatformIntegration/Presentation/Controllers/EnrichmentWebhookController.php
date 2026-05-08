@@ -6,6 +6,7 @@ namespace App\Modules\PlatformIntegration\Presentation\Controllers;
 
 use App\Modules\PlatformIntegration\Application\DTOs\EnrichmentWebhookPayload;
 use App\Modules\PlatformIntegration\Application\Jobs\ProcessEnrichmentWebhookJob;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -43,6 +44,7 @@ use Illuminate\Routing\Controller;
  */
 final class EnrichmentWebhookController extends Controller
 {
+    #[CrossTenantRoute(reason: 'Synerivia enrichment webhook entry: signature verified at the route layer via VerifySynerivaWebhookSignature middleware BEFORE this controller fires (HMAC-SHA256 + timestamp freshness ≤ 300s + constant-time hash_equals); tenant resolution shape (b) — globally-unique tracking_id (platform_submission_id) → Product → company_id chain via ProcessEnrichmentWebhookJob. See class-level @cross-tenant-by-design annotation for the full proof.')]
     public function __invoke(Request $request): JsonResponse
     {
         /** @var array<string, mixed> $data */

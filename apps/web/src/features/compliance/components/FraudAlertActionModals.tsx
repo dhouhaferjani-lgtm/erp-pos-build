@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, UserPlus, XCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { assignFraudAlert, dismissFraudAlert, resolveFraudAlert, getAdminUsers } from '../api/fraudApi'
+import { assignFraudAlert, dismissFraudAlert, resolveFraudAlert, getUsersWithAdminRole } from '../api/fraudApi'
 import type { FraudAlert } from '../types/fraudAlerts'
 
 interface AssignModalProps {
@@ -17,10 +17,13 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
   const queryClient = useQueryClient()
   const [selectedUserId, setSelectedUserId] = useState<string>('')
 
-  // Fetch admin users
+  // Fetch tenant-scoped users with admin role (NOT super-admin users).
+  // queryKey is namespaced under 'users' (the tenant-scoped domain) with
+  // a sub-segment 'admin-role' so it doesn't collide with the super-admin
+  // 'admin' cache namespace used by features/admin/.
   const { data: adminUsersData, isLoading: loadingUsers } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: getAdminUsers,
+    queryKey: ['users', 'admin-role'],
+    queryFn: getUsersWithAdminRole,
   })
 
   const assignMutation = useMutation({

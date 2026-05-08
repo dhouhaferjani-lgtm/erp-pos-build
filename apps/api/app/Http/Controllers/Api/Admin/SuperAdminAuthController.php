@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -13,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 class SuperAdminAuthController extends Controller
 {
+    #[CrossTenantRoute(reason: 'Super-admin authentication (pre-auth): credential check against the super_admins table BEFORE any session/tenant context exists; mounted public on /admin/auth/login with the throttle:admin-login rate-limit guard. On success, issues a Sanctum personal-access token under the sanctum-admin guard. Super-admins are platform-level actors with no tenant context by design.')]
     public function login(Request $request): JsonResponse
     {
         $request->validate([

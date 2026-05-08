@@ -26,6 +26,7 @@ use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -261,6 +262,7 @@ class AuthController extends Controller
     /**
      * Check if an email is available for registration.
      */
+    #[CrossTenantRoute(reason: 'Pre-auth: email-availability lookup before registration; queries User::where(email) globally to detect any pre-existing account (any tenant) so the registration flow can present a "sign in" CTA instead of "register". Mounted public on the unauthenticated route group; no tenant context exists at call time.')]
     public function checkEmail(CheckEmailRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -342,6 +344,7 @@ class AuthController extends Controller
     /**
      * Verify user's email address.
      */
+    #[CrossTenantRoute(reason: 'Pre-auth: email-verification token redemption from the verification link emailed at registration; resolves the user via the signed token (EmailVerificationService) before any session/tenant context exists. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
     public function verifyEmail(VerifyEmailRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -405,6 +408,7 @@ class AuthController extends Controller
     /**
      * Send a password reset link to the given email.
      */
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset request — accepts an email and dispatches a Password::sendResetLink (Laravel password broker) which finds the user globally by email and emails a signed reset token. No session/tenant context exists at call time.')]
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -428,6 +432,7 @@ class AuthController extends Controller
     /**
      * Reset the user's password using a valid token.
      */
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset token redemption — verifies the signed reset token via Laravel\'s Password broker, updates the user\'s password, and invalidates remember tokens. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
         $validated = $request->validated();

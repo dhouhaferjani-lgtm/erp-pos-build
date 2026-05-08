@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\PurchaseHub\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -62,6 +63,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class PurchaseHubWebhookController extends Controller
 {
+    #[CrossTenantRoute(reason: 'PurchaseHub webhook entry — STUB shape: ZERO DB access, ZERO Bus/Event/Queue dispatch, ZERO Notification send. Today the body is a verifiable noop (Log::info + 200 OK) which is acceptable WITHOUT signature middleware. Before adding ANY side-effect, register a signature-verification middleware on the route + define a tenant-resolution path per master plan §8 step 2. See class-level @cross-tenant-by-design STUB: annotation for the conversion checklist.')]
     public function __invoke(Request $request): JsonResponse
     {
         $event = $request->input('event');
