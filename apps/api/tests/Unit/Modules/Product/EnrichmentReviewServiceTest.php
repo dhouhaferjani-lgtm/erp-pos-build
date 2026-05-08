@@ -7,6 +7,7 @@ namespace Tests\Unit\Modules\Product;
 use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
@@ -73,6 +74,12 @@ class EnrichmentReviewServiceTest extends TestCase
 
         config(['services.platform.url' => 'https://platform.test']);
         config(['services.platform.api_key' => 'test-key']);
+
+        // Bind CompanyContext — required since api.platform-integration
+        // cluster made tenant headers mandatory on PlatformHttpClient,
+        // which EnrichmentReviewService transitively calls via
+        // ProductSubmissionService::checkStatus().
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->service = app(EnrichmentReviewService::class);
     }
