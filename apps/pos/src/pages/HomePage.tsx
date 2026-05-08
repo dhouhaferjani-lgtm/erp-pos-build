@@ -43,6 +43,7 @@ import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
 import { apiGet } from '@/lib/api';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
@@ -630,10 +631,7 @@ export function HomePage() {
       } catch (recommendError) {
         // Best-effort — log so a persistent product-fetch failure isn't invisible.
         console.error('[POS][HomePage][handleAddRecommendation] failed', {
-          error: recommendError,
-          errorType: typeof recommendError,
-          isError: recommendError instanceof Error,
-          message: recommendError instanceof Error ? recommendError.message : String(recommendError),
+          ...serializeErrorForLog(recommendError),
           productId,
         });
       }
@@ -698,12 +696,7 @@ export function HomePage() {
         // paymentStore.error already holds the user-visible banner, but the
         // raw throwable was previously unreachable from devtools.
         console.error('[POS][HomePage][handleCashConfirm] processCashCheckout threw', {
-          error: cashError,
-          errorType: typeof cashError,
-          isError: cashError instanceof Error,
-          errorName: cashError instanceof Error ? cashError.name : undefined,
-          message: cashError instanceof Error ? cashError.message : String(cashError),
-          stack: cashError instanceof Error ? cashError.stack : undefined,
+          ...serializeErrorForLog(cashError),
           terminalId: terminal.id,
           cartItemCount: cartItems.length,
           tenderedAmount,
@@ -736,12 +729,7 @@ export function HomePage() {
         // paymentStore.error already holds the user-visible banner, but the
         // raw throwable was previously unreachable from devtools.
         console.error('[POS][HomePage][handleAdvancedComplete] processAdvancedCheckout threw', {
-          error: advancedError,
-          errorType: typeof advancedError,
-          isError: advancedError instanceof Error,
-          errorName: advancedError instanceof Error ? advancedError.name : undefined,
-          message: advancedError instanceof Error ? advancedError.message : String(advancedError),
-          stack: advancedError instanceof Error ? advancedError.stack : undefined,
+          ...serializeErrorForLog(advancedError),
           terminalId: terminal.id,
           cartItemCount: cartItems.length,
           paymentLineCount: payments.length,

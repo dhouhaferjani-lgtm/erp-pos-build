@@ -18,6 +18,7 @@ import {
   type VoucherStatus,
 } from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 interface OfflineReceiptInput {
   terminalId: string;
@@ -459,11 +460,7 @@ export async function createOfflineReceipt(
     await db.execute('COMMIT');
   } catch (error) {
     console.error('[POS][offline][receipt] tx body threw — rolling back', {
-      error,
-      errorType: typeof error,
-      isError: error instanceof Error,
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      ...serializeErrorForLog(error),
       receiptNumber,
       hashSequence: newSequence,
       previousHash: terminalState.last_hash,
@@ -473,10 +470,7 @@ export async function createOfflineReceipt(
       await db.execute('ROLLBACK');
     } catch (rollbackError) {
       console.error('[POS][offline][receipt] ROLLBACK also threw — connection may be in bad state', {
-        rollbackError,
-        rollbackErrorType: typeof rollbackError,
-        isError: rollbackError instanceof Error,
-        message: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        ...serializeErrorForLog(rollbackError),
         receiptNumber,
         terminalId: input.terminalId,
       });

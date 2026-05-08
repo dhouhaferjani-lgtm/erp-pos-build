@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 const BASE_INTERVAL_MS = 60_000; // 1 minute
 const MAX_INTERVAL_MS = 5 * 60_000; // 5 minutes
@@ -106,12 +107,11 @@ export class SyncScheduler {
             useAuthStore.getState().logout();
           } else {
             // Network error → token might still be valid when server is reachable.
-            // Log so a stuck sync banner with intermittent connectivity is diagnosable.
-            console.error('[POS][syncScheduler] checkSession failed (non-401)', {
-              error: sessionError,
-              errorType: typeof sessionError,
-              isError: sessionError instanceof Error,
-              message: sessionError instanceof Error ? sessionError.message : String(sessionError),
+            // Log at warn so intermittent outages don't drown devtools in errors
+            // (Codex review 2026-05-08 finding (h)). checkSession runs every
+            // sync tick (~30s); a 10-min outage produces ~20 entries.
+            console.warn('[POS][syncScheduler] checkSession failed (non-401, transient)', {
+              ...serializeErrorForLog(sessionError),
             });
           }
         }
@@ -127,12 +127,7 @@ export class SyncScheduler {
       return result;
     } catch (error) {
       console.error('[POS][syncScheduler] tick threw', {
-        error,
-        errorType: typeof error,
-        isError: error instanceof Error,
-        errorName: error instanceof Error ? error.name : undefined,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        ...serializeErrorForLog(error),
         currentInterval: this.currentInterval,
       });
       const message = error instanceof Error ? error.message : 'Sync failed';

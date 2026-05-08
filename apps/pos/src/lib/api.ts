@@ -1,6 +1,7 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import i18n from '@/lib/i18n';
 import { useAuthStore } from '@/stores/authStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 export interface ApiResponse<T> {
   data: T;
@@ -115,10 +116,7 @@ async function request<T>(
       // Response wasn't JSON — log so a non-JSON 5xx (HTML/proxy error page,
       // gateway timeout body, etc.) is visible in devtools rather than vanishing.
       console.error('[POS][api] non-JSON error body', {
-        error: parseError,
-        errorType: typeof parseError,
-        isError: parseError instanceof Error,
-        message: parseError instanceof Error ? parseError.message : String(parseError),
+        ...serializeErrorForLog(parseError),
         status: response.status,
         url: fullUrl,
         method,

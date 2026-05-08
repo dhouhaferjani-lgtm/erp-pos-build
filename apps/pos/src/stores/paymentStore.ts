@@ -8,6 +8,7 @@ import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
 import { useSyncStore } from '@/stores/syncStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
@@ -148,11 +149,15 @@ async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
  * both to a generic i18n string, so the cashier saw "Échec du paiement" with
  * no class hint and the catch had already swallowed the original throwable.
  *
- * Contract:
+ * Contract (Codex review 2026-05-08 finding (b)):
  *   - real Error with non-empty message → use error.message verbatim
  *   - Error subclass with empty message → "<i18n.checkoutFailed>: <ClassName>"
- *   - non-Error string                  → "<i18n.checkoutFailed>: string — <slice>"
- *   - non-Error other                   → "<i18n.checkoutFailed>: <typeof error>"
+ *   - non-Error                          → "<i18n.checkoutFailed>" (opaque)
+ *
+ * Non-Error throwables (raw strings from Tauri IPC, plain objects, etc.) keep
+ * the original opaque banner because their content can carry SQL fragments,
+ * file paths, or query data that don't belong in the cashier UI. Full detail
+ * is surfaced via `serializeErrorForLog` to console.error, which is dev-only.
  */
 function formatCheckoutError(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -162,11 +167,9 @@ function formatCheckoutError(error: unknown): string {
   if (error instanceof Error) {
     return `${fallback}: ${error.constructor.name}`;
   }
-  if (typeof error === 'string') {
-    return `${fallback}: string — ${error.slice(0, 200)}`;
-  }
-  return `${fallback}: ${typeof error}`;
+  return fallback;
 }
+
 
 interface LocalFirstPaymentLine {
   methodCode: string;
@@ -291,10 +294,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       // SQLite not ready yet — continue to API. Log so a corrupted DB during
       // a startup race is visible in devtools instead of silently invisible.
       console.error('[POS][paymentStore][fetchPaymentConfig] SQLite read failed', {
-        error: sqliteError,
-        errorType: typeof sqliteError,
-        isError: sqliteError instanceof Error,
-        message: sqliteError instanceof Error ? sqliteError.message : String(sqliteError),
+        ...serializeErrorForLog(sqliteError),
       });
     }
 
@@ -316,10 +316,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         // Non-critical — sync scheduler also handles this. Log so a persistent
         // SQLite write failure isn't invisible.
         console.error('[POS][paymentStore][fetchPaymentConfig] SQLite writeback failed', {
-          error: writebackError,
-          errorType: typeof writebackError,
-          isError: writebackError instanceof Error,
-          message: writebackError instanceof Error ? writebackError.message : String(writebackError),
+          ...serializeErrorForLog(writebackError),
           methodCount: methods.length,
           repositoryCount: repositories.length,
         });
@@ -327,10 +324,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     } catch (apiError) {
       // API failed — SQLite data (if loaded in Step 1) is already in state.
       console.error('[POS][paymentStore][fetchPaymentConfig] API failed', {
-        error: apiError,
-        errorType: typeof apiError,
-        isError: apiError instanceof Error,
-        message: apiError instanceof Error ? apiError.message : String(apiError),
+        ...serializeErrorForLog(apiError),
         cachedMethodCount: get().paymentMethods.length,
       });
       if (get().paymentMethods.length === 0) {
@@ -395,12 +389,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
       console.error('[POS][checkout][cash] failed', {
-        error,
-        errorType: typeof error,
-        isError: error instanceof Error,
-        errorName: error instanceof Error ? error.name : undefined,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        ...serializeErrorForLog(error),
         cartItemCount: cartItems.length,
         tenderedAmount,
         terminalId,
@@ -476,12 +465,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       set({ changeDue: 0, isProcessing: false });
     } catch (error) {
       console.error('[POS][checkout][card] failed', {
-        error,
-        errorType: typeof error,
-        isError: error instanceof Error,
-        errorName: error instanceof Error ? error.name : undefined,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        ...serializeErrorForLog(error),
         cartItemCount: cartItems.length,
         terminalId,
         cardMethodId: cardMethod.id,
@@ -547,12 +531,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
       console.error('[POS][checkout][advanced] failed', {
-        error,
-        errorType: typeof error,
-        isError: error instanceof Error,
-        errorName: error instanceof Error ? error.name : undefined,
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
+        ...serializeErrorForLog(error),
         cartItemCount: cartItems.length,
         terminalId,
         paymentLineCount: payments.length,
