@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T05:13:16Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+  yaml_sha256: 9f4dc5f0db71cd4d3756a3fc9f11ef1676213c5900f443c5251e405b10dfdc29
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -36562,7 +36562,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36571,8 +36571,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36623,6 +36623,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:02Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f69b56baed36cf1e3230248e4ad3256500cb6304f88026e845f77374f6957de8
+        new_yaml_sha256: ddba89e2b451651c940edc011ee913eadb3400b3d54e02209b8d3910aea4888c
+        target_ids:
+          - api.broadcast-channels.001
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.002
     stable_key: 'manual:api.broadcast-channels:imports-channel-cross-tenant-anchored'
@@ -36640,7 +36656,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36649,8 +36665,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36701,6 +36717,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:04Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ddba89e2b451651c940edc011ee913eadb3400b3d54e02209b8d3910aea4888c
+        new_yaml_sha256: 1801463e2dc42cf67acc983c5518be5256f6dd4422c89bbb61cd9bef3c229ce7
+        target_ids:
+          - api.broadcast-channels.002
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.003
     stable_key: 'manual:api.broadcast-channels:partners-channel-cross-tenant-anchored'
@@ -36718,7 +36750,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36727,8 +36759,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36779,6 +36811,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:05Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1801463e2dc42cf67acc983c5518be5256f6dd4422c89bbb61cd9bef3c229ce7
+        new_yaml_sha256: 4509a2e89975e835efd156312a6a0f7a9a6225c77ce6f34528ea448cfeb90d43
+        target_ids:
+          - api.broadcast-channels.003
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.004
     stable_key: 'manual:api.broadcast-channels:pos-terminal-channel-cross-tenant-anchored'
@@ -36796,7 +36844,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36805,8 +36853,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36857,6 +36905,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:06Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4509a2e89975e835efd156312a6a0f7a9a6225c77ce6f34528ea448cfeb90d43
+        new_yaml_sha256: c46ead4cc2a5657cfdb374a2dc5df8c40f024243018d06b7891fa33bb9fa274b
+        target_ids:
+          - api.broadcast-channels.004
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.005
     stable_key: 'manual:api.broadcast-channels:pos-kitchen-channel-cross-tenant-anchored'
@@ -36874,7 +36938,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36883,8 +36947,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -36935,6 +36999,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:07Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c46ead4cc2a5657cfdb374a2dc5df8c40f024243018d06b7891fa33bb9fa274b
+        new_yaml_sha256: 0dc19a1d9e638bfcd6c584920c03d70485f6c7fcd14be888a3d05e003a52df37
+        target_ids:
+          - api.broadcast-channels.005
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.006
     stable_key: 'manual:api.broadcast-channels:product-cost-price-updated-broadcast-cross-tenant-anchored'
@@ -36952,7 +37032,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -36961,8 +37041,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37013,6 +37093,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:12Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0dc19a1d9e638bfcd6c584920c03d70485f6c7fcd14be888a3d05e003a52df37
+        new_yaml_sha256: 14fd3ad4b6795833a825a15913ffc739598e215d5cca7eee2b45b274c3186e2a
+        target_ids:
+          - api.broadcast-channels.006
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.007
     stable_key: 'manual:api.broadcast-channels:partner-balance-updated-broadcast-cross-tenant-anchored'
@@ -37030,7 +37126,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37039,8 +37135,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37091,6 +37187,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:14Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 14fd3ad4b6795833a825a15913ffc739598e215d5cca7eee2b45b274c3186e2a
+        new_yaml_sha256: f1db8c32ae997b347d165298dfbbfe24f8a0ba3a7c555fea98e1d0304663e1e7
+        target_ids:
+          - api.broadcast-channels.007
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.008
     stable_key: 'manual:api.broadcast-channels:order-sent-to-kitchen-broadcast-cross-tenant-anchored'
@@ -37108,7 +37220,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37117,8 +37229,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37169,6 +37281,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:15Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f1db8c32ae997b347d165298dfbbfe24f8a0ba3a7c555fea98e1d0304663e1e7
+        new_yaml_sha256: cc9c2147999331b0c2f1668003a70c55ab486804d5b10025168c559748190c0d
+        target_ids:
+          - api.broadcast-channels.008
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.009
     stable_key: 'manual:api.broadcast-channels:order-ready-broadcast-cross-tenant-anchored'
@@ -37186,7 +37314,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37195,8 +37323,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37247,6 +37375,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:16Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cc9c2147999331b0c2f1668003a70c55ab486804d5b10025168c559748190c0d
+        new_yaml_sha256: b6ab5d10d39966f7c44be8671d641fbc3e79effab354e6abb08aa0db69424efa
+        target_ids:
+          - api.broadcast-channels.009
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.010
     stable_key: 'manual:api.broadcast-channels:order-line-status-changed-broadcast-cross-tenant-anchored'
@@ -37264,7 +37408,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37273,8 +37417,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37325,6 +37469,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:17Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b6ab5d10d39966f7c44be8671d641fbc3e79effab354e6abb08aa0db69424efa
+        new_yaml_sha256: 532d3ebdae7b4077226c0849273d8545d8d7f53167096f0e5ad36aff95ae2d91
+        target_ids:
+          - api.broadcast-channels.010
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.011
     stable_key: 'manual:api.broadcast-channels:terminal-activated-broadcast-cross-tenant-anchored'
@@ -37342,7 +37502,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37351,8 +37511,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37403,6 +37563,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:18Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 532d3ebdae7b4077226c0849273d8545d8d7f53167096f0e5ad36aff95ae2d91
+        new_yaml_sha256: ff9d8da2120f14d80fa46d765277f75b7223362aec61e8b60563b07c03db1687
+        target_ids:
+          - api.broadcast-channels.011
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.012
     stable_key: 'manual:api.broadcast-channels:import-completed-broadcast-cross-tenant-anchored'
@@ -37420,7 +37596,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37429,8 +37605,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37481,6 +37657,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:19Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ff9d8da2120f14d80fa46d765277f75b7223362aec61e8b60563b07c03db1687
+        new_yaml_sha256: a69ee1b871de093fc530838b5101e8abb96ad2b3ea475e15f2ea581b160229a8
+        target_ids:
+          - api.broadcast-channels.012
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.broadcast-channels.013
     stable_key: 'manual:api.broadcast-channels:import-progress-broadcast-cross-tenant-anchored'
@@ -37498,7 +37690,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T05:13:27Z'
     review:
@@ -37507,8 +37699,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: dc67bcdb
+    regression_test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -37559,6 +37751,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T05:57:20Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a69ee1b871de093fc530838b5101e8abb96ad2b3ea475e15f2ea581b160229a8
+        new_yaml_sha256: 9f4dc5f0db71cd4d3756a3fc9f11ef1676213c5900f443c5251e405b10dfdc29
+        target_ids:
+          - api.broadcast-channels.013
+        from_status: in_progress
+        to_status: under_review
+        commit: dc67bcdb
+        test: 'tests/Architecture/BroadcastEventTenantContextTest.php::test_every_broadcast_event_class_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
