@@ -4,7 +4,7 @@ Reviewed commit: e51d3951
 Submission commit: 29e2935b
 Reviewer: codex
 Date: 2026-05-08
-Verdict: BLOCK-WITH-CHANGES-REQUIRED
+Verdict: BLOCK
 
 ## Verdict rationale
 The applied `#[CrossTenantRoute]` method attributes, the API controller architecture test, the web queryKey namespace test, and the FraudAlertActionModals fix all behave as intended under baseline and mutation checks. Approval is blocked by the API deferrals fixture: multiple entries claim concrete tenant-binding mechanisms that are not present in production code, so the fixture is masking real unclassified controller methods instead of documenting legitimate heuristic misses.
