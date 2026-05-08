@@ -146,4 +146,26 @@ final class ProgressionServiceResponseIdVerificationTest extends TestCase
 
         $this->assertNull($result);
     }
+
+    public function test_company_id_guard_allows_responses_without_company_id_echo(): void
+    {
+        $client = $this->createMock(GrowthAdvisorClientInterface::class);
+        $service = new ProgressionService($client);
+        $method = new \ReflectionMethod($service, 'assertResponseCompanyMatches');
+
+        $method->invoke($service, ['name' => 'URL-bound response without company echo'], 'comp-A', 'test');
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_tenant_id_guard_allows_responses_without_tenant_id_echo(): void
+    {
+        $client = $this->createMock(GrowthAdvisorClientInterface::class);
+        $service = new ProgressionService($client);
+        $method = new \ReflectionMethod($service, 'assertResponseTenantMatches');
+
+        $method->invoke($service, ['name' => 'URL-bound response without tenant echo'], 'tenant-1', 'test');
+
+        $this->addToAssertionCount(1);
+    }
 }
