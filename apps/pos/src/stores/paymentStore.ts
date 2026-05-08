@@ -398,11 +398,24 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    // T0.2: atomically allocate the idempotency key for this cart submission
-    // attempt — same set() call that flips isProcessing, so a synchronous
-    // double-click cannot interleave between the key check and the write.
+    // T0.2: atomically allocate the idempotency key AND gate concurrent
+    // entry. Same set() call flips isProcessing, allocates pendingIdempotencyKey
+    // if null, and detects a concurrent call (Codex round-2 finding F-1
+    // residual): if isProcessing is already true, a previous processX is
+    // still running. The async `await getReceiptByIdempotencyKey` inside
+    // createOfflineReceipt yields to the event loop, so two overlapping
+    // calls could both observe no existing row before either INSERT runs —
+    // one would then hit SQLITE_CONSTRAINT_UNIQUE. The gate prevents the
+    // second call from reaching the SQLite layer at all. The UI also
+    // disables the Confirm button while isProcessing is true (CashPaymentScreen
+    // line 171), so this is the secondary guard.
     let idempotencyKey = '';
+    let alreadyInFlight = false;
     set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
       idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
       return {
         isProcessing: true,
@@ -410,6 +423,13 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         pendingIdempotencyKey: idempotencyKey,
       };
     });
+    if (alreadyInFlight) {
+      // Concurrent processX call while another checkout is already running.
+      // Silently no-op; the in-flight call will complete (success or error)
+      // and the UI will reflect the result. The cashier can retry from a
+      // stable state once the first attempt resolves.
+      return;
+    }
 
     try {
       const authState = useAuthStore.getState();
@@ -484,9 +504,15 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    // T0.2: atomic key allocation (see processCashCheckout for rationale).
+    // T0.2: atomic key allocation + concurrent-call gate (see
+    // processCashCheckout for rationale).
     let idempotencyKey = '';
+    let alreadyInFlight = false;
     set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
       idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
       return {
         isProcessing: true,
@@ -494,6 +520,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         pendingIdempotencyKey: idempotencyKey,
       };
     });
+    if (alreadyInFlight) return;
 
     try {
       const authState = useAuthStore.getState();
@@ -546,9 +573,15 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     consumptionMode,
     tableId,
   ) => {
-    // T0.2: atomic key allocation (see processCashCheckout for rationale).
+    // T0.2: atomic key allocation + concurrent-call gate (see
+    // processCashCheckout for rationale).
     let idempotencyKey = '';
+    let alreadyInFlight = false;
     set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
       idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
       return {
         isProcessing: true,
@@ -556,6 +589,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         pendingIdempotencyKey: idempotencyKey,
       };
     });
+    if (alreadyInFlight) return;
 
     try {
       const authState = useAuthStore.getState();

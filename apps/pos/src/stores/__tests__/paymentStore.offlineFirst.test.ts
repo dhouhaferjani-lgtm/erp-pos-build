@@ -242,6 +242,70 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(firstKey).toBe(secondKey);
   });
 
+  it('gates concurrent processCashCheckout calls so only one createOfflineReceipt fires', async () => {
+    // T0.2 (Codex round-2 finding F-1 residual): two overlapping
+    // processCashCheckout calls must not race past the existence check
+    // inside createOfflineReceipt. With the isProcessing gate, the second
+    // call bails before reaching createReceiptLocalFirst, so only one
+    // SQLite INSERT runs. Without the gate, both calls would `await
+    // getReceiptByIdempotencyKey`, both observe no row, both proceed to
+    // INSERT, and one would hit SQLITE_CONSTRAINT_UNIQUE.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    let resolveFirst!: (value: unknown) => void;
+    const firstCallPending = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let callCount = 0;
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      callCount++;
+      // First call: hang until we explicitly resolve. This holds isProcessing
+      // = true while the test fires the second call.
+      await firstCallPending;
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey: input.idempotencyKey ?? 'fallback-key',
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    // Fire two overlapping checkout calls. Don't `await` between them.
+    const firstCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+
+    // Let the second call's synchronous prefix run (it should hit the
+    // isProcessing gate and bail synchronously without ever calling
+    // createOfflineReceipt).
+    await Promise.resolve();
+
+    // The first call is still hanging; the second has already returned.
+    // Only one createOfflineReceipt call must have fired.
+    expect(callCount).toBe(1);
+
+    // Now release the first call so the test can clean up.
+    resolveFirst(undefined);
+    await Promise.all([firstCallPromise, secondCallPromise]);
+
+    // Final invariant: exactly one createOfflineReceipt invocation total.
+    expect(callCount).toBe(1);
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
   it('allocates a fresh idempotency_key after clearLastReceipt is called', async () => {
     // T0.2 lifecycle contract: clearLastReceipt is called by HomePage's
     // handleNewSale on success-modal-dismiss / new-sale-opened / manual-cancel.
