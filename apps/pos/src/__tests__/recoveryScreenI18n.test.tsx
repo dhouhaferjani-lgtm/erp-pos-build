@@ -153,6 +153,46 @@ describe('T1.1 round-2 — i18n smoke (recovery screen + LoginPage)', () => {
     expect(text).toContain('Sign out');
   });
 
+  // Codex round-3 finding (#7) follow-up: the render-based smoke tests
+  // above only exercise the keys actually rendered in the default
+  // (idle, no-error) state. Five of the 8 T1.1-introduced keys
+  // (errorHint, retrying, retry, stillTrying, cancel) only render in
+  // states the smoke tests don't enter. This direct i18n.t() check
+  // covers all 8 keys for both locales so a future deletion of any
+  // single key fails the suite.
+  it('Every T1.1-introduced i18n key resolves in both en and fr', async () => {
+    const KEYS: Array<{ ns: 'common' | 'pos'; key: string }> = [
+      { ns: 'common', key: 'auth.companyRecovery.title' },
+      { ns: 'common', key: 'auth.companyRecovery.message' },
+      { ns: 'common', key: 'auth.companyRecovery.errorHint' },
+      { ns: 'common', key: 'auth.companyRecovery.retrying' },
+      { ns: 'common', key: 'auth.companyRecovery.retry' },
+      { ns: 'common', key: 'auth.companyRecovery.signOut' },
+      { ns: 'pos', key: 'auth.stillTrying' },
+      { ns: 'pos', key: 'auth.cancel' },
+    ];
+
+    const originalLng = i18n.language;
+    try {
+      for (const lng of ['en', 'fr']) {
+        await i18n.changeLanguage(lng);
+        for (const { ns, key } of KEYS) {
+          const value = i18n.t(key, { ns });
+          // Resolved translations are non-empty and never equal to the
+          // raw key (i18next's missing-key fallback). They also never
+          // start with "auth." — that prefix only appears in the keys
+          // themselves.
+          expect(typeof value).toBe('string');
+          expect(value).not.toBe('');
+          expect(value).not.toBe(key);
+          expect(value).not.toMatch(/^auth\./);
+        }
+      }
+    } finally {
+      await i18n.changeLanguage(originalLng);
+    }
+  });
+
   it('LoginPage renders translated submit button (no raw keys for the new still-trying / cancel keys)', () => {
     useConnectivityStore.setState({
       isOnline: true,
