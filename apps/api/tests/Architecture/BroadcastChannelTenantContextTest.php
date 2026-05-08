@@ -15,53 +15,90 @@ use PhpParser\ParserFactory;
 use Tests\TestCase;
 
 /**
- * Step 6 of api.broadcast-channels cluster.
+ * Best-effort static-analysis regression catcher for the
+ * api.broadcast-channels cluster's tenant-isolation invariants in
+ * apps/api/routes/channels.php.
  *
- * Asserts every Broadcast::channel(...) call in apps/api/routes/channels.php is
- * tenant-classified.
+ * KNOWN LIMITS — this test cannot enforce:
  *
- * Round-2 (Codex round-1 BLOCKER fix): the original test allowed an
+ *   (a) Data-flow over variable reassignment. A closure that reassigns
+ *       its first parameter to a different object before calling an
+ *       allowlisted helper-method on that variable LOOKS structurally
+ *       identical to a sound gate. PhpParser does not narrow types
+ *       across assignments. Example bypass shape (Codex round-3):
+ *           $user = new class { public function canAccessCompanyChannel(...): \Generator { yield true; } };
+ *           return $user->canAccessCompanyChannel($tenantId, $companyId);
  *
- * @cross-tenant-anchored PHPDoc with non-empty justification to classify a
- * tenant-named channel even when the closure body did NOT call an
- * allowlisted auth helper. Codex mutation b proved the bypass: replacing
- * the imports closure body with `return true;` while keeping the PHPDoc
- * still passed the test. The classification is now tightened so that
+ *   (b) Late-binding via dynamic dispatch. `call_user_func`, variable
+ *       function names (`$user->{$method}(...)`), `Closure::bind`, and
+ *       reflection-based invocation all route through indirection that
+ *       AST-level classification cannot model.
  *
- *   - tenant-named channels (channel name embeds `{tenantId}`) MUST invoke
- *     an allowlisted auth helper on the closure's first parameter (the
- *     authenticated `User`). The PHPDoc annotation is documentation; it
- *     does NOT bypass the helper-call requirement.
+ *   (c) Truthy-not-strict-true return values. Laravel's
+ *       `Broadcaster::verifyUserCanAccessChannel()` rejects only
+ *       `$result === false` and treats any truthy value as "authorized"
+ *       — including Generator objects, non-empty arrays, and
+ *       impostor objects. Static analysis can verify the return shape
+ *       is a method call, but cannot verify the called method's runtime
+ *       return type or bool-narrowing.
  *
- *   - non-tenant-named channels (no `{tenantId}` segment) MUST carry
+ * These three classes are fundamental to PhpParser-level static
+ * analysis of closure bodies. Closing any of them would require
+ * PHPStan/Psalm-grade type narrowing across the closure's expression
+ * graph — a different tool, with its own residual unbounded surface
+ * (variable function names, reflection, etc.).
+ *
+ * Ground-truth enforcement of the tenant-isolation invariant lives in
+ * {@see Tests\Feature\Broadcasting\BroadcastChannelAuthEndpointTest},
+ * which exercises POST /broadcasting/auth with foreign-tenant inputs
+ * against each defined channel — the load-bearing assertion.
+ *
+ * The static test here catches the obvious bypass shapes at code-review
+ * time. Codex round-1 found `@cross-tenant-anchored` PHPDoc could
+ * substitute for the helper-call (closed). Codex round-2 found
+ * control-flow blindness (`if (false) { ... } return true;`) and a
+ * single-line bare-annotation regex bug (the closing comment delimiter
+ * was captured as justification on `single-line tag` form). Closed
+ * structurally with return-value gating + docblock-decorator stripping.
+ * See {@see test_classification_logic_catches_known_bypass_shapes} for
+ * the fixture set that pins each closed bypass shape to its expected
+ * fail-mode.
+ *
+ * Classification rules in scope (best-effort):
+ *
+ *   - Tenant-named channels (channel name contains `{tenantId}`) MUST
+ *     invoke an allowlisted auth helper on the closure's first
+ *     parameter (the authenticated `User`). The PHPDoc annotation is
+ *     documentation; it does NOT bypass the helper-call requirement.
+ *
+ *   - Non-tenant-named channels (no `{tenantId}` segment) MUST carry
  *     `@cross-tenant-by-design <non-empty justification>`. The
  *     `@cross-tenant-anchored` annotation alone is no longer sufficient
- *     to classify a non-tenant-named channel — it pairs with the helper-call
- *     requirement on tenant-named channels but is not a standalone classifier.
+ *     to classify a non-tenant-named channel — it pairs with the
+ *     helper-call requirement on tenant-named channels but is not a
+ *     standalone classifier.
  *
- *   - dynamic channel names (Broadcast::channel($var, ...)) cannot be
+ *   - Dynamic channel names (`Broadcast::channel($var, ...)`) cannot be
  *     statically classified and fail with an explicit message.
  *
- *   - the deferrals fixture (`tests/Architecture/fixtures/broadcast-channel-deferrals.json`)
- *     can list known-exception channel-name strings; bare list entries are
- *     tolerated for cross-cluster precedent.
+ *   - The deferrals fixture
+ *     (`tests/Architecture/fixtures/broadcast-channel-deferrals.json`)
+ *     can list known-exception channel-name strings; bare list entries
+ *     are tolerated for cross-cluster precedent.
  *
- * Round-2 also tightens `closureCallsAllowedAuthHelper()` to require that
- * the helper-call's receiver be the closure's first parameter variable —
- * a stray `$randomThing->canAccessChannel(...)` (e.g. on a different
- * variable) no longer satisfies the invariant (Codex round-1
- * NICE-TO-HAVE #1).
+ * Round-3 NICE-TO-HAVE applied: the Return_ scan now operates on the
+ * closure's IMMEDIATE statement list (recursing only into control-flow
+ * structures like If_, Switch_, TryCatch, Foreach_, etc.) rather than
+ * descending into nested anonymous-class method bodies, nested
+ * closures, or nested anonymous functions. The previous behavior
+ * incidentally caught one Codex round-3 attack but is not the
+ * invariant we test — the analyzer should classify the OUTER closure's
+ * gate, not random inner bodies.
  *
- * The {@see test_classification_logic_catches_known_bypass_shapes} self-test
- * pins each known bypass shape to its expected fail-mode via fixture files
- * under `tests/Architecture/BroadcastFixtures/`. If a future refactor
- * weakens any rule, the self-test catches the regression before the
- * production routes/channels.php silently loses coverage.
- *
- * Channels are read from the canonical `routes/channels.php` location only.
- * If a future Laravel upgrade splits broadcast channel registration across
- * multiple files (e.g. via a service provider), {@see self::CHANNEL_FILES}
- * must be updated.
+ * Channels are read from the canonical `routes/channels.php` location
+ * only. If a future Laravel upgrade splits broadcast channel
+ * registration across multiple files (e.g. via a service provider),
+ * {@see self::CHANNEL_FILES} must be updated.
  */
 final class BroadcastChannelTenantContextTest extends TestCase
 {
@@ -285,6 +322,21 @@ final class BroadcastChannelTenantContextTest extends TestCase
             $inlineBareViolations['bare_annotations'],
             'Inline-bare-annotation fixture (`/** @cross-tenant-by-design */` on a single line) should fail bare_annotations. Got: '
             .json_encode($inlineBareViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Round-3 NICE-TO-HAVE coverage: the outer closure has the
+        // canonical helper-call gate; nested-scope returns
+        // (anonymous-class methods, nested closures) must be IGNORED.
+        // Expected: zero violations.
+        $nestedScopeViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-nested-scope-noise.php']),
+            [],
+        );
+        $this->assertSame(
+            [],
+            array_filter($nestedScopeViolations, fn (array $v) => count($v) > 0),
+            'Nested-scope-noise fixture (outer gate is sound; nested anonymous-class + nested closure return `true` in their own scopes) should produce zero violations. Got: '
+            .json_encode($nestedScopeViolations, JSON_PRETTY_PRINT),
         );
     }
 
@@ -576,9 +628,7 @@ final class BroadcastChannelTenantContextTest extends TestCase
             return false;
         }
 
-        $finder = new NodeFinder;
-
-        $returns = $finder->findInstanceOf($closure, Stmt\Return_::class);
+        $returns = $this->collectOuterClosureReturns($closure);
 
         if (count($returns) === 0) {
             return false;
@@ -587,7 +637,6 @@ final class BroadcastChannelTenantContextTest extends TestCase
         $sawHelperReturn = false;
 
         foreach ($returns as $return) {
-            /** @var Stmt\Return_ $return */
             $expr = $return->expr;
 
             if ($expr === null) {
@@ -611,6 +660,131 @@ final class BroadcastChannelTenantContextTest extends TestCase
         }
 
         return $sawHelperReturn;
+    }
+
+    /**
+     * Collect every `Return_` statement that belongs to the OUTER closure's
+     * own scope — i.e., walk through the closure's control-flow structures
+     * (If_, Switch_, TryCatch, Foreach_, etc.) but DO NOT recurse into
+     * nested function-like scopes (Closure, ArrowFunction, Function_,
+     * Class_, Trait_, Interface_, Enum_).
+     *
+     * Round-3 NICE-TO-HAVE applied: the previous implementation used
+     * `NodeFinder::findInstanceOf($closure, Return_::class)`, which is a
+     * blanket recursive walk. That caused two issues:
+     *
+     *   - It descended into anonymous-class method bodies and nested
+     *     closures, classifying them as "returns inside the closure" even
+     *     though they belong to a different scope. Codex round-3 c1.1
+     *     mutation incidentally failed because of this — that's not the
+     *     invariant we test.
+     *
+     *   - The scope mismatch could mask noise: a nested helper-method's
+     *     `return $foo->bar();` might satisfy `sawHelperReturn` while the
+     *     outer closure returns `true`. The narrower scan removes that
+     *     possibility.
+     *
+     * @return list<Stmt\Return_>
+     */
+    private function collectOuterClosureReturns(Closure $closure): array
+    {
+        $returns = [];
+        $this->walkOuterScopeReturns($closure->stmts, $returns);
+
+        return $returns;
+    }
+
+    /**
+     * Recursive helper for {@see collectOuterClosureReturns}.
+     *
+     * @param  array<int, Stmt>  $stmts
+     * @param  list<Stmt\Return_>  $returns
+     */
+    private function walkOuterScopeReturns(array $stmts, array &$returns): void
+    {
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof Stmt\Return_) {
+                $returns[] = $stmt;
+
+                continue;
+            }
+
+            // Recurse only into control-flow constructs that share the
+            // outer closure's variable scope. Anything function-like
+            // (closures, arrow functions, class/function declarations) is
+            // a different scope and is skipped.
+            $this->walkOuterScopeReturnsInChildren($stmt, $returns);
+        }
+    }
+
+    /**
+     * Recurse into the inline-block sub-nodes of a control-flow statement
+     * (without entering nested function-like scopes).
+     *
+     * @param  list<Stmt\Return_>  $returns
+     */
+    private function walkOuterScopeReturnsInChildren(Stmt $stmt, array &$returns): void
+    {
+        if ($stmt instanceof Stmt\If_) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+            foreach ($stmt->elseifs as $elseif) {
+                $this->walkOuterScopeReturns($elseif->stmts, $returns);
+            }
+            if ($stmt->else !== null) {
+                $this->walkOuterScopeReturns($stmt->else->stmts, $returns);
+            }
+
+            return;
+        }
+        if ($stmt instanceof Stmt\Switch_) {
+            foreach ($stmt->cases as $case) {
+                $this->walkOuterScopeReturns($case->stmts, $returns);
+            }
+
+            return;
+        }
+        if ($stmt instanceof Stmt\TryCatch) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+            foreach ($stmt->catches as $catch) {
+                $this->walkOuterScopeReturns($catch->stmts, $returns);
+            }
+            if ($stmt->finally !== null) {
+                $this->walkOuterScopeReturns($stmt->finally->stmts, $returns);
+            }
+
+            return;
+        }
+        if ($stmt instanceof Stmt\Foreach_) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+
+            return;
+        }
+        if ($stmt instanceof Stmt\For_) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+
+            return;
+        }
+        if ($stmt instanceof Stmt\While_) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+
+            return;
+        }
+        if ($stmt instanceof Stmt\Do_) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+
+            return;
+        }
+        if ($stmt instanceof Stmt\Block) {
+            $this->walkOuterScopeReturns($stmt->stmts, $returns);
+
+            return;
+        }
+
+        // Anything else (Function_, Class_, Trait_, Interface_, Enum_,
+        // Expression containing nested Closure/ArrowFunction) — skip.
+        // Note: an Expression statement may contain a Closure expression,
+        // but Returns inside that Closure belong to its own scope, not
+        // the outer closure's scope, so we deliberately do not descend.
     }
 
     /**
