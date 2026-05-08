@@ -29,11 +29,23 @@ export function serializeErrorForLog(error: unknown): ErrorLogPayload {
     } catch {
       message = '[unreadable]';
     }
+    let errorName: string;
+    try {
+      errorName = error.name;
+    } catch {
+      errorName = '[unreadable]';
+    }
+    let stack: string | undefined;
+    try {
+      stack = error.stack;
+    } catch {
+      stack = undefined;
+    }
     return {
       errorType: typeof error,
-      errorName: error.name,
+      errorName,
       message,
-      stack: error.stack,
+      stack,
     };
   }
   let message: string;

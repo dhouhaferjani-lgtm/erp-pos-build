@@ -159,6 +159,9 @@ describe('paymentStore offline-first cash checkout', () => {
     // the cashier UI. The banner stays opaque (generic i18n only); raw detail is
     // surfaced via console.error to devtools, not the user.
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    const i18n = (await import('@/lib/i18n')).default;
+    const expectedOpaqueBanner = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+
     vi.mocked(createOfflineReceipt).mockRejectedValueOnce(
       'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
     );
@@ -169,7 +172,11 @@ describe('paymentStore offline-first cash checkout', () => {
       'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
     );
 
-    const banner = usePaymentStore.getState().error ?? '';
+    const banner = usePaymentStore.getState().error;
+    // Codex round-2 finding: previous test would have passed vacuously if
+    // banner were null/empty. Lock the exact expected opaque value so a
+    // regression that drops the banner entirely also fails this test.
+    expect(banner).toBe(expectedOpaqueBanner);
     expect(banner).not.toContain('NOT NULL constraint failed');
     expect(banner).not.toContain('offline_receipts.payment_method_id');
     expect(banner).not.toContain('payment_method_id');
