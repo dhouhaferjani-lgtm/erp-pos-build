@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T21:33:33Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 77d9dad3e9471d2b644f867dcadbab4690438755bb12d4dd2a4ff4403cad3aed
+  yaml_sha256: 82ab379dd1949c83ff699231e8deab52191c7c36a9255e9ed160c05b968d4afd
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -39761,7 +39761,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T21:33:43Z'
     review:
@@ -39770,8 +39770,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 4b9a0fac
+    regression_test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_module_readiness_index_pins_company_id_to_company_context_not_header'
     blocked_reason: null
     history:
       -
@@ -39822,6 +39822,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T22:00:42Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 77d9dad3e9471d2b644f867dcadbab4690438755bb12d4dd2a4ff4403cad3aed
+        new_yaml_sha256: 3d2ba54a6fd608a466ecfef5f4b44e64d4070f9162ac6f0173155e238f165035
+        target_ids:
+          - api.module-gating.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 4b9a0fac
+        test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_module_readiness_index_pins_company_id_to_company_context_not_header'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.module-gating.002
     stable_key: 'manual:api.module-gating:tenant-controllers-companycontext-injection'
@@ -39839,7 +39855,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T21:33:43Z'
     review:
@@ -39848,8 +39864,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 4b9a0fac
+    regression_test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_onboarding_status_pins_company_id_to_company_context_not_header'
     blocked_reason: null
     history:
       -
@@ -39900,6 +39916,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T22:00:43Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3d2ba54a6fd608a466ecfef5f4b44e64d4070f9162ac6f0173155e238f165035
+        new_yaml_sha256: ba0a2b37b8db7278d47fe974eb1ec4e4fce7ce1690e471c815ec0d48ae44b296
+        target_ids:
+          - api.module-gating.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 4b9a0fac
+        test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_onboarding_status_pins_company_id_to_company_context_not_header'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.module-gating.003
     stable_key: 'manual:api.module-gating:identity-user-controller-companycontext-audit-attribution'
@@ -39917,7 +39949,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T21:33:43Z'
     review:
@@ -39926,8 +39958,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 4b9a0fac
+    regression_test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_user_store_audit_records_validated_company_id_not_malicious_header'
     blocked_reason: null
     history:
       -
@@ -39978,6 +40010,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T22:00:44Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ba0a2b37b8db7278d47fe974eb1ec4e4fce7ce1690e471c815ec0d48ae44b296
+        new_yaml_sha256: a2884ce032ba54134f965b7ec8d3b27b28ea12aa7b401ae2256e88fd10d8e507
+        target_ids:
+          - api.module-gating.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 4b9a0fac
+        test: 'tests/Feature/Progression/ModuleGatingTenantIsolationTest.php::test_user_store_audit_records_validated_company_id_not_malicious_header'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.module-gating.004
     stable_key: 'manual:api.module-gating:growth-advisor-response-id-verification'
@@ -39995,7 +40043,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T21:33:43Z'
     review:
@@ -40004,8 +40052,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 4b9a0fac
+    regression_test: 'tests/Unit/Progression/ProgressionServiceResponseIdVerificationTest.php::test_get_profile_throws_when_response_company_id_mismatches'
     blocked_reason: null
     history:
       -
@@ -40056,6 +40104,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T22:00:45Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a2884ce032ba54134f965b7ec8d3b27b28ea12aa7b401ae2256e88fd10d8e507
+        new_yaml_sha256: 82ab379dd1949c83ff699231e8deab52191c7c36a9255e9ed160c05b968d4afd
+        target_ids:
+          - api.module-gating.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 4b9a0fac
+        test: 'tests/Unit/Progression/ProgressionServiceResponseIdVerificationTest.php::test_get_profile_throws_when_response_company_id_mismatches'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
