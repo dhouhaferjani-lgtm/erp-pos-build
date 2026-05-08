@@ -48,10 +48,14 @@ final class CompanyProgressionControllerTest extends TestCase
 
     public function test_show_returns_company_profile(): void
     {
+        // ProgressionService asserts the upstream response's `id` echo
+        // matches the request's expected company id (api.module-gating
+        // cluster). Mock response must echo the real company id, not a
+        // hardcoded placeholder, or the response-id guard fail-louds.
         $this->mockClient->method('getCompanyProfile')
             ->willReturn([
-                'id' => 'comp-1',
-                'tenant_id' => 'tenant-1',
+                'id' => $this->company->id,
+                'tenant_id' => $this->tenant->id,
                 'vertical' => 'coffee_shop',
                 'country' => 'TN',
                 'current_stage' => 'stabilize',
@@ -103,10 +107,14 @@ final class CompanyProgressionControllerTest extends TestCase
 
     public function test_register_creates_company_in_growth_advisor(): void
     {
+        // Response-id contract (api.module-gating cluster): mock must echo
+        // both `id` (matching the controller-resolved companyId) and
+        // `tenant_id` (matching the resolved tenantId), or the
+        // assertResponse{Company,Tenant}Matches guards fail-loud.
         $this->mockClient->method('registerCompany')
             ->willReturn([
-                'id' => 'comp-1',
-                'tenant_id' => 'tenant-1',
+                'id' => $this->company->id,
+                'tenant_id' => $this->tenant->id,
                 'vertical' => 'coffee_shop',
                 'country' => 'TN',
                 'current_stage' => 'launch',

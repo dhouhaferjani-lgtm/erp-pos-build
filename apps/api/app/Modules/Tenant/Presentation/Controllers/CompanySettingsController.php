@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Presentation\Controllers;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\DTOs\CompanySettingsData;
@@ -16,8 +17,29 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * api.module-gating cluster — audit-attribution invariant.
+ *
+ * The actual settings update operates on Tenant::find($user->tenant_id)
+ * (auth-user-anchored, already self-scoping). The earlier
+ * $request->header('X-Company-Id') reads flowed only into
+ * logAuditEvent's companyId parameter. Trusting the raw header for
+ * audit attribution risks evidence-tampering: a user could perform
+ * legitimate self-tenant settings changes but stamp the AuditEvent
+ * with a foreign companyId, distorting forensic reconstruction.
+ *
+ * For NF525 + AdminAuditLog + two-tier hash chain compliance,
+ * audit-trail integrity is independently load-bearing. This pin
+ * derives audit companyId from the validated CompanyContext source.
+ * The legacy `if ($companyId === null) return;` guard inside
+ * logAuditEvent remains as defense-in-depth.
+ */
 class CompanySettingsController extends Controller
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
+
     /**
      * Get company settings for the current tenant.
      */
@@ -109,7 +131,7 @@ class CompanySettingsController extends Controller
             eventType: 'tenant.settings_updated',
             aggregateId: $tenant->id,
             userId: $user->id,
-            companyId: $request->header('X-Company-Id'),
+            companyId: $this->companyContext->requireCompanyId(),
             payload: ['changes' => $changes]
         );
 
@@ -156,7 +178,7 @@ class CompanySettingsController extends Controller
             eventType: 'tenant.logo_updated',
             aggregateId: $tenant->id,
             userId: $user->id,
-            companyId: $request->header('X-Company-Id'),
+            companyId: $this->companyContext->requireCompanyId(),
             payload: ['logo_path' => $path]
         );
 
@@ -217,7 +239,7 @@ class CompanySettingsController extends Controller
             eventType: 'tenant.logo_deleted',
             aggregateId: $tenant->id,
             userId: $user->id,
-            companyId: $request->header('X-Company-Id'),
+            companyId: $this->companyContext->requireCompanyId(),
             payload: []
         );
 
