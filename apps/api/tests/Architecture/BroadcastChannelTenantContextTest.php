@@ -254,6 +254,38 @@ final class BroadcastChannelTenantContextTest extends TestCase
             'Non-tenant-unannotated fixture should fail non_tenant_without_by_design. Got: '
             .json_encode($unannotatedViolations, JSON_PRETTY_PRINT),
         );
+
+        // Bypass shape (Codex round-2 BLOCKER #1, control-flow blindness):
+        // tenant-named channel with helper-call inside `if (false)` block
+        // and `return true;` as the actual return path. The new
+        // closureGatesViaAllowedAuthHelper() requires every Return_ to be
+        // helper-call OR denial literal — `return true;` violates this.
+        // Must fail under tenant_named_without_helper.
+        $controlFlowViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-control-flow-bypass.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $controlFlowViolations['tenant_named_without_helper'],
+            'Control-flow-bypass fixture (helper in dead branch + `return true;`) should fail tenant_named_without_helper. Got: '
+            .json_encode($controlFlowViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape (Codex round-2 BLOCKER #2, single-line bare annotation):
+        // non-tenant-named channel with `/** @cross-tenant-by-design */` on
+        // a single line. The original `[^\r\n]*` regex captured the closing
+        // `*/` as non-empty justification. The new docblock-cleaner strips
+        // the closing delimiter before matching. Must fail under
+        // bare_annotations.
+        $inlineBareViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-inline-bare-annotation.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $inlineBareViolations['bare_annotations'],
+            'Inline-bare-annotation fixture (`/** @cross-tenant-by-design */` on a single line) should fail bare_annotations. Got: '
+            .json_encode($inlineBareViolations, JSON_PRETTY_PRINT),
+        );
     }
 
     /**
@@ -294,10 +326,13 @@ final class BroadcastChannelTenantContextTest extends TestCase
             $hasTenantSegment = str_contains($name, '{tenantId}');
 
             if ($hasTenantSegment) {
-                // Tenant-named channels: the closure body MUST invoke an
-                // allowlisted helper on the closure's first parameter.
-                // Annotation is documentation-only; it does NOT bypass.
-                if ($closure === null || ! $this->closureCallsAllowedAuthHelperOnFirstParam($closure)) {
+                // Tenant-named channels: every return statement in the closure
+                // MUST be either an allowlisted helper-call on the first
+                // parameter (the gate) OR a clear denial literal (false /
+                // null / 0). Round-2 BLOCKER #1: a closure that contains
+                // a helper call in dead control flow but returns `true`
+                // unconditionally is rejected.
+                if ($closure === null || ! $this->closureGatesViaAllowedAuthHelper($closure)) {
                     $tenantNamedWithoutHelper[] = "{$location} ({$name})";
                 }
 
@@ -312,17 +347,17 @@ final class BroadcastChannelTenantContextTest extends TestCase
                 continue;
             }
 
-            if (preg_match(
-                '/@cross-tenant-by-design\b[ \t]*([^\r\n]*)/m',
+            $justification = $this->extractAnnotationJustification(
                 $docblock,
-                $matches,
-            ) !== 1) {
+                'cross-tenant-by-design',
+            );
+
+            if ($justification === null) {
                 $nonTenantWithoutByDesign[] = "{$location} ({$name})";
 
                 continue;
             }
 
-            $justification = trim($matches[1]);
             if ($justification === '') {
                 $bareAnnotations[] = "{$location} ({$name})";
 
@@ -494,16 +529,39 @@ final class BroadcastChannelTenantContextTest extends TestCase
     }
 
     /**
-     * Return true iff the closure body contains a call to one of the
-     * allowed auth-helpers AND the call's receiver is the closure's first
-     * parameter variable (the authenticated `User`). A stray
-     * `$randomThing->canAccessChannel(...)` is rejected — round-1
-     * NICE-TO-HAVE #1.
+     * Return true iff the closure GATES authorization through an allowlisted
+     * helper-call on the first-parameter (the authenticated `User`).
      *
-     * If the closure has zero parameters, the helper-call shape is
-     * trivially unsatisfiable: the test fails such a closure.
+     * Concretely:
+     *   1. The closure has at least one Return_ statement.
+     *   2. Every Return_ statement's expression is either:
+     *      - An allowlisted helper-call on the first-parameter variable
+     *        (the canonical gate shape — see `User::canAccessChannel` /
+     *        `User::canAccessCompanyChannel`), OR
+     *      - A clear denial literal: `false`, `null`, `0`, or empty `[]`,
+     *        OR a bare `return;` (no value).
+     *   3. At least one Return_ is the helper-call shape (i.e. the gate
+     *      is actually invoked on at least one return path).
+     *
+     * Round-2 BLOCKER #1 (control-flow blindness): the previous helper
+     * accepted any descendant helper-call regardless of whether it gated
+     * the return. A closure like
+     * `if (false) { return $user->canAccessChannel(...); } return true;`
+     * passed because the helper-call existed somewhere in the AST. The
+     * new rule rejects this: `return true;` is not a denial literal AND
+     * not a helper-call, so the closure is unclassified.
+     *
+     * If the closure has zero parameters or no Return_ statements, the
+     * helper-call shape is trivially unsatisfiable: the test fails such
+     * a closure.
+     *
+     * The denial-literal allowlist is intentionally narrow — the 5
+     * production channels never use early-deny returns today. If a
+     * future channel needs more sophisticated denial logic (e.g. throwing
+     * an exception, or returning a complex deny-shape), extract the gate
+     * to a helper method and call it from the closure return.
      */
-    private function closureCallsAllowedAuthHelperOnFirstParam(Closure $closure): bool
+    private function closureGatesViaAllowedAuthHelper(Closure $closure): bool
     {
         if (count($closure->params) === 0) {
             return false;
@@ -520,28 +578,138 @@ final class BroadcastChannelTenantContextTest extends TestCase
 
         $finder = new NodeFinder;
 
-        $methodCalls = $finder->findInstanceOf($closure, Expr\MethodCall::class);
+        $returns = $finder->findInstanceOf($closure, Stmt\Return_::class);
 
-        foreach ($methodCalls as $call) {
-            /** @var Expr\MethodCall $call */
-            if (! $call->name instanceof Node\Identifier) {
-                continue;
-            }
-            if (! in_array($call->name->name, self::ALLOWED_AUTH_HELPERS, true)) {
-                continue;
-            }
-            // Receiver must be the first-param variable.
-            if (! $call->var instanceof Expr\Variable) {
-                continue;
-            }
-            if ($call->var->name !== $firstParamName) {
+        if (count($returns) === 0) {
+            return false;
+        }
+
+        $sawHelperReturn = false;
+
+        foreach ($returns as $return) {
+            /** @var Stmt\Return_ $return */
+            $expr = $return->expr;
+
+            if ($expr === null) {
+                // `return;` — no value. Treat as denial.
                 continue;
             }
 
-            return true;
+            if ($this->isAllowedHelperCallOnVariable($expr, $firstParamName)) {
+                $sawHelperReturn = true;
+
+                continue;
+            }
+
+            if ($this->isClearDenialLiteral($expr)) {
+                continue;
+            }
+
+            // Anything else (`return true;`, `return $someVar;`, `return func();`,
+            // `return $user->isAdmin();`, etc.) breaks the gate invariant.
+            return false;
+        }
+
+        return $sawHelperReturn;
+    }
+
+    /**
+     * Match `$<varName>-><allowlistedHelper>(...)` exactly — receiver must
+     * be a Variable node with the given name, method name must be in the
+     * allowlist, no chained-property access (`$this->user->method()`).
+     */
+    private function isAllowedHelperCallOnVariable(Expr $expr, string $varName): bool
+    {
+        if (! $expr instanceof Expr\MethodCall) {
+            return false;
+        }
+        if (! $expr->name instanceof Node\Identifier) {
+            return false;
+        }
+        if (! in_array($expr->name->name, self::ALLOWED_AUTH_HELPERS, true)) {
+            return false;
+        }
+        if (! $expr->var instanceof Expr\Variable) {
+            return false;
+        }
+
+        return $expr->var->name === $varName;
+    }
+
+    /**
+     * Recognize a small set of clear denial expressions: `false`, `null`,
+     * `0`, empty `[]`. Anything else (true, non-zero ints, strings, vars,
+     * function calls) is rejected.
+     */
+    private function isClearDenialLiteral(Expr $expr): bool
+    {
+        if ($expr instanceof Expr\ConstFetch) {
+            $name = strtolower($expr->name->toString());
+
+            return in_array($name, ['false', 'null'], true);
+        }
+        if ($expr instanceof Node\Scalar\Int_) {
+            return $expr->value === 0;
+        }
+        if ($expr instanceof Expr\Array_) {
+            return count($expr->items) === 0;
         }
 
         return false;
+    }
+
+    /**
+     * Extract the justification text following an `@<tag>` annotation in a
+     * docblock. Returns:
+     *   - null if the annotation is not present.
+     *   - '' (empty string) if the annotation is present but bare.
+     *   - non-empty string with the trimmed justification text.
+     *
+     * Round-2 BLOCKER #2: the original regex `[^\r\n]*` captured the closing
+     * comment delimiter as non-empty justification on a single-line docblock
+     * (single-line `@cross-tenant-by-design` form). The fix strips comment
+     * delimiters (open, close, and per-line leading asterisks) BEFORE
+     * running the regex.
+     */
+    private function extractAnnotationJustification(string $docblock, string $tagName): ?string
+    {
+        $cleaned = $this->stripDocBlockDelimiters($docblock);
+
+        if (preg_match(
+            '/@'.preg_quote($tagName, '/').'\b[ \t]*([^\r\n]*)/m',
+            $cleaned,
+            $matches,
+        ) !== 1) {
+            return null;
+        }
+
+        return trim($matches[1]);
+    }
+
+    /**
+     * Strip the open, close, and per-line leading asterisk decorations
+     * from a PHPDoc text. Returns the inner content with whitespace
+     * preserved.
+     */
+    private function stripDocBlockDelimiters(string $docblock): string
+    {
+        // Remove leading open-comment and trailing close-comment markers
+        // (with surrounding whitespace).
+        $stripped = preg_replace('/\A\s*\/\*\*+/', '', $docblock) ?? $docblock;
+        $stripped = preg_replace('/\*+\/\s*\z/', '', $stripped) ?? $stripped;
+
+        // For each line, strip leading whitespace + `*` markers (PHPDoc convention).
+        $lines = preg_split('/\r\n|\r|\n/', $stripped);
+        if ($lines === false) {
+            return $stripped;
+        }
+
+        $cleaned = array_map(
+            static fn (string $line): string => preg_replace('/^\s*\*[ \t]?/', '', $line) ?? $line,
+            $lines,
+        );
+
+        return implode("\n", $cleaned);
     }
 
     /**
