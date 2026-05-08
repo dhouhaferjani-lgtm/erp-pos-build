@@ -47,12 +47,17 @@ interface AuthState {
 }
 
 interface AuthActions {
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+    opts?: { signal?: AbortSignal },
+  ) => Promise<void>;
   logout: () => void;
   checkSession: () => Promise<void>;
   setCompany: (companyId: string) => void;
   initialize: () => Promise<void>;
   refreshCompanyConfig: () => Promise<void>;
+  fetchCompanies: () => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -127,7 +132,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     }
   },
 
-  login: async (email: string, password: string) => {
+  login: async (
+    email: string,
+    password: string,
+    opts?: { signal?: AbortSignal },
+  ) => {
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
 
@@ -145,31 +154,54 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         device_id: getDeviceId(),
         device_name: 'IziPOS Desktop',
         platform: getTauriPlatform(),
-      });
+      }, { signal: opts?.signal });
 
       console.log('[auth] Login successful, got token');
 
       const { user, token } = response;
 
-      // Persist auth data
+      // T1.1 Step 1.1: transactional persist. The previous flow persisted
+      // TOKEN+USER and flipped isAuthenticated=true BEFORE fetching
+      // /user/companies. A network drop in the small window between the
+      // login POST returning and companies resolving left a half-finished
+      // session: TOKEN+USER persisted in Tauri Store, isAuthenticated:true
+      // in memory, companies:[]. On the next boot, AppRouter routed to
+      // TerminalSetupPage which immediately threw because companyId was
+      // null. We now hold all in-memory and on-disk state changes until
+      // BOTH /auth/login AND /user/companies have resolved successfully —
+      // a failure in either leaves the prior auth state untouched.
+      console.log('[auth] Fetching companies...');
+
+      // Use a short-lived auth header for this single fetch — apiGet reads
+      // the in-store token via getHeaders(), but we haven't committed it
+      // yet. Temporarily set token (NOT isAuthenticated, NOT persisted) so
+      // the request authenticates; reset it on any failure path.
+      set({ token });
+
+      let companies: Company[];
+      try {
+        companies = await apiGet<Company[]>('/user/companies', undefined, {
+          signal: opts?.signal,
+        });
+      } catch (error) {
+        // Roll back the in-memory token; we never persisted anything.
+        set({ token: null });
+        throw error;
+      }
+
+      console.log('[auth] Got companies:', companies.length);
+
+      // Persist auth data only after BOTH calls succeeded.
       await setStoredValue(StorageKeys.TOKEN, token);
       await setStoredValue(StorageKeys.USER, user);
+      await setStoredValue(StorageKeys.COMPANIES, companies);
 
       set({
         user,
         token,
+        companies,
         isAuthenticated: true,
       });
-
-      console.log('[auth] Fetching companies...');
-
-      // Fetch user companies
-      const companies = await apiGet<Company[]>('/user/companies');
-      await setStoredValue(StorageKeys.COMPANIES, companies);
-
-      console.log('[auth] Got companies:', companies.length);
-
-      set({ companies });
 
       // Auto-select if single company
       if (companies.length === 1 && companies[0]) {
@@ -194,6 +226,20 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   setCompany: (companyId: string) => {
     set({ companyId });
     void setStoredValue(StorageKeys.COMPANY_ID, companyId);
+  },
+
+  // T1.1 Step 1.2: re-fetch /user/companies for the recovery screen
+  // (rendered when isAuthenticated && companies.length === 0). Throws on
+  // failure so the component can render the typed-fields-only error UI.
+  fetchCompanies: async () => {
+    const companies = await apiGet<Company[]>('/user/companies');
+    await setStoredValue(StorageKeys.COMPANIES, companies);
+    set({ companies });
+    if (companies.length === 1 && companies[0]) {
+      const companyId = companies[0].id;
+      await setStoredValue(StorageKeys.COMPANY_ID, companyId);
+      set({ companyId });
+    }
   },
 
   refreshCompanyConfig: async () => {

@@ -280,6 +280,72 @@ describe('authStore', () => {
     expect(useProductStore.getState().companyConfig?.all_enabled_modules).toEqual(['POS']);
   });
 
+  // T1.1 Step 1.1: login transactional — persists must happen ONLY after
+  // /user/companies resolves successfully. Otherwise a network drop after
+  // the POST returns leaves TOKEN+USER persisted in Tauri Store with
+  // companies:[] in state, and the next boot routes to TerminalSetupPage
+  // which immediately throws because companyId is null.
+  it('T1.1: login transactional — companies-fetch failure leaves no persisted state', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      user: mockUser,
+      token: 'jwt-token-123',
+      tokenType: 'Bearer',
+      deviceId: 'device-123',
+    });
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('Network drop after login POST'));
+
+    await expect(
+      useAuthStore.getState().login('test@example.com', 'password'),
+    ).rejects.toThrow('Network drop after login POST');
+
+    // Persistence must NOT have happened
+    expect(setStoredValue).not.toHaveBeenCalledWith('auth_token', expect.anything());
+    expect(setStoredValue).not.toHaveBeenCalledWith('user', expect.anything());
+    expect(setStoredValue).not.toHaveBeenCalledWith('companies', expect.anything());
+
+    // In-memory auth must NOT flip to authenticated
+    const state = useAuthStore.getState();
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.token).toBeNull();
+    expect(state.user).toBeNull();
+    expect(state.companies).toEqual([]);
+    expect(state.isLoading).toBe(false);
+  });
+
+  it('T1.1: login successful — persists in correct order (after companies-fetch resolves)', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      user: mockUser,
+      token: 'jwt-token-123',
+      tokenType: 'Bearer',
+      deviceId: 'device-123',
+    });
+    vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+    await useAuthStore.getState().login('test@example.com', 'password');
+
+    const setStoredValueMock = vi.mocked(setStoredValue);
+    const apiGetMock = vi.mocked(apiGet);
+
+    // Find the invocation orders. mock.invocationCallOrder is a global counter
+    // across all vi.fn() calls within the test, so we can compare.
+    const tokenPersistCall = setStoredValueMock.mock.calls.findIndex(
+      (call) => call[0] === 'auth_token',
+    );
+    const userPersistCall = setStoredValueMock.mock.calls.findIndex(
+      (call) => call[0] === 'user',
+    );
+    expect(tokenPersistCall).toBeGreaterThanOrEqual(0);
+    expect(userPersistCall).toBeGreaterThanOrEqual(0);
+
+    const tokenPersistOrder = setStoredValueMock.mock.invocationCallOrder[tokenPersistCall]!;
+    const userPersistOrder = setStoredValueMock.mock.invocationCallOrder[userPersistCall]!;
+    const companiesFetchOrder = apiGetMock.mock.invocationCallOrder[0]!;
+
+    // Both TOKEN and USER persists must happen AFTER apiGet('/user/companies')
+    expect(tokenPersistOrder).toBeGreaterThan(companiesFetchOrder);
+    expect(userPersistOrder).toBeGreaterThan(companiesFetchOrder);
+  });
+
   it('logs out when checkSession returns 401 (token expired)', async () => {
     vi.mocked(getStoredValue)
       .mockResolvedValueOnce('expired-token')

@@ -4,7 +4,6 @@ import { Header } from './Header';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
 
@@ -32,11 +31,8 @@ export function AppShell() {
     resetActivityTimer();
   }, [resetActivityTimer]);
 
-  // Start connectivity monitoring
-  useEffect(() => {
-    const stopMonitoring = useConnectivityStore.getState().startMonitoring();
-    return stopMonitoring;
-  }, []);
+  // T1.1 Step 1.4: connectivity monitoring moved to MainApp so LoginPage
+  // (which mounts BEFORE AppShell in the route tree) can read isOnline.
 
   // Trigger sync when app regains visibility after >1 min
   useEffect(() => {

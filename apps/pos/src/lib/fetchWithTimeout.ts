@@ -77,6 +77,33 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const method = init?.method ?? 'GET';
   const url = urlOf(input);
+  const userSignal = init?.signal;
+
+  // T1.1 Step 1.5: forward the caller's AbortSignal (e.g. LoginPage's
+  // Cancel-after-8s button) into our internal controller so a user-
+  // initiated abort terminates the underlying Tauri fetch the same way
+  // a timeout abort does. We track WHICH path fired so the catch can
+  // distinguish:
+  //   - timer fired      → throw FetchTimeoutError (T0.3 contract)
+  //   - userSignal fired → propagate the user's AbortError verbatim
+  // If neither fires (Rust-side TCP RST etc.), the underlying error
+  // surfaces unchanged.
+  let timedOut = false;
+  let userAborted = false;
+
+  const onUserAbort = () => {
+    userAborted = true;
+    controller.abort();
+  };
+
+  if (userSignal) {
+    if (userSignal.aborted) {
+      // Synchronously honor a pre-fired caller signal.
+      onUserAbort();
+    } else {
+      userSignal.addEventListener('abort', onUserAbort, { once: true });
+    }
+  }
 
   // Single timer drives both legs of the defense:
   //   (a) controller.abort() — signals Tauri's plugin-http to terminate
@@ -89,6 +116,7 @@ export async function fetchWithTimeout(
   });
 
   const timer = setTimeout(() => {
+    timedOut = true;
     controller.abort();
     rejectTimeout(new FetchTimeoutError(url, timeoutMs, method));
   }, timeoutMs);
@@ -101,17 +129,24 @@ export async function fetchWithTimeout(
   } catch (err) {
     // If Tauri's plugin-http honored AbortSignal and rejected with
     // `AbortError` before our explicit rejection fired the race, translate
-    // to the typed FetchTimeoutError. The two cases (Tauri-side abort vs
-    // JS-side race rejection) MUST surface as the same error class so
-    // callers can match on `instanceof FetchTimeoutError` without caring
-    // which side won.
-    if (err instanceof Error && err.name === 'AbortError') {
+    // to the typed FetchTimeoutError ONLY if the timeout fired. A user-
+    // initiated abort propagates the AbortError unchanged so the caller
+    // can distinguish "user pressed Cancel" from "request timed out".
+    if (timedOut && err instanceof Error && err.name === 'AbortError') {
       throw new FetchTimeoutError(url, timeoutMs, method);
+    }
+    if (userAborted) {
+      // Re-throw the AbortError as-is so caller's catch sees it.
+      throw err;
     }
     throw err;
   } finally {
     // Always clear the timer to prevent a stale 30s reference from
-    // outliving a 100ms successful fetch.
+    // outliving a 100ms successful fetch, and unhook the user-signal
+    // listener so it doesn't leak past the request.
     clearTimeout(timer);
+    if (userSignal) {
+      userSignal.removeEventListener('abort', onUserAbort);
+    }
   }
 }
