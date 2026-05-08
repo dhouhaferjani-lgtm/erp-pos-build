@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T14:35:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a5d2afc04ab7c6d55ce4dfc270b14d0aa5ff0c3319f8bdd1901c41f22b517e52
+  yaml_sha256: dc67d2542afd65b36e4a4c334e6c97f7da748fab7ef69cf30f1326b2a364011f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -26273,17 +26273,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-08T15:20:13Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
     history:
       -
@@ -26320,6 +26320,54 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.020 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-08T15:20:13Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 37e426fd184930f5ca21e25db809b7291699dbf49c2c23a0a38784cbc5f75c7d
+        new_yaml_sha256: 15ca8b3ceb1cd4e24d7b5a5173925496778240fa88506e30f3a7eba86c8c6c57
+        target_ids:
+          - api.unmapped.020
+        from_status: pending
+        to_status: claimed
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T15:20:15Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 15ca8b3ceb1cd4e24d7b5a5173925496778240fa88506e30f3a7eba86c8c6c57
+        new_yaml_sha256: d03a34fade1cda08ea3a47c33a2555c29f5badf538caafe99eacba08a8ba4ff2
+        target_ids:
+          - api.unmapped.020
+        from_status: claimed
+        to_status: in_progress
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:20:16Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d03a34fade1cda08ea3a47c33a2555c29f5badf538caafe99eacba08a8ba4ff2
+        new_yaml_sha256: 45e3129dd051f74646becf450ec5686ecbb3580b2626349538f430447bb36c53
+        target_ids:
+          - api.unmapped.020
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.unmapped.021
     stable_key: 'sha256:8d0f0284f2fbbd660fd9f6f59f885310f207d87824ec24e28ef18ba00b230b4d'
@@ -26337,17 +26385,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-08T15:20:17Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
     history:
       -
@@ -26384,6 +26432,54 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.021 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-08T15:20:17Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 45e3129dd051f74646becf450ec5686ecbb3580b2626349538f430447bb36c53
+        new_yaml_sha256: 629a151c3b2c16ad05b5a25c135481972054d2a38bdeb00cab18744421a8c40f
+        target_ids:
+          - api.unmapped.021
+        from_status: pending
+        to_status: claimed
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T15:20:19Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 629a151c3b2c16ad05b5a25c135481972054d2a38bdeb00cab18744421a8c40f
+        new_yaml_sha256: c153e4d2e43b1fd2df03fe9b5de631c81633b65013ead46d461c8b65d33e55fc
+        target_ids:
+          - api.unmapped.021
+        from_status: claimed
+        to_status: in_progress
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:20:20Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c153e4d2e43b1fd2df03fe9b5de631c81633b65013ead46d461c8b65d33e55fc
+        new_yaml_sha256: 614eac07d492c05afb906bb4e86a9bffb469935adba6d16c9b8cb20de3203f1a
+        target_ids:
+          - api.unmapped.021
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.unmapped.022
     stable_key: 'sha256:46ddfe308a4e8cc5582911ac6401489788f49ccbc93b330859fb27c9404e53aa'
@@ -26401,17 +26497,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-08T15:20:21Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
     history:
       -
@@ -26448,6 +26544,54 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.022 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-08T15:20:22Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 614eac07d492c05afb906bb4e86a9bffb469935adba6d16c9b8cb20de3203f1a
+        new_yaml_sha256: 92ffbf56fb3e896b62e95318558cde10f00fbb6def41d67a31a91ead7ea44565
+        target_ids:
+          - api.unmapped.022
+        from_status: pending
+        to_status: claimed
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T15:20:23Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 92ffbf56fb3e896b62e95318558cde10f00fbb6def41d67a31a91ead7ea44565
+        new_yaml_sha256: 6b0f2dd12eef94e7186895961e2295333c3707581bb2aa95a3e8b3bfe317afee
+        target_ids:
+          - api.unmapped.022
+        from_status: claimed
+        to_status: in_progress
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:20:24Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6b0f2dd12eef94e7186895961e2295333c3707581bb2aa95a3e8b3bfe317afee
+        new_yaml_sha256: c116a2394180b8c28c71cebaafbdfb57bff71fd2048fc2832d826dc6267e2322
+        target_ids:
+          - api.unmapped.022
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.unmapped.023
     stable_key: 'sha256:d1fe2d63d248bb26e65342495e3dd8a09e6d2a407d6cd880224381c89b0f9e88'
@@ -26465,17 +26609,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-08T15:20:26Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
     history:
       -
@@ -26512,6 +26656,54 @@ callsites:
         review_file: null
         review_commit: null
         note: "cluster reassigned: api.unmapped → api.super-admin-context. ClusterResolver::defaultModuleToClusterMap was extended after the inventory was last generated; this row's module slot in the resolver now resolves to api.super-admin-context, but the row's stable_key match preserved the stale api.unmapped assignment on regenerate. Identity (id field) preserved at api.unmapped.023 to keep the audit chain's target_ids references valid."
+      -
+        at: '2026-05-08T15:20:26Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c116a2394180b8c28c71cebaafbdfb57bff71fd2048fc2832d826dc6267e2322
+        new_yaml_sha256: bf50d6d54177a5d098eb041c549c545f6ab58f76d2c40757760d970f1817933d
+        target_ids:
+          - api.unmapped.023
+        from_status: pending
+        to_status: claimed
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T15:20:27Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: bf50d6d54177a5d098eb041c549c545f6ab58f76d2c40757760d970f1817933d
+        new_yaml_sha256: 112d6de4c56a7655cc4731399c372ce284c4dd78278b9f8a9007de168ac9d138
+        target_ids:
+          - api.unmapped.023
+        from_status: claimed
+        to_status: in_progress
+        commit: e51d39510c620779ff37cad4f703298c29122e29
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:20:29Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 112d6de4c56a7655cc4731399c372ce284c4dd78278b9f8a9007de168ac9d138
+        new_yaml_sha256: dc67d2542afd65b36e4a4c334e6c97f7da748fab7ef69cf30f1326b2a364011f
+        target_ids:
+          - api.unmapped.023
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.document.041
     stable_key: 'sha256:ff140d8ccd9402107a969e8b0a913ee3c1bd7076b19ed4599d72e7c23d5649d5'
@@ -38703,7 +38895,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T14:35:30Z'
     review:
@@ -38712,8 +38904,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
     history:
       -
@@ -38764,6 +38956,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:19:51Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a5d2afc04ab7c6d55ce4dfc270b14d0aa5ff0c3319f8bdd1901c41f22b517e52
+        new_yaml_sha256: 245c5b614953c8db7a0bf234180dd15282b580d49abfda21df1ae4633f9f2289
+        target_ids:
+          - api.super-admin-context.001
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.super-admin-frontend.001
     stable_key: 'manual:web.super-admin-frontend:querykey-namespace-arch-test'
@@ -38781,7 +38989,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T14:35:22Z'
     review:
@@ -38790,8 +38998,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e51d3951
+    regression_test: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts::queryKey namespace invariant (web.super-admin-frontend) > every queryKey literal is correctly namespaced by file location'
     blocked_reason: null
     history:
       -
@@ -38842,6 +39050,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-08T15:19:56Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 245c5b614953c8db7a0bf234180dd15282b580d49abfda21df1ae4633f9f2289
+        new_yaml_sha256: 37e426fd184930f5ca21e25db809b7291699dbf49c2c23a0a38784cbc5f75c7d
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: in_progress
+        to_status: under_review
+        commit: e51d3951
+        test: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts::queryKey namespace invariant (web.super-admin-frontend) > every queryKey literal is correctly namespaced by file location'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
 progress:
   total_callsites: 0
   total_clusters: 29
