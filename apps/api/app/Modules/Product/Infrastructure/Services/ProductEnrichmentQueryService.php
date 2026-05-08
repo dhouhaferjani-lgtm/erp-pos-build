@@ -25,6 +25,8 @@ final class ProductEnrichmentQueryService implements EnrichmentQueryInterface
             ->get()
             ->map(fn (Product $product): PendingEnrichmentDTO => new PendingEnrichmentDTO(
                 productId: $product->id,
+                tenantId: $product->tenant_id,
+                companyId: $product->company_id,
                 platformSubmissionId: (string) $product->platform_submission_id,
                 enrichmentStatus: $product->enrichment_status ?? EnrichmentStatus::Pending,
             ));

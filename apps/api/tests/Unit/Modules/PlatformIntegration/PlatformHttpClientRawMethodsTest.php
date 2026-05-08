@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\PlatformIntegration;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Mockery;
 use Tests\TestCase;
 
 class PlatformHttpClientRawMethodsTest extends TestCase
@@ -16,7 +18,16 @@ class PlatformHttpClientRawMethodsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->client = new PlatformHttpClient;
+
+        // CompanyContext stub — api.platform-integration cluster made
+        // X-Tenant-Id + X-Company-Id mandatory on every outbound. These
+        // raw-method tests assert response-shape behavior, NOT header
+        // content; the stub satisfies the new fail-loud contract.
+        $companyContext = Mockery::mock(CompanyContext::class);
+        $companyContext->allows('requireTenantId')->andReturn('00000000-0000-0000-0000-000000000001');
+        $companyContext->allows('requireCompanyId')->andReturn('00000000-0000-0000-0000-000000000002');
+
+        $this->client = new PlatformHttpClient($companyContext);
         config(['services.platform.url' => 'https://platform.test']);
         config(['services.platform.api_key' => 'test-key']);
         Cache::forget('platform:circuit_breaker');

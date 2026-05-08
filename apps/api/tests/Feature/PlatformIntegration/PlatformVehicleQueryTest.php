@@ -4,19 +4,56 @@ declare(strict_types=1);
 
 namespace Tests\Feature\PlatformIntegration;
 
+use App\Enums\Vertical;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\Contracts\PlatformVehicleQueryInterface;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformVehicleRef;
+use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class PlatformVehicleQueryTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
         // Make sure the internal platform cache does not leak between tests.
         Cache::flush();
+
+        // Bind CompanyContext — required since api.platform-integration
+        // cluster made tenant headers mandatory on PlatformHttpClient.
+        // Without this, requireTenantId() throws RuntimeException at the
+        // first outbound HTTP call, which is the desired fail-loud
+        // behavior for production callers (controllers/listeners always
+        // bind context); but tests of the query layer must seed it
+        // explicitly.
+        $tenant = Tenant::create([
+            'name' => 'Vehicle Query Test',
+            'slug' => 'vehicle-query-test',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
+        ]);
+        $company = Company::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Vehicle Query Co',
+            'legal_name' => 'Vehicle Query Co SARL',
+            'tax_id' => 'TAX-VQ-001',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        app(CompanyContext::class)->setCompanyId($company->id);
     }
 
     public function test_find_vehicle_returns_typed_ref_wrapping_catalog_browse_service(): void

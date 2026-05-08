@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Unit\PlatformIntegration;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Mockery;
 use Tests\TestCase;
 
 class PlatformHttpClientTest extends TestCase
@@ -23,6 +25,22 @@ class PlatformHttpClientTest extends TestCase
         Cache::forget('platform:circuit_failures');
     }
 
+    /**
+     * Build a CompanyContext stub that returns canned tenant + company UUIDs
+     * — the api.platform-integration cluster made these mandatory on every
+     * outbound HTTP call. These unit tests assert circuit-breaker / retry
+     * behavior, NOT header content; the stub is a thin pass-through to
+     * satisfy the new fail-loud contract without touching the database.
+     */
+    private function buildClient(): PlatformHttpClient
+    {
+        $companyContext = Mockery::mock(CompanyContext::class);
+        $companyContext->allows('requireTenantId')->andReturn('00000000-0000-0000-0000-000000000001');
+        $companyContext->allows('requireCompanyId')->andReturn('00000000-0000-0000-0000-000000000002');
+
+        return new PlatformHttpClient($companyContext);
+    }
+
     /** @test */
     public function it_opens_circuit_after_three_failures(): void
     {
@@ -30,7 +48,7 @@ class PlatformHttpClientTest extends TestCase
             'platform.test/*' => Http::response(['error' => 'Internal Server Error'], 500),
         ]);
 
-        $client = new PlatformHttpClient;
+        $client = $this->buildClient();
 
         // Each call triggers retry (3 attempts) then throws RequestException.
         // PlatformHttpClient catches it, records a failure, and re-throws.
@@ -61,7 +79,7 @@ class PlatformHttpClientTest extends TestCase
                 ->push(['data' => ['id' => 'test-123', 'name' => 'Test']], 200),
         ]);
 
-        $client = new PlatformHttpClient;
+        $client = $this->buildClient();
         $result = $client->get('/api/v1/automotive/test');
 
         $this->assertNotNull($result);
@@ -82,7 +100,7 @@ class PlatformHttpClientTest extends TestCase
             ], 200),
         ]);
 
-        $client = new PlatformHttpClient;
+        $client = $this->buildClient();
         $result = $client->get('/api/v1/automotive/articles/art-001');
 
         $this->assertNotNull($result);

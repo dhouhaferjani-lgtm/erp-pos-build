@@ -194,9 +194,13 @@ class BarcodeLookupServiceTest extends TestCase
 
         $companyContext = Mockery::mock(CompanyContext::class);
         $companyContext->allows('requireCompany')->andReturn($company);
+        // PlatformHttpClient requires both for X-Tenant-Id + X-Company-Id
+        // headers (api.platform-integration cluster, mandatory fail-loud).
+        $companyContext->allows('requireTenantId')->andReturn('00000000-0000-0000-0000-000000000001');
+        $companyContext->allows('requireCompanyId')->andReturn('00000000-0000-0000-0000-000000000002');
 
         $this->service = new BarcodeLookupService(
-            new PlatformHttpClient,
+            new PlatformHttpClient($companyContext),
             $companyContext,
         );
     }
