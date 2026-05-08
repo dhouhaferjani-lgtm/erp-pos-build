@@ -7,6 +7,7 @@ namespace App\Modules\Product\Presentation\Controllers;
 use App\Modules\Product\Application\DTOs\IngredientData;
 use App\Modules\Product\Domain\Ingredient;
 use App\Modules\Product\Domain\IngredientTranslation;
+use App\Shared\Architecture\CrossTenantRoute;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ class IngredientController extends Controller
     /**
      * List all ingredients with sorting and filtering.
      */
+    #[CrossTenantRoute(reason: 'Ingredients catalog: global reference data (the ingredients table has no tenant_id column — every tenant queries the same shared regulatory ingredient/allergen catalog). Permission-gated by SetPermissionsTeam middleware on the route group, but cross-tenant by data design.')]
     public function index(Request $request): JsonResponse
     {
         // Get sort parameters
@@ -53,6 +55,7 @@ class IngredientController extends Controller
     /**
      * Get a single ingredient by ID.
      */
+    #[CrossTenantRoute(reason: 'Ingredients catalog: reads a single global ingredient record from the platform-shared catalog (no tenant_id column on ingredients table).')]
     public function show(Request $request, string $id): JsonResponse
     {
         $ingredient = Ingredient::find($id);
@@ -82,6 +85,7 @@ class IngredientController extends Controller
     /**
      * Create a new ingredient with translations.
      */
+    #[CrossTenantRoute(reason: 'Ingredients catalog: creates a new entry in the platform-shared regulatory ingredient catalog (no tenant_id on ingredients/ingredient_translations tables); every tenant sees the new record. Permission-gated.')]
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -133,6 +137,7 @@ class IngredientController extends Controller
     /**
      * Update an existing ingredient.
      */
+    #[CrossTenantRoute(reason: 'Ingredients catalog: updates a global ingredient record in the platform-shared catalog (no tenant_id on table); cross-tenant by data design.')]
     public function update(Request $request, string $id): JsonResponse
     {
         $ingredient = Ingredient::find($id);
@@ -214,6 +219,7 @@ class IngredientController extends Controller
     /**
      * Delete an ingredient.
      */
+    #[CrossTenantRoute(reason: 'Ingredients catalog: deletes a global ingredient record (no tenant_id on table); destructive operation affects every tenant\'s reference catalog.')]
     public function destroy(Request $request, string $id): JsonResponse
     {
         $ingredient = Ingredient::find($id);

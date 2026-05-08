@@ -179,6 +179,94 @@ final class ControllerTenantContextTest extends TestCase
     }
 
     /**
+     * Validates that every deferral fixture entry resolves to a real
+     * controller class that exists at scan time, AND (for per-method
+     * entries) that the named method actually exists on the class.
+     * Class-level wildcard entries (`method: "*"`) only validate the
+     * class.
+     *
+     * Nice-to-have from the round-1 Codex review (2026-05-08): catches
+     * fixture drift — e.g. a controller renamed/removed in a refactor
+     * leaves a stale deferral that silently masks all NEW unclassified
+     * methods on a coincidentally same-named class. This test fails
+     * BEFORE the universal classifier vacuously passes.
+     */
+    public function test_deferrals_fixture_entries_resolve_to_real_controller_methods(): void
+    {
+        $path = base_path('tests/Architecture/fixtures/controller-tenant-context-deferrals.json');
+        $this->assertFileExists($path);
+
+        $contents = file_get_contents($path);
+        $this->assertNotFalse($contents, 'Failed to read deferrals fixture');
+
+        /** @var mixed $data */
+        $data = json_decode($contents, true);
+        $this->assertIsArray($data, 'Deferrals fixture must be a JSON array (possibly empty).');
+
+        $unresolved = [];
+        $missingReason = [];
+
+        foreach ($data as $i => $entry) {
+            $this->assertIsArray($entry, "Deferral entry {$i} must be an object");
+            $this->assertArrayHasKey('class', $entry, "Deferral entry {$i} missing 'class' field");
+            $this->assertArrayHasKey('method', $entry, "Deferral entry {$i} missing 'method' field");
+            $this->assertArrayHasKey('reason', $entry, "Deferral entry {$i} missing 'reason' field");
+
+            $class = $entry['class'];
+            $method = $entry['method'];
+            $reason = $entry['reason'];
+
+            $this->assertIsString($class);
+            $this->assertIsString($method);
+            $this->assertIsString($reason);
+
+            if (trim($reason) === '') {
+                $missingReason[] = "{$class}::{$method}";
+
+                continue;
+            }
+
+            if (! class_exists($class)) {
+                $unresolved[] = "{$class} (class does not exist)";
+
+                continue;
+            }
+
+            if ($method !== '*') {
+                $reflection = new ReflectionClass($class);
+                if (! $reflection->hasMethod($method)) {
+                    $unresolved[] = "{$class}::{$method} (method does not exist on class)";
+
+                    continue;
+                }
+                $methodRefl = $reflection->getMethod($method);
+                if (! $methodRefl->isPublic()) {
+                    $unresolved[] = "{$class}::{$method} (method exists but is not public; deferrals only apply to public methods)";
+
+                    continue;
+                }
+                if ($methodRefl->getDeclaringClass()->getName() !== $reflection->getName()) {
+                    $unresolved[] = "{$class}::{$method} (method is inherited, not declared on this class; deferrals must target the declaring class directly)";
+                }
+            }
+        }
+
+        $this->assertEmpty(
+            $unresolved,
+            "Found deferral fixture entries that don't resolve to real controller methods:\n  - "
+            .implode("\n  - ", $unresolved)
+            ."\n\nEvery deferrals entry MUST point to a real, currently-existing public method declared on the named class. If a refactor renamed/removed the controller, update the fixture to match — a stale deferral silently masks new unclassified methods on a coincidentally same-named class.",
+        );
+
+        $this->assertEmpty(
+            $missingReason,
+            "Found deferral fixture entries with blank `reason` fields:\n  - "
+            .implode("\n  - ", $missingReason)
+            ."\n\nEvery deferral MUST carry a non-blank `reason` field documenting the alternate tenant-binding mechanism. A blank reason produces an unauditable deferral.",
+        );
+    }
+
+    /**
      * Negative-control / honesty test. Uses fixture controller classes
      * (Tests\Architecture\ControllerFixtures\*) to pin each branch of
      * the classifier:

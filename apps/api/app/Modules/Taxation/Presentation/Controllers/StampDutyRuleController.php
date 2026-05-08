@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Presentation\Controllers;
 
 use App\Modules\Taxation\Domain\Entities\StampDutyRule;
 use App\Modules\Taxation\Presentation\Resources\StampDutyRuleResource;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -16,6 +17,7 @@ class StampDutyRuleController extends Controller
     /**
      * List all stamp duty rules
      */
+    #[CrossTenantRoute(reason: 'Stamp-duty rules catalog: global reference data scoped by country_code (no tenant_id column on stamp_duty_rules table — every tenant queries the same shared regulatory tax catalog filtered by country/document_type/active status). Cross-tenant by data design.')]
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = StampDutyRule::query();
@@ -46,6 +48,7 @@ class StampDutyRuleController extends Controller
     /**
      * Get a single stamp duty rule
      */
+    #[CrossTenantRoute(reason: 'Stamp-duty rules catalog: reads a single global rule from the platform-shared regulatory catalog (no tenant_id on table); rules are country-scoped, not tenant-scoped.')]
     public function show(string $id): StampDutyRuleResource
     {
         $rule = StampDutyRule::findOrFail($id);
@@ -56,6 +59,7 @@ class StampDutyRuleController extends Controller
     /**
      * Create a new stamp duty rule
      */
+    #[CrossTenantRoute(reason: 'Stamp-duty rules catalog: creates a new rule in the platform-shared regulatory catalog (country_code-scoped, no tenant_id); every tenant in that country sees the new rule.')]
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -79,6 +83,7 @@ class StampDutyRuleController extends Controller
     /**
      * Update a stamp duty rule
      */
+    #[CrossTenantRoute(reason: 'Stamp-duty rules catalog: updates a global rule in the platform-shared regulatory catalog; cross-tenant by data design (country_code-scoped).')]
     public function update(Request $request, string $id): StampDutyRuleResource
     {
         $rule = StampDutyRule::findOrFail($id);
@@ -98,6 +103,7 @@ class StampDutyRuleController extends Controller
     /**
      * Delete a stamp duty rule
      */
+    #[CrossTenantRoute(reason: 'Stamp-duty rules catalog: deletes a global rule from the platform-shared regulatory catalog; destructive operation affects every tenant in that country.')]
     public function destroy(string $id): JsonResponse
     {
         $rule = StampDutyRule::findOrFail($id);

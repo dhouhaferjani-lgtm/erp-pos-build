@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Presentation\Controllers;
 
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class VinDecodeController extends Controller
 {
+    #[CrossTenantRoute(reason: 'STUB shape: returns a hardcoded "not yet configured" placeholder response. ZERO DB access, ZERO service calls, ZERO side-effects. Phase 4 will implement the actual VIN decode flow against a CompanyContext-aware service. Today the body is a verifiable noop, so no tenant-scoping is needed; the attribute marks the method as classified.')]
     public function decode(Request $request): JsonResponse
     {
         $request->validate([
@@ -35,6 +37,7 @@ class VinDecodeController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'STUB shape: returns 501 Not Implemented placeholder. ZERO DB access, ZERO service calls. Phase 4 placeholder mirroring decode(); no tenant context needed today.')]
     public function confirmMatch(Request $request): JsonResponse
     {
         $request->validate([

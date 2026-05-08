@@ -7,6 +7,7 @@ namespace App\Modules\Product\Presentation\Controllers;
 use App\Modules\Product\Application\DTOs\HealthClaimData;
 use App\Modules\Product\Domain\HealthClaim;
 use App\Modules\Product\Domain\HealthClaimTranslation;
+use App\Shared\Architecture\CrossTenantRoute;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ class HealthClaimController extends Controller
     /**
      * List all health claims with sorting and filtering.
      */
+    #[CrossTenantRoute(reason: 'Health claims catalog: global reference data (the health_claims table has no tenant_id column — every tenant queries the same shared regulatory health-claim catalog with EFSA/FDA references). Permission-gated by SetPermissionsTeam middleware on the route group, but cross-tenant by data design.')]
     public function index(Request $request): JsonResponse
     {
         // Get sort parameters
@@ -53,6 +55,7 @@ class HealthClaimController extends Controller
     /**
      * Get a single health claim by ID.
      */
+    #[CrossTenantRoute(reason: 'Health claims catalog: reads a single global health-claim record from the platform-shared regulatory catalog (no tenant_id on table).')]
     public function show(Request $request, string $id): JsonResponse
     {
         $healthClaim = HealthClaim::find($id);
@@ -82,6 +85,7 @@ class HealthClaimController extends Controller
     /**
      * Create a new health claim with translations.
      */
+    #[CrossTenantRoute(reason: 'Health claims catalog: creates a new entry in the platform-shared regulatory health-claim catalog with locale translations; every tenant sees the new record. Permission-gated.')]
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -135,6 +139,7 @@ class HealthClaimController extends Controller
     /**
      * Update an existing health claim.
      */
+    #[CrossTenantRoute(reason: 'Health claims catalog: updates a global health-claim record in the platform-shared regulatory catalog (no tenant_id on table); cross-tenant by data design.')]
     public function update(Request $request, string $id): JsonResponse
     {
         $healthClaim = HealthClaim::find($id);
@@ -218,6 +223,7 @@ class HealthClaimController extends Controller
     /**
      * Delete a health claim.
      */
+    #[CrossTenantRoute(reason: 'Health claims catalog: deletes a global health-claim record (no tenant_id on table) after checking health_claim_product usage; destructive operation affects every tenant\'s reference catalog.')]
     public function destroy(Request $request, string $id): JsonResponse
     {
         $healthClaim = HealthClaim::find($id);

@@ -13,6 +13,7 @@ use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Application\Services\ArApOpeningService;
 use App\Modules\Inventory\Application\Services\InventoryOpeningService;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -344,6 +345,7 @@ class OpeningBalanceBatchController extends Controller
      *
      * Get list of available batch types.
      */
+    #[CrossTenantRoute(reason: 'Static enum endpoint: returns the OpeningBatchType enum cases (value/label/row_type/affects_gl) for UI dropdown population. No DB access; enum values are platform-level constants. The other methods on this controller use $this->assertCompanyAccess($request, $companyId) for tenant binding via the route\'s {companyId} parameter.')]
     public function types(): JsonResponse
     {
         $types = array_map(
