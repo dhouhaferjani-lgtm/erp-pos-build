@@ -565,9 +565,16 @@ export async function pullProducts(db: Database): Promise<number> {
  */
 export async function pullPaymentConfig(db: Database): Promise<boolean> {
   try {
+    // T0.5 (2026-05-08): aligned to the canonical endpoint pair. The
+    // pre-T0.5 path called `/treasury/payment-methods` + `/treasury/payment-
+    // repositories`, which DO NOT EXIST in the backend (Treasury routes
+    // register under `Route::prefix('api/v1')` with no `treasury/` prefix
+    // — see apps/api/.../Treasury/Presentation/routes.php:25-66). The 404s
+    // were silently absorbed by the outer try/catch below, leaving payment-
+    // config sync as a no-op since the bug shipped.
     const [methods, repositories] = await Promise.all([
-      apiGet<PaymentMethod[]>('/treasury/payment-methods'),
-      apiGet<PaymentRepository[]>('/treasury/payment-repositories'),
+      apiGet<PaymentMethod[]>('/payment-methods'),
+      apiGet<PaymentRepository[]>('/payment-repositories'),
     ]);
 
     await upsertPaymentMethods(db, methods);

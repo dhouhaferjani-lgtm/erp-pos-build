@@ -130,6 +130,18 @@ interface PaymentActions {
   discardPendingSubmission: () => void;
 
   /**
+   * T0.5 (2026-05-08): rehydrate the in-memory `paymentMethods` +
+   * `paymentRepositories` arrays from the local SQLite cache. Mirrors
+   * `productStore.refreshFromSQLite()` and is invoked by the sync scheduler
+   * after every successful tick so the in-memory store cannot drift stale
+   * relative to whatever the platform side committed since the cashier's
+   * last login. Empty SQLite is a no-op (NOT a wipe) — leaves existing
+   * in-memory state intact so the cashier doesn't briefly see no payment
+   * methods if SQLite is unseeded.
+   */
+  refreshFromSQLite: () => Promise<void>;
+
+  /**
    * Add a voucher as a tender row for the current sale.
    * Idempotent guard: throws if `code` is already in `appliedVoucherCodes`.
    *
@@ -663,6 +675,33 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     // by void-cart, hold-recall, and shift-close paths so a stale key from
     // an aborted/voided attempt cannot leak into the next sale's first POST.
     set({ pendingIdempotencyKey: null });
+  },
+
+  refreshFromSQLite: async () => {
+    try {
+      const db = await getDb();
+      const [methods, repositories] = await Promise.all([
+        getAllPaymentMethods(db),
+        getAllPaymentRepositories(db),
+      ]);
+      // Empty SQLite = unseeded local state. Bail rather than wiping in-
+      // memory state to []. The startup `fetchPaymentConfig()` path runs
+      // an API fallback when SQLite is empty; no need to clobber whatever
+      // it loaded.
+      if (methods.length === 0) return;
+      // Atomic single-set so the UI never sees an intermediate state with
+      // methods populated and repositories still empty (or vice versa).
+      set({ paymentMethods: methods, paymentRepositories: repositories });
+    } catch (error) {
+      // T0.1 contract: never spread the raw `error` reference into a
+      // console payload — `serializeErrorForLog` returns a flat bounded
+      // ErrorLogPayload that's safe for crash reports.
+      console.error('[POS][paymentStore][refreshFromSQLite] failed', {
+        ...serializeErrorForLog(error),
+        cachedMethodCount: get().paymentMethods.length,
+        cachedRepositoryCount: get().paymentRepositories.length,
+      });
+    }
   },
 
   addVoucherPayment: (code: string, amount: string) => {

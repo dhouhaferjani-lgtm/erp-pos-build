@@ -4,6 +4,7 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
+import { usePaymentStore } from '@/stores/paymentStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 
@@ -75,7 +76,21 @@ export class SyncScheduler {
 
       // Refresh in-memory product store from SQLite after sync pulls new data
       useProductStore.getState().refreshFromSQLite().catch((err: unknown) => {
-        console.error('[SyncScheduler] refreshFromSQLite failed:', err);
+        console.error('[SyncScheduler] productStore refreshFromSQLite failed:', err);
+      });
+      // T0.5: rehydrate paymentStore from SQLite alongside productStore.
+      // Fire-and-forget in parallel — independent failure modes (e.g. a
+      // transient SQLite lock on one shouldn't starve the other). Each
+      // refresh has its own internal try/catch that uses
+      // `serializeErrorForLog`, so reaching this `.catch` would mean the
+      // promise itself rejected (extremely unlikely given the inner guard).
+      // T0.5 Codex round-1 (g): outer `.catch` uses `serializeErrorForLog`
+      // to bound the log payload — a raw `err` reference could spread an
+      // axios-shaped error with `config.url` / auth headers into devtools.
+      usePaymentStore.getState().refreshFromSQLite().catch((err: unknown) => {
+        console.error('[SyncScheduler] paymentStore refreshFromSQLite failed', {
+          ...serializeErrorForLog(err),
+        });
       });
 
       if (result.chainBreak) {
