@@ -13,6 +13,79 @@ import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
 
+// ─── T1.2 — refreshFromSQLite skip-set equality helpers ─────────────────────
+
+/**
+ * Per-row shallow equality on the primitive fields of two PaymentMethod
+ * arrays. Returns true only when every row at index i has identical
+ * primitive fields. Used by `refreshFromSQLite` to skip the `set` call
+ * entirely when SQLite returns a structurally-unchanged list — every
+ * 60 s scheduler tick would otherwise create new array references and
+ * force every Zustand subscriber to re-render. id-set equality alone is
+ * insufficient because admin-side renames / position / fee changes
+ * keep the id but change the rendered state.
+ */
+function paymentMethodsShallowEqual(
+  a: PaymentMethod[],
+  b: PaymentMethod[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ax = a[i];
+    const bx = b[i];
+    if (!ax || !bx) return false;
+    if (ax === bx) continue;
+    if (
+      ax.id !== bx.id ||
+      ax.code !== bx.code ||
+      ax.name !== bx.name ||
+      ax.is_physical !== bx.is_physical ||
+      ax.has_maturity !== bx.has_maturity ||
+      ax.requires_third_party !== bx.requires_third_party ||
+      ax.is_push !== bx.is_push ||
+      ax.has_deducted_fees !== bx.has_deducted_fees ||
+      ax.is_restricted !== bx.is_restricted ||
+      ax.fee_type !== bx.fee_type ||
+      ax.fee_fixed !== bx.fee_fixed ||
+      ax.fee_percent !== bx.fee_percent ||
+      ax.restriction_type !== bx.restriction_type ||
+      ax.is_active !== bx.is_active ||
+      ax.position !== bx.position
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function paymentRepositoriesShallowEqual(
+  a: PaymentRepository[],
+  b: PaymentRepository[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ax = a[i];
+    const bx = b[i];
+    if (!ax || !bx) return false;
+    if (ax === bx) continue;
+    if (
+      ax.id !== bx.id ||
+      ax.code !== bx.code ||
+      ax.name !== bx.name ||
+      ax.type !== bx.type ||
+      ax.bank_name !== bx.bank_name ||
+      ax.account_number !== bx.account_number ||
+      ax.iban !== bx.iban ||
+      ax.bic !== bx.bic ||
+      ax.balance !== bx.balance ||
+      ax.is_active !== bx.is_active
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ─── Voucher tender types ─────────────────────────────────────────────────────
 
 /**
@@ -689,6 +762,26 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       // an API fallback when SQLite is empty; no need to clobber whatever
       // it loaded.
       if (methods.length === 0) return;
+
+      // T1.2 (Codex Phase-2 prompt 2.1 item 4 — deferred from T0.5):
+      // skip the set entirely when both arrays are observably unchanged.
+      // Without this, every 60 s scheduler tick creates new array
+      // references and forces every Zustand subscriber to re-render —
+      // a render-budget bug, not a correctness bug. Per-row shallow
+      // compare on all primitive fields catches all observable changes
+      // (id, name, position, is_active, fee fields, etc.); id-set
+      // equality alone would miss in-place renames or fee changes.
+      // getAllPaymentMethods filters WHERE is_active = 1, so an
+      // active→inactive flip shrinks the array and the length check
+      // catches it before per-row compare runs.
+      const current = get();
+      if (
+        paymentMethodsShallowEqual(current.paymentMethods, methods) &&
+        paymentRepositoriesShallowEqual(current.paymentRepositories, repositories)
+      ) {
+        return;
+      }
+
       // Atomic single-set so the UI never sees an intermediate state with
       // methods populated and repositories still empty (or vice versa).
       set({ paymentMethods: methods, paymentRepositories: repositories });

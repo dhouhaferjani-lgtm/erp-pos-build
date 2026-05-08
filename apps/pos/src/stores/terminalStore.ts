@@ -7,6 +7,8 @@ import { pullTerminalState, pullZChainState } from '@/lib/sync/syncService';
 import { SyncScheduler } from '@/lib/sync/syncScheduler';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
+import { usePaymentStore } from '@/stores/paymentStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 export interface Location {
   id: string;
@@ -79,8 +81,13 @@ const initialState: TerminalState = {
  * Seed the local SQLite terminal_state and Z-chain state from the server.
  * Must run after a terminal becomes active so offline receipts and Z-reports
  * can compute fiscal hashes.
+ *
+ * Exported for T1.2 Step 2.4 regression coverage — the test mocks
+ * SyncScheduler and usePaymentStore.fetchPaymentConfig to assert the
+ * pre-warm fires in the right order. No production callers outside
+ * this module.
  */
-async function seedOfflineHashChain(terminalId: string): Promise<void> {
+export async function seedOfflineHashChain(terminalId: string): Promise<void> {
   const companyId = useAuthStore.getState().companyId;
   if (!companyId) return;
   try {
@@ -104,6 +111,25 @@ async function seedOfflineHashChain(terminalId: string): Promise<void> {
     const scheduler = new SyncScheduler(db, terminalId);
     useSyncStore.getState().setScheduler(scheduler);
     scheduler.start();
+
+    // T1.2 Step 2.4: pre-warm payment config so the cashier's first
+    // visit to PaymentSummary's gate (Step 2.3) finds paymentMethods +
+    // paymentRepositories already populated. Fire-and-forget so the
+    // activation path is never blocked on a slow API; the catch uses
+    // serializeErrorForLog to keep the structured-log payload safe
+    // (T0.1 contract). On a brand-new device with no cached config,
+    // the call still works after PIN entry rather than blocking
+    // activation. HomePage's lazy fetchPaymentConfig later in the
+    // boot is idempotent — last-write-wins on identical data is safe.
+    void usePaymentStore
+      .getState()
+      .fetchPaymentConfig()
+      .catch((err: unknown) => {
+        console.error(
+          '[POS][terminalStore][preWarm] paymentConfig fetch failed',
+          serializeErrorForLog(err),
+        );
+      });
   } catch (error) {
     console.error('[Terminal] Failed to seed offline hash chain:', error);
   }

@@ -51,7 +51,8 @@
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
-    "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
+    "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
+    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant"
   },
   "cashPayment": {
     "back": "Retour",
