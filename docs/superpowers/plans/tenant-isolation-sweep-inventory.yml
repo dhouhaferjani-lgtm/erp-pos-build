@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-08T21:33:33Z'
+  generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+  yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -518,9 +518,9 @@ clusters:
     id: api.auth-permissions
     display_name: 'Auth + permissions'
     surface: api
-    owner: null
+    owner: claude
     required_owner: claude
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -40188,6 +40188,396 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-module-gating-cluster-codex-review-001-004.md
         review_commit: 4b9a0fac
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by codex via sweep:inventory:review'
+  -
+    id: api.auth-permissions.001
+    stable_key: 'manual:api.auth-permissions:tenant-suspension-token-revocation'
+    surface: api
+    cluster_id: api.auth-permissions
+    scanner: manual
+    file: apps/api/app/Observers/TenantObserver.php
+    line: 30
+    symbol: 'App\Observers\TenantObserver::updated — extend with status-suspended branch that revokes personal_access_tokens for every user belonging to the tenant'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_tenant_suspend
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    expected_fix: "Extend the existing App\\Observers\\TenantObserver::updated method (currently only handles vertical/enabled_extras cache invalidation). Add a branch: when wasChanged('status') AND status === TenantStatus::Suspended, iterate User::where('tenant_id', $tenant->id)->get() and call $user->tokens()->delete() per user. Currently SuperAdminController::suspendTenant updates status='suspended' via Eloquent but no hook revokes user tokens — a suspended-tenant user can continue to authenticate with their pre-suspension bearer token until it naturally expires. Race window between status-commit and token-revocation is acceptable per master plan §15. Document in observer docblock + PR body. Tests in tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php drive Tenant::update via real Eloquent + assert personal_access_tokens count goes to 0 for the affected users (behavioral DB-state assertion preferred over mocks even though Tenant is not final)."
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T23:20:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T23:20:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+        new_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        target_ids:
+          - api.auth-permissions.001
+        from_status: null
+        to_status: pending
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T23:20:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        new_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        target_ids:
+          - api.auth-permissions.001
+        from_status: pending
+        to_status: claimed
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T23:20:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        new_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        target_ids:
+          - api.auth-permissions.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.auth-permissions.002
+    stable_key: 'manual:api.auth-permissions:tenant-deletion-token-revocation'
+    surface: api
+    cluster_id: api.auth-permissions
+    scanner: manual
+    file: apps/api/app/Observers/TenantObserver.php
+    line: 30
+    symbol: 'App\Observers\TenantObserver::deleting + ::forceDeleted — NEW hooks on Tenant lifecycle that revoke personal_access_tokens BEFORE the ON DELETE CASCADE on users.tenant_id fires'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_tenant_delete
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    expected_fix: "Add ::deleting and ::forceDeleted methods to App\\Observers\\TenantObserver. Both call a private revokeAllUserTokens($tenant) helper that runs User::where('tenant_id', $tenant->id)->each(fn(User $u) => $u->tokens()->delete()). Why the deleting event (not deleted): the migration users.tenant_id has ON DELETE CASCADE — the DB cascade removes user rows directly, bypassing Eloquent User events. By the time deleted fires on Tenant, the User rows are already gone and the where('tenant_id', $tenant->id) query returns empty. Hook on deleting (BEFORE the DB transaction commits) so we revoke the polymorphic personal_access_tokens rows (which have NO FK to users.id and would otherwise leak indefinitely) before the cascade purges users. forceDeleted is included as forward-compat defense if Tenant ever adopts SoftDeletes. Sanctum personal_access_tokens has tokenable_type+tokenable_id polymorphic FK, NOT a hard FK to users.id, so DB cascade does NOT cascade transitively to tokens — explicit revocation is required. Forward-compat: no SuperAdminController::deleteTenant endpoint exists today; tests drive Tenant->delete() directly via Eloquent."
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T23:20:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T23:20:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+        new_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        target_ids:
+          - api.auth-permissions.002
+        from_status: null
+        to_status: pending
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T23:20:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        new_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        target_ids:
+          - api.auth-permissions.002
+        from_status: pending
+        to_status: claimed
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T23:20:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        new_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        target_ids:
+          - api.auth-permissions.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.auth-permissions.003
+    stable_key: 'manual:api.auth-permissions:user-tenant-change-token-revocation'
+    surface: api
+    cluster_id: api.auth-permissions
+    scanner: manual
+    file: apps/api/app/Observers/UserObserver.php
+    line: 1
+    symbol: 'App\Observers\UserObserver — NEW observer class with ::updated hook revoking personal_access_tokens when wasChanged(tenant_id)'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_user_tenant_change
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    expected_fix: "Create new App\\Observers\\UserObserver class with a single ::updated method that calls User->tokens()->delete() when User->wasChanged('tenant_id'). Register in AppServiceProvider::boot() alongside Tenant::observe(TenantObserver::class) — add User::observe(UserObserver::class). Spatie team-id consistency (Invariant C) is automatic: SetPermissionsTeam middleware reads auth()->user()->tenant_id directly each request — after token revocation + re-login from the new tenant, the new tenant_id flows through and Spatie resolves permissions against the new team-id. No additional Spatie cache-invalidation needed (Spatie does not cache by user-id at this layer). Forward-compat: no SuperAdminController endpoint mutates users.tenant_id today; UserController CRUD always pins to currentUser->tenant_id (line 176). Tests drive User->update(['tenant_id' => newTenantId]) directly via Eloquent."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T23:20:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T23:20:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+        new_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        target_ids:
+          - api.auth-permissions.003
+        from_status: null
+        to_status: pending
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T23:20:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        new_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        target_ids:
+          - api.auth-permissions.003
+        from_status: pending
+        to_status: claimed
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T23:20:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        new_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        target_ids:
+          - api.auth-permissions.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.auth-permissions.004
+    stable_key: 'manual:api.auth-permissions:setpermissionsteam-universal-coverage-arch-test'
+    surface: api
+    cluster_id: api.auth-permissions
+    scanner: manual
+    file: apps/api/tests/Architecture/AuthLifecycleTest.php
+    line: 1
+    symbol: 'tests/Architecture/AuthLifecycleTest::test_every_auth_sanctum_route_group_includes_set_permissions_team — NEW test pinning the contract that every protected route group includes SetPermissionsTeam::class'
+    pattern_type: missing_arch_test_setpermissionsteam_coverage
+    resource: routes
+    expected_scope: tenant_and_company
+    expected_fix: "Create tests/Architecture/AuthLifecycleTest.php that uses PhpParser AST traversal to scan every Route::middleware([...])->group(...) call across (a) routes/api.php, (b) app/Modules/*/Presentation/routes.php, (c) app/Modules/*/routes.php, and (d) app/Modules/Workshop/*/Presentation/routes.php. For each call whose middleware array contains 'auth:sanctum' (literal) AND NOT 'auth:sanctum-admin', assert SetPermissionsTeam::class is also in the array. Frame as REGRESSION-PROTECTION / contract-codification (T0.4 framing): all 38 protected route groups already include SetPermissionsTeam::class on dev tip per the triage's hostile-grep audit (Section B). The test pins the contract so future module additions can't silently regress it. Document parser limits in the test docblock: no support for conditional middleware arrays, no closure-based middleware factories, no Route::middlewareGroup() server-side resolution (none used in current codebase). Layering note: this arch test is COMPLEMENTARY to ControllerTenantContextTest (super-admin-context cluster, method-level) — one is route-level invariant, the other is method-level invariant."
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T23:20:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T23:20:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+        new_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        target_ids:
+          - api.auth-permissions.004
+        from_status: null
+        to_status: pending
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T23:20:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        new_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        target_ids:
+          - api.auth-permissions.004
+        from_status: pending
+        to_status: claimed
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T23:20:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        new_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        target_ids:
+          - api.auth-permissions.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.auth-permissions.005
+    stable_key: 'manual:api.auth-permissions:token-tenant-claim-defense-in-depth'
+    surface: api
+    cluster_id: api.auth-permissions
+    scanner: manual
+    file: apps/api/app/Modules/Identity/Presentation/Middleware/EnforceTokenTenantClaim.php
+    line: 1
+    symbol: 'App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim — NEW middleware enforcing token.abilities tenant claim matches user.tenant_id; paired with AuthController::login (line 94) + AuthController::register (line 233) + SuperAdminAuthController::login (line 45) issuance changes encoding tenant ability'
+    pattern_type: missing_token_tenant_claim_enforcement
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    expected_fix: "PR2 (separate from PR1's lifecycle hooks). Step 1: modify the 3 Sanctum issuance callsites — AuthController::login:94 + AuthController::register:233 emit createToken(tokenName, ['tenant:'.user->tenant_id, '*']); SuperAdminAuthController::login:45 emits createToken('super-admin-token', ['super-admin']). Step 2: create new App\\Modules\\Identity\\Presentation\\Middleware\\EnforceTokenTenantClaim — reads user->currentAccessToken()->abilities, finds the 'tenant:<id>' ability, asserts the suffix matches user->tenant_id; rejects 401 on mismatch. Step 3: register middleware in api stack AFTER auth:sanctum AND AFTER SetPermissionsTeam (topological order matters — auth resolves token first, SetPermissionsTeam binds team-id, then this middleware verifies token's tenant claim aligns). Grandfathering policy: option (b) — allow tokens lacking 'tenant:' ability (pre-deploy tokens) but reject tokens with mismatching claim. Document policy + 30-day token-rotation window expectation in PR2 body. Three branches MUST have explicit unit-test coverage: matching claim (allow), mismatching claim (reject 401), no claim grandfathered (allow). Super-admin pipeline: tokens have 'super-admin' ability instead of 'tenant:<id>'; middleware exempts super-admin route groups by detecting the ability OR by registering only on api stack (not auth:sanctum-admin stack)."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T23:20:27Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T23:20:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 5f2cc226322a8b2eff9e436c094947ac5bb51d580f6694c66d649c4451b6367f
+        new_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        target_ids:
+          - api.auth-permissions.005
+        from_status: null
+        to_status: pending
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T23:20:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a363b3dcb3bd1a99996d3c8093b0ac43892bc84ee167c916a15ed55f5759b672
+        new_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        target_ids:
+          - api.auth-permissions.005
+        from_status: pending
+        to_status: claimed
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T23:20:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 42f6b4a7b25212f40e0d8a5152668142e03e0795632c5a38e82363504f46766f
+        new_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        target_ids:
+          - api.auth-permissions.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 2ec486df0c9f33b3ec97a5e6bd638da18d2ca56f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29
