@@ -139,6 +139,24 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
     }
 
     /**
+     * Assert the response is the exact authorized-success shape produced
+     * by TestBroadcaster::validAuthenticationResponse(): status 200 with
+     * body `{"auth":"ok"}`. Pinning the body distinguishes
+     * authorized-success from a future driver-misconfiguration regression
+     * where a no-op auth() returns 200 with empty body — Codex round-4
+     * NICE-TO-HAVE #1.
+     */
+    private function assertAuthorizedSuccessResponse(TestResponse $response): void
+    {
+        $response->assertStatus(200);
+        $this->assertSame(
+            '{"auth":"ok"}',
+            (string) $response->getContent(),
+            'Authorized response body must match TestBroadcaster::validAuthenticationResponse() pin (defense against driver-misconfiguration regression).',
+        );
+    }
+
+    /**
      * Assert the response body does NOT echo the given foreign IDs.
      * Defense against information leak via error messages —
      * sender-controlled tenant/company IDs in the request must not
@@ -173,7 +191,7 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
             "private-tenant.{$ctx['tenantA']->id}.company.{$ctx['companyA1']->id}.product.{$productId}",
         );
 
-        $response->assertStatus(200);
+        $this->assertAuthorizedSuccessResponse($response);
     }
 
     public function test_product_channel_rejects_cross_tenant(): void
@@ -222,7 +240,7 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
             "private-tenant.{$ctx['tenantA']->id}.company.{$ctx['companyA1']->id}.imports",
         );
 
-        $response->assertStatus(200);
+        $this->assertAuthorizedSuccessResponse($response);
     }
 
     public function test_imports_channel_rejects_cross_tenant(): void
@@ -269,7 +287,7 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
             "private-tenant.{$ctx['tenantA']->id}.company.{$ctx['companyA1']->id}.partners",
         );
 
-        $response->assertStatus(200);
+        $this->assertAuthorizedSuccessResponse($response);
     }
 
     public function test_partners_channel_rejects_cross_tenant(): void
@@ -317,7 +335,7 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
             "private-tenant.{$ctx['tenantA']->id}.company.{$ctx['companyA1']->id}.pos.terminal.{$terminalId}",
         );
 
-        $response->assertStatus(200);
+        $this->assertAuthorizedSuccessResponse($response);
     }
 
     public function test_pos_terminal_channel_rejects_cross_tenant(): void
@@ -366,7 +384,7 @@ final class BroadcastChannelAuthEndpointTest extends TestCase
             "private-tenant.{$ctx['tenantA']->id}.company.{$ctx['companyA1']->id}.pos.kitchen",
         );
 
-        $response->assertStatus(200);
+        $this->assertAuthorizedSuccessResponse($response);
     }
 
     public function test_pos_kitchen_channel_rejects_cross_tenant(): void
