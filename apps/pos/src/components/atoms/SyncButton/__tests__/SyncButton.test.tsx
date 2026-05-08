@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SyncButton } from '../SyncButton';
 
@@ -29,6 +29,14 @@ let mockState: Record<string, unknown> = {};
 beforeEach(() => {
   mockState = {};
   mockTriggerSync.mockClear();
+});
+
+// T1.3 Codex round-2 finding 5: hard-restore real timers between tests
+// so a thrown assertion inside a fake-timers test cannot leak
+// `vi.useFakeTimers()` into the next test (which would silently change
+// timer semantics for any setTimeout-using test that follows).
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('SyncButton', () => {
@@ -82,17 +90,20 @@ describe('SyncButton', () => {
     expect(dot).toBeInTheDocument();
   });
 
-  it('T1.3: amber dot has the configNotLoaded-equivalent tooltip via aria-label', () => {
+  it('T1.3: amber dot is aria-hidden so screen readers do not double-announce the degraded state', () => {
+    // The button's aria-label carries the degraded announcement (see
+    // the "button aria-label incorporates degraded state" test below).
+    // The dot itself is purely visual — Codex round-2 finding 6
+    // (cleanup of round-1 MAJOR-1).
     mockState = {
       lastSyncResult: { degraded: true, errors: ['boom'] as string[] },
     };
     render(<SyncButton />);
     const dot = screen.getByTestId('sync-degraded-dot');
-    // Mocked t() returns the key verbatim — the production component
-    // MUST pass the degradedTitle key into the aria-label so screen
-    // readers announce the state. The i18n smoke test (separate file)
-    // verifies the key actually resolves to translated text in en + fr.
-    expect(dot).toHaveAttribute('aria-label', 'sync.degradedTitle');
+    expect(dot).toHaveAttribute('aria-hidden', 'true');
+    // The hover-tooltip (`title`) remains on the dot for sighted users;
+    // screen readers ignore it because the dot is aria-hidden.
+    expect(dot).toHaveAttribute('title', 'sync.degradedTitle');
   });
 
   it('T1.3: does NOT render amber dot when lastSyncResult is null', () => {

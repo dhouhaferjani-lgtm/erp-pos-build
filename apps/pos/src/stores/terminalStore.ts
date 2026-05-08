@@ -132,12 +132,13 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
       });
 
     // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
-    // header badge reflects the truth from boot, before the first
-    // scheduler tick fires. We awaited the scheduler.start above so a
-    // race where the first tick's setPendingCount lands BEFORE this
-    // hydration is unlikely (the tick is debounced by ~1 s); even if
-    // it does, both writers source from the same SQLite row so last-
-    // write-wins is safe.
+    // header badge reflects the truth from boot. The hydration runs
+    // AFTER scheduler.start, which fires the first tick immediately
+    // (`SyncScheduler.start()` calls `void this.tick()` synchronously
+    // — there is no debounce). If the first tick's setPendingCount
+    // lands BEFORE this hydration await resolves, both writes source
+    // from the same SQLite row so last-write-wins is safe — the
+    // count is monotonic-ish across one boot.
     try {
       const { getPendingReceiptCount } = await import(
         '@/lib/db/repositories/offlineReceiptRepository'

@@ -73,7 +73,12 @@ export function SyncButton() {
       {isDegraded && (
         <span
           data-testid="sync-degraded-dot"
-          aria-label={t('sync.degradedTitle')}
+          // T1.3 Codex round-2 finding 6: the button's aria-label now
+          // carries the degraded announcement (round-1 MAJOR-1 fix),
+          // so the dot itself is purely visual — hide it from screen
+          // readers to avoid a redundant double-announcement of the
+          // degraded state.
+          aria-hidden="true"
           title={t('sync.degradedTitle')}
           className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
         />
