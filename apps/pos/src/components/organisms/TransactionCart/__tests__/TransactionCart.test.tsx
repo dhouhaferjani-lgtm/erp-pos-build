@@ -284,6 +284,9 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
   });
 
   it('T1.2: refund net-footer cash button is disabled when paymentMethods is empty', () => {
+    // Codex round-2 NIT: assert disabled + aria-disabled + title
+    // together so a partial regression (removing only one of the three
+    // gate attributes) still trips this test, not just a full revert.
     const onPayCash = vi.fn();
     renderCart({
       items: [makeReturnItem('r1')],
@@ -296,6 +299,9 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
 
     const button = screen.getByText(/refundFlow.confirm.refund/).closest('button')!;
     expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute('title', 'payment.configNotLoaded');
+
     fireEvent.click(button);
     expect(onPayCash).not.toHaveBeenCalled();
   });
@@ -313,6 +319,12 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
 
     const button = screen.getByText(/refundFlow.confirm.refund/).closest('button')!;
     expect(button).not.toBeDisabled();
+    // Confirm the gate's other attributes are absent / "false" too —
+    // a regression that left aria-disabled="true" or a stale title would
+    // fail this assertion even if `disabled` itself was correct.
+    expect(button.getAttribute('aria-disabled')).not.toBe('true');
+    expect(button).not.toHaveAttribute('title');
+
     fireEvent.click(button);
     expect(onPayCash).toHaveBeenCalledTimes(1);
   });
