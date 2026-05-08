@@ -39,16 +39,20 @@ use Spatie\Permission\Models\Role;
  * ParapharmacySeeder - Comprehensive seeder for parapharmacy company with EasyPos.
  *
  * Creates a production-ready parapharmacy company with:
- * - 1000+ products across 6 categories
+ * - 1000 products across 6 categories at the default scale
+ *   (T1.0: configurable via PARAPHARMACY_SEEDER_SCALE env var; SCALE=5
+ *   produces 5000 products, SCALE=10 produces 10000 — see
+ *   `resolveScale()` and `DEFAULT_SCALE`)
  * - Complete ingredient/certification/health claim assignments
  * - Product-level batch tracking (70% of products)
  * - 180 partners (customers and suppliers)
- * - 900 products with stock levels
+ * - 90% of products with stock levels (scales proportionally)
  * - Complete financial foundation (GL accounts, payment methods)
  * - POS-enabled location
  * - 3 test users (owner, manager, cashier)
  *
  * Usage: php artisan db:seed --class=ParapharmacySeeder
+ *        PARAPHARMACY_SEEDER_SCALE=5 php artisan db:seed --class=ParapharmacySeeder
  */
 class ParapharmacySeeder extends Seeder
 {
@@ -95,6 +99,10 @@ class ParapharmacySeeder extends Seeder
             return self::DEFAULT_SCALE;
         }
 
+        // filter_var returns int|false. PHPStan level 8 narrows to int
+        // after the `=== false` guard; older PHPStan versions don't
+        // model that, so we keep the explicit guard for portability
+        // (Codex round-1 MINOR-2).
         $scale = filter_var($raw, FILTER_VALIDATE_INT);
         if ($scale === false || $scale < 1) {
             return self::DEFAULT_SCALE;
@@ -329,6 +337,17 @@ class ParapharmacySeeder extends Seeder
         // never fail on a malformed env var.
         $scale = $this->resolveScale();
 
+        // T1.0 Codex round-1 BLOCKER-1: barcodes were generated from a
+        // per-category counter that started at 1, producing cross-
+        // category collisions (supplement #1, cosmetic #1, etc. all map
+        // to the same EAN-13). At SCALE=1 the existing seeder already
+        // emitted ~950 duplicates; at SCALE=5 the duplicate count
+        // approached 4000, defeating the fixture's purpose as a scan-
+        // key corpus for catalog perf tests. Thread a global ordinal
+        // through `createProduct` so every product gets a unique
+        // barcode regardless of category or scale.
+        $globalOrdinal = 0;
+
         // Category distribution (default counts; multiplied by $scale).
         $distribution = [
             'supplement' => ['category' => ParapharmacyCategory::Supplement, 'count' => 350 * $scale],
@@ -347,7 +366,8 @@ class ParapharmacySeeder extends Seeder
 
             for ($i = 0; $i < $count; $i++) {
                 $categoryCounters[$key]++;
-                $product = $this->createProduct($company, $category, $categoryCounters[$key]);
+                $globalOrdinal++;
+                $product = $this->createProduct($company, $category, $categoryCounters[$key], $globalOrdinal);
                 $products->push($product);
 
                 // Assign relationships
@@ -366,12 +386,16 @@ class ParapharmacySeeder extends Seeder
     /**
      * Create a single product with appropriate metadata.
      */
-    private function createProduct(Company $company, ParapharmacyCategory $category, int $counter): Product
+    private function createProduct(Company $company, ParapharmacyCategory $category, int $counter, int $globalOrdinal): Product
     {
         $productName = $this->generateProductName($category, $counter);
         $dosageForm = $this->getDosageForm($category);
         $sku = $this->generateSKU($category, $counter);
-        $barcode = $this->generateBarcode($counter);
+        // T1.0 Codex round-1 BLOCKER-1: barcode now uses the global
+        // ordinal so cross-category collisions (supplement #1 vs
+        // cosmetic #1) and SCALE > 1 multiplications don't generate
+        // duplicate EANs.
+        $barcode = $this->generateBarcode($globalOrdinal);
 
         // Pricing
         [$retailPrice, $cost, $vatRate] = $this->calculatePricing($category);

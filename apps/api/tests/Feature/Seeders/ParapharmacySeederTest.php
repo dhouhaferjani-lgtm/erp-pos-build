@@ -28,7 +28,11 @@ final class ParapharmacySeederTest extends TestCase
     protected function tearDown(): void
     {
         // Always clear the env override so subsequent tests in the same
-        // process don't see a leaked value (T1.0 Codex preempt c).
+        // process don't see a leaked value (T1.0 Codex preempt c +
+        // round-1 MAJOR-1: cross-platform safe two-step pattern —
+        // `putenv('KEY')` without `=` removes the variable on POSIX
+        // but is unreliable on Windows / non-standard variables_order).
+        putenv('PARAPHARMACY_SEEDER_SCALE=');
         putenv('PARAPHARMACY_SEEDER_SCALE');
         unset($_ENV['PARAPHARMACY_SEEDER_SCALE']);
         unset($_SERVER['PARAPHARMACY_SEEDER_SCALE']);
@@ -73,6 +77,46 @@ final class ParapharmacySeederTest extends TestCase
         // ParapharmacySeeder::createProduct).
         $supplementCount = ParapharmacyProductMetadata::where('category', 'supplement')->count();
         $this->assertSame(1750, $supplementCount, 'Supplement category at SCALE=5 must be 350 * 5 = 1750');
+    }
+
+    public function test_t1_0_scale_5_produces_globally_unique_barcodes(): void
+    {
+        // Codex round-1 BLOCKER-1: pre-T1.0 the seeder used a per-
+        // category counter for barcode generation, so cross-category
+        // collisions (supplement #1, cosmetic #1, etc. all mapped to
+        // the same EAN-13) emitted ~950 duplicate barcodes at SCALE=1
+        // and ~4000 at SCALE=5 — defeating the fixture's purpose as a
+        // scan-key corpus for catalog perf tests.
+        putenv('PARAPHARMACY_SEEDER_SCALE=5');
+        $_ENV['PARAPHARMACY_SEEDER_SCALE'] = '5';
+
+        $this->seed(ParapharmacySeeder::class);
+
+        $totalProducts = Product::count();
+        $distinctBarcodes = Product::whereNotNull('barcode')->distinct()->count('barcode');
+
+        $this->assertSame(5000, $totalProducts);
+        $this->assertSame(
+            $totalProducts,
+            $distinctBarcodes,
+            'Every product at SCALE=5 must have a globally-unique barcode',
+        );
+    }
+
+    public function test_t1_0_default_scale_produces_globally_unique_skus(): void
+    {
+        // SKU uniqueness is enforced by the products UNIQUE(tenant_id,
+        // sku) constraint; this regression test pins the property
+        // explicitly so a future seeder change that re-uses SKUs
+        // (e.g. dropping the category prefix) trips the suite before
+        // the constraint blow-up surfaces in CI.
+        $this->seed(ParapharmacySeeder::class);
+
+        $totalProducts = Product::count();
+        $distinctSkus = Product::distinct()->count('sku');
+
+        $this->assertSame(1000, $totalProducts);
+        $this->assertSame($totalProducts, $distinctSkus, 'All product SKUs must be unique');
     }
 
     public function test_t1_0_invalid_scale_falls_back_to_default(): void
