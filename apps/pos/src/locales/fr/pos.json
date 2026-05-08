@@ -156,6 +156,8 @@
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion...",
+    "stillTrying": "Toujours en cours… vérifiez votre connexion.",
+    "cancel": "Annuler",
     "selectCompany": "Sélectionner l'entreprise",
     "noConnection": "Pas de connexion Internet",
     "noConnectionMessage": "Une connexion Internet est nécessaire pour se connecter. Veuillez vérifier votre connexion et réessayer."
