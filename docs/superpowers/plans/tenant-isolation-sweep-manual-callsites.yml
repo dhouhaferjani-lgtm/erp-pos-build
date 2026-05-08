@@ -823,3 +823,46 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Add ->where('provider', PaymentProviderCode::Stripe) to the 3 Payment::where('provider_payment_id', ...)->first() callsites at lines 449, 473, 502 — pairs with the new (provider, provider_payment_id) UNIQUE migration so the resolver actually exercises the unique constraint. Replace ->first() with ->sole() per the same pattern as the listener (catch ModelNotFoundException → graceful 'webhook redelivery before local Payment was reconciled' skip path; let MultipleRecordsFoundException bubble loud). The existing class-level docblock at lines 30-63 already references Finding F as the open gap — update the docblock to reflect the new state once the fix lands."
+
+  # api.super-admin-context — paired with web.super-admin-frontend below.
+  # Triage at docs/superpowers/audits/2026-05-08-api-super-admin-context-and-web-super-admin-frontend-triage.md.
+  # The infrastructure already exists (CrossTenantRoute attribute, sweep visitor honoring, EnsureSuperAdmin
+  # middleware, AdminAuditLog) — this cluster's job is the universal arch test that codifies "every controller
+  # method is either CompanyContext-scoped OR carries #[CrossTenantRoute(reason: ...)]" + the ~58 method
+  # placements across 7 controllers (SuperAdmin{Auth,}Controller, AdminBillingController, MonitoringController,
+  # CountryController, StripeWebhookController, AuthController) so the static guarantee finally holds.
+
+  - cluster_id: api.super-admin-context
+    slug: apply-attribute-and-arch-test
+    file: apps/api/tests/Architecture/ControllerTenantContextTest.php
+    line: 1
+    symbol: 'Tests\Architecture\ControllerTenantContextTest::test_every_controller_method_is_classified'
+    pattern_type: controller_method_no_universal_cross_tenant_classification
+    resource: cross_tenant_attribution
+    expected_scope: cross_tenant
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Author tests/Architecture/ControllerTenantContextTest.php as the universal controller-level invariant: reflection-walk every public method on every concrete controller under app/Http/Controllers/** and app/Modules/*/Presentation/Controllers/*Controller.php and assert (a) the method carries #[CrossTenantRoute(reason: <non-blank>)] OR (b) the method body matches the heuristic regex for CompanyContext / tenantId / tenant_id / companyId / company_id / Auth::user / $request->user / ->tenant. Apply the attribute to ~58 methods across 7 controllers per triage table A–G (SuperAdminController.13, SuperAdminAuthController.3, AdminBillingController.14, StripeWebhookController.handle.1 dual-attributed alongside the existing class-level @cross-tenant-by-design, MonitoringController.12 incl. public ping, CountryController.2, AuthController.* pre-auth + self-scoped) with method-specific reason text per the bar (named action + audit/auth mechanism). Document deferrals fixture for Route-Model-Binding cases (DocumentAdditionalCostController). Codex round-1 will probe each reason for non-vacuousness — boilerplate gets flagged as classifier-bypass."
+
+  # web.super-admin-frontend — paired with api.super-admin-context above.
+  # Frontend audit found ONE leak: features/compliance/components/FraudAlertActionModals.tsx:22 uses
+  # queryKey: ['admin-users'] for a tenant-scoped getAdminUsers call (the function name collides with the
+  # super-admin-side getAdminUsers in features/admin/api/index.ts but hits /users?role=admin via apiGet,
+  # NOT /admin/users via adminApiGet). The fix renames the queryKey to ['users', 'admin-role'] and renames
+  # the compliance-side function to getUsersWithAdminRole. The new web arch test enforces the namespace
+  # invariant so future regressions are caught at CI.
+
+  - cluster_id: web.super-admin-frontend
+    slug: querykey-namespace-arch-test
+    surface: web
+    file: apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts
+    line: 1
+    symbol: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts'
+    pattern_type: querykey_namespace_unenforced
+    resource: tanstack_querykey_cache
+    expected_scope: cross_tenant
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Author apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts as the queryKey-namespace invariant: static-scan every .ts/.tsx under apps/web/src extracting queryKey: [...] literals, classify by file path (under features/admin/ MUST start with 'admin'; outside MUST NOT). The test must RED on the existing leak at features/compliance/components/FraudAlertActionModals.tsx:22 (queryKey: ['admin-users']) and turn GREEN once that file's queryKey is renamed to ['users', 'admin-role'] AND the compliance-side getAdminUsers function in features/compliance/api/fraudApi.ts is renamed to getUsersWithAdminRole (disambiguating from the super-admin getAdminUsers in features/admin/api/index.ts). Verify no admin-prefixed leakage outside features/admin/ AND no domain-prefixed leakage inside features/admin/ (auth-store + adminApi wrappers are already cleanly encapsulated per audit)."

@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-08T09:05:39Z'
+  generated_at: '2026-05-08T14:35:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 1fcec140fa71c313c4c6f800767f4cf9fe255b940fe0706573ca6930888dd13e
+  yaml_sha256: a5d2afc04ab7c6d55ce4dfc270b14d0aa5ff0c3319f8bdd1901c41f22b517e52
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -723,9 +723,9 @@ clusters:
     id: web.super-admin-frontend
     display_name: 'Web — super-admin frontend'
     surface: web
-    owner: null
+    owner: claude
     required_owner: claude
-    status: pending
+    status: in_progress
     blocked_by:
       - api.super-admin-context
     blocked_by_external: null
@@ -38686,6 +38686,162 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review.md
         review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+  -
+    id: api.super-admin-context.001
+    stable_key: 'manual:api.super-admin-context:apply-attribute-and-arch-test'
+    surface: api
+    cluster_id: api.super-admin-context
+    scanner: manual
+    file: apps/api/tests/Architecture/ControllerTenantContextTest.php
+    line: 1
+    symbol: 'Tests\Architecture\ControllerTenantContextTest::test_every_controller_method_is_classified'
+    pattern_type: controller_method_no_universal_cross_tenant_classification
+    resource: cross_tenant_attribution
+    expected_scope: cross_tenant
+    expected_fix: 'Author tests/Architecture/ControllerTenantContextTest.php as the universal controller-level invariant: reflection-walk every public method on every concrete controller under app/Http/Controllers/** and app/Modules/*/Presentation/Controllers/*Controller.php and assert (a) the method carries #[CrossTenantRoute(reason: <non-blank>)] OR (b) the method body matches the heuristic regex for CompanyContext / tenantId / tenant_id / companyId / company_id / Auth::user / $request->user / ->tenant. Apply the attribute to ~58 methods across 7 controllers per triage table A–G (SuperAdminController.13, SuperAdminAuthController.3, AdminBillingController.14, StripeWebhookController.handle.1 dual-attributed alongside the existing class-level @cross-tenant-by-design, MonitoringController.12 incl. public ping, CountryController.2, AuthController.* pre-auth + self-scoped) with method-specific reason text per the bar (named action + audit/auth mechanism). Document deferrals fixture for Route-Model-Binding cases (DocumentAdditionalCostController). Codex round-1 will probe each reason for non-vacuousness — boilerplate gets flagged as classifier-bypass.'
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T14:35:30Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T14:35:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 1fcec140fa71c313c4c6f800767f4cf9fe255b940fe0706573ca6930888dd13e
+        new_yaml_sha256: b7b1fe0286e47148f62830acb43830b1a6dd971422665c13c9b20d9294e35af1
+        target_ids:
+          - api.super-admin-context.001
+        from_status: null
+        to_status: pending
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T14:35:30Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b09335cd3e01c0ccdda8a4fddd5811ebf40dd6d3f5066628a0a54c2b7f689653
+        new_yaml_sha256: 515aeba3ef8a465c5a310be4fefd0c9e7334fd42b22292fa30dec5297cd01e0a
+        target_ids:
+          - api.super-admin-context.001
+        from_status: pending
+        to_status: claimed
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T14:35:36Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 515aeba3ef8a465c5a310be4fefd0c9e7334fd42b22292fa30dec5297cd01e0a
+        new_yaml_sha256: a5d2afc04ab7c6d55ce4dfc270b14d0aa5ff0c3319f8bdd1901c41f22b517e52
+        target_ids:
+          - api.super-admin-context.001
+        from_status: claimed
+        to_status: in_progress
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+  -
+    id: web.super-admin-frontend.001
+    stable_key: 'manual:web.super-admin-frontend:querykey-namespace-arch-test'
+    surface: web
+    cluster_id: web.super-admin-frontend
+    scanner: manual
+    file: apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts
+    line: 1
+    symbol: apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts
+    pattern_type: querykey_namespace_unenforced
+    resource: tanstack_querykey_cache
+    expected_scope: cross_tenant
+    expected_fix: "Author apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts as the queryKey-namespace invariant: static-scan every .ts/.tsx under apps/web/src extracting queryKey: [...] literals, classify by file path (under features/admin/ MUST start with 'admin'; outside MUST NOT). The test must RED on the existing leak at features/compliance/components/FraudAlertActionModals.tsx:22 (queryKey: ['admin-users']) and turn GREEN once that file's queryKey is renamed to ['users', 'admin-role'] AND the compliance-side getAdminUsers function in features/compliance/api/fraudApi.ts is renamed to getUsersWithAdminRole (disambiguating from the super-admin getAdminUsers in features/admin/api/index.ts). Verify no admin-prefixed leakage outside features/admin/ AND no domain-prefixed leakage inside features/admin/ (auth-store + adminApi wrappers are already cleanly encapsulated per audit)."
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T14:35:22Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T14:35:17Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 1fcec140fa71c313c4c6f800767f4cf9fe255b940fe0706573ca6930888dd13e
+        new_yaml_sha256: b7b1fe0286e47148f62830acb43830b1a6dd971422665c13c9b20d9294e35af1
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: null
+        to_status: pending
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T14:35:23Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b7b1fe0286e47148f62830acb43830b1a6dd971422665c13c9b20d9294e35af1
+        new_yaml_sha256: 6a7fa51188de4cbc9b9fa5a59bafb41e9501a626816f63938db2a26365443332
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: pending
+        to_status: claimed
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-08T14:35:28Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 6a7fa51188de4cbc9b9fa5a59bafb41e9501a626816f63938db2a26365443332
+        new_yaml_sha256: b09335cd3e01c0ccdda8a4fddd5811ebf40dd6d3f5066628a0a54c2b7f689653
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: claimed
+        to_status: in_progress
+        commit: fcb4c7ab3fde202ad6b2fb5e69799f0099d3afd8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29
