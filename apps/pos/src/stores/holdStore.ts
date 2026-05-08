@@ -135,6 +135,12 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
       error: null,
     }));
     cartState.clearCart();
+    // T0.2 (Codex F-2): hold-then-clear ends the current cart submission
+    // attempt. Drop the pending idempotency key so the next sale (or recall
+    // of a different held cart) gets a fresh allocation. Without this, a
+    // stale key from a half-attempted checkout-then-hold flow would leak.
+    const { usePaymentStore } = await import('@/stores/paymentStore');
+    usePaymentStore.getState().discardPendingSubmission();
   },
 
   recallTransaction: async (id: string) => {

@@ -9,6 +9,7 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
+  getReceiptByIdempotencyKey,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -249,6 +250,30 @@ export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
 ): Promise<OfflineReceiptResult> {
+  // T0.2 (Codex review F-1): if a caller-provided idempotency key already has
+  // a persisted row, return the existing receipt without re-running the
+  // SQLite INSERT (which would throw SQLITE_CONSTRAINT_UNIQUE on
+  // offline_receipts.idempotency_key), the hash-chain advance, or the
+  // voucher-balance updates. This is the offline-side mirror of the server's
+  // dedup-on-disk: a retry with the same key returns the prior result rather
+  // than corrupting it.
+  if (input.idempotencyKey) {
+    const existing = await getReceiptByIdempotencyKey(db, input.idempotencyKey);
+    if (existing) {
+      return {
+        receiptNumber: existing.receipt_number,
+        total: existing.total,
+        subtotal: existing.subtotal,
+        taxAmount: existing.tax_amount,
+        discountAmount: existing.discount_amount,
+        changeDue: parseFloat(existing.change_due ?? '0'),
+        fiscalHash: existing.fiscal_hash,
+        idempotencyKey: existing.idempotency_key,
+        localId: existing.id,
+      };
+    }
+  }
+
   const decimals = getCurrencyDecimals(input.currency);
 
   // 1. Read terminal state

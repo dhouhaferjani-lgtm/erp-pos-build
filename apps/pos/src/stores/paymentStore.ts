@@ -115,6 +115,19 @@ interface PaymentActions {
   ) => Promise<void>;
   reset: () => void;
   clearLastReceipt: () => void;
+  /**
+   * T0.2 (Codex round-1 finding F-2): targeted discard of `pendingIdempotencyKey`
+   * for cart-clear lifecycle transitions that are NOT post-success. Called by:
+   *   - Header void-cart actions
+   *   - holdStore recall (replacing the cart with a held one)
+   *   - shift close
+   * These transitions clear `cartStore` but should NOT also clear
+   * `lastReceipt` / `lastReceiptIdempotencyKey` (which represent the most
+   * recently SUCCESSFUL sale's print state). `discardPendingSubmission` is the
+   * narrower clear: only resets the in-flight cart submission attempt's key
+   * so the next sale gets a fresh allocation.
+   */
+  discardPendingSubmission: () => void;
 
   /**
    * Add a voucher as a tender row for the current sale.
@@ -602,11 +615,20 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
   clearLastReceipt: () => {
     // T0.2: also clear pendingIdempotencyKey so the next sale gets a fresh
-    // key. This is the canonical post-success / new-sale / manual-cancel
-    // lifecycle hook (called by HomePage's handleNewSale). Leaving the key
-    // populated would cause the new sale's first POST to be deduped server-
-    // side as a replay of the previous sale.
+    // key. This is the canonical post-success / new-sale lifecycle hook
+    // (called by HomePage's handleNewSale). Leaving the key populated would
+    // cause the new sale's first POST to be deduped server-side as a replay
+    // of the previous sale.
     set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null, pendingIdempotencyKey: null });
+  },
+
+  discardPendingSubmission: () => {
+    // T0.2 (Codex F-2): narrower discard than clearLastReceipt. Only resets
+    // the in-flight idempotency key — leaves `lastReceipt` /
+    // `lastReceiptIdempotencyKey` (post-success print state) intact. Called
+    // by void-cart, hold-recall, and shift-close paths so a stale key from
+    // an aborted/voided attempt cannot leak into the next sale's first POST.
+    set({ pendingIdempotencyKey: null });
   },
 
   addVoucherPayment: (code: string, amount: string) => {
