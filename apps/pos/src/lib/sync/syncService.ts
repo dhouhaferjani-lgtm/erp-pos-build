@@ -245,10 +245,13 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       // server-side fiscal-hash verification, voucher resolution, and ledger
       // writes; the longer ceiling matches that worst-case while still
       // unblocking the JS caller if the response is dropped on the wire.
-      // On FetchTimeoutError, the catch at the bottom of this loop marks the
-      // receipt 'failed' with the typed error message; the next sync tick
-      // reconciles via T0.2's stable idempotency key (this is the T0.4
-      // chain-break-recovery downstream contract).
+      // On FetchTimeoutError, the catch's dedicated `instanceof
+      // FetchTimeoutError` branch reverts the receipt to 'pending' (NOT
+      // 'failed') and does NOT increment retry_count — timeouts mean
+      // "unknown sync state", not "this receipt is poisoned". The next
+      // sync tick re-pushes via T0.2's stable idempotency key; the
+      // server-side dedup-on-disk returns 'duplicate' (treated as success)
+      // or accepts fresh.
       const response = await apiPost<SyncReceiptBatchResponse>(
         '/pos/receipts/sync',
         { receipts: [payload] },
