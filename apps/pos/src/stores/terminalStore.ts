@@ -156,6 +156,14 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
     // Skip the write entirely on null / non-numeric values — leaves
     // the store at its initial null and the SyncButton just hides
     // the affordance until the next tick.
+    //
+    // T1.3 Codex round-1 finding 2: the hydration await runs AFTER
+    // scheduler.start, which fires the first tick immediately. If the
+    // tick completes runFullSync and writes a fresh Date.now() before
+    // this hydration await resolves, an unguarded write would clobber
+    // the fresher in-memory value with the older persisted one. Guard
+    // by only writing when the in-memory value is null OR the parsed
+    // value is strictly newer (in-memory wins on conflict).
     try {
       const { getSyncMetadata } = await import(
         '@/lib/db/repositories/syncLogRepository'
@@ -164,7 +172,10 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
       if (raw !== null) {
         const parsed = Number(raw);
         if (Number.isFinite(parsed)) {
-          useSyncStore.getState().setLastSyncAt(parsed);
+          const current = useSyncStore.getState().lastSyncAt;
+          if (current === null || parsed > current) {
+            useSyncStore.getState().setLastSyncAt(parsed);
+          }
         }
       }
     } catch (err) {

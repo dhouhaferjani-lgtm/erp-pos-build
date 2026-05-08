@@ -42,13 +42,22 @@ vi.mock('@/lib/sync/syncScheduler', () => ({
   })),
 }));
 
+// Mutable mock state so tests can assert race-guard behaviour by
+// configuring an in-memory lastSyncAt value.
+const syncStoreMockState: { lastSyncAt: number | null } = { lastSyncAt: null };
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
     getState: () => ({
       setScheduler: vi.fn(),
       setPendingCount: setPendingCountSpy,
       setLastSyncAt: setLastSyncAtSpy,
+      lastSyncAt: syncStoreMockState.lastSyncAt,
     }),
+    setState: (partial: { lastSyncAt?: number | null }) => {
+      if (Object.prototype.hasOwnProperty.call(partial, 'lastSyncAt')) {
+        syncStoreMockState.lastSyncAt = partial.lastSyncAt ?? null;
+      }
+    },
   },
 }));
 
@@ -89,6 +98,7 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     getPendingReceiptCountSpy.mockResolvedValue(0);
     getSyncMetadataSpy.mockClear();
     getSyncMetadataSpy.mockResolvedValue(null);
+    syncStoreMockState.lastSyncAt = null;
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -193,5 +203,39 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     await Promise.resolve();
 
     expect(setLastSyncAtSpy).not.toHaveBeenCalled();
+  });
+
+  // T1.3 Codex round-1 finding 2: hydration race guard. seedOfflineHashChain
+  // awaits getSyncMetadata AFTER scheduler.start fires the first tick.
+  // If the tick wrote a FRESHER Date.now() before this await resolves,
+  // an unguarded hydration would clobber the fresh in-memory value with
+  // the older persisted one. Pre-fix: the hydration always wrote.
+  // Post-fix: in-memory wins when its value is newer than the persisted
+  // value; hydration only fires on a null in-memory state OR when the
+  // persisted value is strictly newer.
+  it('T1.3: lastSyncAt hydration does NOT clobber a fresher in-memory value (race guard)', async () => {
+    // Simulate the race: scheduler.start() fired the first tick, which
+    // wrote a fresh Date.now() to in-memory state, BEFORE the
+    // hydration await resolved with an older persisted timestamp.
+    syncStoreMockState.lastSyncAt = 1717891300000; // fresher
+    getSyncMetadataSpy.mockResolvedValueOnce('1717891200000'); // older
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Hydration must skip the write — in-memory wins on conflict.
+    expect(setLastSyncAtSpy).not.toHaveBeenCalled();
+  });
+
+  it('T1.3: lastSyncAt hydration writes when persisted value is strictly newer than in-memory', async () => {
+    syncStoreMockState.lastSyncAt = 1717891200000; // older
+    getSyncMetadataSpy.mockResolvedValueOnce('1717891300000'); // newer
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setLastSyncAtSpy).toHaveBeenCalledWith(1717891300000);
   });
 });

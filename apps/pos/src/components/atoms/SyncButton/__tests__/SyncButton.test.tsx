@@ -109,6 +109,28 @@ describe('SyncButton', () => {
     expect(screen.queryByTestId('sync-degraded-dot')).not.toBeInTheDocument();
   });
 
+  // T1.3 Codex round-1 finding 1: the button's aria-label (the screen-
+  // reader announcement for the interactive control) must incorporate
+  // the degraded state. The amber dot's own aria-label isn't enough
+  // because the button is the focus target.
+  it('T1.3: button aria-label incorporates degraded state when degraded', () => {
+    mockState = {
+      lastSyncResult: { degraded: true, errors: [] as string[] },
+    };
+    render(<SyncButton />);
+    const button = screen.getByRole('button');
+    const label = button.getAttribute('aria-label') ?? '';
+    expect(label).toContain('sync.syncNow');
+    expect(label).toContain('sync.degradedTitle');
+  });
+
+  it('T1.3: button aria-label is the bare syncNow text when not degraded', () => {
+    mockState = { lastSyncResult: null };
+    render(<SyncButton />);
+    const button = screen.getByRole('button');
+    expect(button.getAttribute('aria-label')).toBe('sync.syncNow');
+  });
+
   it('debounces rapid double-clicks (second click within 500 ms is ignored)', async () => {
     vi.useFakeTimers();
     render(<SyncButton />);

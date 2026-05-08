@@ -49,6 +49,14 @@ export function SyncButton() {
 
   const timeAgo = formatTimeAgo(lastSyncAt, t);
 
+  // T1.3 Codex round-1 finding 1: the button's aria-label MUST
+  // incorporate the degraded state — pre-fix screen-reader users
+  // heard "Sync Now" even when the most recent tick degraded, so
+  // the amber dot's silent visual cue had no audible counterpart.
+  const buttonAriaLabel = isDegraded
+    ? `${t('sync.syncNow')}. ${t('sync.degradedTitle')}`
+    : t('sync.syncNow');
+
   return (
     <button
       onClick={handleClick}
@@ -56,7 +64,7 @@ export function SyncButton() {
       className={cn(
         'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50',
       )}
-      aria-label={t('sync.syncNow')}
+      aria-label={buttonAriaLabel}
     >
       <RefreshCw className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')} />
       <span className="hidden sm:inline">
