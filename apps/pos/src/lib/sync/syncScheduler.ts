@@ -104,8 +104,16 @@ export class SyncScheduler {
           if (sessionError instanceof ApiRequestError && sessionError.status === 401) {
             console.warn('[SyncScheduler] Token confirmed expired — logging out');
             useAuthStore.getState().logout();
+          } else {
+            // Network error → token might still be valid when server is reachable.
+            // Log so a stuck sync banner with intermittent connectivity is diagnosable.
+            console.error('[POS][syncScheduler] checkSession failed (non-401)', {
+              error: sessionError,
+              errorType: typeof sessionError,
+              isError: sessionError instanceof Error,
+              message: sessionError instanceof Error ? sessionError.message : String(sessionError),
+            });
           }
-          // Network error → ignore, token might still be valid when server is reachable
         }
       }
 
@@ -118,6 +126,15 @@ export class SyncScheduler {
 
       return result;
     } catch (error) {
+      console.error('[POS][syncScheduler] tick threw', {
+        error,
+        errorType: typeof error,
+        isError: error instanceof Error,
+        errorName: error instanceof Error ? error.name : undefined,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        currentInterval: this.currentInterval,
+      });
       const message = error instanceof Error ? error.message : 'Sync failed';
       useSyncStore.getState().failSync(message);
       this.backoff();

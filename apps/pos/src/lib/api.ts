@@ -111,8 +111,18 @@ async function request<T>(
         code = errorBody.error.code;
         details = errorBody.error.details;
       }
-    } catch {
-      // Response wasn't JSON
+    } catch (parseError) {
+      // Response wasn't JSON — log so a non-JSON 5xx (HTML/proxy error page,
+      // gateway timeout body, etc.) is visible in devtools rather than vanishing.
+      console.error('[POS][api] non-JSON error body', {
+        error: parseError,
+        errorType: typeof parseError,
+        isError: parseError instanceof Error,
+        message: parseError instanceof Error ? parseError.message : String(parseError),
+        status: response.status,
+        url: fullUrl,
+        method,
+      });
     }
 
     throw new ApiRequestError(response.status, apiMessage, code, details);

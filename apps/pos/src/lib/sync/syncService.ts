@@ -306,6 +306,18 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
+        error,
+        errorType: typeof error,
+        isError: error instanceof Error,
+        errorName: error instanceof Error ? error.name : undefined,
+        message,
+        stack: error instanceof Error ? error.stack : undefined,
+        receiptId: receipt.id,
+        receiptNumber: receipt.receipt_number,
+        retryCount: receipt.retry_count,
+        idempotencyKey: receipt.idempotency_key,
+      });
       await incrementRetryCount(db, receipt.id);
       await updateReceiptStatus(db, receipt.id, 'failed', message);
       await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', message);

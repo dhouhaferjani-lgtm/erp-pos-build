@@ -627,8 +627,15 @@ export function HomePage() {
         if (productData) {
           addItem(productData);
         }
-      } catch {
-        // Silently fail — recommendation add is best-effort
+      } catch (recommendError) {
+        // Best-effort — log so a persistent product-fetch failure isn't invisible.
+        console.error('[POS][HomePage][handleAddRecommendation] failed', {
+          error: recommendError,
+          errorType: typeof recommendError,
+          isError: recommendError instanceof Error,
+          message: recommendError instanceof Error ? recommendError.message : String(recommendError),
+          productId,
+        });
       }
     },
     [addItem],
@@ -687,8 +694,20 @@ export function HomePage() {
         );
         setShowCashModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore and displayed in the modal
+      } catch (cashError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleCashConfirm] processCashCheckout threw', {
+          error: cashError,
+          errorType: typeof cashError,
+          isError: cashError instanceof Error,
+          errorName: cashError instanceof Error ? cashError.name : undefined,
+          message: cashError instanceof Error ? cashError.message : String(cashError),
+          stack: cashError instanceof Error ? cashError.stack : undefined,
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          tenderedAmount,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId],
@@ -713,8 +732,20 @@ export function HomePage() {
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore
+      } catch (advancedError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleAdvancedComplete] processAdvancedCheckout threw', {
+          error: advancedError,
+          errorType: typeof advancedError,
+          isError: advancedError instanceof Error,
+          errorName: advancedError instanceof Error ? advancedError.name : undefined,
+          message: advancedError instanceof Error ? advancedError.message : String(advancedError),
+          stack: advancedError instanceof Error ? advancedError.stack : undefined,
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          paymentLineCount: payments.length,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],

@@ -13,7 +13,15 @@ export async function checkServerHealth(): Promise<boolean> {
       connectTimeout: HEALTH_TIMEOUT_MS,
     });
     return response.ok;
-  } catch {
+  } catch (error) {
+    // Health check fails routinely on going-offline — log at debug so it's
+    // visible during diagnosis without spamming devtools in steady state.
+    console.debug('[POS][connectivity] health check failed', {
+      error,
+      errorType: typeof error,
+      isError: error instanceof Error,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }

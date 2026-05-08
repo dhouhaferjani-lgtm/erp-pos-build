@@ -140,6 +140,34 @@ async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
   return getDatabase(companyId ?? '');
 }
 
+/**
+ * Build the user-visible error banner for a checkout failure.
+ *
+ * Tauri-plugin-sql rejects with Rust-side strings (or Error subclasses with
+ * empty .message), not native `new Error(...)`. The old fallback collapsed
+ * both to a generic i18n string, so the cashier saw "Échec du paiement" with
+ * no class hint and the catch had already swallowed the original throwable.
+ *
+ * Contract:
+ *   - real Error with non-empty message → use error.message verbatim
+ *   - Error subclass with empty message → "<i18n.checkoutFailed>: <ClassName>"
+ *   - non-Error string                  → "<i18n.checkoutFailed>: string — <slice>"
+ *   - non-Error other                   → "<i18n.checkoutFailed>: <typeof error>"
+ */
+function formatCheckoutError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  const fallback = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+  if (error instanceof Error) {
+    return `${fallback}: ${error.constructor.name}`;
+  }
+  if (typeof error === 'string') {
+    return `${fallback}: string — ${error.slice(0, 200)}`;
+  }
+  return `${fallback}: ${typeof error}`;
+}
+
 interface LocalFirstPaymentLine {
   methodCode: string;
   amount: string;
@@ -259,8 +287,15 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       if (cachedMethods.length > 0) {
         set({ paymentMethods: cachedMethods, paymentRepositories: cachedRepos });
       }
-    } catch {
-      // SQLite not ready yet — continue to API
+    } catch (sqliteError) {
+      // SQLite not ready yet — continue to API. Log so a corrupted DB during
+      // a startup race is visible in devtools instead of silently invisible.
+      console.error('[POS][paymentStore][fetchPaymentConfig] SQLite read failed', {
+        error: sqliteError,
+        errorType: typeof sqliteError,
+        isError: sqliteError instanceof Error,
+        message: sqliteError instanceof Error ? sqliteError.message : String(sqliteError),
+      });
     }
 
     // Step 2: Try API for fresh data (updates SQLite cache for next time)
@@ -277,11 +312,27 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         const { upsertPaymentMethods, upsertPaymentRepositories } = await import('@/lib/db/repositories/paymentRepository');
         await upsertPaymentMethods(db, methods);
         await upsertPaymentRepositories(db, repositories);
-      } catch {
-        // Non-critical — sync scheduler also handles this
+      } catch (writebackError) {
+        // Non-critical — sync scheduler also handles this. Log so a persistent
+        // SQLite write failure isn't invisible.
+        console.error('[POS][paymentStore][fetchPaymentConfig] SQLite writeback failed', {
+          error: writebackError,
+          errorType: typeof writebackError,
+          isError: writebackError instanceof Error,
+          message: writebackError instanceof Error ? writebackError.message : String(writebackError),
+          methodCount: methods.length,
+          repositoryCount: repositories.length,
+        });
       }
-    } catch (error) {
-      // API failed — SQLite data (if loaded in Step 1) is already in state
+    } catch (apiError) {
+      // API failed — SQLite data (if loaded in Step 1) is already in state.
+      console.error('[POS][paymentStore][fetchPaymentConfig] API failed', {
+        error: apiError,
+        errorType: typeof apiError,
+        isError: apiError instanceof Error,
+        message: apiError instanceof Error ? apiError.message : String(apiError),
+        cachedMethodCount: get().paymentMethods.length,
+      });
       if (get().paymentMethods.length === 0) {
         console.warn('[POS] No payment config available — neither API nor SQLite cache');
       }
@@ -343,9 +394,22 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
       set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
+      console.error('[POS][checkout][cash] failed', {
+        error,
+        errorType: typeof error,
+        isError: error instanceof Error,
+        errorName: error instanceof Error ? error.name : undefined,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        cartItemCount: cartItems.length,
+        tenderedAmount,
+        terminalId,
+        cashMethodId: cashMethod.id,
+        cashRegisterId: cashRegister.id,
+      });
       set({
         isProcessing: false,
-        error: error instanceof Error ? error.message : i18n.t('errors.checkoutFailed', { ns: 'pos' }),
+        error: formatCheckoutError(error),
       });
       throw error;
     }
@@ -411,9 +475,21 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
       set({ changeDue: 0, isProcessing: false });
     } catch (error) {
+      console.error('[POS][checkout][card] failed', {
+        error,
+        errorType: typeof error,
+        isError: error instanceof Error,
+        errorName: error instanceof Error ? error.name : undefined,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        cartItemCount: cartItems.length,
+        terminalId,
+        cardMethodId: cardMethod.id,
+        cardRepoId: cardRepo.id,
+      });
       set({
         isProcessing: false,
-        error: error instanceof Error ? error.message : i18n.t('errors.checkoutFailed', { ns: 'pos' }),
+        error: formatCheckoutError(error),
       });
       throw error;
     }
@@ -470,9 +546,20 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
       set({ changeDue: result.changeDue, isProcessing: false });
     } catch (error) {
+      console.error('[POS][checkout][advanced] failed', {
+        error,
+        errorType: typeof error,
+        isError: error instanceof Error,
+        errorName: error instanceof Error ? error.name : undefined,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        cartItemCount: cartItems.length,
+        terminalId,
+        paymentLineCount: payments.length,
+      });
       set({
         isProcessing: false,
-        error: error instanceof Error ? error.message : i18n.t('errors.checkoutFailed', { ns: 'pos' }),
+        error: formatCheckoutError(error),
       });
       throw error;
     }

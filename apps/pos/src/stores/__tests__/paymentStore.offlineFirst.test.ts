@@ -129,6 +129,29 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(usePaymentStore.getState().error).toMatch(/Terminal hash chain not initialized/);
   });
 
+  it('preserves error class name in paymentStore.error when underlying error has empty message', async () => {
+    // T0.1 regression: Tauri SQLite plugin can reject with Error subclasses that
+    // carry a class name but empty `.message`, and the IPC bridge can also reject
+    // with non-Error values. Old fallback collapsed both to either '' or a generic
+    // i18n string — the cashier saw "Échec du paiement" with zero clue what failed
+    // and the console showed nothing because the catch was silent.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    class SqliteBusyError extends Error {
+      constructor() {
+        super('');
+        this.name = 'SqliteBusyError';
+      }
+    }
+    vi.mocked(createOfflineReceipt).mockRejectedValueOnce(new SqliteBusyError());
+
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBeInstanceOf(SqliteBusyError);
+
+    expect(usePaymentStore.getState().error).toContain('SqliteBusyError');
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
   it('forwards consumption_mode and table_id when provided', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
