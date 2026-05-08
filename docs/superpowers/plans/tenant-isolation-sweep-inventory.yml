@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-08T05:13:16Z'
+  generated_at: '2026-05-08T09:05:39Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+  yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -403,9 +403,9 @@ clusters:
     id: api.platform-integration
     display_name: 'Platform Integration (outbound)'
     surface: api
-    owner: null
+    owner: claude
     required_owner: codex
-    status: pending
+    status: in_progress
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -37988,6 +37988,474 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+  -
+    id: api.platform-integration.001
+    stable_key: 'manual:api.platform-integration:platform-http-client-tenant-headers'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/app/Modules/PlatformIntegration/Infrastructure/Http/PlatformHttpClient.php
+    line: 205
+    symbol: 'App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient::buildRequest'
+    pattern_type: outbound_http_no_tenant_headers
+    resource: synerivia_platform_outbound
+    expected_scope: tenant_and_company
+    expected_fix: 'Inject CompanyContext via constructor; add private addTenantHeaders() that pulls X-Tenant-Id from CompanyContext::requireTenantId() + X-Company-Id from CompanyContext::requireCompanyId() (both throw on empty context — fail-loud, no silent omission); buildRequest() calls addTenantHeaders() so all 4 public methods (get/post/postRaw/getRaw) and all 22 outbound callsites across BarcodeLookupService/CatalogBrowseService/ProductSubmissionService benefit transitively. Pre-platform-side enforcement (tracked as Finding J — platform.synerivia-tenant-enforcement cluster blocked on this cluster landing first), the headers are diagnostic-only metadata establishing audit trail at source.'
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.001
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.001
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.001
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.platform-integration.002
+    stable_key: 'manual:api.platform-integration:check-pending-enrichments-per-iteration-rebind'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/app/Modules/PlatformIntegration/Application/Commands/CheckPendingEnrichmentsCommand.php
+    line: 52
+    symbol: 'App\Modules\PlatformIntegration\Application\Commands\CheckPendingEnrichmentsCommand::handle'
+    pattern_type: console_command_fleet_wide_no_per_iteration_tenant_rebind
+    resource: products+pending_enrichments
+    expected_scope: tenant_and_company
+    expected_fix: 'Per-iteration tenant rebind: PendingEnrichmentDTO carries productId + tenantId + companyId (extend EnrichmentQueryInterface + Eloquent impl to populate the new fields). Inside the foreach loop, rebind CompanyContext to per-record tenant + company before checkStatusRaw() outbound HTTP fires, so X-Tenant-Id + X-Company-Id headers reflect the originating tenant per-record. Small N (limit:50) — rebind cost is negligible vs the audit/billing benefit. Existing @cross-tenant-by-design docblock on the class remains accurate (the OUTBOX is fleet-wide; the per-call binding is per-record now).'
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.002
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.002
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.002
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.platform-integration.003
+    stable_key: 'manual:api.platform-integration:products-platform-submission-id-unique-migration'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/database/migrations/2026_05_08_000001_add_unique_to_products_platform_submission_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on products.platform_submission_id'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "New migration adding UNIQUE constraint on products.platform_submission_id. Pre-migration COUNT check inside up() — DB::selectOne('SELECT COUNT(*) - COUNT(DISTINCT platform_submission_id) AS dup FROM products WHERE platform_submission_id IS NOT NULL') — throws RuntimeException with triage instructions if duplicates exist. Source uniqueness contract is upstream (apps/platform/.../barcode_submissions.id is UUID PK), so cross-tenant collision is mathematically negligible — defense-in-depth. Resolves Finding A."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.003
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.003
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.003
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.platform-integration.004
+    stable_key: 'manual:api.platform-integration:billing-payments-provider-payment-id-unique-migration'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/database/migrations/2026_05_08_000002_add_unique_to_billing_payments_provider_payment_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on billing_payments(provider, provider_payment_id)'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    expected_fix: "New migration adding UNIQUE constraint on (provider, provider_payment_id) of billing_payments — replaces the existing composite INDEX (line 81 of 2025_12_16_100004_create_billing_payments_table.php). Pre-migration COUNT check inside up() — DB::selectOne with subquery on (provider, provider_payment_id) tuples — throws RuntimeException if duplicates exist. Stripe's pi_* namespace is per-account-globally-unique by contract, so duplicates would indicate a webhook-deduplication bug (Finding E in cross-cluster observations). Resolves Finding F."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.004
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.004
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.004
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.platform-integration.005
+    stable_key: 'manual:api.platform-integration:enrichment-listener-sole-defense-in-depth'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php
+    line: 22
+    symbol: 'App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener::handle'
+    pattern_type: external_id_resolver_no_collision_guard
+    resource: products
+    expected_scope: tenant_and_company
+    expected_fix: "Replace Product::where('platform_submission_id', $event->trackingId)->first() with ->sole(). ->sole() throws ModelNotFoundException on zero results AND MultipleRecordsFoundException on collision; caller catches ModelNotFoundException and treats as graceful 'webhook arrived before local Product was created' skip path (legitimate async — log + return), but lets MultipleRecordsFoundException bubble up loud (real defense-in-depth signal that the upstream UNIQUE constraint was violated). Defense-in-depth pairing with the migration above."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.005
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.005
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+  -
+    id: api.platform-integration.006
+    stable_key: 'manual:api.platform-integration:stripe-webhook-sole-defense-in-depth-plus-provider-filter'
+    surface: api
+    cluster_id: api.platform-integration
+    scanner: manual
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 449
+    symbol: 'App\Modules\Billing\Presentation\Controllers\StripeWebhookController (3 callsites: handlePaymentIntentSucceeded:449, handlePaymentIntentFailed:473, handleChargeRefunded:502)'
+    pattern_type: external_id_resolver_no_collision_guard_and_no_provider_filter
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    expected_fix: "Add ->where('provider', PaymentProviderCode::Stripe) to the 3 Payment::where('provider_payment_id', ...)->first() callsites at lines 449, 473, 502 — pairs with the new (provider, provider_payment_id) UNIQUE migration so the resolver actually exercises the unique constraint. Replace ->first() with ->sole() per the same pattern as the listener (catch ModelNotFoundException → graceful 'webhook redelivery before local Payment was reconciled' skip path; let MultipleRecordsFoundException bubble loud). The existing class-level docblock at lines 30-63 already references Finding F as the open gap — update the docblock to reflect the new state once the fix lands."
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-08T09:06:29Z'
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-08T09:05:39Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 076b8a8d946fd45b37eed11797b175b043e022984892dc3eb36c07122d688f4a
+        new_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        target_ids:
+          - api.platform-integration.006
+        from_status: null
+        to_status: pending
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+      -
+        at: '2026-05-08T09:06:29Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6495c3a1774c69a3603795b351b9ea9e6cd4e7fea51270d7cccd29c73403c230
+        new_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        target_ids:
+          - api.platform-integration.006
+        from_status: pending
+        to_status: claimed
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=orchestrator; reason=Orchestrator handoff 2026-05-08 delegates api.platform-integration execution to claude (opus-claude); codex remains the round-1+ reviewer per established sweep pattern'
+      -
+        at: '2026-05-08T09:06:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 297eee9bffaf37501e6dda38b1473fb15af6dbf62849b5cfecd619c1fb010854
+        new_yaml_sha256: a3e235b0d18959c0b6fa178459cd6f0e60204c512e49c60e551c621b2d2fe32a
+        target_ids:
+          - api.platform-integration.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 58cb06fa6755513887597dba90f211678aa8191a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
 progress:
   total_callsites: 0
   total_clusters: 29

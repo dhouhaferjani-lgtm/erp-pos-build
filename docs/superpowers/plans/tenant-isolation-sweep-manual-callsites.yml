@@ -737,3 +737,89 @@ manual_callsites:
     fiscal_path: false
     cross_module: false
     expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportProgressUpdated domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)"
+
+  # api.platform-integration — LAST bespoke cluster of the sweep. Two concerns folded into one cluster
+  # per kickoff brief, absorbing Findings A + F from 2026-05-07-scheduled-jobs-cross-cluster-observations.md:
+  #   Concern 1 — outbound HTTP carries originating-tenant context (PlatformHttpClient single load-bearing point).
+  #   Concern 2 — no external ID is trusted as a tenant anchor without DB-enforced uniqueness.
+  # Six manual rows track the load-bearing fixes; the 22 outbound callsites benefit transitively from
+  # the PlatformHttpClient::buildRequest() change and don't need individual rows (would be bookkeeping noise,
+  # not independent fix work). Triage at docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md.
+
+  - cluster_id: api.platform-integration
+    slug: platform-http-client-tenant-headers
+    file: apps/api/app/Modules/PlatformIntegration/Infrastructure/Http/PlatformHttpClient.php
+    line: 205
+    symbol: 'App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient::buildRequest'
+    pattern_type: outbound_http_no_tenant_headers
+    resource: synerivia_platform_outbound
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Inject CompanyContext via constructor; add private addTenantHeaders() that pulls X-Tenant-Id from CompanyContext::requireTenantId() + X-Company-Id from CompanyContext::requireCompanyId() (both throw on empty context — fail-loud, no silent omission); buildRequest() calls addTenantHeaders() so all 4 public methods (get/post/postRaw/getRaw) and all 22 outbound callsites across BarcodeLookupService/CatalogBrowseService/ProductSubmissionService benefit transitively. Pre-platform-side enforcement (tracked as Finding J — platform.synerivia-tenant-enforcement cluster blocked on this cluster landing first), the headers are diagnostic-only metadata establishing audit trail at source."
+
+  - cluster_id: api.platform-integration
+    slug: check-pending-enrichments-per-iteration-rebind
+    file: apps/api/app/Modules/PlatformIntegration/Application/Commands/CheckPendingEnrichmentsCommand.php
+    line: 52
+    symbol: 'App\Modules\PlatformIntegration\Application\Commands\CheckPendingEnrichmentsCommand::handle'
+    pattern_type: console_command_fleet_wide_no_per_iteration_tenant_rebind
+    resource: products+pending_enrichments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Per-iteration tenant rebind: PendingEnrichmentDTO carries productId + tenantId + companyId (extend EnrichmentQueryInterface + Eloquent impl to populate the new fields). Inside the foreach loop, rebind CompanyContext to per-record tenant + company before checkStatusRaw() outbound HTTP fires, so X-Tenant-Id + X-Company-Id headers reflect the originating tenant per-record. Small N (limit:50) — rebind cost is negligible vs the audit/billing benefit. Existing @cross-tenant-by-design docblock on the class remains accurate (the OUTBOX is fleet-wide; the per-call binding is per-record now)."
+
+  - cluster_id: api.platform-integration
+    slug: products-platform-submission-id-unique-migration
+    file: apps/api/database/migrations/2026_05_08_000001_add_unique_to_products_platform_submission_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on products.platform_submission_id'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "New migration adding UNIQUE constraint on products.platform_submission_id. Pre-migration COUNT check inside up() — DB::selectOne('SELECT COUNT(*) - COUNT(DISTINCT platform_submission_id) AS dup FROM products WHERE platform_submission_id IS NOT NULL') — throws RuntimeException with triage instructions if duplicates exist. Source uniqueness contract is upstream (apps/platform/.../barcode_submissions.id is UUID PK), so cross-tenant collision is mathematically negligible — defense-in-depth. Resolves Finding A."
+
+  - cluster_id: api.platform-integration
+    slug: billing-payments-provider-payment-id-unique-migration
+    file: apps/api/database/migrations/2026_05_08_000002_add_unique_to_billing_payments_provider_payment_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on billing_payments(provider, provider_payment_id)'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "New migration adding UNIQUE constraint on (provider, provider_payment_id) of billing_payments — replaces the existing composite INDEX (line 81 of 2025_12_16_100004_create_billing_payments_table.php). Pre-migration COUNT check inside up() — DB::selectOne with subquery on (provider, provider_payment_id) tuples — throws RuntimeException if duplicates exist. Stripe's pi_* namespace is per-account-globally-unique by contract, so duplicates would indicate a webhook-deduplication bug (Finding E in cross-cluster observations). Resolves Finding F."
+
+  - cluster_id: api.platform-integration
+    slug: enrichment-listener-sole-defense-in-depth
+    file: apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php
+    line: 22
+    symbol: 'App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener::handle'
+    pattern_type: external_id_resolver_no_collision_guard
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace Product::where('platform_submission_id', $event->trackingId)->first() with ->sole(). ->sole() throws ModelNotFoundException on zero results AND MultipleRecordsFoundException on collision; caller catches ModelNotFoundException and treats as graceful 'webhook arrived before local Product was created' skip path (legitimate async — log + return), but lets MultipleRecordsFoundException bubble up loud (real defense-in-depth signal that the upstream UNIQUE constraint was violated). Defense-in-depth pairing with the migration above."
+
+  - cluster_id: api.platform-integration
+    slug: stripe-webhook-sole-defense-in-depth-plus-provider-filter
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 449
+    symbol: 'App\Modules\Billing\Presentation\Controllers\StripeWebhookController (3 callsites: handlePaymentIntentSucceeded:449, handlePaymentIntentFailed:473, handleChargeRefunded:502)'
+    pattern_type: external_id_resolver_no_collision_guard_and_no_provider_filter
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('provider', PaymentProviderCode::Stripe) to the 3 Payment::where('provider_payment_id', ...)->first() callsites at lines 449, 473, 502 — pairs with the new (provider, provider_payment_id) UNIQUE migration so the resolver actually exercises the unique constraint. Replace ->first() with ->sole() per the same pattern as the listener (catch ModelNotFoundException → graceful 'webhook redelivery before local Payment was reconciled' skip path; let MultipleRecordsFoundException bubble loud). The existing class-level docblock at lines 30-63 already references Finding F as the open gap — update the docblock to reflect the new state once the fix lands."

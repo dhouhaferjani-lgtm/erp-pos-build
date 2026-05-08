@@ -678,3 +678,182 @@ defect).
 - Round-2 review: `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round2-review.md`
 - Round-3 review (BLOCK-NOVEL): `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round3-review.md`
 - Round-4 review (APPROVE): `docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md`
+
+## Finding J — Platform-side X-Tenant-Id enforcement gap (MEDIUM, 2026-05-08)
+
+**Severity**: MEDIUM (incomplete defense, not zero defense)
+
+**Surface**: `apps/platform/app/Modules/Partners/Infrastructure/Middleware/AuthenticateApiKey.php:19`
+
+```php
+$key = $request->header('X-API-Key');
+// … resolves to ApiKey + Partner; sets partner context on request
+// NO read of X-Tenant-Id / X-Company-Id
+```
+
+**Issue**: The `api.platform-integration` cluster (apps/erp) adds `X-Tenant-Id` + `X-Company-Id`
+headers to every outbound request via `PlatformHttpClient::buildRequest()` (mandatory,
+fail-loud on empty `CompanyContext`). The platform-side `AuthenticateApiKey` middleware
+reads only `X-API-Key` and resolves it to a partner-level credential. Per-tenant
+attribution within the partner is **not validated, not logged, not enforced** today —
+the headers travel on the wire but are ignored downstream.
+
+**Why it matters**: a compromised tenant inside a partner could spoof a sibling tenant's
+`X-Tenant-Id` header on outbound traffic and the platform would accept it
+indistinguishably from legitimate traffic. The ERP-side fix establishes a clean audit
+trail at the source (originating tenant binding via `requireTenantId()`), but
+end-to-end enforcement requires the platform to validate the headers against the
+authenticated partner's tenant boundary and reject mismatches.
+
+**Why MEDIUM (not HIGH)**: partner-key auth still gates access — only authenticated
+partners can submit traffic at all. The gap is tenant binding **inside** the partner,
+not unauthenticated access.
+
+**Why deferred**: cross-team boundary. `apps/platform/` is a separate codebase with
+its own PR/review cadence; the fix belongs there, not in this sweep's apps/erp scope.
+
+**Target cluster**: `platform.synerivia-tenant-enforcement` (apps/platform/ repo,
+separate PR).
+
+**Scope**:
+- Extend `AuthenticateApiKey` middleware (or add a sibling middleware that runs after
+  it) to read `X-Tenant-Id` + `X-Company-Id`, validate them against the resolved
+  partner's tenant boundary, and reject requests with mismatched or missing headers
+  in production.
+- Decide partner→tenant binding model: one Synerivia partner = one tenant (likely),
+  vs. partner = multi-tenant umbrella (requires partner-side `tenants` membership
+  table). Current `apps/platform/` schema has the partner concept but not partner-
+  to-tenant binding columns inspected here — surface in the platform-side cluster.
+- Update `apps/platform/.../docs/04-API-CONTRACTS/01-catalog-api.md` and
+  `apps/platform/.../docs/03-ERP-INTEGRATION/01-integration-overview.md` to document
+  the new mandatory headers.
+
+**Order dependency**: BLOCKED ON `api.platform-integration` (this cluster's
+apps/erp PR) landing first — the headers must exist on the wire before platform-side
+enforcement can be validated. Once apps/erp ships, platform-side cluster can begin.
+
+**Reference**: `api.platform-integration` triage at
+`docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md` (Q1).
+
+## Finding K — GrowthAdvisor outbound HTTP tenant-binding gap (MEDIUM, 2026-05-08)
+
+**Severity**: MEDIUM (companyId-in-path is exploit-adjacent — URL-guessing,
+log-leakage, no defense in depth)
+
+**Surface**: `apps/api/app/Modules/Progression/Infrastructure/Http/GrowthAdvisorHttpClient.php:159-174`
+
+```php
+private function buildRequest(): PendingRequest
+{
+    return Http::timeout($this->timeout)
+        ->connectTimeout($this->connectTimeout)
+        ->retry(/* … */)
+        ->acceptJson()
+        ->withHeaders(['Content-Type' => 'application/json']);
+        // ❌ NO X-API-Key, NO X-Tenant-Id, NO X-Company-Id
+}
+```
+
+Tenant context is encoded only as `companyId` in the URL path
+(`/api/v1/companies/{companyId}/milestones`, etc.). No auth header of any form;
+Growth Advisor is an internal peer service with apparent network-trust assumptions.
+
+**Why it matters**: any caller on the network with knowledge of a `companyId` UUID
+can issue requests on behalf of that company. UUID-based path values surface in:
+proxy/CDN access logs, third-party APM tools (Datadog/Sentry URL capture), browser
+history (if ever called from frontend), error message bodies, etc. This is the
+"URL-as-credential" anti-pattern — tenant binding leaks through the same channels
+that legitimate request-tracing leaks through.
+
+**Compare to RecommendationEngineHttpClient** (`apps/api/app/Modules/SmartPrompts/.../RecommendationEngineHttpClient.php:84-89`)
+— that client correctly sends `X-Tenant-Id` + `X-Company-Id` as headers, demonstrating
+the established pattern for ERP→ML peer services. GrowthAdvisor diverges from this
+pattern.
+
+**Why deferred**: out of `api.platform-integration` scope (different module, different
+peer service, different fix shape — needs both header injection AND
+GrowthAdvisor-side header reader). Folding it in would bloat the cluster.
+
+**Target cluster**: `api.growth-advisor-tenant-binding`.
+
+**Scope**:
+- ERP side: inject `X-Tenant-Id` + `X-Company-Id` headers in `GrowthAdvisorHttpClient::buildRequest()`,
+  mandatory via `CompanyContext::requireTenantId()` (same fail-loud pattern as
+  `PlatformHttpClient` from this cluster).
+- Growth Advisor side: add header-based auth + tenant verification middleware (analogous
+  to Finding J for the platform side). Likely a separate cross-team coordination.
+- Audit all callers: `Modules/Progression/.../GrowthAdvisorHttpClient` is consumed
+  by Progression service classes — verify each call site has `CompanyContext` bound
+  before calling.
+
+**Reference**: `api.platform-integration` triage at
+`docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md` (Q4).
+
+## Finding L — Stripe SDK metadata-based tenant attribution gap (LOW, 2026-05-08)
+
+**Severity**: LOW (global-secret signing is sufficient for the current threat model;
+metadata is defense-in-depth for webhook resolution + audit reconstruction)
+
+**Surface**: `apps/api/app/Modules/Billing/Infrastructure/Providers/StripePaymentProvider.php:36-90+`
+
+```php
+public function __construct() {
+    Stripe::setApiKey($this->secretKey);  // global Stripe secret, not per-tenant
+}
+
+public function createPayment(Money $amount, string $description, array $metadata = []): PaymentResult {
+    $paymentIntent = PaymentIntent::create([
+        'amount' => $amount->toCents(),
+        'currency' => strtolower($amount->currency),
+        'description' => $description,
+        'metadata' => $metadata,  // ← caller-supplied; tenant_id/company_id population uninspected
+    ]);
+}
+```
+
+**Issue**: Stripe SDK calls authenticate via a single global `STRIPE_SECRET_KEY`. Tenant
+context can only be encoded as Stripe `metadata` on PaymentIntents/Customers/etc.
+Whether ERP callers reliably populate `metadata['tenant_id']` + `metadata['company_id']`
+is uninspected in this triage. If they don't, then:
+- Stripe Dashboard / API queries cannot filter by tenant.
+- Webhook resolution at `StripeWebhookController` falls back to ERP-side DB lookup
+  (which IS what triggers Finding F's UNIQUE-on-`provider_payment_id` requirement).
+- Audit reconstruction across Stripe-side records and ERP-side records lacks a
+  bidirectional tenant key.
+
+**Why LOW**: Stripe's webhook signature verification (`Stripe\Webhook::constructEvent`)
+gates inbound traffic with a global secret. Outbound creation is gated by
+`STRIPE_SECRET_KEY` environment variable. The threat surface is "compromised ERP
+internal call path corrupts metadata," not "external attacker bypasses authentication."
+The Finding F fix (DB UNIQUE on `(provider, provider_payment_id)`) closes the
+webhook-side resolution gap regardless of metadata population.
+
+**Why deferred**: out of `api.platform-integration` scope. Stripe is a third-party
+payment processor, not a Synerivia-owned platform — the fix shape (metadata population
+audit + Stripe-API-side discipline) is orthogonal to ERP→Synerivia outbound traffic.
+Folding in would require a full audit of every `Stripe\…\::create` callsite across
+the Billing module and beyond.
+
+**Target cluster**: `api.stripe-sdk-tenant-metadata`.
+
+**Scope**:
+- Audit all Stripe SDK callsites for outbound `create()` calls (PaymentIntent, Customer,
+  Subscription, Invoice, Refund, etc.); identify which populate `metadata` with
+  `tenant_id` + `company_id`, which don't.
+- Standardize: a `StripeMetadataBuilder` helper (or Plain-Old-PHP method on
+  `StripePaymentProvider`) that pulls from `CompanyContext::requireTenantId()` +
+  `requireCompanyId()` and seeds the metadata array on every outbound call. Mandatory
+  the same way `PlatformHttpClient::addTenantHeaders()` is mandatory.
+- Optionally: backfill historical Stripe records with metadata via `Stripe\…\::update`
+  (long tail; defer if not critical).
+- Pair with Finding E (missing event-id idempotency) — same audit, same Billing
+  cluster.
+
+**Reference**: `api.platform-integration` triage at
+`docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md` (Q4).
+
+## References (Findings J/K/L, 2026-05-08)
+
+- `api.platform-integration` triage: `docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md`
+- Reference-good outbound HTTP pattern: `apps/api/app/Modules/SmartPrompts/Infrastructure/Http/RecommendationEngineHttpClient.php:84-89`
+- Platform-side auth contract: `apps/platform/app/Modules/Partners/Infrastructure/Middleware/AuthenticateApiKey.php:19`
