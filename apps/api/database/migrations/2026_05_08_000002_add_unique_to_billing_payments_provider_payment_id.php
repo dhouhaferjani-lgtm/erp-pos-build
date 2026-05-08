@@ -52,7 +52,7 @@ return new class extends Migration
         $dup = (int) ($duplicates->dup ?? 0);
 
         if ($dup !== 0) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Cannot apply UNIQUE constraint to billing_payments(provider, provider_payment_id): '
                 .$dup.' duplicate tuple(s) exist. '
                 .'Triage required: identify whether these are webhook redeliveries (Finding E missing event-id idempotency), '

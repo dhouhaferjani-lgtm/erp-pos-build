@@ -41,12 +41,12 @@ return new class extends Migration
         $dup = (int) ($duplicates->dup ?? 0);
 
         if ($dup !== 0) {
-            throw new \RuntimeException(
-                "Cannot apply UNIQUE constraint to products.platform_submission_id: "
-                .$dup." duplicate value(s) exist. "
-                ."Triage required: identify whether these are legitimate test/dev duplicates, "
-                ."real cross-tenant collisions, or legacy data, and remediate before re-running this migration. "
-                ."Query to inspect: SELECT platform_submission_id, COUNT(*) FROM products WHERE platform_submission_id IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1;"
+            throw new RuntimeException(
+                'Cannot apply UNIQUE constraint to products.platform_submission_id: '
+                .$dup.' duplicate value(s) exist. '
+                .'Triage required: identify whether these are legitimate test/dev duplicates, '
+                .'real cross-tenant collisions, or legacy data, and remediate before re-running this migration. '
+                .'Query to inspect: SELECT platform_submission_id, COUNT(*) FROM products WHERE platform_submission_id IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1;'
             );
         }
 
