@@ -11,6 +11,12 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 /**
  * Broadcast event for terminal activation notification.
  * Sends immediately without queueing (ShouldBroadcastNow).
+ *
+ * @cross-tenant-anchored broadcastOn() constructs the per-terminal PrivateChannel from
+ *   $this->event->tenantId + $this->event->companyId + $this->event->terminalId (the
+ *   wrapped TerminalActivated domain event carries them at construction). ShouldBroadcastNow
+ *   (synchronous). Architecture test BroadcastEventTenantContextTest enforces the
+ *   property-sourcing pattern.
  */
 final class TerminalActivatedBroadcast implements ShouldBroadcastNow
 {
