@@ -18,38 +18,45 @@ use Tests\TestCase;
  * Step 6 of api.broadcast-channels cluster.
  *
  * Asserts every Broadcast::channel(...) call in apps/api/routes/channels.php is
- * tenant-classified. A channel is classified iff one of:
+ * tenant-classified.
  *
- *   (a) The channel name string embeds a `{tenantId}` segment AND the closure
- *       body contains a call to a known tenant-anchored auth helper
- *       (User::canAccessChannel or User::canAccessCompanyChannel — listed in
- *       {@see self::ALLOWED_AUTH_HELPERS}). The helper itself enforces the
- *       four-gate check (tenant_id match, active status, active company
- *       membership, optional resource segment) — see User.php:215-263.
+ * Round-2 (Codex round-1 BLOCKER fix): the original test allowed an
  *
- *   (b) The channel definition is preceded by a PHPDoc tag
- *       `@cross-tenant-anchored <text>` (single-line form) with non-empty
- *       justification, OR `@cross-tenant-by-design <text>` for genuinely
- *       cross-tenant channels. Bare annotations with no justification fail
- *       this test — every annotation must name the genuine reason.
+ * @cross-tenant-anchored PHPDoc with non-empty justification to classify a
+ * tenant-named channel even when the closure body did NOT call an
+ * allowlisted auth helper. Codex mutation b proved the bypass: replacing
+ * the imports closure body with `return true;` while keeping the PHPDoc
+ * still passed the test. The classification is now tightened so that
  *
- *   (c) The channel name string is listed in
- *       `tests/Architecture/fixtures/broadcast-channel-deferrals.json` under
- *       the `channels` key. The fixture is read fresh on every test
- *       invocation (NOT cached at class-load) so a parallel cluster mutating
- *       the file mid-run is picked up after `git pull --ff-only`. Currently
- *       empty.
+ *   - tenant-named channels (channel name embeds `{tenantId}`) MUST invoke
+ *     an allowlisted auth helper on the closure's first parameter (the
+ *     authenticated `User`). The PHPDoc annotation is documentation; it
+ *     does NOT bypass the helper-call requirement.
  *
- * Channels are closures, not classes, so this test uses PhpParser to walk the
- * routes/channels.php AST rather than reflection. The static-analysis approach
- * mirrors the WebhookControllerTenantContextTest /
- * QueueJobTenantContextTest / ConsoleCommandTenantContextTest pattern from
- * earlier clusters.
+ *   - non-tenant-named channels (no `{tenantId}` segment) MUST carry
+ *     `@cross-tenant-by-design <non-empty justification>`. The
+ *     `@cross-tenant-anchored` annotation alone is no longer sufficient
+ *     to classify a non-tenant-named channel — it pairs with the helper-call
+ *     requirement on tenant-named channels but is not a standalone classifier.
  *
- * Dynamic channel names (e.g. Broadcast::channel($variable, ...)) are flagged
- * as a violation because they cannot be statically classified. If a future
- * channel definition needs a dynamic name, it must be wrapped in a constant
- * or annotated explicitly via the deferrals fixture. (None exist today.)
+ *   - dynamic channel names (Broadcast::channel($var, ...)) cannot be
+ *     statically classified and fail with an explicit message.
+ *
+ *   - the deferrals fixture (`tests/Architecture/fixtures/broadcast-channel-deferrals.json`)
+ *     can list known-exception channel-name strings; bare list entries are
+ *     tolerated for cross-cluster precedent.
+ *
+ * Round-2 also tightens `closureCallsAllowedAuthHelper()` to require that
+ * the helper-call's receiver be the closure's first parameter variable —
+ * a stray `$randomThing->canAccessChannel(...)` (e.g. on a different
+ * variable) no longer satisfies the invariant (Codex round-1
+ * NICE-TO-HAVE #1).
+ *
+ * The {@see test_classification_logic_catches_known_bypass_shapes} self-test
+ * pins each known bypass shape to its expected fail-mode via fixture files
+ * under `tests/Architecture/BroadcastFixtures/`. If a future refactor
+ * weakens any rule, the self-test catches the regression before the
+ * production routes/channels.php silently loses coverage.
  *
  * Channels are read from the canonical `routes/channels.php` location only.
  * If a future Laravel upgrade splits broadcast channel registration across
@@ -59,7 +66,7 @@ use Tests\TestCase;
 final class BroadcastChannelTenantContextTest extends TestCase
 {
     /**
-     * Files scanned for Broadcast::channel(...) calls.
+     * Files scanned for Broadcast::channel(...) calls in production.
      *
      * @var list<string>
      */
@@ -68,15 +75,12 @@ final class BroadcastChannelTenantContextTest extends TestCase
     ];
 
     /**
-     * Auth-helper method names recognized as tenant-anchored. A closure body
-     * containing a call to one of these (e.g. `$user->canAccessChannel(...)`)
-     * is treated as classified-by-helper.
-     *
-     * The helpers themselves live on App\Modules\Identity\Domain\User and
-     * each performs the same four-gate check: tenant_id match, isActive(),
-     * active UserCompanyMembership in the target company, optional resource
-     * segment. If a future helper is added, list it here AND ensure the
-     * helper carries the same four-gate guarantee.
+     * Auth-helper method names recognized as tenant-anchored. The helpers
+     * live on App\Modules\Identity\Domain\User and each performs the same
+     * four-gate check: tenant_id match, isActive(), active
+     * UserCompanyMembership in the target company, optional resource
+     * segment. If a future helper is added, list it here AND ensure it
+     * carries the same four-gate guarantee.
      *
      * @var list<string>
      */
@@ -85,37 +89,200 @@ final class BroadcastChannelTenantContextTest extends TestCase
         'canAccessCompanyChannel',
     ];
 
-    public function test_every_broadcast_channel_is_tenant_classified(): void
+    /**
+     * Floor for the production scan vacuous-pass guard. The cluster has 5
+     * channel definitions today; a discovery regression that drops below
+     * this is a test-infrastructure bug, not a green signal.
+     */
+    private const PRODUCTION_CHANNEL_FLOOR = 5;
+
+    public function test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified(): void
     {
         $deferrals = $this->loadDeferralsFresh();
-        $channels = $this->discoverBroadcastChannelCalls();
+        $absPaths = [];
+        foreach (self::CHANNEL_FILES as $relPath) {
+            $absPaths[] = base_path($relPath);
+        }
 
-        // Guard against vacuous-pass: if discovery finds zero channels, fail
-        // loudly. The 5 known cluster entries are the floor; any drop to 0
-        // is a test-infrastructure bug, not a green signal.
+        $entries = $this->discoverBroadcastChannelCalls($absPaths);
+
         $this->assertGreaterThanOrEqual(
-            5,
-            count($channels),
-            'Broadcast-channel discovery returned fewer than 5 calls. Expected at least the 5 cluster entries:'
+            self::PRODUCTION_CHANNEL_FLOOR,
+            count($entries),
+            'Broadcast-channel discovery returned fewer than '.self::PRODUCTION_CHANNEL_FLOOR
+            .' calls in production. Expected at least the cluster entries:'
             ."\n  - tenant.{tenantId}.company.{companyId}.product.{productId}"
             ."\n  - tenant.{tenantId}.company.{companyId}.imports"
             ."\n  - tenant.{tenantId}.company.{companyId}.partners"
             ."\n  - tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId}"
             ."\n  - tenant.{tenantId}.company.{companyId}.pos.kitchen"
             ."\n\nIf the channel-files glob is correct, confirm routes/channels.php exists."
-            .' Got: '.count($channels).' call(s).',
+            .' Got: '.count($entries).' call(s).',
         );
 
-        $unclassified = [];
-        $bareAnnotations = [];
+        $violations = $this->classifyEntries($entries, $deferrals);
+
+        $this->assertEmpty(
+            $violations['dynamic_names'],
+            "Found Broadcast::channel(...) call(s) with a non-string-literal name expression:\n  - "
+            .implode("\n  - ", $violations['dynamic_names'])
+            ."\n\nDynamic channel names cannot be statically classified."
+            .' Either: (1) extract the name to a string literal and inline it,'
+            .' (2) annotate the call with `@cross-tenant-by-design <justification>` AND'
+            .' add the channel-name pattern to the deferrals fixture, or'
+            .' (3) list the call site in tests/Architecture/fixtures/broadcast-channel-deferrals.json.',
+        );
+
+        $this->assertEmpty(
+            $violations['tenant_named_without_helper'],
+            "Found tenant-named Broadcast::channel(...) call(s) whose closure does NOT invoke an allowlisted auth helper on the user parameter:\n  - "
+            .implode("\n  - ", $violations['tenant_named_without_helper'])
+            ."\n\nTenant-named channels (channel name embeds `{tenantId}`) MUST invoke an"
+            .' allowlisted auth helper ('.implode(', ', self::ALLOWED_AUTH_HELPERS).')'
+            ." on the closure's first parameter (the authenticated User)."
+            .' A `@cross-tenant-anchored` PHPDoc is documentation only — it does NOT'
+            .' bypass the helper-call requirement (Codex round-1 BLOCKER, mutation b).'
+            ."\nSee docs/superpowers/audits/2026-05-08-api-broadcast-channels-triage.md.",
+        );
+
+        $this->assertEmpty(
+            $violations['non_tenant_without_by_design'],
+            "Found non-tenant-named Broadcast::channel(...) call(s) without a `@cross-tenant-by-design` annotation:\n  - "
+            .implode("\n  - ", $violations['non_tenant_without_by_design'])
+            ."\n\nA channel name that does NOT include `{tenantId}` must be classified by an"
+            .' explicit `@cross-tenant-by-design <non-empty justification>` PHPDoc'
+            .' OR be listed in the deferrals fixture. The'
+            .' `@cross-tenant-anchored` annotation is reserved for tenant-named'
+            .' channels (where it documents WHY the helper-call gate is sufficient)'
+            .' and is NOT a standalone classifier for non-tenant-named channels.',
+        );
+
+        $this->assertEmpty(
+            $violations['bare_annotations'],
+            "Found Broadcast::channel(...) call(s) with bare `@cross-tenant-by-design` (no justification text):\n  - "
+            .implode("\n  - ", $violations['bare_annotations'])
+            ."\n\nThe annotation MUST include a non-empty justification on the same line.",
+        );
+    }
+
+    /**
+     * Self-test pinning each known bypass shape to its expected fail-mode.
+     * Mirrors {@see WebhookControllerTenantContextTest::test_stub_inspector_catches_known_bypass_shapes}.
+     *
+     * Each fixture file under tests/Architecture/Fixtures/Broadcast/ exercises
+     * a specific classification edge-case. If a future refactor weakens a
+     * rule, the relevant fixture stops triggering its expected violation
+     * and this test fails before the production scan silently loses coverage.
+     */
+    public function test_classification_logic_catches_known_bypass_shapes(): void
+    {
+        $fixtureRoot = __DIR__.'/BroadcastFixtures';
+
+        // Positive control: clean fixture passes with zero violations.
+        $cleanViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-clean.php']),
+            [],
+        );
+        $this->assertSame(
+            [],
+            array_filter($cleanViolations, fn (array $v) => count($v) > 0),
+            'Clean fixture should produce zero violations. Got: '
+            .json_encode($cleanViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape (Codex round-1 BLOCKER): tenant-named channel with
+        // @cross-tenant-anchored PHPDoc but body is `return true;`. Must
+        // fail under tenant_named_without_helper.
+        $bypassViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-anchored-bypass.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $bypassViolations['tenant_named_without_helper'],
+            'Anchored-bypass fixture (return true; body, anchored docblock) should fail tenant_named_without_helper. Got: '
+            .json_encode($bypassViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape (Codex round-1 NICE-TO-HAVE #1): tenant-named channel
+        // where the helper-method-name appears in the body but on a stray
+        // variable, not the closure's first parameter. Must fail under
+        // tenant_named_without_helper because the receiver-binding check
+        // rejects the stray call.
+        $strayViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-stray-helper.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $strayViolations['tenant_named_without_helper'],
+            'Stray-helper fixture (canAccessChannel called on a non-user variable) should fail tenant_named_without_helper. Got: '
+            .json_encode($strayViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape: non-tenant-named channel with bare @cross-tenant-by-design
+        // (no justification). Must fail under bare_annotations AND
+        // non_tenant_without_by_design (the bare annotation does not satisfy
+        // the by-design requirement, so the non_tenant violation also fires).
+        $bareViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-bare-annotation.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $bareViolations['bare_annotations'],
+            'Bare-annotation fixture should fail bare_annotations. Got: '
+            .json_encode($bareViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape: dynamic channel name. Must fail under dynamic_names.
+        $dynamicViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-dynamic-name.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $dynamicViolations['dynamic_names'],
+            'Dynamic-name fixture should fail dynamic_names. Got: '
+            .json_encode($dynamicViolations, JSON_PRETTY_PRINT),
+        );
+
+        // Bypass shape: non-tenant-named channel with no annotation at all.
+        // Must fail under non_tenant_without_by_design.
+        $unannotatedViolations = $this->classifyEntries(
+            $this->discoverBroadcastChannelCalls([$fixtureRoot.'/sample-channel-routes-non-tenant-unannotated.php']),
+            [],
+        );
+        $this->assertNotEmpty(
+            $unannotatedViolations['non_tenant_without_by_design'],
+            'Non-tenant-unannotated fixture should fail non_tenant_without_by_design. Got: '
+            .json_encode($unannotatedViolations, JSON_PRETTY_PRINT),
+        );
+    }
+
+    /**
+     * Classify a discovered-entries list into the four violation buckets.
+     * Pure function — given the same entries + deferrals, produces the same
+     * verdict. Used by both the production scan and the self-test.
+     *
+     * @param  list<array{name: ?string, closure: ?Closure, docblock: ?string, file: string, line: int}>  $entries
+     * @param  list<string>  $deferrals
+     * @return array{
+     *     dynamic_names: list<string>,
+     *     tenant_named_without_helper: list<string>,
+     *     non_tenant_without_by_design: list<string>,
+     *     bare_annotations: list<string>,
+     * }
+     */
+    private function classifyEntries(array $entries, array $deferrals): array
+    {
         $dynamicNames = [];
+        $tenantNamedWithoutHelper = [];
+        $nonTenantWithoutByDesign = [];
+        $bareAnnotations = [];
 
-        foreach ($channels as $entry) {
+        foreach ($entries as $entry) {
             ['name' => $name, 'closure' => $closure, 'docblock' => $docblock, 'file' => $file, 'line' => $line] = $entry;
+            $location = "{$file}:{$line}";
 
-            // Dynamic channel names cannot be statically classified.
             if ($name === null) {
-                $dynamicNames[] = "{$file}:{$line}";
+                $dynamicNames[] = $location;
 
                 continue;
             }
@@ -124,94 +291,68 @@ final class BroadcastChannelTenantContextTest extends TestCase
                 continue;
             }
 
-            // (a) Channel name embeds {tenantId} AND closure body contains an
-            // allowed auth-helper call.
             $hasTenantSegment = str_contains($name, '{tenantId}');
-            $callsAllowedHelper = $closure !== null && $this->closureCallsAllowedAuthHelper($closure);
 
-            if ($hasTenantSegment && $callsAllowedHelper) {
+            if ($hasTenantSegment) {
+                // Tenant-named channels: the closure body MUST invoke an
+                // allowlisted helper on the closure's first parameter.
+                // Annotation is documentation-only; it does NOT bypass.
+                if ($closure === null || ! $this->closureCallsAllowedAuthHelperOnFirstParam($closure)) {
+                    $tenantNamedWithoutHelper[] = "{$location} ({$name})";
+                }
+
                 continue;
             }
 
-            // (b) PHPDoc with @cross-tenant-anchored or @cross-tenant-by-design.
-            if ($docblock !== null) {
-                $matchedAnchored = preg_match(
-                    '/@cross-tenant-(?:anchored|by-design)\b[ \t]*([^\r\n]*)/m',
-                    $docblock,
-                    $matches,
-                );
+            // Non-tenant-named channels: must carry @cross-tenant-by-design
+            // with non-empty justification.
+            if ($docblock === null) {
+                $nonTenantWithoutByDesign[] = "{$location} ({$name})";
 
-                if ($matchedAnchored === 1) {
-                    $justification = trim($matches[1]);
-                    if ($justification === '') {
-                        $bareAnnotations[] = "{$file}:{$line} ({$name})";
-
-                        continue;
-                    }
-
-                    continue;
-                }
+                continue;
             }
 
-            $unclassified[] = "{$file}:{$line} ({$name})";
+            if (preg_match(
+                '/@cross-tenant-by-design\b[ \t]*([^\r\n]*)/m',
+                $docblock,
+                $matches,
+            ) !== 1) {
+                $nonTenantWithoutByDesign[] = "{$location} ({$name})";
+
+                continue;
+            }
+
+            $justification = trim($matches[1]);
+            if ($justification === '') {
+                $bareAnnotations[] = "{$location} ({$name})";
+
+                continue;
+            }
         }
 
-        $this->assertEmpty(
-            $dynamicNames,
-            "Found Broadcast::channel(...) call(s) with a non-string-literal name expression:\n  - "
-            .implode("\n  - ", $dynamicNames)
-            ."\n\nDynamic channel names cannot be statically classified."
-            .' Either: (1) extract the name to a string literal and inline it,'
-            .' (2) add a `@cross-tenant-anchored <justification>` PHPDoc above'
-            .' the call documenting why the dynamic name is safe, or'
-            .' (3) list the call site in tests/Architecture/fixtures/broadcast-channel-deferrals.json.',
-        );
-
-        $this->assertEmpty(
-            $unclassified,
-            "Found Broadcast::channel(...) call(s) with no tenant-context classification:\n  - "
-            .implode("\n  - ", $unclassified)
-            ."\n\nEach Broadcast::channel(...) call MUST EITHER:"
-            ."\n  (a) Use a channel name pattern that embeds a `{tenantId}` segment AND"
-            .' invoke a known tenant-anchored auth helper in the closure body'
-            .' (allowlist: '.implode(', ', self::ALLOWED_AUTH_HELPERS).'),'
-            ."\n  (b) Carry a preceding PHPDoc with `@cross-tenant-anchored <non-empty justification>`"
-            .' (or `@cross-tenant-by-design` for genuinely cross-tenant channels),'
-            ."\n  (c) Be listed in tests/Architecture/fixtures/broadcast-channel-deferrals.json."
-            ."\n\nSee docs/superpowers/audits/2026-05-08-api-broadcast-channels-triage.md.",
-        );
-
-        $this->assertEmpty(
-            $bareAnnotations,
-            "Found Broadcast::channel(...) call(s) with bare `@cross-tenant-anchored` (no justification text):\n  - "
-            .implode("\n  - ", $bareAnnotations)
-            ."\n\nThe annotation MUST include a non-empty justification on the same line."
-            ."\nExample: `@cross-tenant-anchored Channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel.`",
-        );
+        return [
+            'dynamic_names' => $dynamicNames,
+            'tenant_named_without_helper' => $tenantNamedWithoutHelper,
+            'non_tenant_without_by_design' => $nonTenantWithoutByDesign,
+            'bare_annotations' => $bareAnnotations,
+        ];
     }
 
     /**
-     * Walk every CHANNEL_FILES file and return one entry per
-     * Broadcast::channel(...) static call. Each entry is:
+     * Walk the given absolute file paths and return one entry per
+     * Broadcast::channel(...) static call.
      *
-     *   - name:     the channel name as a string-literal, or null if dynamic
-     *   - closure:  the Closure node passed as the second argument, or null
-     *               if not a closure (also treated as dynamic)
-     *   - docblock: the preceding PHPDoc text, or null if absent
-     *   - file:     the file path (relative to base_path())
-     *   - line:     the start line of the Broadcast::channel(...) call
-     *
+     * @param  list<string>  $absPaths
      * @return list<array{name: ?string, closure: ?Closure, docblock: ?string, file: string, line: int}>
      */
-    private function discoverBroadcastChannelCalls(): array
+    private function discoverBroadcastChannelCalls(array $absPaths): array
     {
         $parser = (new ParserFactory)->createForNewestSupportedVersion();
         $finder = new NodeFinder;
 
         $entries = [];
 
-        foreach (self::CHANNEL_FILES as $relPath) {
-            $absPath = base_path($relPath);
+        foreach ($absPaths as $absPath) {
             if (! is_file($absPath)) {
                 continue;
             }
@@ -222,14 +363,21 @@ final class BroadcastChannelTenantContextTest extends TestCase
                 continue;
             }
 
-            // Walk top-level statements so we can pair each Broadcast::channel
-            // call with the *immediately preceding* docblock on the same
-            // expression statement (PHPDoc binds to the next statement in
-            // PhpParser's representation).
-            $this->walkStatementsForBroadcastCalls($ast, $relPath, $finder, $entries);
+            $relPath = $this->relativizePath($absPath);
+            $this->walkStatementsForBroadcastCalls(array_values($ast), $relPath, $finder, $entries);
         }
 
         return $entries;
+    }
+
+    private function relativizePath(string $absPath): string
+    {
+        $base = base_path().'/';
+        if (str_starts_with($absPath, $base)) {
+            return substr($absPath, strlen($base));
+        }
+
+        return $absPath;
     }
 
     /**
@@ -269,14 +417,21 @@ final class BroadcastChannelTenantContextTest extends TestCase
                     continue;
                 }
 
-                $nameArg = $call->args[0]->value;
+                $firstArg = $call->args[0];
+                if (! $firstArg instanceof Node\Arg) {
+                    continue;
+                }
+                $nameArg = $firstArg->value;
                 $name = $nameArg instanceof Node\Scalar\String_ ? $nameArg->value : null;
 
                 $closure = null;
                 if (count($call->args) >= 2) {
-                    $closureArg = $call->args[1]->value;
-                    if ($closureArg instanceof Closure) {
-                        $closure = $closureArg;
+                    $secondArg = $call->args[1];
+                    if ($secondArg instanceof Node\Arg) {
+                        $closureArg = $secondArg->value;
+                        if ($closureArg instanceof Closure) {
+                            $closure = $closureArg;
+                        }
                     }
                 }
 
@@ -294,8 +449,9 @@ final class BroadcastChannelTenantContextTest extends TestCase
             foreach ($stmt->getSubNodeNames() as $subName) {
                 $sub = $stmt->{$subName};
                 if (is_array($sub) && $this->looksLikeStatementList($sub)) {
-                    /** @var list<Stmt> $sub */
-                    $this->walkStatementsForBroadcastCalls($sub, $relPath, $finder, $entries);
+                    /** @var list<Stmt> $subList */
+                    $subList = array_values($sub);
+                    $this->walkStatementsForBroadcastCalls($subList, $relPath, $finder, $entries);
                 }
             }
         }
@@ -339,11 +495,29 @@ final class BroadcastChannelTenantContextTest extends TestCase
 
     /**
      * Return true iff the closure body contains a call to one of the
-     * allowed auth-helpers via $user->method(...) or
-     * $someVar->method(...) where method is in the allowlist.
+     * allowed auth-helpers AND the call's receiver is the closure's first
+     * parameter variable (the authenticated `User`). A stray
+     * `$randomThing->canAccessChannel(...)` is rejected — round-1
+     * NICE-TO-HAVE #1.
+     *
+     * If the closure has zero parameters, the helper-call shape is
+     * trivially unsatisfiable: the test fails such a closure.
      */
-    private function closureCallsAllowedAuthHelper(Closure $closure): bool
+    private function closureCallsAllowedAuthHelperOnFirstParam(Closure $closure): bool
     {
+        if (count($closure->params) === 0) {
+            return false;
+        }
+
+        $firstParam = $closure->params[0];
+        if (! $firstParam->var instanceof Expr\Variable) {
+            return false;
+        }
+        $firstParamName = $firstParam->var->name;
+        if (! is_string($firstParamName)) {
+            return false;
+        }
+
         $finder = new NodeFinder;
 
         $methodCalls = $finder->findInstanceOf($closure, Expr\MethodCall::class);
@@ -353,9 +527,18 @@ final class BroadcastChannelTenantContextTest extends TestCase
             if (! $call->name instanceof Node\Identifier) {
                 continue;
             }
-            if (in_array($call->name->name, self::ALLOWED_AUTH_HELPERS, true)) {
-                return true;
+            if (! in_array($call->name->name, self::ALLOWED_AUTH_HELPERS, true)) {
+                continue;
             }
+            // Receiver must be the first-param variable.
+            if (! $call->var instanceof Expr\Variable) {
+                continue;
+            }
+            if ($call->var->name !== $firstParamName) {
+                continue;
+            }
+
+            return true;
         }
 
         return false;
