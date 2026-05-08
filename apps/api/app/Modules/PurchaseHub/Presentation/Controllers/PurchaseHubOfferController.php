@@ -16,7 +16,7 @@ final class PurchaseHubOfferController extends Controller
         private readonly PurchaseHubService $service,
     ) {}
 
-    #[CrossTenantRoute(reason: 'PurchaseHub outbound integration: PurchaseHubService::getOffers() makes a tenant-tagged HTTP GET to the upstream PurchaseHub platform via PlatformHttpClient (which auto-stamps X-Tenant-Id + X-Company-Id from CompanyContext per the locked api.platform-integration cluster). Response is tenant-filtered upstream; controller is a thin pass-through with cache.')]
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — PurchaseHubService::getOffers() caches under a GLOBAL key `purchase_hub:offers` (TTL 300s). The fresh-fetch path tenant-tags via PlatformHttpClient (X-Tenant-Id + X-Company-Id from CompanyContext per locked api.platform-integration cluster), but cache hits return another tenant\'s previously-cached payload without re-stamping headers. Tracked for future api.purchase-hub cluster fix (cache key needs CompanyContext::requireTenantId() / requireCompanyId() suffix). Until then, this attribute documents the cache-leak gap.')]
     public function index(Request $request): JsonResponse
     {
         $data = $this->service->getOffers();

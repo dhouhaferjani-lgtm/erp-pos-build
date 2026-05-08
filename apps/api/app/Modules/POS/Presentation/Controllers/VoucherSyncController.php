@@ -10,7 +10,6 @@ use App\Modules\POS\Application\Services\ReceiptQrIndexSyncService;
 use App\Modules\POS\Application\Services\VoucherLedgerPushService;
 use App\Modules\POS\Application\Services\VoucherSyncService;
 use App\Modules\POS\Presentation\Requests\VoucherLedgerSyncRequest;
-use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -44,7 +43,6 @@ final class VoucherSyncController extends Controller
      * Returns vouchers redeemable at the requesting terminal, with
      * `updated_since` cursor support and a 100-row page cap.
      */
-    #[CrossTenantRoute(reason: 'Terminal-scoped POS sync: terminal_id is the scoping anchor (extracted from request query via requireTerminalId helper, validated at the service-layer SQL — `single-terminal scope is enforced at the SQL layer` per class docblock). Gate::authorize(\'pos.operate_terminal\') gates the route. Tenant identity flows through the terminal\'s tenant_id column at the SQL layer.')]
     public function pullVouchers(Request $request): JsonResponse
     {
         Gate::authorize('pos.operate_terminal');
@@ -72,7 +70,6 @@ final class VoucherSyncController extends Controller
      * terminal. Cursor: `created_at > updated_since` (the ledger is
      * append-only — no `updated_at` column).
      */
-    #[CrossTenantRoute(reason: 'Terminal-scoped POS sync: same shape as pullVouchers — terminal_id from query is the scoping anchor enforced at the SQL layer; ledger rows filtered to vouchers redeemable at the requesting terminal.')]
     public function pullVoucherLedger(Request $request): JsonResponse
     {
         Gate::authorize('pos.operate_terminal');
@@ -98,7 +95,6 @@ final class VoucherSyncController extends Controller
      * Returns one row per fiscalised receipt at the requesting terminal,
      * with a server-signed QR token. Pending-seal receipts are excluded.
      */
-    #[CrossTenantRoute(reason: 'Terminal-scoped POS sync: same shape as pullVouchers — terminal_id from query is the scoping anchor; QR-index rows filtered to fiscalised receipts at the requesting terminal.')]
     public function pullReceiptQrIndex(Request $request): JsonResponse
     {
         Gate::authorize('pos.operate_terminal');
@@ -125,7 +121,6 @@ final class VoucherSyncController extends Controller
      * processed independently — failures don't abort the loop. Idempotent
      * on the client-supplied UUID `id` field.
      */
-    #[CrossTenantRoute(reason: 'Terminal-scoped POS sync: each entry carries terminal_id (validated at the push handler — `the push handler still enforces the match` per docblock). VoucherLedgerPushService::push validates terminal_id against the voucher\'s redeemable_at_terminal_id at the SQL layer; entries with mismatched terminal are rejected. Idempotent on client-supplied UUID; gated by Gate::authorize(\'pos.operate_terminal\').')]
     public function pushVoucherLedger(VoucherLedgerSyncRequest $request): JsonResponse
     {
         Gate::authorize('pos.operate_terminal');
