@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T14:35:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 5101f7e95679f224ce4c620994e703cadd767a46daa4f159d5ade5ab37af40ee
+  yaml_sha256: 4d18275da26664664a2663dab193d3bdec11c67738e5338b23019c183087700a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -543,7 +543,7 @@ clusters:
     surface: api
     owner: null
     required_owner: claude
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -725,7 +725,7 @@ clusters:
     surface: web
     owner: claude
     required_owner: claude
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.super-admin-context
     blocked_by_external: null
@@ -26273,15 +26273,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T15:20:13Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:15Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:35Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26464,6 +26464,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:37Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b7ca67513f043bc59d113669bcfd87f7fa170b9918eebc738120ead1ea1e9fbb
+        new_yaml_sha256: 11c7f5a7fc765bfb6243c2659b48084710541ab2f3258ccb8865452f06273bd0
+        target_ids:
+          - api.unmapped.020
+          - api.super-admin-context
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.unmapped.021
     stable_key: 'sha256:8d0f0284f2fbbd660fd9f6f59f885310f207d87824ec24e28ef18ba00b230b4d'
@@ -26481,15 +26498,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T15:20:17Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:17Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26672,6 +26689,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:41Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 11c7f5a7fc765bfb6243c2659b48084710541ab2f3258ccb8865452f06273bd0
+        new_yaml_sha256: 65fe5c6510e224903db1fda4295303cee7fec99f55a8a09b2b01ac79529580c9
+        target_ids:
+          - api.unmapped.021
+          - api.super-admin-context
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.unmapped.022
     stable_key: 'sha256:46ddfe308a4e8cc5582911ac6401489788f49ccbc93b330859fb27c9404e53aa'
@@ -26689,15 +26723,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T15:20:21Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:18Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26880,6 +26914,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 65fe5c6510e224903db1fda4295303cee7fec99f55a8a09b2b01ac79529580c9
+        new_yaml_sha256: 6741e886252ada4c6d5da526cb1aa63a6ec8acde110d54c615eb888f9c385165
+        target_ids:
+          - api.unmapped.022
+          - api.super-admin-context
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.unmapped.023
     stable_key: 'sha256:d1fe2d63d248bb26e65342495e3dd8a09e6d2a407d6cd880224381c89b0f9e88'
@@ -26897,15 +26948,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T15:20:26Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:19Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -27088,6 +27139,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:44Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6741e886252ada4c6d5da526cb1aa63a6ec8acde110d54c615eb888f9c385165
+        new_yaml_sha256: 8d2b00bb1465022676976ee3cafafd31663a886431eb26b5c1d5d89e1df2795b
+        target_ids:
+          - api.unmapped.023
+          - api.super-admin-context
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.document.041
     stable_key: 'sha256:ff140d8ccd9402107a969e8b0a913ee3c1bd7076b19ed4599d72e7c23d5649d5'
@@ -39279,15 +39347,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T14:35:30Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:14Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:29Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -39452,6 +39520,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:31Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5101f7e95679f224ce4c620994e703cadd767a46daa4f159d5ade5ab37af40ee
+        new_yaml_sha256: b7ca67513f043bc59d113669bcfd87f7fa170b9918eebc738120ead1ea1e9fbb
+        target_ids:
+          - api.super-admin-context.001
+          - api.super-admin-context
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: web.super-admin-frontend.001
     stable_key: 'manual:web.super-admin-frontend:querykey-namespace-arch-test'
@@ -39469,15 +39554,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T14:35:22Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T17:16:21Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round3-review.md
-      review_commit: 28b8de47
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T19:18:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+      review_commit: e51d3951
     fix_commit: e51d3951
     regression_test: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts::queryKey namespace invariant (web.super-admin-frontend) > every queryKey literal is correctly namespaced by file location'
     blocked_reason: null
@@ -39642,6 +39727,23 @@ callsites:
         review_file: null
         review_commit: null
         note: "unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-3 BLOCKER was a logical defect in my round-3 prompt mutation (a): expected RED path is impossible (attribute satisfies branch a; removing deferral doesn't unclassify a method that has the attribute). Mutation (c) is the correct defer-only enforcement test and passed. No source changes; round-4 prompt acknowledges the checklist defect and asks Codex to re-verify against a corrected mutation suite."
+      -
+        at: '2026-05-08T19:18:45Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8d2b00bb1465022676976ee3cafafd31663a886431eb26b5c1d5d89e1df2795b
+        new_yaml_sha256: 4d18275da26664664a2663dab193d3bdec11c67738e5338b23019c183087700a
+        target_ids:
+          - web.super-admin-frontend.001
+          - web.super-admin-frontend
+        from_status: under_review
+        to_status: fixed
+        commit: 446b0f64a4cdad51e7fab316d89af4e409740190
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round4-review-e51d3951.md
+        review_commit: e51d3951
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29
