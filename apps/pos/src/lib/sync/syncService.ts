@@ -64,6 +64,7 @@ import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
+import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 
 interface SyncReceiptPayloadPayment {
   payment_method_id: string;
@@ -239,8 +240,23 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       await updateReceiptStatus(db, receipt.id, 'syncing');
 
       const payload = receiptToPayload(receipt);
-      // Send as batch-of-one so the response shape is always { results: [...] }
-      const response = await apiPost<SyncReceiptBatchResponse>('/pos/receipts/sync', { receipts: [payload] });
+      // Send as batch-of-one so the response shape is always { results: [...] }.
+      // T0.3: 30s ceiling (vs the 10s default) — the receipt sync path runs
+      // server-side fiscal-hash verification, voucher resolution, and ledger
+      // writes; the longer ceiling matches that worst-case while still
+      // unblocking the JS caller if the response is dropped on the wire.
+      // On FetchTimeoutError, the catch's dedicated `instanceof
+      // FetchTimeoutError` branch reverts the receipt to 'pending' (NOT
+      // 'failed') and does NOT increment retry_count — timeouts mean
+      // "unknown sync state", not "this receipt is poisoned". The next
+      // sync tick re-pushes via T0.2's stable idempotency key; the
+      // server-side dedup-on-disk returns 'duplicate' (treated as success)
+      // or accepts fresh.
+      const response = await apiPost<SyncReceiptBatchResponse>(
+        '/pos/receipts/sync',
+        { receipts: [payload] },
+        { timeoutMs: 30_000 },
+      );
 
       const resultItem = response.results.find((r) => r.idempotency_key === receipt.idempotency_key);
       if (!resultItem) {
@@ -306,6 +322,40 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         failed++;
       }
     } catch (error) {
+      // T0.3 round-1 Codex fix: distinguish read-timeout from hard failure.
+      // FetchTimeoutError = "unknown sync state" — the server may have
+      // committed the receipt and the response was just dropped on the wire.
+      // Marking it 'failed' + incrementing retry_count would (a) saturate
+      // the dead-letter cap at 5 attempts even when the server has been
+      // accepting the POSTs, and (b) push a misleading "failed" banner to
+      // the cashier. Instead: revert to 'pending' so the next sync tick
+      // re-pushes the same payload with T0.2's stable idempotency key —
+      // the server-side dedup-on-disk will return the existing receipt as
+      // a 'duplicate' (treated as success at line 270 above), or accept it
+      // fresh if it never landed. Either way, no retry-count bump.
+      if (error instanceof FetchTimeoutError) {
+        console.warn('[POS][sync][pushOfflineReceipts] receipt push timed out — leaving pending for next tick', {
+          ...serializeErrorForLog(error),
+          // FetchTimeoutError keeps message opaque ('Request timed out');
+          // expose the diagnostic url/timeoutMs/method via typed fields so
+          // devtools can see which endpoint stalled. Safe for crash reports
+          // (no cashier banner reads these).
+          url: error.url,
+          timeoutMs: error.timeoutMs,
+          method: error.method,
+          receiptId: receipt.id,
+          receiptNumber: receipt.receipt_number,
+          retryCount: receipt.retry_count,
+          idempotencyKey: receipt.idempotency_key,
+        });
+        await updateReceiptStatus(db, receipt.id, 'pending');
+        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', 'timeout — pending for retry');
+        // Do NOT increment retry_count, do NOT push to errors[], do NOT
+        // mark this loop iteration as a failure. The receipt is in a known
+        // state (pending) and the next sync tick will pick it up.
+        continue;
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
         ...serializeErrorForLog(error),

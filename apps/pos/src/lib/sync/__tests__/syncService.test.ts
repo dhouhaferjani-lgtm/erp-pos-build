@@ -267,6 +267,53 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
     });
 
+    it('T0.3: FetchTimeoutError reverts the receipt to pending without incrementing retry_count', async () => {
+      // T0.3 round-1 Codex BLOCKER fix: a read-timeout means "unknown sync
+      // state" (server may have committed). The push loop must NOT mark
+      // the receipt as failed or bump retry_count — those bumps drive the
+      // dead-letter path at retry_count >= MAX_SYNC_RETRIES (5), which
+      // would saturate even when the server has been accepting the POSTs
+      // and only the responses are being dropped on the wire. The next
+      // sync tick re-pushes with T0.2's stable idempotency key; the
+      // server-side dedup-on-disk returns 'duplicate' (treated as success
+      // upstream) or accepts fresh.
+      const { FetchTimeoutError } = await import('@/lib/fetchWithTimeout');
+
+      const receipt = makeOfflineReceipt({
+        id: 'r-timeout',
+        idempotency_key: 'idem-timeout',
+        hash_sequence: 1,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockRejectedValueOnce(
+        new FetchTimeoutError('https://x.test/pos/receipts/sync', 30_000, 'POST'),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      // Loop result: NOT counted as failed (no banner / error to user).
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.chainBreak).toBe(false);
+
+      // Receipt status: 'pending' (not 'failed'). Last call to
+      // updateReceiptStatus for this receipt should be 'pending'.
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-timeout',
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+      const lastStatus = statusCalls[statusCalls.length - 1]![2];
+      expect(lastStatus).toBe('pending');
+
+      // Critical invariant: retry_count NOT bumped (this is what protects
+      // the dead-letter cap from saturating on transient timeouts).
+      const incrementCallsForReceipt = vi.mocked(incrementRetryCount).mock.calls.filter(
+        (c) => c[1] === 'r-timeout',
+      );
+      expect(incrementCallsForReceipt).toHaveLength(0);
+    });
+
     it('Codex review B3: receiptToPayload preserves method_code, instrument_type, and instrument_serial from payments_json', async () => {
       const voucherReceipt = makeOfflineReceipt({
         id: 'r-voucher',
