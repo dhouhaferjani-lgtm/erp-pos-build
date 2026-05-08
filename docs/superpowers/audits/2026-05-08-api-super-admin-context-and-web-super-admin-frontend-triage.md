@@ -69,6 +69,36 @@ The new web architecture test enforces this universal.
 
 Discovery method: read every controller class under `app/Http/Controllers/Api/Admin/`, the admin-route handlers referenced from `routes/api.php` lines 35-116, plus the public-route handlers (Country, health-check `MonitoringController::ping`). Each method below operates fleet-wide, pre-auth, or on the actor's own session — none establishes a tenant context for DB reads, so each requires the attribute.
 
+### Pre-existing scanner-detected callsites (4 rows) — covered by the same fix
+
+The cluster `api.super-admin-context` already contains 4 callsites at HEAD that
+were originally detected by `php_ast_find` against `api.unmapped` and reassigned
+to this cluster via `sweep:inventory:reassign-unmapped` (one-shot at commit
+`b23e09db`). Their identities are preserved at `api.unmapped.020-023` even
+though `cluster_id` is now `api.super-admin-context`.
+
+These are 4 of the 14 `AdminBillingController` methods triaged in table C
+below as "Fleet-wide billing ops" — the same fix path (apply
+`#[CrossTenantRoute]` per-method) closes them. The visitors honor the
+attribute, so they'll stop flagging on regenerate.
+
+| Inventory id | File:line | Method | pattern_type | Attribute application reason |
+|---|---|---|---|---|
+| `api.unmapped.020` | `apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php:136` | `getInvoice` | `unscoped_eloquent_findOrFail` | (matches table C row 8) `Super-admin invoice detail view: reads any tenant's invoice with line items, payments, and subscription/plan join for billing operations.` Audit/auth: super-admin-only per `EnsureSuperAdmin` middleware on `/admin/billing/invoices/{id}`; logged via `recorded_by`/`initiated_by` columns rather than AdminAuditLog (read-only operation). |
+| `api.unmapped.021` | `apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php:147` | `downloadInvoice` | `unscoped_eloquent_findOrFail` | (matches table C row 9) `Super-admin invoice PDF download: generates and serves a PDF for any tenant's invoice on demand from the billing console.` Audit/auth: super-admin-only per `EnsureSuperAdmin` middleware. |
+| `api.unmapped.022` | `apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php:215` | `getPayment` | `unscoped_eloquent_findOrFail` | (matches table C row 12) `Super-admin payment detail view: reads any tenant's payment with refund history and recorder for dispute investigation.` Audit/auth: super-admin-only per `EnsureSuperAdmin`. |
+| `api.unmapped.023` | `apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php:279` | `refundPayment` | `unscoped_eloquent_findOrFail` | (matches table C row 14) `Super-admin payment refund: processes a refund (full or partial) on any tenant's payment; routes through provider for online payments and records refund row with super-admin as initiator.` Audit/auth: super-admin-only per `EnsureSuperAdmin`; refund row records `initiated_by = $admin->id`. |
+
+**Verified at HEAD `1eb11e8e`:** `awk` against the controller confirms all
+4 line numbers still match the start-of-query positions. No drift; no
+inventory row updates needed before Step 4 attribute application.
+
+**Lock-time disposition (Step 8):** all 4 rows + `api.super-admin-context.001`
+flip to `fixed` against the same fix_commit (the single bundled
+attribute-application commit). Per-row `edit_applied` history events
+document the attribute's structural protection of the unscoped
+`findOrFail` call.
+
 ### A. `app/Http/Controllers/Api/Admin/SuperAdminController.php` (13 methods)
 
 | # | Method | Cross-tenant operation | Reason text to apply |
