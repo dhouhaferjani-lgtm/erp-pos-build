@@ -589,6 +589,11 @@ final class ExternalIdUniquenessTest extends TestCase
             $foreignPayment->status,
             'Foreign-provider row Succeeded status must NOT be overwritten as Failed'
         );
+        $this->assertSame(
+            '555.000',
+            $foreignPayment->amount,
+            'Foreign-provider row amount must NOT be overwritten (Codex round-2 NICE-TO-HAVE: symmetry with paid-path coverage)'
+        );
 
         // A new Stripe-provider Failed row should exist.
         $stripeRow = Payment::query()

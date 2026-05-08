@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T09:05:39Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 21c1f655752bf5dcd05df38a70cd4f95462c30cb87a851dddf0d77ce0a7abd84
+  yaml_sha256: 1fcec140fa71c313c4c6f800767f4cf9fe255b940fe0706573ca6930888dd13e
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -405,7 +405,7 @@ clusters:
     surface: api
     owner: claude
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -38005,15 +38005,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:05:09Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-001-002.md
+      review_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
     fix_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
     regression_test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_platform_http_client_get_attaches_tenant_and_company_headers'
     blocked_reason: null
@@ -38082,6 +38082,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T11:05:10Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 21c1f655752bf5dcd05df38a70cd4f95462c30cb87a851dddf0d77ce0a7abd84
+        new_yaml_sha256: eb60049d7492bde6452278c623af3f480750994a81caa97ecc73e8f9ca71fc9b
+        target_ids:
+          - api.platform-integration.001
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-001-002.md
+        review_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.platform-integration.002
     stable_key: 'manual:api.platform-integration:check-pending-enrichments-per-iteration-rebind'
@@ -38099,15 +38116,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:05:11Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-001-002.md
+      review_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
     fix_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
     regression_test: 'tests/Feature/PlatformIntegration/OutboundHttpTenantTaggingTest.php::test_cross_tenant_rebind_does_not_leak_prior_tenant_headers'
     blocked_reason: null
@@ -38176,6 +38193,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T11:05:12Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: eb60049d7492bde6452278c623af3f480750994a81caa97ecc73e8f9ca71fc9b
+        new_yaml_sha256: bb0d686b57f4febee3254faa5a81b22f8085d050f092305a45dc73cc4a9fef0c
+        target_ids:
+          - api.platform-integration.002
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-001-002.md
+        review_commit: bc7b445db6df1c59ed2256db3861fbb174cd1498
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.platform-integration.003
     stable_key: 'manual:api.platform-integration:products-platform-submission-id-unique-migration'
@@ -38193,15 +38227,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:05:13Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+      review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_products_platform_submission_id_is_unique_at_db_level'
     blocked_reason: null
@@ -38270,6 +38304,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T11:05:13Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: bb0d686b57f4febee3254faa5a81b22f8085d050f092305a45dc73cc4a9fef0c
+        new_yaml_sha256: abde1426b56aa9a7057fa5dd269adfbe7dddbc63834a7a19e57e9a52ac1972b4
+        target_ids:
+          - api.platform-integration.003
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+        review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.platform-integration.004
     stable_key: 'manual:api.platform-integration:billing-payments-provider-payment-id-unique-migration'
@@ -38287,15 +38338,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:05:15Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+      review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_billing_payments_provider_payment_id_is_unique_per_provider'
     blocked_reason: null
@@ -38364,6 +38415,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T11:05:15Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: abde1426b56aa9a7057fa5dd269adfbe7dddbc63834a7a19e57e9a52ac1972b4
+        new_yaml_sha256: e2dd7626233bea2aa752d7925c6de12d65ee8f2f5fd421f323185074c81db5b2
+        target_ids:
+          - api.platform-integration.004
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+        review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.platform-integration.005
     stable_key: 'manual:api.platform-integration:enrichment-listener-sole-defense-in-depth'
@@ -38381,15 +38449,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:05:16Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+      review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_enrichment_listener_swallows_not_found_gracefully'
     blocked_reason: null
@@ -38458,6 +38526,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T11:05:17Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e2dd7626233bea2aa752d7925c6de12d65ee8f2f5fd421f323185074c81db5b2
+        new_yaml_sha256: 4b89f6f6bbc8123d7a3ba4091fc6cb0f2f9d283e75621b9f6b5748b8c5749c46
+        target_ids:
+          - api.platform-integration.005
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
+        review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.platform-integration.006
     stable_key: 'manual:api.platform-integration:stripe-webhook-sole-defense-in-depth-plus-provider-filter'
@@ -38475,15 +38560,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
       reviewer: codex
-      verdict: BLOCK
-      reviewed_at: '2026-05-08T10:23:51Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-review.md
-      review_commit: null
+      verdict: APPROVE
+      reviewed_at: '2026-05-08T11:06:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review.md
+      review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_stripe_webhook_resolver_filters_by_provider'
     blocked_reason: null
@@ -38584,6 +38669,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK-NOVEL addressed at commit 9921b617 (provider filter on handleInvoicePaid + handleInvoicePaymentFailed updateOrCreate lookups + 2 regression tests); resubmit for round-2 review'
+      -
+        at: '2026-05-08T11:06:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 4b89f6f6bbc8123d7a3ba4091fc6cb0f2f9d283e75621b9f6b5748b8c5749c46
+        new_yaml_sha256: 1fcec140fa71c313c4c6f800767f4cf9fe255b940fe0706573ca6930888dd13e
+        target_ids:
+          - api.platform-integration.006
+          - api.platform-integration
+        from_status: under_review
+        to_status: fixed
+        commit: 68af365f4a066a46d0f696af25ee8cebb4d4684d
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-round2-review.md
+        review_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29

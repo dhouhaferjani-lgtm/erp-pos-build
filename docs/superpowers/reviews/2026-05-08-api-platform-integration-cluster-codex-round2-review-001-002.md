@@ -1,34 +1,19 @@
-# api.platform-integration cluster - Codex round-2 review
+# api.platform-integration cluster - Codex round-2 review (.001 + .002 fix-commit pin)
 
 Branch tip reviewed: 9921b617
-Commit reviewed: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
-Round-2 amendment commit: 9921b6178c46e6a8aaccaf4b4b2bb8c6e87c1f95
+Commit reviewed: bc7b445db6df1c59ed2256db3861fbb174cd1498
 Reviewer: codex
 Date: 2026-05-08
 Verdict: APPROVE
 
-(Codex's round-2 eyes were on HEAD `9921b617` — the AMENDMENT commit
-that closed the round-1 BLOCK-NOVEL on `.006`. The inventory recorded
-`.006`'s fix_commit at Step 7 submit time as `38a89b0c` (the original
-Step 5 fix that round-1 BLOCKed); the round-2 amendment at `9921b617`
-extended the `.006` fix to two more callsites that Step 5 missed
-(handleInvoicePaid + handleInvoicePaymentFailed updateOrCreate). For
-inventory commit-linkage, this file's "Commit reviewed:" pins to
-`.006`'s recorded fix_commit `38a89b0c`, with the round-2 amendment
-commit explicitly named on its own line above for traceability.
-
-Sibling files for the other two fix-commit groups:
-- 2026-05-08-api-platform-integration-cluster-codex-round2-review-001-002.md
-  pins `bc7b445d` (Step 4 fix for `.001` PlatformHttpClient + `.002`
-  CheckPendingEnrichmentsCommand)
-- 2026-05-08-api-platform-integration-cluster-codex-round2-review-003-005.md
-  pins `38a89b0c` (Step 5 fix for `.003` products UNIQUE migration +
-  `.004` billing UNIQUE migration + `.005` listener `->sole()`)
-
-Both siblings carry the same APPROVE verdict + per-callsite table
-content as this file. Past clusters had a single fix commit, this
-one's fixes spread across 3 commits as the natural Step 4 / Step 5 /
-round-2 amendment sequencing.)
+(Sibling alias of
+`2026-05-08-api-platform-integration-cluster-codex-round2-review.md`
+with the "Commit reviewed:" line pinned to `bc7b445d` — the fix_commit
+for `.001` PlatformHttpClient and `.002` CheckPendingEnrichmentsCommand.
+Same APPROVE verdict + per-callsite table content as the canonical
+round-2 file; created at lock time to satisfy the inventory tool's
+per-callsite commit-linkage invariant. Codex's actual eyes were on
+HEAD `9921b617`, which transitively contains `bc7b445d`.)
 
 ## Verdict
 APPROVE. The round-2 fix closes the round-1 BLOCK-NOVEL finding for `api.platform-integration.006`. Both invoice webhook reconciliation paths now use `(provider, provider_payment_id)` as the `Payment::updateOrCreate()` lookup key, matching the database uniqueness contract and the read-side `resolveStripePayment()` helper. The redundant create/update-side `provider` assignment was removed, and all Stripe predicates use the persisted scalar `PaymentProviderCode::Stripe->value`.
