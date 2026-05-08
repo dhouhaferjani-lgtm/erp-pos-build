@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TransactionCart, type TransactionCartProps } from '../TransactionCart';
-import { makeCartItem } from '@/test/helpers';
+import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -254,5 +254,66 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
 
     expect(screen.queryByText(/refundFlow.confirm/)).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-summary')).toBeInTheDocument();
+  });
+
+  // T1.2 Codex round-1 finding (unpreempted): the refund/exchange net
+  // footer renders its OWN cash button rather than going through
+  // PaymentSummary. The Step 2.3 paymentConfigReady gate must be applied
+  // here too — otherwise a cashier in refund mode hitting Cash before
+  // payment config is loaded would reach processCashCheckout and throw
+  // on the no-cash-method backstop. Same vulnerability that Step 2.3
+  // closed for the sale path.
+  it('T1.2: refund net-footer cash button is disabled when paymentRepositories is empty', () => {
+    const onPayCash = vi.fn();
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+      netTotal: -10,
+      onPayCash,
+      paymentMethods: [makePaymentMethod({ id: 'pm-cash' })],
+      paymentRepositories: [],
+    });
+
+    const button = screen.getByText(/refundFlow.confirm.refund/).closest('button')!;
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute('title', 'payment.configNotLoaded');
+
+    fireEvent.click(button);
+    expect(onPayCash).not.toHaveBeenCalled();
+  });
+
+  it('T1.2: refund net-footer cash button is disabled when paymentMethods is empty', () => {
+    const onPayCash = vi.fn();
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+      netTotal: -10,
+      onPayCash,
+      paymentMethods: [],
+      paymentRepositories: [makePaymentRepository({ id: 'repo-cash' })],
+    });
+
+    const button = screen.getByText(/refundFlow.confirm.refund/).closest('button')!;
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onPayCash).not.toHaveBeenCalled();
+  });
+
+  it('T1.2: refund net-footer cash button is enabled when both paymentMethods and paymentRepositories are populated', () => {
+    const onPayCash = vi.fn();
+    renderCart({
+      items: [makeReturnItem('r1')],
+      itemCount: 1,
+      netTotal: -10,
+      onPayCash,
+      paymentMethods: [makePaymentMethod({ id: 'pm-cash' })],
+      paymentRepositories: [makePaymentRepository({ id: 'repo-cash' })],
+    });
+
+    const button = screen.getByText(/refundFlow.confirm.refund/).closest('button')!;
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(onPayCash).toHaveBeenCalledTimes(1);
   });
 });

@@ -206,25 +206,47 @@ export function TransactionCart({
       <div className="shrink-0 px-3 pb-2">
         {items.length > 0 && isRefundMode && netTotal !== undefined ? (
           // ── Net footer for refund/exchange ─────────────────────────────────
-          <div className="space-y-1 border-t border-gray-200 pt-1.5">
-            <div className="rounded-lg bg-primary-600 px-3 py-2 text-white">
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-medium">{t('common.total')}</span>
-                <span
-                  className={`text-2xl font-bold ${netTotal < -0.005 ? 'text-red-200' : ''}`}
+          // T1.2 Codex round-1 finding (unpreempted): the refund/exchange
+          // path renders its OWN cash button rather than going through
+          // PaymentSummary, so the Step 2.3 paymentConfigReady gate has
+          // to be applied here too. Without this, a cashier in refund
+          // mode hitting Cash before payment config is loaded would
+          // reach processCashCheckout and throw on the no-cash-method
+          // backstop — the same recurring symptom Step 2.3 fixed for
+          // the sale path.
+          (() => {
+            const paymentConfigReady =
+              (paymentMethods?.length ?? 0) > 0 &&
+              (paymentRepositories?.length ?? 0) > 0;
+            const netButtonDisabled = checkoutDisabled || !paymentConfigReady;
+            return (
+              <div className="space-y-1 border-t border-gray-200 pt-1.5">
+                <div className="rounded-lg bg-primary-600 px-3 py-2 text-white">
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-medium">{t('common.total')}</span>
+                    <span
+                      className={`text-2xl font-bold ${netTotal < -0.005 ? 'text-red-200' : ''}`}
+                    >
+                      {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={onPayCash}
+                  disabled={netButtonDisabled}
+                  aria-disabled={netButtonDisabled}
+                  title={
+                    !paymentConfigReady
+                      ? t('payment.configNotLoaded')
+                      : undefined
+                  }
+                  className="w-full rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
-                </span>
+                  {getNetLabel()}
+                </button>
               </div>
-            </div>
-            <button
-              onClick={onPayCash}
-              disabled={checkoutDisabled}
-              className="w-full rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {getNetLabel()}
-            </button>
-          </div>
+            );
+          })()
         ) : (
           items.length > 0 && (
             <PaymentSummary
