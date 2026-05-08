@@ -20,6 +20,7 @@ use App\Modules\Billing\Notifications\PaymentSucceededNotification;
 use App\Modules\Billing\Notifications\SubscriptionCancelledNotification;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -48,12 +49,15 @@ use Stripe\Webhook;
  *
  * Defense-in-depth: tenant_subscriptions.stripe_subscription_id and
  * billing_invoices.stripe_invoice_id carry DB UNIQUE constraints
- * (migrations lines 35 + 60). billing_payments.provider_payment_id is only
- * composite-indexed (line 81), so the controller's
- * Payment::where('provider_payment_id', …)->first() lookup leans on Stripe's
- * external contract that pi_* IDs are globally unique — tracked as Finding F
- * in the scheduled-jobs cross-cluster observations doc, slated for future
- * api.external-id-uniqueness or api.platform-integration cluster.
+ * (migrations lines 35 + 60). billing_payments(provider, provider_payment_id)
+ * carries a UNIQUE constraint as of api.platform-integration cluster
+ * (migration 2026_05_08_000002_*), closing Finding F. Resolver code uses
+ * `resolveStripePayment()` (added below) which:
+ *   (a) filters by `provider = stripe` so a foreign-provider Payment that
+ *       contrives a `pi_*` collision is never returned here; AND
+ *   (b) calls ->sole() over ->first() so a >1-row state (only possible if
+ *       the UNIQUE is ever dropped) crashes loud rather than silently
+ *       picking one row.
  *
  * Out-of-scope concerns (deferred per the same observations doc):
  *   - Finding D: handleSubscriptionCreated orWhere(stripe_customer_id)
@@ -445,8 +449,12 @@ final class StripeWebhookController extends Controller
     {
         $paymentIntentId = $paymentIntent['id'] ?? null;
 
-        // Update existing payment if exists
-        $payment = Payment::where('provider_payment_id', $paymentIntentId)->first();
+        // Provider-filter discipline + collision-fail-loud (Finding F).
+        // Pre-fix: where('provider_payment_id', $pi)->first() — could
+        // resolve to a foreign-provider Payment that happened to share
+        // the same external id, AND silently picked one of multiple
+        // matches if a UNIQUE-rollback ever occurred.
+        $payment = $this->resolveStripePayment($paymentIntentId);
 
         if ($payment) {
             $payment->update([
@@ -470,7 +478,7 @@ final class StripeWebhookController extends Controller
     {
         $paymentIntentId = $paymentIntent['id'] ?? null;
 
-        $payment = Payment::where('provider_payment_id', $paymentIntentId)->first();
+        $payment = $this->resolveStripePayment($paymentIntentId);
 
         /** @var array<string, mixed>|null $lastError */
         $lastError = $paymentIntent['last_payment_error'] ?? null;
@@ -499,7 +507,7 @@ final class StripeWebhookController extends Controller
         $paymentIntentId = $charge['payment_intent'] ?? null;
 
         $payment = $paymentIntentId
-            ? Payment::where('provider_payment_id', $paymentIntentId)->first()
+            ? $this->resolveStripePayment($paymentIntentId)
             : null;
 
         if (! $payment) {
@@ -620,5 +628,39 @@ final class StripeWebhookController extends Controller
         }
 
         return $tenant->name ?? $tenant->legal_name ?? "Tenant #{$tenantId}";
+    }
+
+    /**
+     * Resolve a Stripe-provider Payment by `pi_*` id with two
+     * defense-in-depth properties (api.platform-integration cluster,
+     * Finding F closure):
+     *   1. Filter by `provider = stripe` so a foreign-provider Payment
+     *      that contrived a `pi_*` collision is never resolved here.
+     *   2. ->sole() over ->first() so a >1-row state (only possible if
+     *      the new (provider, provider_payment_id) UNIQUE constraint is
+     *      ever dropped) crashes loud rather than silently picking one.
+     *
+     * Returns null in the legitimate "not yet reconciled" case (Stripe
+     * webhook redelivery before the local Payment was inserted, or
+     * after it was soft-deleted) — a graceful skip path that does NOT
+     * crash the webhook delivery.
+     */
+    private function resolveStripePayment(?string $paymentIntentId): ?Payment
+    {
+        if ($paymentIntentId === null || $paymentIntentId === '') {
+            return null;
+        }
+
+        try {
+            return Payment::query()
+                ->where('provider', PaymentProviderCode::Stripe->value)
+                ->where('provider_payment_id', $paymentIntentId)
+                ->sole();
+        } catch (ModelNotFoundException) {
+            return null;
+        }
+        // Note: MultipleRecordsFoundException intentionally NOT caught.
+        // It signals the (provider, provider_payment_id) UNIQUE was
+        // violated — a data-integrity emergency that must alert.
     }
 }
