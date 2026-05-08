@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T09:05:39Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 82b482be2997b2a4853cab04bb519aa83fe4ad7a9ce17908e8b5bee25279e0f9
+  yaml_sha256: 21c1f655752bf5dcd05df38a70cd4f95462c30cb87a851dddf0d77ce0a7abd84
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -38479,10 +38479,10 @@ callsites:
     owner: claude
     claimed_at: '2026-05-08T09:06:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: BLOCK
+      reviewed_at: '2026-05-08T10:23:51Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-review.md
       review_commit: null
     fix_commit: 38a89b0c1c506a9dbb45dfadc497ec13cf08a119
     regression_test: 'tests/Feature/PlatformIntegration/ExternalIdUniquenessTest.php::test_stripe_webhook_resolver_filters_by_provider'
@@ -38552,6 +38552,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-08T10:23:52Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 82b482be2997b2a4853cab04bb519aa83fe4ad7a9ce17908e8b5bee25279e0f9
+        new_yaml_sha256: dc3af35d7642331e097582b3a055dbd8e14145c4ee90949ba8e48e754985c147
+        target_ids:
+          - api.platform-integration.006
+        from_status: under_review
+        to_status: blocked
+        commit: 9921b617ae7a71589efbb665e74430a7dcb4fa6a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-platform-integration-cluster-codex-review.md
+        review_commit: null
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T10:24:11Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: dc3af35d7642331e097582b3a055dbd8e14145c4ee90949ba8e48e754985c147
+        new_yaml_sha256: 21c1f655752bf5dcd05df38a70cd4f95462c30cb87a851dddf0d77ce0a7abd84
+        target_ids:
+          - api.platform-integration.006
+        from_status: blocked
+        to_status: under_review
+        commit: 9921b617ae7a71589efbb665e74430a7dcb4fa6a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK-NOVEL addressed at commit 9921b617 (provider filter on handleInvoicePaid + handleInvoicePaymentFailed updateOrCreate lookups + 2 regression tests); resubmit for round-2 review'
 progress:
   total_callsites: 0
   total_clusters: 29
