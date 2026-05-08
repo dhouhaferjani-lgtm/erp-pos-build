@@ -43,6 +43,21 @@ interface PaymentState {
   lastReceiptServerId: string | null;
 
   /**
+   * T0.2: Idempotency key for the current cart submission attempt.
+   *
+   * Allocated atomically when Confirm is first pressed for a cart, then reused
+   * on every retry until the cart is explicitly cleared (= clearLastReceipt is
+   * called by HomePage's handleNewSale on success-modal-dismiss / new-sale /
+   * manual-cancel). This prevents the cashier-double-click double-billing bug
+   * (Opus + Codex sync audits 2026-04-30): if two checkout attempts mint
+   * different keys for the same physical sale, the server can't dedup them
+   * and both finalize.
+   *
+   * In-memory only — server-side dedup-on-disk reconciles after a crash.
+   */
+  pendingIdempotencyKey: string | null;
+
+  /**
    * Voucher tender rows applied in the current sale session.
    * Each row represents one voucher being used as partial/full payment.
    * Codes are unique per transaction — addVoucherPayment guards against duplicates.
@@ -132,6 +147,7 @@ const initialState: PaymentState = {
   error: null,
   lastReceiptIdempotencyKey: null,
   lastReceiptServerId: null,
+  pendingIdempotencyKey: null,
   voucherTenders: [],
   appliedVoucherCodes: new Set<string>(),
 };
@@ -197,6 +213,13 @@ async function createReceiptLocalFirst(
   cartItems: CartItem[],
   payments: LocalFirstPaymentLine[],
   tenderedAmount: number,
+  /**
+   * T0.2: Caller-allocated idempotency key for this cart submission attempt.
+   * Same key is reused across cashier double-clicks so the server-side
+   * dedup-on-disk catches the second POST as a duplicate. See
+   * `pendingIdempotencyKey` on PaymentState for the lifecycle.
+   */
+  idempotencyKey: string,
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
   consumptionMode?: string,
   tableId?: string | null,
@@ -235,6 +258,7 @@ async function createReceiptLocalFirst(
     paymentMethodId: primary.paymentMethodId,
     paymentRepositoryId: primary.repositoryId,
     tenderedAmount,
+    idempotencyKey,
     transactionDiscount,
     payments: payments.map((p) => ({
       methodCode: p.methodCode,
@@ -361,7 +385,18 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    set({ isProcessing: true, error: null });
+    // T0.2: atomically allocate the idempotency key for this cart submission
+    // attempt — same set() call that flips isProcessing, so a synchronous
+    // double-click cannot interleave between the key check and the write.
+    let idempotencyKey = '';
+    set((state) => {
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
 
     try {
       const authState = useAuthStore.getState();
@@ -381,6 +416,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           repositoryId: cashRegister.id,
         }],
         tenderedAmount,
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -435,7 +471,16 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
-    set({ isProcessing: true, error: null });
+    // T0.2: atomic key allocation (see processCashCheckout for rationale).
+    let idempotencyKey = '';
+    set((state) => {
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
 
     try {
       const authState = useAuthStore.getState();
@@ -457,6 +502,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           transactionReference: cardData?.reference,
         }],
         0, // tenderedAmount = 0 for card (no cash in hand)
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -487,7 +533,16 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     consumptionMode,
     tableId,
   ) => {
-    set({ isProcessing: true, error: null });
+    // T0.2: atomic key allocation (see processCashCheckout for rationale).
+    let idempotencyKey = '';
+    set((state) => {
+      idempotencyKey = state.pendingIdempotencyKey ?? crypto.randomUUID();
+      return {
+        isProcessing: true,
+        error: null,
+        pendingIdempotencyKey: idempotencyKey,
+      };
+    });
 
     try {
       const authState = useAuthStore.getState();
@@ -523,6 +578,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         enriched,
         tenderedAmount,
+        idempotencyKey,
         transactionDiscount,
         consumptionMode,
         tableId,
@@ -545,7 +601,12 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
   },
 
   clearLastReceipt: () => {
-    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null });
+    // T0.2: also clear pendingIdempotencyKey so the next sale gets a fresh
+    // key. This is the canonical post-success / new-sale / manual-cancel
+    // lifecycle hook (called by HomePage's handleNewSale). Leaving the key
+    // populated would cause the new sale's first POST to be deduped server-
+    // side as a replay of the previous sale.
+    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null, pendingIdempotencyKey: null });
   },
 
   addVoucherPayment: (code: string, amount: string) => {

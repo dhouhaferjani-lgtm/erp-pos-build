@@ -31,6 +31,16 @@ interface OfflineReceiptInput {
   /** Primary payment repository (first entry in `payments`) */
   paymentRepositoryId: string;
   tenderedAmount: number;
+  /**
+   * T0.2: Caller-allocated idempotency key for this cart submission attempt.
+   * Optional for backward compatibility; if omitted, a fresh `crypto.randomUUID()`
+   * is allocated internally (legacy behavior). Production callers in
+   * paymentStore allocate the key once per submission attempt and pass it on
+   * every retry, so a cashier double-click writes two SQLite rows that share
+   * the same key — the server-side dedup-on-disk catches the second POST as
+   * a duplicate and returns the existing receipt instead of creating a new one.
+   */
+  idempotencyKey?: string;
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
   /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
   payments: Array<{
@@ -310,7 +320,10 @@ export async function createOfflineReceipt(
 
   // 5. Store offline receipt
   const receiptId = crypto.randomUUID();
-  const idempotencyKey = crypto.randomUUID();
+  // T0.2: prefer caller-provided key (paymentStore allocates once per cart
+  // submission attempt and reuses on retry); fall back to a fresh UUID for
+  // legacy callers (e.g. test fixtures) that don't supply one.
+  const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
   // tenderedAmount is a number (UI input), subtracted from string total via bcformat round-trip
   const changeDueRaw = bcsub(String(input.tenderedAmount), total);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
