@@ -277,12 +277,22 @@ final class StripeWebhookController extends Controller
             : null;
 
         if ($subscription && $paymentIntentId) {
+            // Provider-filter discipline (Codex round-1 BLOCK-NOVEL).
+            // The (provider, provider_payment_id) UNIQUE constraint
+            // intentionally allows the same external id across different
+            // providers, so the lookup attributes MUST also pin the
+            // provider — otherwise a PayPal/Klarna/etc. row with the same
+            // `pi_*` value would be matched and overwritten as Stripe.
+            // Pair with resolveStripePayment() at the bottom of the file
+            // (read-side) — this is the create/reconcile-side pair.
             $payment = Payment::updateOrCreate(
-                ['provider_payment_id' => $paymentIntentId],
+                [
+                    'provider' => PaymentProviderCode::Stripe->value,
+                    'provider_payment_id' => $paymentIntentId,
+                ],
                 [
                     'tenant_id' => $subscription->tenant_id,
                     'invoice_id' => $invoice?->id,
-                    'provider' => PaymentProviderCode::Stripe,
                     'status' => PaymentStatus::Succeeded,
                     'amount' => $amountPaid,
                     'fee' => 0,
@@ -354,12 +364,18 @@ final class StripeWebhookController extends Controller
             // Create a payment record for tracking failed payments
             $paymentIntentId = $stripeInvoice['payment_intent'] ?? null;
             if ($paymentIntentId) {
+                // Provider-filter discipline (Codex round-1 BLOCK-NOVEL),
+                // mirrors handleInvoicePaid() above — the lookup MUST pin
+                // `provider = stripe` so a foreign-provider row sharing
+                // `pi_*` is not overwritten as Stripe.
                 $payment = Payment::updateOrCreate(
-                    ['provider_payment_id' => $paymentIntentId],
+                    [
+                        'provider' => PaymentProviderCode::Stripe->value,
+                        'provider_payment_id' => $paymentIntentId,
+                    ],
                     [
                         'tenant_id' => $subscription->tenant_id,
                         'invoice_id' => $invoice?->id,
-                        'provider' => PaymentProviderCode::Stripe,
                         'status' => PaymentStatus::Failed,
                         'amount' => ((int) ($stripeInvoice['amount_due'] ?? 0)) / 100,
                         'fee' => 0,

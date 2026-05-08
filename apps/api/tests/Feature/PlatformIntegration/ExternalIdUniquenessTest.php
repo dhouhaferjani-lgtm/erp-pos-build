@@ -7,7 +7,11 @@ namespace Tests\Feature\PlatformIntegration;
 use App\Enums\Vertical;
 use App\Modules\Billing\Domain\Enums\PaymentProviderCode;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
+use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
+use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\Payment;
+use App\Modules\Billing\Domain\Plan;
+use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Billing\Presentation\Controllers\StripeWebhookController;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -401,5 +405,221 @@ final class ExternalIdUniquenessTest extends TestCase
             $foreignPayment->status,
             'Non-Stripe payment with same provider_payment_id must NOT be touched by the Stripe handler'
         );
+    }
+
+    public function test_stripe_invoice_paid_handler_filters_by_provider_in_lookup(): void
+    {
+        // Codex round-1 BLOCK-NOVEL coverage: handleInvoicePaid uses
+        // Payment::updateOrCreate() — the FIRST array is the lookup
+        // attribute set, and pre-fix it filtered only by
+        // provider_payment_id, so a foreign-provider row sharing the
+        // same `pi_*` would be matched and OVERWRITTEN as Stripe.
+        // Post-fix, the lookup pins (provider, provider_payment_id),
+        // so the foreign row is never touched and a new Stripe row is
+        // created (or an existing Stripe row is updated).
+
+        $stripeInvoiceId = 'in_test_'.Str::random(8);
+        $stripeSubId = 'sub_test_'.Str::random(8);
+        $sharedPi = 'pi_invoice_paid_filter_'.Str::random(8);
+
+        // Tenant subscription anchored on stripe_subscription_id —
+        // handleInvoicePaid resolves $subscription via this anchor.
+        $subscription = TenantSubscription::create([
+            'tenant_id' => $this->tenant->id,
+            'plan_id' => $this->seedPlan()->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_cycle' => 'monthly',
+            'price' => '99.000',
+            'currency' => 'EUR',
+            'current_period_start' => now()->subDays(15),
+            'current_period_end' => now()->addDays(15),
+            'stripe_subscription_id' => $stripeSubId,
+        ]);
+
+        $invoice = Invoice::create([
+            'tenant_id' => $this->tenant->id,
+            'subscription_id' => $subscription->id,
+            'number' => 'INV-'.Str::random(6),
+            'status' => 'pending',
+            'subtotal' => '99.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '99.000',
+            'amount_paid' => '0.000',
+            'amount_due' => '99.000',
+            'currency' => 'EUR',
+            'invoice_date' => now(),
+            'due_date' => now()->addDays(7),
+            'stripe_invoice_id' => $stripeInvoiceId,
+        ]);
+
+        // Foreign-provider row pre-existing with same provider_payment_id.
+        // Without the lookup-side provider filter, updateOrCreate would
+        // MATCH this row and overwrite its `provider` field as 'stripe'.
+        $foreignPayment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'provider' => PaymentProviderCode::PayPal->value,
+            'provider_payment_id' => $sharedPi,
+            'status' => PaymentStatus::Pending,
+            'amount' => '777.000',  // distinct so we can detect overwrite
+            'fee' => '0.000',
+            'net_amount' => '777.000',
+            'currency' => 'EUR',
+            'refunded_amount' => '0.000',
+        ]);
+
+        $controller = $this->app->make(StripeWebhookController::class);
+        $reflection = new \ReflectionClass($controller);
+        $method = $reflection->getMethod('handleInvoicePaid');
+        $method->setAccessible(true);
+        $method->invoke($controller, [
+            'id' => $stripeInvoiceId,
+            'subscription' => $stripeSubId,
+            'payment_intent' => $sharedPi,
+            'amount_paid' => 9900,
+            'currency' => 'eur',
+        ]);
+
+        $foreignPayment->refresh();
+
+        // Foreign-provider row must remain a PayPal row, untouched.
+        $this->assertSame(
+            PaymentProviderCode::PayPal->value,
+            $foreignPayment->provider,
+            'Foreign-provider row must NOT be matched by the Stripe lookup'
+        );
+        $this->assertSame(
+            PaymentStatus::Pending,
+            $foreignPayment->status,
+            'Foreign-provider row must NOT be transitioned by Stripe handler'
+        );
+        $this->assertSame(
+            '777.000',
+            $foreignPayment->amount,
+            'Foreign-provider row amount must NOT be overwritten'
+        );
+
+        // A new Stripe-provider row should exist for the same external id.
+        $stripeRow = Payment::query()
+            ->where('provider', PaymentProviderCode::Stripe->value)
+            ->where('provider_payment_id', $sharedPi)
+            ->sole();
+
+        $this->assertSame(PaymentStatus::Succeeded, $stripeRow->status);
+        $this->assertSame($invoice->id, $stripeRow->invoice_id);
+        $this->assertNotSame($foreignPayment->id, $stripeRow->id);
+    }
+
+    public function test_stripe_invoice_payment_failed_handler_filters_by_provider_in_lookup(): void
+    {
+        // Mirror of test_stripe_invoice_paid_handler — same provider-filter
+        // discipline applies to handleInvoicePaymentFailed at the same
+        // controller. Asserts the FOREIGN row is never overwritten when
+        // a Stripe-side payment_intent shares the foreign id.
+
+        $stripeInvoiceId = 'in_test_failed_'.Str::random(8);
+        $stripeSubId = 'sub_test_failed_'.Str::random(8);
+        $sharedPi = 'pi_invoice_failed_filter_'.Str::random(8);
+
+        $subscription = TenantSubscription::create([
+            'tenant_id' => $this->tenant->id,
+            'plan_id' => $this->seedPlan()->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_cycle' => 'monthly',
+            'price' => '99.000',
+            'currency' => 'EUR',
+            'current_period_start' => now()->subDays(15),
+            'current_period_end' => now()->addDays(15),
+            'stripe_subscription_id' => $stripeSubId,
+        ]);
+
+        Invoice::create([
+            'tenant_id' => $this->tenant->id,
+            'subscription_id' => $subscription->id,
+            'number' => 'INV-'.Str::random(6),
+            'status' => 'pending',
+            'subtotal' => '99.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '99.000',
+            'amount_paid' => '0.000',
+            'amount_due' => '99.000',
+            'currency' => 'EUR',
+            'invoice_date' => now(),
+            'due_date' => now()->addDays(7),
+            'stripe_invoice_id' => $stripeInvoiceId,
+        ]);
+
+        $foreignPayment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'provider' => PaymentProviderCode::PayPal->value,
+            'provider_payment_id' => $sharedPi,
+            'status' => PaymentStatus::Succeeded,  // distinct from "Failed" target
+            'amount' => '555.000',
+            'fee' => '0.000',
+            'net_amount' => '555.000',
+            'currency' => 'EUR',
+            'refunded_amount' => '0.000',
+            'paid_at' => now(),
+        ]);
+
+        $controller = $this->app->make(StripeWebhookController::class);
+        $reflection = new \ReflectionClass($controller);
+        $method = $reflection->getMethod('handleInvoicePaymentFailed');
+        $method->setAccessible(true);
+        $method->invoke($controller, [
+            'id' => $stripeInvoiceId,
+            'subscription' => $stripeSubId,
+            'payment_intent' => $sharedPi,
+            'amount_due' => 9900,
+            'currency' => 'eur',
+            'last_payment_error' => ['message' => 'Card declined'],
+        ]);
+
+        $foreignPayment->refresh();
+
+        // Foreign-provider row must remain a PayPal Succeeded row.
+        $this->assertSame(
+            PaymentProviderCode::PayPal->value,
+            $foreignPayment->provider,
+            'Foreign-provider row must NOT be matched by the Stripe lookup'
+        );
+        $this->assertSame(
+            PaymentStatus::Succeeded,
+            $foreignPayment->status,
+            'Foreign-provider row Succeeded status must NOT be overwritten as Failed'
+        );
+
+        // A new Stripe-provider Failed row should exist.
+        $stripeRow = Payment::query()
+            ->where('provider', PaymentProviderCode::Stripe->value)
+            ->where('provider_payment_id', $sharedPi)
+            ->sole();
+
+        $this->assertSame(PaymentStatus::Failed, $stripeRow->status);
+        $this->assertNotSame($foreignPayment->id, $stripeRow->id);
+        $this->assertSame('Card declined', $stripeRow->error_message);
+    }
+
+    /**
+     * Seed a minimal Plan row that satisfies TenantSubscription's
+     * non-null plan_id FK. The plan code is randomized per test so
+     * RefreshDatabase + parallel test runs don't collide on the
+     * unique index.
+     */
+    private function seedPlan(): Plan
+    {
+        return Plan::create([
+            'code' => 'test-plan-'.Str::random(6),
+            'name' => 'Test Plan',
+            'limits' => [],
+            'price_monthly' => '99.000',
+            'price_yearly' => '999.000',
+            'currency' => 'EUR',
+            'trial_days' => 0,
+            'is_active' => true,
+            'is_public' => true,
+            'display_order' => 1,
+        ]);
     }
 }
