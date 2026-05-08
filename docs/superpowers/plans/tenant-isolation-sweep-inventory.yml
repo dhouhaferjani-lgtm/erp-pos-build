@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T14:35:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 995423876dc8d67c9329a61141577163bf39b14f8b1ca9c4871d03b465737aca
+  yaml_sha256: ba7ba713555c9c00f22887b0c006ee35880720fd557cde00778ff6fea36d0d21
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -26279,9 +26279,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:20Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26400,6 +26400,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:39Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 162123ecc819c74f308e454beb5c34b5266da59c98307bb89ff7e662807f6639
+        new_yaml_sha256: 873e356b559d68c94c3cf948908540ea6d24aecaed664df6483ebd62029a4b2d
+        target_ids:
+          - api.unmapped.020
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:07:56Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: 3640f1b90468042bbe42d6ac09f47a66bba2a4f4e38903d020359540cc3a13c1
+        new_yaml_sha256: f67b3a58688f793eb193931e96dfc1901c3c65e1ea25a80e80d75ccea1fff334
+        target_ids:
+          - api.unmapped.020
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
   -
     id: api.unmapped.021
     stable_key: 'sha256:8d0f0284f2fbbd660fd9f6f59f885310f207d87824ec24e28ef18ba00b230b4d'
@@ -26423,9 +26455,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:22Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26544,6 +26576,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:40Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 873e356b559d68c94c3cf948908540ea6d24aecaed664df6483ebd62029a4b2d
+        new_yaml_sha256: c45d48597dd588dc9481357e12603dd054dc3c0063b61a24abbea19f31756531
+        target_ids:
+          - api.unmapped.021
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:07:58Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: f67b3a58688f793eb193931e96dfc1901c3c65e1ea25a80e80d75ccea1fff334
+        new_yaml_sha256: cb5696244912221b084467654bbd218a2a867a0688fc09955943df9fe1429cf6
+        target_ids:
+          - api.unmapped.021
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
   -
     id: api.unmapped.022
     stable_key: 'sha256:46ddfe308a4e8cc5582911ac6401489788f49ccbc93b330859fb27c9404e53aa'
@@ -26567,9 +26631,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:24Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:41Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26688,6 +26752,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:42Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c45d48597dd588dc9481357e12603dd054dc3c0063b61a24abbea19f31756531
+        new_yaml_sha256: f5cd662e7d6456f4b1167d9f2e4c74c2044654446bb681e1dbb2a568c84e3008
+        target_ids:
+          - api.unmapped.022
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:08:00Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: cb5696244912221b084467654bbd218a2a867a0688fc09955943df9fe1429cf6
+        new_yaml_sha256: 13c4b5dd19bd30a2741d2176e87217b76d6c3c63c6fa1010eeebb067d746c7c9
+        target_ids:
+          - api.unmapped.022
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
   -
     id: api.unmapped.023
     stable_key: 'sha256:d1fe2d63d248bb26e65342495e3dd8a09e6d2a407d6cd880224381c89b0f9e88'
@@ -26711,9 +26807,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:25Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -26832,6 +26928,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f5cd662e7d6456f4b1167d9f2e4c74c2044654446bb681e1dbb2a568c84e3008
+        new_yaml_sha256: 2326a1b36538d682f92b03fb6c0afe5669202dc641ba0a1031eb8f527bc8ecfe
+        target_ids:
+          - api.unmapped.023
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:08:01Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: 13c4b5dd19bd30a2741d2176e87217b76d6c3c63c6fa1010eeebb067d746c7c9
+        new_yaml_sha256: 1874edffb191f7bfce1dc75d3d15a71ae6dd7bbf456c9ca7cff15af19e0d131f
+        target_ids:
+          - api.unmapped.023
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
   -
     id: api.document.041
     stable_key: 'sha256:ff140d8ccd9402107a969e8b0a913ee3c1bd7076b19ed4599d72e7c23d5649d5'
@@ -39029,9 +39157,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:18Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:37Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'tests/Architecture/ControllerTenantContextTest.php::test_every_controller_method_is_classified'
     blocked_reason: null
@@ -39132,6 +39260,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:37Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 995423876dc8d67c9329a61141577163bf39b14f8b1ca9c4871d03b465737aca
+        new_yaml_sha256: 162123ecc819c74f308e454beb5c34b5266da59c98307bb89ff7e662807f6639
+        target_ids:
+          - api.super-admin-context.001
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:07:54Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: 645e70d2491e85b4bbf008c2381e301f8ad2da58ce1c9500ba963d209f4e5a3d
+        new_yaml_sha256: 3640f1b90468042bbe42d6ac09f47a66bba2a4f4e38903d020359540cc3a13c1
+        target_ids:
+          - api.super-admin-context.001
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
   -
     id: web.super-admin-frontend.001
     stable_key: 'manual:web.super-admin-frontend:querykey-namespace-arch-test'
@@ -39155,9 +39315,9 @@ callsites:
     review:
       reviewer: codex
       verdict: BLOCK
-      reviewed_at: '2026-05-08T16:09:27Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-review.md
-      review_commit: e51d3951
+      reviewed_at: '2026-05-08T17:07:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+      review_commit: 3c4f728e
     fix_commit: e51d3951
     regression_test: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts::queryKey namespace invariant (web.super-admin-frontend) > every queryKey literal is correctly namespaced by file location'
     blocked_reason: null
@@ -39258,6 +39418,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-1 BLOCK on deferrals fixture addressed at commit 3c4f728e (replaced 18 speculative deferrals with verified per-controller classification: GROUPS A-I per the round-2 commit message); resubmit for round-2 review'
+      -
+        at: '2026-05-08T17:07:44Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2326a1b36538d682f92b03fb6c0afe5669202dc641ba0a1031eb8f527bc8ecfe
+        new_yaml_sha256: 645e70d2491e85b4bbf008c2381e301f8ad2da58ce1c9500ba963d209f4e5a3d
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: under_review
+        to_status: blocked
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-super-admin-context-cluster-codex-round2-review.md
+        review_commit: 3c4f728e
+        note: 'review verdict=BLOCK by codex via sweep:inventory:review'
+      -
+        at: '2026-05-08T17:08:03Z'
+        actor: claude
+        action: unblock
+        command: 'sweep:inventory:unblock'
+        previous_yaml_sha256: 1874edffb191f7bfce1dc75d3d15a71ae6dd7bbf456c9ca7cff15af19e0d131f
+        new_yaml_sha256: ba7ba713555c9c00f22887b0c006ee35880720fd557cde00778ff6fea36d0d21
+        target_ids:
+          - web.super-admin-frontend.001
+        from_status: blocked
+        to_status: under_review
+        commit: 28b8de47382b3c93f993e751c800e6e91f8021f8
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'unblocked by claude via sweep:inventory:unblock; restored to under_review; reason: Round-2 BLOCKERs (PurchaseHub cache, VoucherSync over-claim, POS scope diff) addressed at commit 28b8de47: PurchaseHubOfferController::index reclassified as KNOWN GAP; VoucherSyncController reverted (POS scope honored) and added to deferrals as OUT-OF-SCOPE. Resubmit for round-3 review.'
 progress:
   total_callsites: 0
   total_clusters: 29
