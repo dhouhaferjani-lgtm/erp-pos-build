@@ -306,6 +306,17 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         }
         await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', resultItem.status);
         pushed++;
+      // T0.4 audit (2026-05-08): chain_broken with terminal info is currently
+      // unreachable. The backend's `SyncReceiptResult::chainBroken()` factory
+      // never populates terminal_last_hash/terminal_hash_sequence (see
+      // apps/api/.../DTOs/SyncReceiptResult.php:99-108), and this client
+      // sends batch-of-one (`{ receipts: [payload] }` above) so server's
+      // `chain_broken` cascade — which only fires on a multi-receipt batch
+      // when an EARLIER receipt failed — cannot apply to the single receipt
+      // in our request. If either contract changes (server populates
+      // terminal info on chain_broken OR client batches > 1), add reconcile
+      // handling here informed by the new contract; do NOT preemptively
+      // harden currently-dead code.
       } else if (resultItem.status === 'chain_broken' || (resultItem.status === 'failed' && isChainBreakError(resultItem.error))) {
         await incrementRetryCount(db, receipt.id);
         await updateReceiptStatus(db, receipt.id, 'failed', resultItem.error ?? 'chain_broken');
