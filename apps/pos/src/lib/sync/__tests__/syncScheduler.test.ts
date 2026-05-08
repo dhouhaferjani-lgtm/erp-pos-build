@@ -12,16 +12,60 @@ vi.mock('@/stores/connectivityStore', () => ({
   },
 }));
 
+// vi.mock factories are hoisted to the top of the file by vitest, so
+// any spy referenced inside them must also be hoisted via vi.hoisted().
+const {
+  setPendingCountSpy,
+  getPendingReceiptCountSpy,
+  setSyncMetadataSpy,
+  syncStoreState,
+} = vi.hoisted(() => {
+  // Stateful mock — completeSync writes lastSyncAt the way the real
+  // store action does, so the scheduler's post-completeSync read picks
+  // up a real timestamp.
+  const state: {
+    isSyncing: boolean;
+    lastSyncAt: number | null;
+    startSync: () => void;
+    completeSync: (result: unknown) => void;
+    failSync: (err: string) => void;
+    setChainBreak: (broken: boolean, n: string | null) => void;
+    setPendingCount: (n: number) => void;
+    setLastSyncAt: (n: number | null) => void;
+  } = {
+    isSyncing: false,
+    lastSyncAt: null,
+    startSync: vi.fn(),
+    completeSync: vi.fn((_result: unknown) => {
+      state.lastSyncAt = Date.now();
+    }),
+    failSync: vi.fn(),
+    setChainBreak: vi.fn(),
+    setPendingCount: vi.fn(),
+    setLastSyncAt: vi.fn(),
+  };
+  return {
+    syncStoreState: state,
+    setPendingCountSpy: state.setPendingCount,
+    getPendingReceiptCountSpy: vi.fn<(db: unknown) => Promise<number>>(),
+    setSyncMetadataSpy: vi.fn<(db: unknown, key: string, value: string) => Promise<void>>(),
+  };
+});
+
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
-    getState: vi.fn().mockReturnValue({
-      isSyncing: false,
-      startSync: vi.fn(),
-      completeSync: vi.fn(),
-      failSync: vi.fn(),
-      setChainBreak: vi.fn(),
-    }),
+    getState: vi.fn(() => syncStoreState),
   },
+}));
+
+vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
+  getPendingReceiptCount: getPendingReceiptCountSpy,
+  getLastSyncedReceiptNumber: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
+  setSyncMetadata: setSyncMetadataSpy,
+  getSyncMetadata: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/stores/authStore', () => ({
@@ -84,6 +128,7 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
     receiptQrIndexPulled: 0,
     chainBreak: false,
     errors: [],
+    degraded: false,
     ...overrides,
   };
 }
@@ -93,6 +138,11 @@ describe('SyncScheduler', () => {
     vi.clearAllMocks();
     productRefreshSpy.mockClear();
     paymentRefreshSpy.mockClear();
+    syncStoreState.lastSyncAt = null;
+    getPendingReceiptCountSpy.mockReset();
+    getPendingReceiptCountSpy.mockResolvedValue(0);
+    setSyncMetadataSpy.mockReset();
+    setSyncMetadataSpy.mockResolvedValue(undefined);
   });
 
   describe('tick', () => {
@@ -139,6 +189,60 @@ describe('SyncScheduler', () => {
 
       expect(productRefreshSpy).toHaveBeenCalledTimes(1);
       expect(paymentRefreshSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // T1.3 Step 4.1: scheduler reads SQLite pending-receipt count after
+    // every tick and writes it to the store via setPendingCount. The
+    // result.receiptsFailed value is the wrong source — it only reflects
+    // failures from the just-completed tick, not the running total.
+    it('T1.3: scheduler tick calls setPendingCount with the SQLite-sourced count after completeSync', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult({ receiptsFailed: 0 }));
+      // SQLite has 7 pending or failed receipts that pre-date this tick.
+      getPendingReceiptCountSpy.mockResolvedValueOnce(7);
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await scheduler.syncNow();
+
+      expect(getPendingReceiptCountSpy).toHaveBeenCalledTimes(1);
+      expect(setPendingCountSpy).toHaveBeenCalledTimes(1);
+      expect(setPendingCountSpy).toHaveBeenCalledWith(7);
+    });
+
+    it('T1.3: scheduler swallows getPendingReceiptCount failures without crashing the tick', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+      getPendingReceiptCountSpy.mockRejectedValueOnce(new Error('SQLite locked'));
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await expect(scheduler.syncNow()).resolves.not.toThrow();
+
+      // Failure means setPendingCount stays at its prior value (the
+      // catch block doesn't write a stale 0).
+      expect(setPendingCountSpy).not.toHaveBeenCalled();
+    });
+
+    // T1.3 Step 4.2: scheduler persists lastSyncAt to sync_metadata
+    // after every tick so the timestamp survives app restarts.
+    it('T1.3: scheduler tick calls setSyncMetadata with last_sync_at after completeSync', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await scheduler.syncNow();
+
+      expect(setSyncMetadataSpy).toHaveBeenCalledTimes(1);
+      const [, key, value] = setSyncMetadataSpy.mock.calls[0]!;
+      expect(key).toBe('last_sync_at');
+      expect(typeof value).toBe('string');
+      const parsed = Number(value);
+      expect(Number.isFinite(parsed)).toBe(true);
+      expect(parsed).toBeGreaterThan(0);
+    });
+
+    it('T1.3: scheduler swallows setSyncMetadata failures without crashing the tick', async () => {
+      vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
+      setSyncMetadataSpy.mockRejectedValueOnce(new Error('SQLite locked'));
+
+      const scheduler = new SyncScheduler(makeMockDb(), 'terminal-1');
+      await expect(scheduler.syncNow()).resolves.not.toThrow();
     });
   });
 });

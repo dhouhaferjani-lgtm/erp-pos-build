@@ -68,6 +68,47 @@ describe('SyncButton', () => {
     expect(screen.getByText(/Last sync:/)).toBeInTheDocument();
   });
 
+  // T1.3 Step 4.3: tristate sync indicator. The amber dot renders only
+  // when `lastSyncResult.degraded === true`. Two negative cases (null
+  // result, degraded === false) confirm the dot is absent in the
+  // happy path; the positive case confirms the dot + tooltip render
+  // when a tick degraded.
+  it('T1.3: renders amber dot when lastSyncResult.degraded is true', () => {
+    mockState = {
+      lastSyncResult: { degraded: true, errors: [] as string[] },
+    };
+    render(<SyncButton />);
+    const dot = screen.getByTestId('sync-degraded-dot');
+    expect(dot).toBeInTheDocument();
+  });
+
+  it('T1.3: amber dot has the configNotLoaded-equivalent tooltip via aria-label', () => {
+    mockState = {
+      lastSyncResult: { degraded: true, errors: ['boom'] as string[] },
+    };
+    render(<SyncButton />);
+    const dot = screen.getByTestId('sync-degraded-dot');
+    // Mocked t() returns the key verbatim — the production component
+    // MUST pass the degradedTitle key into the aria-label so screen
+    // readers announce the state. The i18n smoke test (separate file)
+    // verifies the key actually resolves to translated text in en + fr.
+    expect(dot).toHaveAttribute('aria-label', 'sync.degradedTitle');
+  });
+
+  it('T1.3: does NOT render amber dot when lastSyncResult is null', () => {
+    mockState = { lastSyncResult: null };
+    render(<SyncButton />);
+    expect(screen.queryByTestId('sync-degraded-dot')).not.toBeInTheDocument();
+  });
+
+  it('T1.3: does NOT render amber dot when lastSyncResult.degraded is false', () => {
+    mockState = {
+      lastSyncResult: { degraded: false, errors: [] as string[] },
+    };
+    render(<SyncButton />);
+    expect(screen.queryByTestId('sync-degraded-dot')).not.toBeInTheDocument();
+  });
+
   it('debounces rapid double-clicks (second click within 500 ms is ignored)', async () => {
     vi.useFakeTimers();
     render(<SyncButton />);

@@ -130,6 +130,49 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
           serializeErrorForLog(err),
         );
       });
+
+    // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
+    // header badge reflects the truth from boot, before the first
+    // scheduler tick fires. We awaited the scheduler.start above so a
+    // race where the first tick's setPendingCount lands BEFORE this
+    // hydration is unlikely (the tick is debounced by ~1 s); even if
+    // it does, both writers source from the same SQLite row so last-
+    // write-wins is safe.
+    try {
+      const { getPendingReceiptCount } = await import(
+        '@/lib/db/repositories/offlineReceiptRepository'
+      );
+      const pendingCount = await getPendingReceiptCount(db);
+      useSyncStore.getState().setPendingCount(pendingCount);
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][hydrate] pendingReceiptCount failed',
+        serializeErrorForLog(err),
+      );
+    }
+
+    // T1.3 Step 4.2: hydrate lastSyncAt from sync_metadata so the
+    // SyncButton's "X minutes ago" affordance survives app restarts.
+    // Skip the write entirely on null / non-numeric values — leaves
+    // the store at its initial null and the SyncButton just hides
+    // the affordance until the next tick.
+    try {
+      const { getSyncMetadata } = await import(
+        '@/lib/db/repositories/syncLogRepository'
+      );
+      const raw = await getSyncMetadata(db, 'last_sync_at');
+      if (raw !== null) {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) {
+          useSyncStore.getState().setLastSyncAt(parsed);
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][hydrate] lastSyncAt failed',
+        serializeErrorForLog(err),
+      );
+    }
   } catch (error) {
     console.error('[Terminal] Failed to seed offline hash chain:', error);
   }

@@ -230,7 +230,8 @@
     "syncNow": "Synchroniser",
     "receiptQueued": "Ticket enregistré localement — sera synchronisé en ligne",
     "lastSync": "Dernière synchro : {{time}}",
-    "debounceBlocked": "Un instant — synchronisation en cours."
+    "debounceBlocked": "Un instant — synchronisation en cours.",
+    "degradedTitle": "La dernière synchro a échoué — cliquez pour réessayer"
   },
   "fiscal": {
     "regressionBlocked": "Intégrité de la chaîne fiscale préservée. Les données locales sont plus récentes que le serveur."

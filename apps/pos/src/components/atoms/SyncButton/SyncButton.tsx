@@ -24,6 +24,12 @@ export function SyncButton() {
   const { t } = useTranslation('pos');
   const isSyncing = useSyncStore((s) => s.isSyncing);
   const lastSyncAt = useSyncStore((s) => s.lastSyncAt);
+  // T1.3 Step 4.3: tristate signal — the amber dot renders only when
+  // the most recent tick degraded. Pre-T1.3 SyncButton showed the
+  // green "Last sync 5m ago" affordance even after a tick that failed
+  // to push receipts or pull payment config.
+  const lastSyncResult = useSyncStore((s) => s.lastSyncResult);
+  const isDegraded = lastSyncResult?.degraded === true;
   const triggerSync = useSyncStore((s) => s.triggerSync);
   const lastClickAt = useRef<number>(0);
 
@@ -56,6 +62,14 @@ export function SyncButton() {
       <span className="hidden sm:inline">
         {isSyncing ? t('sync.syncing') : t('sync.syncNow')}
       </span>
+      {isDegraded && (
+        <span
+          data-testid="sync-degraded-dot"
+          aria-label={t('sync.degradedTitle')}
+          title={t('sync.degradedTitle')}
+          className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+        />
+      )}
       {timeAgo && <span className="text-xs text-gray-500">{timeAgo}</span>}
     </button>
   );

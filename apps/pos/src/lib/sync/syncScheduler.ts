@@ -102,6 +102,49 @@ export class SyncScheduler {
 
       useSyncStore.getState().completeSync(result);
 
+      // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite (source-
+      // of-truth — counts status IN ('pending','failed')) instead of
+      // result.receiptsFailed (which only reflects this tick's failures
+      // and drifts from reality across ticks). On failure leave the
+      // store's prior value untouched rather than writing a stale 0.
+      try {
+        const { getPendingReceiptCount } = await import(
+          '@/lib/db/repositories/offlineReceiptRepository'
+        );
+        const pendingCount = await getPendingReceiptCount(this.db);
+        useSyncStore.getState().setPendingCount(pendingCount);
+      } catch (err) {
+        console.error(
+          '[POS][syncScheduler] getPendingReceiptCount failed; leaving prior count',
+          serializeErrorForLog(err),
+        );
+      }
+
+      // T1.3 Step 4.2: persist lastSyncAt to sync_metadata so the
+      // SyncButton's "X minutes ago" affordance survives app restarts.
+      // The completeSync above already wrote Date.now() in-memory; we
+      // now mirror that to SQLite. Use the SAME timestamp the in-memory
+      // state got — fetch it back via getState() to keep them in sync.
+      try {
+        const { setSyncMetadata } = await import(
+          '@/lib/db/repositories/syncLogRepository'
+        );
+        const ts = useSyncStore.getState().lastSyncAt;
+        // Defensive: completeSync above writes Date.now(), so ts is
+        // always a number in production. Guard with typeof so an
+        // unexpected null/undefined never persists the literal string
+        // "null" / "undefined" — the mirror would corrupt boot
+        // hydration the next session.
+        if (typeof ts === 'number') {
+          await setSyncMetadata(this.db, 'last_sync_at', String(ts));
+        }
+      } catch (err) {
+        console.error(
+          '[POS][syncScheduler] setSyncMetadata(last_sync_at) failed',
+          serializeErrorForLog(err),
+        );
+      }
+
       // After any sync that pulled terminal_state, refresh the hashChainReady flag so
       // cold-start banners disappear as soon as the terminal is bootstrapped.
       if (result.terminalStatePulled) {
