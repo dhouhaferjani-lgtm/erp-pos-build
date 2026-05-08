@@ -84,8 +84,13 @@ export class SyncScheduler {
       // refresh has its own internal try/catch that uses
       // `serializeErrorForLog`, so reaching this `.catch` would mean the
       // promise itself rejected (extremely unlikely given the inner guard).
+      // T0.5 Codex round-1 (g): outer `.catch` uses `serializeErrorForLog`
+      // to bound the log payload — a raw `err` reference could spread an
+      // axios-shaped error with `config.url` / auth headers into devtools.
       usePaymentStore.getState().refreshFromSQLite().catch((err: unknown) => {
-        console.error('[SyncScheduler] paymentStore refreshFromSQLite failed:', err);
+        console.error('[SyncScheduler] paymentStore refreshFromSQLite failed', {
+          ...serializeErrorForLog(err),
+        });
       });
 
       if (result.chainBreak) {

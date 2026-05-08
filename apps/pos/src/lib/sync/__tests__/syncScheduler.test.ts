@@ -115,11 +115,19 @@ describe('SyncScheduler', () => {
       expect(paymentRefreshSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('T0.5: paymentStore refresh failure does not block productStore refresh (and vice versa)', async () => {
+    it('T0.5: paymentStore refresh failure does not block productStore refresh', async () => {
       // Defense-in-depth: the two stores' refresh paths are independent.
       // A SQLite read failure on one (e.g. transient lock contention) must
       // not starve the other of its rehydrate. The scheduler hook fires both
       // refresh calls and isolates their failure modes via `.catch`.
+      // (The symmetric direction — productStore failure not blocking
+      // paymentStore — is implicitly covered by the fire-and-forget call
+      // ordering in syncScheduler.ts: paymentStore.refreshFromSQLite is
+      // dispatched on a separate microtask AFTER productStore's, so a
+      // synchronous-throw from productStore's getState() would only break
+      // setup, not paymentStore's dispatch. Codex round-1 MINOR noted the
+      // original title overclaimed symmetry; this test covers the realistic
+      // failure mode only.)
       vi.mocked(runFullSync).mockResolvedValue(makeSyncResult());
       paymentRefreshSpy.mockRejectedValueOnce(new Error('SQLite locked'));
 
