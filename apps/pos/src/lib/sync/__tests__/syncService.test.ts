@@ -959,6 +959,39 @@ describe('syncService', () => {
 
       expect(result).toBe(false);
     });
+
+    it('T0.5: pullPaymentConfig hits canonical /payment-methods + /payment-repositories endpoints, NOT /treasury/* paths', async () => {
+      // The pre-T0.5 implementation called `/treasury/payment-methods` and
+      // `/treasury/payment-repositories` — paths that DO NOT EXIST in the
+      // backend (Treasury routes are registered under `Route::prefix('api/v1')`
+      // with no `treasury/` prefix at
+      // `apps/api/app/Modules/Treasury/Presentation/routes.php:25-66`). The
+      // outer try/catch silently swallowed the 404s, so payment-config
+      // sync was a no-op for the duration of the bug. T0.5 aligns the call
+      // sites on the canonical `/payment-methods` + `/payment-repositories`
+      // pair (already used correctly by paymentApi.ts for the SQLite-first
+      // hydrate at startup).
+      vi.mocked(apiGet)
+        .mockResolvedValueOnce([{ id: 'pm-1', code: 'CASH' }])
+        .mockResolvedValueOnce([{ id: 'repo-1', code: 'CR-001' }]);
+
+      const result = await pullPaymentConfig(db);
+
+      expect(result).toBe(true);
+
+      // Pin the canonical endpoint pair. A regression that re-introduced the
+      // broken `/treasury/...` paths would fail these assertions.
+      expect(apiGet).toHaveBeenCalledWith('/payment-methods');
+      expect(apiGet).toHaveBeenCalledWith('/payment-repositories');
+
+      // Defense-in-depth: verify the broken paths are NOT in the call list.
+      // (`toHaveBeenCalledWith` only asserts at least one matching call, so
+      // a buggy implementation that called BOTH endpoint pairs would pass
+      // the positive assertions above. This negative assertion catches that.)
+      const allCalls = vi.mocked(apiGet).mock.calls.flat();
+      expect(allCalls).not.toContain('/treasury/payment-methods');
+      expect(allCalls).not.toContain('/treasury/payment-repositories');
+    });
   });
 
   describe('pullOperatorPins', () => {
