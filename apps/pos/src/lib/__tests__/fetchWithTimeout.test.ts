@@ -162,17 +162,41 @@ describe('fetchWithTimeout', () => {
 });
 
 describe('FetchTimeoutError', () => {
-  it('serializes cleanly through serializeErrorForLog', async () => {
+  it('keeps the .message opaque so the cashier-visible banner does not leak the URL', async () => {
+    // T0.3 round-1 Codex fix: paymentStore.formatCheckoutError returns
+    // `error.message` verbatim for any non-empty Error. The URL must NOT
+    // appear in the message — query params / customer-id path segments
+    // would otherwise reach the cashier banner. The diagnostic detail
+    // lives on typed instance fields (`url`, `timeoutMs`, `method`).
+    const err = new FetchTimeoutError('https://x.test/customers/abc-123?token=secret', 30_000, 'POST');
+
+    expect(err.message).toBe('Request timed out');
+    expect(err.message).not.toContain('customers');
+    expect(err.message).not.toContain('token');
+    expect(err.message).not.toContain('30000');
+    expect(err.message).not.toContain('POST');
+
+    // Typed fields still carry the full diagnostic detail for explicit
+    // devtools logging by callers (e.g. syncService's structured catch).
+    expect(err.url).toBe('https://x.test/customers/abc-123?token=secret');
+    expect(err.timeoutMs).toBe(30_000);
+    expect(err.method).toBe('POST');
+    expect(err.name).toBe('FetchTimeoutError');
+  });
+
+  it('serializes through serializeErrorForLog with the opaque message + typed name', async () => {
     const { serializeErrorForLog } = await import('@/lib/errorLogging');
     const err = new FetchTimeoutError('https://x.test/y', 30_000, 'POST');
 
     const serialized = serializeErrorForLog(err);
 
+    // serializeErrorForLog emits .name + .message + .stack. The opaque
+    // message keeps the structured-log payload safe for crash reports etc.
+    // Callers that need URL/method/timeoutMs in their log should spread
+    // the typed fields explicitly (see syncService timeout branch).
     expect(serialized.errorType).toBe('object');
     expect(serialized.errorName).toBe('FetchTimeoutError');
-    expect(serialized.message).toContain('30000ms');
-    expect(serialized.message).toContain('POST');
-    expect(serialized.message).toContain('https://x.test/y');
+    expect(serialized.message).toBe('Request timed out');
     expect(typeof serialized.stack).toBe('string');
   });
 });

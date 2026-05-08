@@ -49,7 +49,14 @@ export class FetchTimeoutError extends Error {
     public readonly timeoutMs: number,
     public readonly method: string,
   ) {
-    super(`Fetch ${method} ${url} timed out after ${String(timeoutMs)}ms`);
+    // T0.3 round-1 Codex fix: keep the message OPAQUE. The URL can carry
+    // customer-id path segments / query params and must not flow into the
+    // cashier-visible banner via paymentStore's formatCheckoutError, which
+    // returns `error.message` verbatim for any non-empty Error (T0.1 opacity
+    // contract). Diagnostic detail (url, timeoutMs, method) is still
+    // available on the typed instance fields — callers that log to devtools
+    // (e.g. syncService's catch) read them explicitly.
+    super('Request timed out');
     this.name = 'FetchTimeoutError';
   }
 }
