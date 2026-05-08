@@ -174,8 +174,19 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
       // Use a short-lived auth header for this single fetch — apiGet reads
       // the in-store token via getHeaders(), but we haven't committed it
-      // yet. Temporarily set token (NOT isAuthenticated, NOT persisted) so
-      // the request authenticates; reset it on any failure path.
+      // yet. Codex round-1 finding (c): snapshot the FULL prior auth
+      // state before the temp write so a failure restores exactly what
+      // was there. Otherwise re-attempting login() over an already-valid
+      // session corrupts the in-memory snapshot when /user/companies
+      // fails (token gets nulled while user/companies/isAuthenticated
+      // still describe the previous session).
+      const priorAuth = {
+        token: get().token,
+        user: get().user,
+        companies: get().companies,
+        companyId: get().companyId,
+        isAuthenticated: get().isAuthenticated,
+      };
       set({ token });
 
       let companies: Company[];
@@ -184,8 +195,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           signal: opts?.signal,
         });
       } catch (error) {
-        // Roll back the in-memory token; we never persisted anything.
-        set({ token: null });
+        // Restore the prior in-memory auth verbatim; we never persisted
+        // anything new and we must not corrupt a previously-valid
+        // session. Disk persistence is untouched.
+        set(priorAuth);
         throw error;
       }
 
@@ -231,11 +244,35 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // T1.1 Step 1.2: re-fetch /user/companies for the recovery screen
   // (rendered when isAuthenticated && companies.length === 0). Throws on
   // failure so the component can render the typed-fields-only error UI.
+  //
+  // Codex round-1 finding (b): a stale companyId left over from a prior
+  // session must be cleared when the refreshed companies no longer
+  // include it. Otherwise apiGet's getHeaders() keeps sending
+  // X-Company-Id pointing at a company the user has been revoked from,
+  // AND AppRouter skips the multi-company-selection branch (which gates
+  // on `!companyId`) — leaving the user stuck on a phantom company.
   fetchCompanies: async () => {
     const companies = await apiGet<Company[]>('/user/companies');
     await setStoredValue(StorageKeys.COMPANIES, companies);
-    set({ companies });
-    if (companies.length === 1 && companies[0]) {
+
+    const currentCompanyId = get().companyId;
+    const stillValid =
+      currentCompanyId !== null &&
+      companies.some((c) => c.id === currentCompanyId);
+
+    if (!stillValid) {
+      // Drop the stale id so the router routes correctly and apiGet
+      // stops sending the wrong X-Company-Id header.
+      await removeStoredValue(StorageKeys.COMPANY_ID);
+      set({ companies, companyId: null });
+    } else {
+      set({ companies });
+    }
+
+    // Auto-select only when exactly one company is returned AND the
+    // user does not already have a valid selection — this prevents
+    // overwriting a deliberate prior selection in edge cases.
+    if (companies.length === 1 && companies[0] && !stillValid) {
       const companyId = companies[0].id;
       await setStoredValue(StorageKeys.COMPANY_ID, companyId);
       set({ companyId });

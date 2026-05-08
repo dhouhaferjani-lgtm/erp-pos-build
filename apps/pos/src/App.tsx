@@ -152,37 +152,44 @@ export function AppRouter() {
  * the failure (typed-fields-only — banner-opacity contract from T0.1) with
  * Retry + Sign-out affordances.
  */
+// Allowlist of error class names safe to surface to the cashier UI.
+// These are class names from our own code or well-known DOM types; no
+// vendor / API content can reach this set. Any other errorName renders
+// as the generic 'Error' label (Codex round-1 finding (d) — banner
+// opacity contract from T0.1: never render the raw error.message,
+// which can carry captive-portal HTML or backend stack fragments).
+const SAFE_ERROR_NAMES = new Set([
+  'ApiRequestError',
+  'FetchTimeoutError',
+  'AbortError',
+  'TypeError',
+  'Error',
+]);
+
 function CompanyRecoveryScreen() {
   const { t } = useTranslation('common');
   const fetchCompanies = useAuthStore((s) => s.fetchCompanies);
   const logout = useAuthStore((s) => s.logout);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [errorPayload, setErrorPayload] = useState<{
-    errorName: string | undefined;
-    message: string;
-  } | null>(null);
-
-  // Sanitize the error message: serializeErrorForLog returns a typed shape
-  // but the `message` field can still carry vendor / API content. Truncate
-  // to a bounded length to keep the cashier UI opaque against URL leaks
-  // and stack traces (T0.1 banner-opacity contract).
-  function sanitize(raw: string): string {
-    return raw.slice(0, 120);
-  }
+  const [errorLabel, setErrorLabel] = useState<string | null>(null);
 
   async function runFetch() {
     setIsLoading(true);
-    setErrorPayload(null);
+    setErrorLabel(null);
     try {
       await fetchCompanies();
     } catch (error) {
       const payload = serializeErrorForLog(error);
-      console.error('[POS][AppRouter][companyRecovery] fetchCompanies failed', payload);
-      setErrorPayload({
-        errorName: payload.errorName,
-        message: sanitize(payload.message),
-      });
+      console.error(
+        '[POS][AppRouter][companyRecovery] fetchCompanies failed',
+        payload,
+      );
+      const safeLabel =
+        payload.errorName && SAFE_ERROR_NAMES.has(payload.errorName)
+          ? payload.errorName
+          : 'Error';
+      setErrorLabel(safeLabel);
     } finally {
       setIsLoading(false);
     }
@@ -206,12 +213,10 @@ function CompanyRecoveryScreen() {
           {t('auth.companyRecovery.message')}
         </p>
 
-        {errorPayload && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-left text-xs text-red-700">
-            <div className="font-mono font-medium">
-              {errorPayload.errorName ?? 'Error'}
-            </div>
-            <div className="mt-1 break-words">{errorPayload.message}</div>
+        {errorLabel && (
+          <div className="mt-4 rounded-md bg-red-50 p-3 text-xs text-red-700">
+            <div className="font-mono font-medium">{errorLabel}</div>
+            <div className="mt-1">{t('auth.companyRecovery.errorHint')}</div>
           </div>
         )}
 

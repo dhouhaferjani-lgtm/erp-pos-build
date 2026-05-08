@@ -91,9 +91,37 @@ export async function fetchWithTimeout(
   let timedOut = false;
   let userAborted = false;
 
+  // Single timer drives both legs of the defense:
+  //   (a) controller.abort() — signals Tauri's plugin-http to terminate
+  //       the Rust-side request (honored in v2.5.7).
+  //   (b) rejectTimeout() — explicit Promise.race rejection so the JS
+  //       caller is unblocked even if Rust ignores the signal.
+  let rejectTimeout!: (err: Error) => void;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    rejectTimeout = reject;
+  });
+
+  // Codex round-1 finding (h): user-initiated abort needs the SAME
+  // belt-and-suspenders pattern as the timeout. If we only call
+  // controller.abort() and rely on tauriFetch to honor it, a Tauri
+  // plugin-http version that ignores the signal would leave the JS
+  // caller blocked until the timeout fires. By rejecting an explicit
+  // userAbortPromise alongside the controller.abort(), the JS-side
+  // race settles synchronously regardless of what the Rust side does.
+  let rejectUserAbort!: (err: Error) => void;
+  const userAbortPromise = new Promise<never>((_resolve, reject) => {
+    rejectUserAbort = reject;
+  });
+
   const onUserAbort = () => {
     userAborted = true;
     controller.abort();
+    const reason: unknown = userSignal?.reason;
+    rejectUserAbort(
+      reason instanceof Error
+        ? reason
+        : new DOMException('aborted', 'AbortError'),
+    );
   };
 
   if (userSignal) {
@@ -105,16 +133,6 @@ export async function fetchWithTimeout(
     }
   }
 
-  // Single timer drives both legs of the defense:
-  //   (a) controller.abort() — signals Tauri's plugin-http to terminate
-  //       the Rust-side request (honored in v2.5.7).
-  //   (b) rejectTimeout() — explicit Promise.race rejection so the JS
-  //       caller is unblocked even if Rust ignores the signal.
-  let rejectTimeout!: (err: Error) => void;
-  const timeoutPromise = new Promise<never>((_resolve, reject) => {
-    rejectTimeout = reject;
-  });
-
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -125,6 +143,7 @@ export async function fetchWithTimeout(
     return await Promise.race([
       tauriFetch(input, { ...init, signal: controller.signal }),
       timeoutPromise,
+      userAbortPromise,
     ]);
   } catch (err) {
     // If Tauri's plugin-http honored AbortSignal and rejected with

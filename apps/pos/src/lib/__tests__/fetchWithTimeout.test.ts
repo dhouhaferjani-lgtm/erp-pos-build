@@ -159,6 +159,63 @@ describe('fetchWithTimeout', () => {
     // Promise.race in the wrapper covers the Rust-bypass case.
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
   });
+
+  // T1.1 Step 1.5 + Codex round-1 finding (h): a user-initiated abort
+  // must settle the Promise.race immediately even if Tauri's plugin-http
+  // ignores the AbortSignal. Without the explicit userAbortPromise leg
+  // of the race, Cancel-after-8s would wait until the 10s timeout fires
+  // — defeating the affordance.
+  it('T1.1: user-initiated abort settles the race even when Tauri ignores the signal', async () => {
+    // Tauri ignores both abort and resolve — only the wrapper's own
+    // Promise.race against the userAbortPromise can unblock the JS side.
+    vi.mocked(tauriFetch).mockImplementation(
+      () =>
+        new Promise(() => {
+          // Never resolves, never rejects — even on signal.aborted.
+        }),
+    );
+
+    const userController = new AbortController();
+    const promise = fetchWithTimeout(
+      'https://example.test/auth/login',
+      { method: 'POST', signal: userController.signal },
+      10_000,
+    );
+    promise.catch(() => undefined);
+
+    // Fire user abort BEFORE the timeout window — should reject
+    // immediately without waiting for the timer.
+    userController.abort();
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+
+    // Listener / timer cleanup — no leaked references.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('T1.1: pre-aborted user signal rejects synchronously without firing fetch', async () => {
+    vi.mocked(tauriFetch).mockImplementation(
+      () =>
+        new Promise(() => {
+          // Even if Tauri were called, never resolves.
+        }),
+    );
+
+    const userController = new AbortController();
+    userController.abort();
+
+    const promise = fetchWithTimeout(
+      'https://example.test/x',
+      { method: 'GET', signal: userController.signal },
+      10_000,
+    );
+    promise.catch(() => undefined);
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('FetchTimeoutError', () => {

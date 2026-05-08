@@ -126,20 +126,27 @@ describe('LoginPage — T1.1 Step 1.5 still-trying + Cancel', () => {
     expect(screen.getByTestId('login-cancel')).toBeInTheDocument();
   });
 
-  it('T1.1: LoginPage Cancel button aborts in-flight login via signal', () => {
-    // login() captures the threaded signal and never resolves on its own
-    // — only an abort can settle it. We do NOT await any state update
-    // tied to this promise, since awaiting would block the test.
+  it('T1.1: LoginPage Cancel button aborts in-flight login via signal', async () => {
+    // Codex round-1 finding (g): the test must prove the attempt SETTLES
+    // when Cancel fires, not just that the signal flipped to aborted.
+    // The mocked login() now actually rejects when its signal aborts,
+    // and the test asserts isLoading clears and the still-trying UI is
+    // gone after the click — matching the user-visible end-state.
     let capturedSignal: AbortSignal | undefined;
     const loginSpy = vi.fn(
       (
         _email: string,
         _password: string,
         opts?: { signal?: AbortSignal },
-      ) => {
-        capturedSignal = opts?.signal;
-        return new Promise<void>(() => {});
-      },
+      ) =>
+        new Promise<void>((_resolve, reject) => {
+          capturedSignal = opts?.signal;
+          useAuthStore.setState({ isLoading: true } as never);
+          opts?.signal?.addEventListener('abort', () => {
+            useAuthStore.setState({ isLoading: false } as never);
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
     );
 
     useAuthStore.setState({ login: loginSpy as never } as never);
@@ -153,13 +160,10 @@ describe('LoginPage — T1.1 Step 1.5 still-trying + Cancel', () => {
     fireEvent.change(screen.getByLabelText('auth.password'), {
       target: { value: 'pass-w-8-chars' },
     });
-    fireEvent.submit(
-      screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!,
-    );
-
-    // Mimic the real authStore.login flipping isLoading=true.
-    act(() => {
-      useAuthStore.setState({ isLoading: true } as never);
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByRole('button', { name: 'auth.signIn' }).closest('form')!,
+      );
     });
 
     // Advance to 8s — Cancel button should appear.
@@ -168,10 +172,23 @@ describe('LoginPage — T1.1 Step 1.5 still-trying + Cancel', () => {
     });
 
     const cancelButton = screen.getByTestId('login-cancel');
-    fireEvent.click(cancelButton);
+    expect(screen.getByTestId('login-still-trying')).toBeInTheDocument();
+    expect(useAuthStore.getState().isLoading).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(cancelButton);
+      // Flush microtasks so the abort listener and the rejection settle
+      // before assertions.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(loginSpy).toHaveBeenCalledTimes(1);
     expect(capturedSignal).toBeDefined();
     expect(capturedSignal!.aborted).toBe(true);
+    // Attempt actually settled — UI no longer in spinner state.
+    expect(useAuthStore.getState().isLoading).toBe(false);
+    expect(screen.queryByTestId('login-still-trying')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('login-cancel')).not.toBeInTheDocument();
   });
 });
