@@ -156,6 +156,8 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
+    "stillTrying": "Still working… check your connection.",
+    "cancel": "Cancel",
     "selectCompany": "Select Company",
     "noConnection": "No Internet Connection",
     "noConnectionMessage": "An internet connection is required to sign in. Please check your connection and try again."

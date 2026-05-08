@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useConnectivityStore } from '@/stores/connectivityStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -30,7 +32,7 @@ const queryClient = new QueryClient({
 /** Detect if this window is the customer display (secondary window). */
 const isCustomerDisplayWindow = window.location.pathname === '/customer-display';
 
-function AppRouter() {
+export function AppRouter() {
   const { t } = useTranslation('common');
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isInitialized = useAuthStore((s) => s.isInitialized);
@@ -93,6 +95,18 @@ function AppRouter() {
     );
   }
 
+  // T1.1 Step 1.2: empty-companies recovery branch.
+  // Reachable when (a) /user/companies failed mid-login (Step 1.1's window
+  // is now closed for new logins, but a pre-Step-1.1 orphan may still be
+  // cached on disk and rehydrated by initialize()), or (b) an admin has
+  // legitimately revoked the user from every company between sessions.
+  // Without this branch the user falls through to TerminalSetupPage,
+  // which throws on the first apiGet('/terminals?company_id=...') because
+  // companyId is null.
+  if (isAuthenticated && companies.length === 0) {
+    return <CompanyRecoveryScreen />;
+  }
+
   // Needs terminal setup
   if (!terminal && !terminalLoading) {
     return (
@@ -132,6 +146,104 @@ function AppRouter() {
   );
 }
 
+/**
+ * T1.1 Step 1.2 — recovery screen rendered when isAuthenticated but
+ * companies are empty. Auto-runs `fetchCompanies` once on mount; surfaces
+ * the failure (typed-fields-only — banner-opacity contract from T0.1) with
+ * Retry + Sign-out affordances.
+ */
+// Allowlist of error class names safe to surface to the cashier UI.
+// These are class names from our own code or well-known DOM types; no
+// vendor / API content can reach this set. Any other errorName renders
+// as the generic 'Error' label (Codex round-1 finding (d) — banner
+// opacity contract from T0.1: never render the raw error.message,
+// which can carry captive-portal HTML or backend stack fragments).
+const SAFE_ERROR_NAMES = new Set([
+  'ApiRequestError',
+  'FetchTimeoutError',
+  'AbortError',
+  'TypeError',
+  'Error',
+]);
+
+function CompanyRecoveryScreen() {
+  const { t } = useTranslation('common');
+  const fetchCompanies = useAuthStore((s) => s.fetchCompanies);
+  const logout = useAuthStore((s) => s.logout);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorLabel, setErrorLabel] = useState<string | null>(null);
+
+  async function runFetch() {
+    setIsLoading(true);
+    setErrorLabel(null);
+    try {
+      await fetchCompanies();
+    } catch (error) {
+      const payload = serializeErrorForLog(error);
+      console.error(
+        '[POS][AppRouter][companyRecovery] fetchCompanies failed',
+        payload,
+      );
+      const safeLabel =
+        payload.errorName && SAFE_ERROR_NAMES.has(payload.errorName)
+          ? payload.errorName
+          : 'Error';
+      setErrorLabel(safeLabel);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void runFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      className="flex h-screen items-center justify-center bg-gray-50"
+      data-testid="company-recovery-screen"
+    >
+      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md text-center">
+        <h2 className="text-xl font-bold text-gray-900">
+          {t('auth.companyRecovery.title')}
+        </h2>
+        <p className="mt-2 text-sm text-gray-500">
+          {t('auth.companyRecovery.message')}
+        </p>
+
+        {errorLabel && (
+          <div className="mt-4 rounded-md bg-red-50 p-3 text-xs text-red-700">
+            <div className="font-mono font-medium">{errorLabel}</div>
+            <div className="mt-1">{t('auth.companyRecovery.errorHint')}</div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          data-testid="company-recovery-retry"
+          disabled={isLoading}
+          onClick={() => void runFetch()}
+          className="mt-6 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isLoading
+            ? t('auth.companyRecovery.retrying')
+            : t('auth.companyRecovery.retry')}
+        </button>
+        <button
+          type="button"
+          data-testid="company-recovery-signout"
+          onClick={() => logout()}
+          className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700 underline"
+        >
+          {t('auth.companyRecovery.signOut')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   // Customer display window — render directly without auth/providers
   if (isCustomerDisplayWindow) {
@@ -141,7 +253,7 @@ export function App() {
   return <MainApp />;
 }
 
-function MainApp() {
+export function MainApp() {
   const fullscreen = useSettingsStore((s) => s.fullscreen);
   const cfdEnabled = useCustomerDisplayStore((s) => s.enabled);
   const cfdMonitorIndex = useCustomerDisplayStore((s) => s.monitorIndex);
@@ -154,6 +266,19 @@ function MainApp() {
   useEffect(() => {
     void applyFullscreen(fullscreen);
   }, [fullscreen]);
+
+  // T1.1 Step 1.4: start connectivity monitoring at the MainApp level so
+  // LoginPage (which mounts before any authenticated screen) can read
+  // isOnline and surface the offline panel. Previously this lived inside
+  // AppShell, which only mounts after authentication — so a cashier hit
+  // by a network outage at boot saw a generic credentials error instead
+  // of the "no connection" affordance. The customer-display window
+  // returns directly from App() before reaching MainApp, so it does not
+  // spin up a redundant monitor.
+  useEffect(() => {
+    const stopMonitoring = useConnectivityStore.getState().startMonitoring();
+    return stopMonitoring;
+  }, []);
 
   // Auto-open customer display on startup if enabled
   useEffect(() => {

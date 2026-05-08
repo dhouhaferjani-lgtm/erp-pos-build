@@ -18,5 +18,15 @@
   "of": "de",
   "discount": "Remise",
   "noResults": "Aucun résultat trouvé",
-  "retry": "Réessayer"
+  "retry": "Réessayer",
+  "auth": {
+    "companyRecovery": {
+      "title": "Aucune entreprise disponible",
+      "message": "Nous n'avons trouvé aucune entreprise pour votre compte. Essayez d'actualiser, ou déconnectez-vous pour changer d'utilisateur.",
+      "errorHint": "Impossible d'actualiser vos entreprises. Vérifiez votre connexion et réessayez.",
+      "retrying": "Actualisation...",
+      "retry": "Réessayer",
+      "signOut": "Se déconnecter"
+    }
+  }
 }

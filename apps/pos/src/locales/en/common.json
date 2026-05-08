@@ -18,5 +18,15 @@
   "of": "of",
   "discount": "Discount",
   "noResults": "No results found",
-  "retry": "Retry"
+  "retry": "Retry",
+  "auth": {
+    "companyRecovery": {
+      "title": "No companies available",
+      "message": "We couldn't find any companies for your account. Try refreshing, or sign out to switch users.",
+      "errorHint": "We couldn't refresh your companies. Check your connection and try again.",
+      "retrying": "Refreshing...",
+      "retry": "Retry",
+      "signOut": "Sign out"
+    }
+  }
 }

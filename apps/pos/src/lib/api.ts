@@ -77,9 +77,16 @@ function getHeaders(): Record<string, string> {
  * Per-call timeout override (T0.3). Null/undefined → DEFAULT_REQUEST_TIMEOUT_MS.
  * Used by callers like the receipt-sync POST at syncService.ts that need a
  * 30s ceiling instead of the 10s default.
+ *
+ * T1.1 Step 1.5: `signal` lets callers thread a user-initiated cancellation
+ * AbortSignal (e.g. LoginPage's Cancel-after-8s button) all the way down to
+ * fetchWithTimeout, which combines it with its internal timeout controller.
+ * Aborting the user signal rejects the in-flight request without the JS
+ * side waiting on the 10s timeout to fire.
  */
 export interface ApiRequestOptions {
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 async function request<T>(
@@ -112,6 +119,7 @@ async function request<T>(
     headers: getHeaders(),
     body: body ? JSON.stringify(body) : undefined,
     connectTimeout: 10_000,
+    signal: opts?.signal,
   }, timeoutMs);
 
   if (response.status === 401) {
