@@ -63,6 +63,7 @@ import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 interface SyncReceiptPayloadPayment {
   payment_method_id: string;
@@ -306,6 +307,13 @@ export async function pushOfflineReceipts(db: Database): Promise<{
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
+        ...serializeErrorForLog(error),
+        receiptId: receipt.id,
+        receiptNumber: receipt.receipt_number,
+        retryCount: receipt.retry_count,
+        idempotencyKey: receipt.idempotency_key,
+      });
       await incrementRetryCount(db, receipt.id);
       await updateReceiptStatus(db, receipt.id, 'failed', message);
       await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', message);

@@ -43,6 +43,7 @@ import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
 import { apiGet } from '@/lib/api';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
@@ -627,8 +628,12 @@ export function HomePage() {
         if (productData) {
           addItem(productData);
         }
-      } catch {
-        // Silently fail — recommendation add is best-effort
+      } catch (recommendError) {
+        // Best-effort — log so a persistent product-fetch failure isn't invisible.
+        console.error('[POS][HomePage][handleAddRecommendation] failed', {
+          ...serializeErrorForLog(recommendError),
+          productId,
+        });
       }
     },
     [addItem],
@@ -687,8 +692,15 @@ export function HomePage() {
         );
         setShowCashModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore and displayed in the modal
+      } catch (cashError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleCashConfirm] processCashCheckout threw', {
+          ...serializeErrorForLog(cashError),
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          tenderedAmount,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId],
@@ -713,8 +725,15 @@ export function HomePage() {
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore
+      } catch (advancedError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleAdvancedComplete] processAdvancedCheckout threw', {
+          ...serializeErrorForLog(advancedError),
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          paymentLineCount: payments.length,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],

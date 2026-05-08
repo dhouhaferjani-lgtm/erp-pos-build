@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 const BASE_INTERVAL_MS = 60_000; // 1 minute
 const MAX_INTERVAL_MS = 5 * 60_000; // 5 minutes
@@ -104,8 +105,15 @@ export class SyncScheduler {
           if (sessionError instanceof ApiRequestError && sessionError.status === 401) {
             console.warn('[SyncScheduler] Token confirmed expired — logging out');
             useAuthStore.getState().logout();
+          } else {
+            // Network error → token might still be valid when server is reachable.
+            // Log at warn so intermittent outages don't drown devtools in errors
+            // (Codex review 2026-05-08 finding (h)). checkSession runs every
+            // sync tick (~30s); a 10-min outage produces ~20 entries.
+            console.warn('[POS][syncScheduler] checkSession failed (non-401, transient)', {
+              ...serializeErrorForLog(sessionError),
+            });
           }
-          // Network error → ignore, token might still be valid when server is reachable
         }
       }
 
@@ -118,6 +126,10 @@ export class SyncScheduler {
 
       return result;
     } catch (error) {
+      console.error('[POS][syncScheduler] tick threw', {
+        ...serializeErrorForLog(error),
+        currentInterval: this.currentInterval,
+      });
       const message = error instanceof Error ? error.message : 'Sync failed';
       useSyncStore.getState().failSync(message);
       this.backoff();

@@ -129,6 +129,60 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(usePaymentStore.getState().error).toMatch(/Terminal hash chain not initialized/);
   });
 
+  it('preserves error class name in paymentStore.error when underlying error has empty message', async () => {
+    // T0.1 regression: Tauri SQLite plugin can reject with Error subclasses that
+    // carry a class name but empty `.message`. Old fallback collapsed this to
+    // an empty string — the cashier saw "Échec du paiement" with zero clue what
+    // failed and the console showed nothing because the catch was silent.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    class SqliteBusyError extends Error {
+      constructor() {
+        super('');
+        this.name = 'SqliteBusyError';
+      }
+    }
+    vi.mocked(createOfflineReceipt).mockRejectedValueOnce(new SqliteBusyError());
+
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBeInstanceOf(SqliteBusyError);
+
+    expect(usePaymentStore.getState().error).toContain('SqliteBusyError');
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
+  it('keeps the cashier banner opaque when checkout rejects with a non-Error string', async () => {
+    // T0.1 + Codex review 2026-05-08 finding (b): Tauri IPC rejects with raw
+    // strings (e.g. "error returned from database: NOT NULL constraint failed:
+    // offline_receipts.payment_method_id"). Those strings can carry SQL fragments,
+    // table names, file paths, or query data — content that does NOT belong in
+    // the cashier UI. The banner stays opaque (generic i18n only); raw detail is
+    // surfaced via console.error to devtools, not the user.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    const i18n = (await import('@/lib/i18n')).default;
+    const expectedOpaqueBanner = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+
+    vi.mocked(createOfflineReceipt).mockRejectedValueOnce(
+      'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
+    );
+
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBe(
+      'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
+    );
+
+    const banner = usePaymentStore.getState().error;
+    // Codex round-2 finding: previous test would have passed vacuously if
+    // banner were null/empty. Lock the exact expected opaque value so a
+    // regression that drops the banner entirely also fails this test.
+    expect(banner).toBe(expectedOpaqueBanner);
+    expect(banner).not.toContain('NOT NULL constraint failed');
+    expect(banner).not.toContain('offline_receipts.payment_method_id');
+    expect(banner).not.toContain('payment_method_id');
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
   it('forwards consumption_mode and table_id when provided', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
