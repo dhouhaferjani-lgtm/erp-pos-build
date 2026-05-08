@@ -92,8 +92,12 @@ final class ParapharmacySeederTest extends TestCase
 
         $this->seed(ParapharmacySeeder::class);
 
+        // Codex round-2 MINOR-6: drop the `whereNotNull('barcode')`
+        // filter — barcode is NOT NULL in the products schema today,
+        // so the filter is a no-op. Keeping it would silently mask a
+        // future regression that made barcode nullable.
         $totalProducts = Product::count();
-        $distinctBarcodes = Product::whereNotNull('barcode')->distinct()->count('barcode');
+        $distinctBarcodes = Product::distinct()->count('barcode');
 
         $this->assertSame(5000, $totalProducts);
         $this->assertSame(
