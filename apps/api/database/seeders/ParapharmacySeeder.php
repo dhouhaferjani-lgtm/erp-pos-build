@@ -331,6 +331,13 @@ class ParapharmacySeeder extends Seeder
         //   so other seeders (e.g. CoffeeShopSeeder, DemoTenantSeeder) can opt
         //   into the same env-var multiplier without copy-pasting the
         //   resolveScale + DEFAULT_SCALE plumbing. Deferred from T1.0 PR #89.
+        // TODO(go-live-followup): CSV-driven product import (deferred from
+        //   T1.0 PR #89 / kickoff "Out of scope"). Today fixture growth means
+        //   editing the category distribution map in code; a CSV-driven
+        //   importer would let ops change the smoke-fixture composition
+        //   without a code change + re-deploy. See
+        //   docs/superpowers/plans/2026-05-08-pos-t1.0-large-catalog-fixture-kickoff-prompt.md
+        //   §"Out of scope" line "CSV-driven product import".
         // Load reference data
         $ingredients = Ingredient::all();
         $certifications = Certification::all();

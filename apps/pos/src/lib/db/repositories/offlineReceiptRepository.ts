@@ -124,8 +124,8 @@ export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]
 //   acceptable because failures are rare and the cashier can rely on the next
 //   automatic retry; post-go-live we want a manager-screen tile listing
 //   stranded receipts with their last sync error and a retry/abandon action.
-//   See docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
-//   §"Out of scope".
+//   See docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+//   Section 3 Step 5.3 row 6.
 export async function getPendingReceiptCount(db: Database): Promise<number> {
   const result = await queryOne<{ count: number }>(
     db,

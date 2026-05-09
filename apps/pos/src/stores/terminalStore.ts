@@ -92,10 +92,9 @@ const initialState: TerminalState = {
 //   for auth + initial catalog/payment-config seed; once seeded the terminal
 //   is offline-first. Field signal will tell us whether merchants need a
 //   one-online-then-offline activation flow vs. a fully-offline activation
-//   path (per the offline-first research doc). See
-//   docs/superpowers/research/2026-04-30-pos-first-launch-offline-activation-research.md
-//   and docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
-//   §"Out of scope".
+//   path. See
+//   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+//   Section 3 Step 5.3 row 7.
 export async function seedOfflineHashChain(terminalId: string): Promise<void> {
   const companyId = useAuthStore.getState().companyId;
   if (!companyId) return;

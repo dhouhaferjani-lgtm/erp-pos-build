@@ -6,8 +6,8 @@ import type Database from '@tauri-apps/plugin-sql';
 //   A server-side manifest of {product_id, etag, size} delivered with the
 //   catalog warmup would let the client compute deltas + pre-fetch the top-N
 //   most-likely-viewed images during idle time. See
-//   docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
-//   §"Out of scope".
+//   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+//   Section 3 Step 5.3 row 9.
 interface ImageManifestEntry {
   product_id: string;
   remote_url: string;

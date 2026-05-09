@@ -293,8 +293,8 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   //   already accepts a batch payload — switching the client to chunked
   //   batches (e.g. 50 per request) would dramatically cut sync wall-time
   //   on backlog recovery. See
-  //   docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
-  //   §"Out of scope".
+  //   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+  //   Section 3 Step 5.3 row 8.
   for (const receipt of pending) {
     try {
       await updateReceiptStatus(db, receipt.id, 'syncing');
