@@ -1327,8 +1327,10 @@ final class CatalogTenantIsolationTest extends TestCase
             'price_adjustment' => 0,
         ]);
 
+        // F1 fix: registered route is PATCH /api/v1/variants/{id}, NOT /api/v1/composite-item-variants/{id}.
+        // The prior URL caused a router-level 404 (vacuous pass) without exercising the whereHas predicate.
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)
-            ->patchJson("/api/v1/composite-item-variants/{$variantB->id}", [
+            ->patchJson("/api/v1/variants/{$variantB->id}", [
                 'name' => 'Hijacked',
             ]);
         $cross->assertStatus(404);
@@ -1560,6 +1562,212 @@ final class CatalogTenantIsolationTest extends TestCase
             ]);
         $cross->assertStatus(422);
         $this->assertArrayHasKey('component_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.018 — CompositeItemController::duplicate cross-tenant
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_duplicate_composite_item_rejects_cross_tenant_id(): void
+    {
+        // Tenant A targeting tenant B's composite item via POST /composite-items/{id}/duplicate.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/composite-items/{$this->compositeItemB->id}/duplicate");
+        $cross->assertStatus(404);
+
+        // Tenant B's item must be unmodified.
+        $this->assertNotNull(
+            $this->compositeItemB->fresh(),
+            'Cross-tenant duplicate must NOT delete or modify the foreign composite item.',
+        );
+        $this->assertSame('Composite B', $this->compositeItemB->fresh()->name);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.019 — RecipeController: index/store parent CompositeItem reads
+    //                   and update/activate/calculateCost Recipe reads
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_recipe_index_rejects_cross_tenant_composite_item_id(): void
+    {
+        // Tenant A requests recipe list nested under tenant B's composite item.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/composite-items/{$this->compositeItemB->id}/recipes");
+        $cross->assertStatus(404);
+    }
+
+    public function test_recipe_store_rejects_cross_tenant_composite_item_id(): void
+    {
+        // Tenant A tries to create a recipe under tenant B's composite item.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/composite-items/{$this->compositeItemB->id}/recipes", [
+                'yield_quantity' => 1,
+            ]);
+        $cross->assertStatus(404);
+    }
+
+    public function test_recipe_update_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/recipes/{$recipeB->id}", [
+                'yield_quantity' => 99,
+            ]);
+        $cross->assertStatus(404);
+
+        // Verify the recipe was not mutated.
+        $freshRecipe = $recipeB->fresh();
+        $this->assertNotNull($freshRecipe);
+        $this->assertSame(1.0, (float) $freshRecipe->yield_quantity);
+    }
+
+    public function test_recipe_activate_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeB->id}/activate");
+        $cross->assertStatus(404);
+
+        // Tenant B's recipe must remain inactive.
+        $this->assertFalse((bool) $recipeB->fresh()?->is_active);
+    }
+
+    public function test_recipe_calculate_cost_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeB->id}/calculate-cost");
+        $cross->assertStatus(404);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.020 — RecipeLineController: update/destroy recipe ownership
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_update_recipe_line_rejects_cross_tenant_recipe_id(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        /** @var RecipeLine $lineB */
+        $lineB = RecipeLine::create([
+            'recipe_id' => $recipeB->id,
+            'component_type' => 'product',
+            'component_id' => $this->productB->id,
+            'quantity' => 2.0,
+            'display_order' => 1,
+        ]);
+
+        // Tenant A sends PATCH with tenant B's recipeId in the path — must 404 at recipe ownership check.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/recipes/{$recipeB->id}/lines/{$lineB->id}", [
+                'quantity' => 99.0,
+            ]);
+        $cross->assertStatus(404);
+
+        // Line must be unmodified.
+        $freshLine = $lineB->fresh();
+        $this->assertNotNull($freshLine);
+        $this->assertSame(2.0, (float) $freshLine->quantity);
+    }
+
+    public function test_destroy_recipe_line_rejects_cross_tenant_recipe_id(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        /** @var RecipeLine $lineB */
+        $lineB = RecipeLine::create([
+            'recipe_id' => $recipeB->id,
+            'component_type' => 'product',
+            'component_id' => $this->productB->id,
+            'quantity' => 2.0,
+            'display_order' => 1,
+        ]);
+
+        // Tenant A sends DELETE with tenant B's recipeId — must 404 at recipe ownership check.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/recipes/{$recipeB->id}/lines/{$lineB->id}");
+        $cross->assertStatus(404);
+
+        // Line must still exist.
+        $this->assertNotNull($lineB->fresh(), 'Cross-tenant DELETE must NOT remove the foreign recipe line.');
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.021 — CompositeItemVariantController: index/store/destroy
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_variant_index_rejects_cross_tenant_composite_item_id(): void
+    {
+        // Tenant A requests variant list nested under tenant B's composite item.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/composite-items/{$this->compositeItemB->id}/variants");
+        $cross->assertStatus(404);
+    }
+
+    public function test_variant_store_rejects_cross_tenant_composite_item_id(): void
+    {
+        // Tenant A tries to create a variant under tenant B's composite item.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/composite-items/{$this->compositeItemB->id}/variants", [
+                'code' => 'VAR-HIJACK',
+                'name' => 'Hijacked Variant',
+                'price_adjustment_type' => 'absolute',
+                'price_adjustment' => 0,
+            ]);
+        $cross->assertStatus(404);
+    }
+
+    public function test_destroy_variant_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var CompositeItemVariant $variantB */
+        $variantB = CompositeItemVariant::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'code' => 'VAR-B-DEL',
+            'name' => 'Variant B Destroy',
+            'price_adjustment_type' => 'absolute',
+            'price_adjustment' => 0,
+        ]);
+
+        // Tenant A sends DELETE /api/v1/variants/{id} targeting tenant B's variant.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/variants/{$variantB->id}");
+        $cross->assertStatus(404);
+
+        // Variant must still exist.
+        $this->assertNotNull($variantB->fresh(), 'Cross-tenant DELETE must NOT remove the foreign variant.');
     }
 
     // ──────────────────────────────────────────────────────────────────
