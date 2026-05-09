@@ -130,6 +130,61 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
           serializeErrorForLog(err),
         );
       });
+
+    // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite so the
+    // header badge reflects the truth from boot. The hydration runs
+    // AFTER scheduler.start, which fires the first tick immediately
+    // (`SyncScheduler.start()` calls `void this.tick()` synchronously
+    // — there is no debounce). If the first tick's setPendingCount
+    // lands BEFORE this hydration await resolves, both writes source
+    // from the same SQLite row so last-write-wins is safe — the
+    // count is monotonic-ish across one boot.
+    try {
+      const { getPendingReceiptCount } = await import(
+        '@/lib/db/repositories/offlineReceiptRepository'
+      );
+      const pendingCount = await getPendingReceiptCount(db);
+      useSyncStore.getState().setPendingCount(pendingCount);
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][hydrate] pendingReceiptCount failed',
+        serializeErrorForLog(err),
+      );
+    }
+
+    // T1.3 Step 4.2: hydrate lastSyncAt from sync_metadata so the
+    // SyncButton's "X minutes ago" affordance survives app restarts.
+    // Skip the write entirely on null / non-numeric values — leaves
+    // the store at its initial null and the SyncButton just hides
+    // the affordance until the next tick.
+    //
+    // T1.3 Codex round-1 finding 2: the hydration await runs AFTER
+    // scheduler.start, which fires the first tick immediately. If the
+    // tick completes runFullSync and writes a fresh Date.now() before
+    // this hydration await resolves, an unguarded write would clobber
+    // the fresher in-memory value with the older persisted one. Guard
+    // by only writing when the in-memory value is null OR the parsed
+    // value is strictly newer (in-memory wins on conflict).
+    try {
+      const { getSyncMetadata } = await import(
+        '@/lib/db/repositories/syncLogRepository'
+      );
+      const raw = await getSyncMetadata(db, 'last_sync_at');
+      if (raw !== null) {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed)) {
+          const current = useSyncStore.getState().lastSyncAt;
+          if (current === null || parsed > current) {
+            useSyncStore.getState().setLastSyncAt(parsed);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][hydrate] lastSyncAt failed',
+        serializeErrorForLog(err),
+      );
+    }
   } catch (error) {
     console.error('[Terminal] Failed to seed offline hash chain:', error);
   }

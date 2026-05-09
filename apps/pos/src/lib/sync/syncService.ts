@@ -202,6 +202,57 @@ export interface SyncResult {
   receiptQrIndexPulled: number;
   chainBreak: boolean;
   errors: string[];
+  /**
+   * T1.3 Step 4.3: tristate sync-indicator signal. True when the tick
+   * completed but with at least one observable failure that the cashier
+   * needs to know about. Drives the amber dot in `SyncButton`.
+   *
+   * Heuristic (canonical Phase-4 spec, line 264 of
+   * pos-offline-first-hardening.md):
+   *   - receiptsFailed > 0  (sales didn't sync)
+   *   - zReportsFailed > 0  (Z-reports didn't sync)
+   *   - !paymentConfigPulled (gate trips downstream)
+   *   - errors.length > 0   (anything else surfaced a string error)
+   *
+   * Explicitly does NOT include `productsPulled === 0` — a tenant
+   * with no products yet is a valid empty state, not degraded
+   * (round-1 false-positive guard from the canonical spec).
+   */
+  degraded: boolean;
+}
+
+/**
+ * T1.3 Step 4.3: compute the `degraded` tristate signal for SyncResult.
+ *
+ * Returns true when the just-completed tick had at least one observable
+ * failure that the cashier needs to know about — drives the amber dot
+ * in `SyncButton`.
+ *
+ * Heuristic (canonical Phase-4 spec, line 264 of
+ * pos-offline-first-hardening.md):
+ *   - receiptsFailed > 0     (sales didn't sync)
+ *   - zReportsFailed > 0     (Z-reports didn't sync)
+ *   - !paymentConfigPulled   (gate trips downstream)
+ *   - errors.length > 0      (anything else surfaced a string error)
+ *
+ * Explicitly excludes `productsPulled === 0` — a tenant with no
+ * products yet is a valid empty state, not degraded.
+ *
+ * Exported for unit testing; production callers compose it inline at
+ * the bottom of `runFullSync`.
+ */
+export function computeDegraded(input: {
+  receiptsFailed: number;
+  zReportsFailed: number;
+  paymentConfigPulled: boolean;
+  errors: string[];
+}): boolean {
+  return (
+    input.receiptsFailed > 0 ||
+    input.zReportsFailed > 0 ||
+    !input.paymentConfigPulled ||
+    input.errors.length > 0
+  );
 }
 
 /**
@@ -1309,6 +1360,16 @@ export async function runFullSync(
     await processDownloadQueue(db);
   } catch { /* image caching is non-critical */ }
 
+  // T1.3 Step 4.3: degraded signal for the SyncButton's amber dot.
+  // See SyncResult.degraded docblock for the exact heuristic + the
+  // false-positive-on-empty-catalog rationale.
+  const degraded = computeDegraded({
+    receiptsFailed: failed,
+    zReportsFailed: zFailed,
+    paymentConfigPulled,
+    errors,
+  });
+
   return {
     receiptsPushed: pushed,
     receiptsFailed: failed,
@@ -1329,6 +1390,7 @@ export async function runFullSync(
     receiptQrIndexPulled,
     chainBreak,
     errors,
+    degraded,
   };
 }
 

@@ -20,6 +20,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const startSpy = vi.fn();
 const fetchPaymentConfigSpy = vi.fn().mockResolvedValue(undefined);
 
+// T1.3 Step 4.1 + 4.2: startup hydration spies — invoked from
+// seedOfflineHashChain after scheduler.start.
+const setPendingCountSpy = vi.fn();
+const setLastSyncAtSpy = vi.fn();
+const getPendingReceiptCountSpy = vi.fn().mockResolvedValue(0);
+const getSyncMetadataSpy = vi.fn().mockResolvedValue(null);
+
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn().mockResolvedValue({}),
 }));
@@ -35,10 +42,31 @@ vi.mock('@/lib/sync/syncScheduler', () => ({
   })),
 }));
 
+// Mutable mock state so tests can assert race-guard behaviour by
+// configuring an in-memory lastSyncAt value.
+const syncStoreMockState: { lastSyncAt: number | null } = { lastSyncAt: null };
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
-    getState: () => ({ setScheduler: vi.fn() }),
+    getState: () => ({
+      setScheduler: vi.fn(),
+      setPendingCount: setPendingCountSpy,
+      setLastSyncAt: setLastSyncAtSpy,
+      lastSyncAt: syncStoreMockState.lastSyncAt,
+    }),
+    setState: (partial: { lastSyncAt?: number | null }) => {
+      if (Object.prototype.hasOwnProperty.call(partial, 'lastSyncAt')) {
+        syncStoreMockState.lastSyncAt = partial.lastSyncAt ?? null;
+      }
+    },
   },
+}));
+
+vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
+  getPendingReceiptCount: getPendingReceiptCountSpy,
+}));
+
+vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
+  getSyncMetadata: getSyncMetadataSpy,
 }));
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
@@ -64,6 +92,13 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     startSpy.mockClear();
     fetchPaymentConfigSpy.mockClear();
     fetchPaymentConfigSpy.mockResolvedValue(undefined);
+    setPendingCountSpy.mockClear();
+    setLastSyncAtSpy.mockClear();
+    getPendingReceiptCountSpy.mockClear();
+    getPendingReceiptCountSpy.mockResolvedValue(0);
+    getSyncMetadataSpy.mockClear();
+    getSyncMetadataSpy.mockResolvedValue(null);
+    syncStoreMockState.lastSyncAt = null;
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -115,5 +150,92 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     }
 
     consoleError.mockRestore();
+  });
+
+  // T1.3 Step 4.1: startup hydration of pendingReceiptCount so the
+  // header badge is truthful from boot, before the first scheduler
+  // tick fires.
+  it('T1.3: seedOfflineHashChain hydrates pendingReceiptCount from SQLite on startup', async () => {
+    getPendingReceiptCountSpy.mockResolvedValueOnce(5);
+
+    await seedOfflineHashChain('term-1');
+    // Allow the awaited hydrations to settle.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getPendingReceiptCountSpy).toHaveBeenCalledTimes(1);
+    expect(setPendingCountSpy).toHaveBeenCalledWith(5);
+  });
+
+  // T1.3 Step 4.2: startup hydration of lastSyncAt so the SyncButton's
+  // "X minutes ago" affordance survives app restarts.
+  it('T1.3: seedOfflineHashChain hydrates lastSyncAt from sync_metadata on startup', async () => {
+    getSyncMetadataSpy.mockResolvedValueOnce('1717891200000');
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getSyncMetadataSpy).toHaveBeenCalledWith(expect.anything(), 'last_sync_at');
+    expect(setLastSyncAtSpy).toHaveBeenCalledWith(1717891200000);
+  });
+
+  it('T1.3: lastSyncAt hydration handles null sync_metadata value gracefully', async () => {
+    getSyncMetadataSpy.mockResolvedValueOnce(null);
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // No metadata → don't write anything; leave lastSyncAt at its
+    // initial-state null. setLastSyncAt MUST NOT be called with null
+    // when there's nothing to hydrate (otherwise we'd clobber a
+    // value the scheduler may have written between boot and the
+    // hydration await).
+    expect(setLastSyncAtSpy).not.toHaveBeenCalled();
+  });
+
+  it('T1.3: lastSyncAt hydration rejects corrupt non-numeric values', async () => {
+    getSyncMetadataSpy.mockResolvedValueOnce('not-a-number');
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setLastSyncAtSpy).not.toHaveBeenCalled();
+  });
+
+  // T1.3 Codex round-1 finding 2: hydration race guard. seedOfflineHashChain
+  // awaits getSyncMetadata AFTER scheduler.start fires the first tick.
+  // If the tick wrote a FRESHER Date.now() before this await resolves,
+  // an unguarded hydration would clobber the fresh in-memory value with
+  // the older persisted one. Pre-fix: the hydration always wrote.
+  // Post-fix: in-memory wins when its value is newer than the persisted
+  // value; hydration only fires on a null in-memory state OR when the
+  // persisted value is strictly newer.
+  it('T1.3: lastSyncAt hydration does NOT clobber a fresher in-memory value (race guard)', async () => {
+    // Simulate the race: scheduler.start() fired the first tick, which
+    // wrote a fresh Date.now() to in-memory state, BEFORE the
+    // hydration await resolved with an older persisted timestamp.
+    syncStoreMockState.lastSyncAt = 1717891300000; // fresher
+    getSyncMetadataSpy.mockResolvedValueOnce('1717891200000'); // older
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Hydration must skip the write — in-memory wins on conflict.
+    expect(setLastSyncAtSpy).not.toHaveBeenCalled();
+  });
+
+  it('T1.3: lastSyncAt hydration writes when persisted value is strictly newer than in-memory', async () => {
+    syncStoreMockState.lastSyncAt = 1717891200000; // older
+    getSyncMetadataSpy.mockResolvedValueOnce('1717891300000'); // newer
+
+    await seedOfflineHashChain('term-1');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setLastSyncAtSpy).toHaveBeenCalledWith(1717891300000);
   });
 });

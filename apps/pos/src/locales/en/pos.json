@@ -230,7 +230,8 @@
     "syncNow": "Sync Now",
     "receiptQueued": "Receipt saved locally — will sync when online",
     "lastSync": "Last sync: {{time}}",
-    "debounceBlocked": "Hold on — still processing the previous sync."
+    "debounceBlocked": "Hold on — still processing the previous sync.",
+    "degradedTitle": "Last sync had errors — click to retry"
   },
   "fiscal": {
     "regressionBlocked": "Fiscal chain integrity preserved. Local data is newer than the server response."
