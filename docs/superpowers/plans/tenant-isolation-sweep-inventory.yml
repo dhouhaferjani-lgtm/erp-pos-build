@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 41b9e201e01ae35613aa7e5bb6f495a8f594e3340c947f4dceb8b85dd25ba024
+  yaml_sha256: b11b63706c5ac4ee2659601d55933e33611cc5b350f66784f5b8020313b78b41
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -386,7 +386,7 @@ clusters:
     blocked_by:
       - api.treasury
     blocked_by_external: null
-    blocked_reason: null
+    blocked_reason: 'Deferred 2026-05-04 (callsite api.identity-company.001 deferred at commit 8175d7f24127c3ed07c12ca16900b06f2f9291f4). Scanner false-positive: tax_configurations is a country-scoped global reference table with no tenant_id/company_id columns; cross-tenant exfiltration is structurally impossible. DRI: tenant-isolation-sweep owner (claude post-recalibration 2026-05-09). Un-defer condition: scanner fix shipped per docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md — remove tax_configurations from PhpPresentationExistsScanner::DEFAULT_GUARDED_TABLES, run sweep:inventory:generate, and the affected callsites (api.identity-company.001 + sibling rows in api.catalog/api.taxation) will mark stale_orphan automatically. Cross-country business-rule validation (defense-in-depth: chosen tax_configuration.country_code matches company.country_code) is a SEPARATE concern outside the tenant-isolation sweep. Revisit by 2026-08-01.'
     blocks: {  }
     is_reference: false
     expected_callsite_count: null
@@ -11988,6 +11988,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Scanner false-positive: tax_configurations is country-scoped global reference (no tenant_id/company_id). Cross-tenant exfiltration structurally impossible. Cross-cluster scanner gap also affects api.catalog (2), api.taxation (1), api.unmapped (2). See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md for full triage and recommended scanner fix; revisit by 2026-08-01'
+      -
+        at: '2026-05-09T11:31:42Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:document-deferral (one-shot api.identity-company)'
+        previous_yaml_sha256: 41b9e201e01ae35613aa7e5bb6f495a8f594e3340c947f4dceb8b85dd25ba024
+        new_yaml_sha256: b11b63706c5ac4ee2659601d55933e33611cc5b350f66784f5b8020313b78b41
+        target_ids:
+          - api.identity-company.001
+          - api.identity-company
+        from_status: deferred
+        to_status: deferred
+        commit: 165f4f694c66458a5ef283388e03d5cb44c72495
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster.blocked_reason populated to capture DRI + un-defer condition for the existing api.identity-company.001 deferral. Atomic mutation pattern: cluster-level metadata update + callsite edit_applied event anchors the new metadata.yaml_sha256 so sweep:inventory:verify-history passes (same precedent as commit b23e09db reassign-unmapped + the api.marketplace cluster creation at the prior commit in this sweep session). No state-machine transition: callsite remains deferred.'
   -
     id: api.accounting.004
     stable_key: 'sha256:c8f6f84954fcc903adcacba11e192019040c8c9d5d4216e6faae98fe129ff155'
