@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 339bef3fe010cc5a7dd45cf4d6ff78b48252d2f2b5ca5c428d864b5e97e80ee4
+  yaml_sha256: fb000741e9c9ec33f7069c556b8fc2e6f487392a8aaca7fdcb24567f34493d6d
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -2785,14 +2785,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
       reviewer: claude
-      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
-      reviewed_at: '2026-05-05T05:42:45Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:42:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
       review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
@@ -2895,6 +2895,39 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T16:41:29.557197Z'
+        actor: claude
+        action: edit_applied
+        command: ''
+        previous_yaml_sha256: 428f0c901abe0b522f64cbe5070f634e85ba8acb17db4fd3b7c60bcf2d5cff89
+        new_yaml_sha256: bd3a7ff61e42d6d9d7cfae2a7b6ba6ee21c237e88b9a4f6be147f68fe15a567c
+        target_ids:
+          - api.catalog.002
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'Re-verification: stable_key drift on 2026-05-05 (path/symbol/resource unchanged). Fix from 516c6f61 (UpdateCompositeItemRequest:58 tax_configurations annotation — country-scoped global reference, structurally protected) still in place at HEAD. Transitioning back to under_review for review-cycle anchor.'
+      -
+        at: '2026-05-09T16:42:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: bd3a7ff61e42d6d9d7cfae2a7b6ba6ee21c237e88b9a4f6be147f68fe15a567c
+        new_yaml_sha256: fd21d34ee66dfede1cfd99f136945be0e44c7a41b36af667d0de5ef6dca5a147
+        target_ids:
+          - api.catalog.002
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.catalog.003
     stable_key: 'sha256:9329ea64c5b5a85d2f6690dc21740e80fd7a5219df465ae57d68e29cfa2acca5'
@@ -3150,14 +3183,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
       reviewer: claude
-      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
-      reviewed_at: '2026-05-05T05:42:47Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:42:54Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
       review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
@@ -3276,6 +3309,39 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T16:41:29.557197Z'
+        actor: claude
+        action: edit_applied
+        command: ''
+        previous_yaml_sha256: 428f0c901abe0b522f64cbe5070f634e85ba8acb17db4fd3b7c60bcf2d5cff89
+        new_yaml_sha256: bd3a7ff61e42d6d9d7cfae2a7b6ba6ee21c237e88b9a4f6be147f68fe15a567c
+        target_ids:
+          - api.catalog.005
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'Re-verification: stable_key drift on 2026-05-05. Fix from 516c6f61 (StoreCompositeItemRequest:51 tax_configurations annotation) still in place at HEAD; mirrors api.catalog.002 disposition.'
+      -
+        at: '2026-05-09T16:42:54Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fd21d34ee66dfede1cfd99f136945be0e44c7a41b36af667d0de5ef6dca5a147
+        new_yaml_sha256: 488f49998942bfc2ff864c5499e07404e441772deb1aa741a2d81f5a7c7e557c
+        target_ids:
+          - api.catalog.005
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.catalog.006
     stable_key: 'sha256:0d5330410c251b2e17ffda1e2447a27f3a0cf66d321fdec650140d8bc21a4471'
@@ -5244,15 +5310,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:32:54Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:37:31Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+      review_commit: f88ad4a5
     fix_commit: f88ad4a5
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_accepts_real_tax_configuration_id_country_scoped'
     blocked_reason: null
@@ -5371,6 +5437,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:37:31Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 339bef3fe010cc5a7dd45cf4d6ff78b48252d2f2b5ca5c428d864b5e97e80ee4
+        new_yaml_sha256: 8b9a8146bd48a001f7e1e624fb9e977b9a7a8f3a8b5199ebbb88b29edec0ac4b
+        target_ids:
+          - api.unmapped.011
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+        review_commit: f88ad4a5
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.012
     stable_key: 'sha256:bc7185c910b4dfc098be7273ad9aaad50f221097e0516dbf715a02795892cd99'
@@ -5388,15 +5471,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:32:55Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:37:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+      review_commit: f88ad4a5
     fix_commit: f88ad4a5
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_product_rejects_nonexistent_tax_configuration_id'
     blocked_reason: null
@@ -5515,6 +5598,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:37:38Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8b9a8146bd48a001f7e1e624fb9e977b9a7a8f3a8b5199ebbb88b29edec0ac4b
+        new_yaml_sha256: b8fc062a0092e9ab422da1def98601a94076e11db5bad4a2b62a0229d662714b
+        target_ids:
+          - api.unmapped.012
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+        review_commit: f88ad4a5
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.pos-stabilization.001
     stable_key: 'sha256:a17880df79993c0917b03ab9ae0de97f5821cdc521a9863790631e4a4340afb6'
@@ -13628,14 +13728,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
       reviewer: claude
-      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
-      reviewed_at: '2026-05-05T05:42:52Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:42:55Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
       review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
@@ -13754,6 +13854,39 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T16:41:29.557197Z'
+        actor: claude
+        action: edit_applied
+        command: ''
+        previous_yaml_sha256: 428f0c901abe0b522f64cbe5070f634e85ba8acb17db4fd3b7c60bcf2d5cff89
+        new_yaml_sha256: bd3a7ff61e42d6d9d7cfae2a7b6ba6ee21c237e88b9a4f6be147f68fe15a567c
+        target_ids:
+          - api.catalog.012
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'Re-verification: stable_key drift on 2026-05-05. Fix from 516c6f61 (ModifierController::update:54-59 — Modifier::whereHas(group, q.whereRaw(tenant_id).whereRaw(company_id))->findOrFail) still in place at HEAD. modifiers has no tenant_id/company_id columns; scoped via parent modifier_group.'
+      -
+        at: '2026-05-09T16:42:55Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 488f49998942bfc2ff864c5499e07404e441772deb1aa741a2d81f5a7c7e557c
+        new_yaml_sha256: fa9b4d28f84125e96bd8f2859f0fc5002e7b4d639b53da2a82f3f5d9bdbdba1d
+        target_ids:
+          - api.catalog.012
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.catalog.013
     stable_key: 'sha256:318ecdc76cad66fa44610a0219e623ba236c1029b6b65cfdf181c58efc5bfb63'
@@ -13771,14 +13904,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
       reviewer: claude
-      verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
-      reviewed_at: '2026-05-05T05:42:53Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:42:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
       review_commit: 516c6f61
     fix_commit: 516c6f61
     regression_test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
@@ -13897,6 +14030,39 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T16:41:29.557197Z'
+        actor: claude
+        action: edit_applied
+        command: ''
+        previous_yaml_sha256: 428f0c901abe0b522f64cbe5070f634e85ba8acb17db4fd3b7c60bcf2d5cff89
+        new_yaml_sha256: bd3a7ff61e42d6d9d7cfae2a7b6ba6ee21c237e88b9a4f6be147f68fe15a567c
+        target_ids:
+          - api.catalog.013
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 516c6f61
+        test: apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'Re-verification: stable_key drift on 2026-05-05. Fix from 516c6f61 (ModifierController::destroy:91-96 — same parent-modifier_group whereHas pattern as :update) still in place at HEAD.'
+      -
+        at: '2026-05-09T16:42:57Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fa9b4d28f84125e96bd8f2859f0fc5002e7b4d639b53da2a82f3f5d9bdbdba1d
+        new_yaml_sha256: fb000741e9c9ec33f7069c556b8fc2e6f487392a8aaca7fdcb24567f34493d6d
+        target_ids:
+          - api.catalog.013
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
+        review_commit: 516c6f61
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
@@ -19837,15 +20003,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:32:56Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:37:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+      review_commit: f88ad4a5
     fix_commit: f88ad4a5
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_category_parent_lookup_query_includes_company_predicate'
     blocked_reason: null
@@ -19932,6 +20098,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:37:39Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b8fc062a0092e9ab422da1def98601a94076e11db5bad4a2b62a0229d662714b
+        new_yaml_sha256: a67feeb7453bb334bdfc864f9008302539e0394d3a7171351c978c70c1a85406
+        target_ids:
+          - api.unmapped.018
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+        review_commit: f88ad4a5
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.unmapped.019
     stable_key: 'sha256:18277095aed0a56ae35ad878d6e4c0c4f5b40ec2e5946be3ac8fe3aa72256b4c'
@@ -19949,15 +20132,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-05T09:32:57Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:37:40Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+      review_commit: f88ad4a5
     fix_commit: f88ad4a5
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_category_parent_lookup_query_includes_company_predicate'
     blocked_reason: null
@@ -20044,6 +20227,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:37:40Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a67feeb7453bb334bdfc864f9008302539e0394d3a7171351c978c70c1a85406
+        new_yaml_sha256: 428f0c901abe0b522f64cbe5070f634e85ba8acb17db4fd3b7c60bcf2d5cff89
+        target_ids:
+          - api.unmapped.019
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 14fa2bef262f6722273f13fc7ee9f38e613a21dc
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
+        review_commit: f88ad4a5
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.compliance.001
     stable_key: 'sha256:f783b2d1725bd0b9b116e53122affd578ad73d150fdf2e378af4096886991572'
