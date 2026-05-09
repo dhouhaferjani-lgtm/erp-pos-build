@@ -19,6 +19,10 @@ class SyncListingOnStockChange
      *
      * Looks up the seller for the product's company and syncs the listing.
      *
+     * Tenant-isolation (api.marketplace.001): both lookups are scoped by the
+     * event's companyId so a forged event payload (productId from another
+     * company) cannot resolve a foreign Product or MarketplaceSeller.
+     *
      * @param  object  $event  Event with productId and companyId properties
      */
     public function handle(object $event): void
@@ -28,12 +32,16 @@ class SyncListingOnStockChange
         }
 
         /** @var Product|null $product */
-        $product = Product::query()->find($event->productId);
+        $product = Product::query()
+            ->where('company_id', $event->companyId)
+            ->find($event->productId);
         if ($product === null) {
             return;
         }
 
-        $seller = MarketplaceSeller::where('company_id', $event->companyId)
+        $seller = MarketplaceSeller::query()
+            ->where('tenant_id', $product->tenant_id)
+            ->where('company_id', $event->companyId)
             ->active()
             ->first();
 
