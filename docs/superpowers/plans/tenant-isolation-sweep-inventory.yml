@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: b11b63706c5ac4ee2659601d55933e33611cc5b350f66784f5b8020313b78b41
+  yaml_sha256: 89cf1d3ebf634f0e3594510b0be10b1192bdac98a5d7eeecbfd1081c2aceed84
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -22184,7 +22184,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -22193,8 +22193,8 @@ callsites:
       reviewed_at: '2026-05-05T05:43:25Z'
       review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
       review_commit: 1eada1cb
-    fix_commit: 1eada1cb
-    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_get_or_create_stock_level_by_company'
     blocked_reason: null
     history:
       -
@@ -22294,6 +22294,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T14:26:37Z'
+        actor: claude
+        action: edit_applied
+        command: storage/scripts/transition-needs-recheck-2026-05-09.php
+        previous_yaml_sha256: 7ffc90d429e762fba40451d4f78a3fd8069bc61a86a232812bc28414cb4b26b1
+        new_yaml_sha256: 89cf1d3ebf634f0e3594510b0be10b1192bdac98a5d7eeecbfd1081c2aceed84
+        target_ids:
+          - api.inventory.017
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_get_or_create_stock_level_by_company'
+        review_file: null
+        review_commit: null
+        note: "Re-fix applied (commit 1585720e): getOrCreateStockLevel now takes $expectedCompanyId; Location lookup scoped via Location::query()->where('company_id', $expectedCompanyId)->findOrFail($locationId). Replaces the prior defense-in-depth-only fix that was marked needs_recheck on stable_key change. Atomic transition needs_recheck → under_review for Codex review."
   -
     id: api.inventory.018
     stable_key: 'sha256:7dceeb8f2e0b91e0f6c78e7baa618a887204d7cfcba8c0a9c2a99d0b098c0183'
@@ -22311,7 +22327,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: under_review
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -22320,8 +22336,8 @@ callsites:
       reviewed_at: '2026-05-05T05:43:26Z'
       review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
       review_commit: 1eada1cb
-    fix_commit: 1eada1cb
-    regression_test: apps/api/tests/Feature/Inventory/InventoryTenantIsolationTest.php
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_record_movement_location_lookup_by_company'
     blocked_reason: null
     history:
       -
@@ -22421,6 +22437,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-09T14:26:37Z'
+        actor: claude
+        action: edit_applied
+        command: storage/scripts/transition-needs-recheck-2026-05-09.php
+        previous_yaml_sha256: 7ffc90d429e762fba40451d4f78a3fd8069bc61a86a232812bc28414cb4b26b1
+        new_yaml_sha256: 89cf1d3ebf634f0e3594510b0be10b1192bdac98a5d7eeecbfd1081c2aceed84
+        target_ids:
+          - api.inventory.018
+        from_status: needs_recheck
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_record_movement_location_lookup_by_company'
+        review_file: null
+        review_commit: null
+        note: "Re-fix applied (commit 1585720e): recordMovement now takes $expectedCompanyId; Location lookup scoped via Location::query()->where('company_id', $expectedCompanyId)->findOrFail($locationId). Replaces the prior defense-in-depth-only fix that was marked needs_recheck on stable_key change. Atomic transition needs_recheck → under_review for Codex review."
   -
     id: api.inventory.019
     stable_key: 'sha256:0f270dc672878a8227cad9c64d284120b3f6dbff01a611a82b4d3bbbfecac3a6'
@@ -33090,17 +33122,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-09T14:10:26Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_rejects_cross_company_item_id_in_trigger_third_count_validator'
     blocked_reason: null
     history:
       -
@@ -33119,6 +33151,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T14:10:26Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b11b63706c5ac4ee2659601d55933e33611cc5b350f66784f5b8020313b78b41
+        new_yaml_sha256: 30e54afc385117fbbc9b090a7c3e8a9476a01dcd906d9236c02d085921984169
+        target_ids:
+          - api.inventory.029
+        from_status: pending
+        to_status: claimed
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T14:10:36Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 78e3f84a550afb1bd690a5f50729919aaf296db4e1c1abf16b1adcd13f14aa30
+        new_yaml_sha256: 988658519a7a190f41b05f589bf99fe1cb4b7aed4cd5498df69e204ac4a48d8b
+        target_ids:
+          - api.inventory.029
+        from_status: claimed
+        to_status: in_progress
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:25:10Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 80e6a9be4c487106fd74a096ebd4fd6e9674fbb5d95d9cb60cff3d597f4c6117
+        new_yaml_sha256: 1be6272ec81e0bfa398f193aefee7ecfca2282ecc3e87c3cd1eca07b45a03a82
+        target_ids:
+          - api.inventory.029
+        from_status: in_progress
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_rejects_cross_company_item_id_in_trigger_third_count_validator'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.030
     stable_key: 'manual:api.inventory:fraud-triggered-counting-system-user-fallback'
@@ -33136,17 +33216,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-09T14:10:27Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_fraud_system_user_to_alert_tenant'
     blocked_reason: null
     history:
       -
@@ -33165,6 +33245,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T14:10:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 30e54afc385117fbbc9b090a7c3e8a9476a01dcd906d9236c02d085921984169
+        new_yaml_sha256: 30ba3b1b2c3f3c5fcf85007e9949df0af8460582e54132dafcbb2a5e571a0cdf
+        target_ids:
+          - api.inventory.030
+        from_status: pending
+        to_status: claimed
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T14:10:37Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 988658519a7a190f41b05f589bf99fe1cb4b7aed4cd5498df69e204ac4a48d8b
+        new_yaml_sha256: ec451d4a32e156f6eb265f6bb92db28e5af9dd7f17f07617251909dc02cb3701
+        target_ids:
+          - api.inventory.030
+        from_status: claimed
+        to_status: in_progress
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:25:11Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1be6272ec81e0bfa398f193aefee7ecfca2282ecc3e87c3cd1eca07b45a03a82
+        new_yaml_sha256: 18a1816260b79ea20503150ad83415a8e98aa79362e216beaad3c7395deac2a3
+        target_ids:
+          - api.inventory.030
+        from_status: in_progress
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_fraud_system_user_to_alert_tenant'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.031
     stable_key: 'manual:api.inventory:inventory-counting-create-draft-tenant-id-not-set'
@@ -33182,17 +33310,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-09T14:10:28Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_persists_tenant_id_on_inventory_counting_draft_create'
     blocked_reason: null
     history:
       -
@@ -33211,6 +33339,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T14:10:28Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 30ba3b1b2c3f3c5fcf85007e9949df0af8460582e54132dafcbb2a5e571a0cdf
+        new_yaml_sha256: 9f1f054cbeea6a809af716131d533a06b6343ce0c4debb1e3ec2199a838b99b2
+        target_ids:
+          - api.inventory.031
+        from_status: pending
+        to_status: claimed
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T14:10:38Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ec451d4a32e156f6eb265f6bb92db28e5af9dd7f17f07617251909dc02cb3701
+        new_yaml_sha256: 058d8c49c4016de59d91dd2099a4abad4b1669b17a5dfbfc268ae08db6a6a46f
+        target_ids:
+          - api.inventory.031
+        from_status: claimed
+        to_status: in_progress
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:25:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 18a1816260b79ea20503150ad83415a8e98aa79362e216beaad3c7395deac2a3
+        new_yaml_sha256: cb44ea38b6951f766f51ecca4b04ea83a73ad8b0b8ccb39aa6911edb8cb8692f
+        target_ids:
+          - api.inventory.031
+        from_status: in_progress
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_persists_tenant_id_on_inventory_counting_draft_create'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.032
     stable_key: 'manual:api.inventory:wac-stock-level-lock-tuple-missing-company-id'
@@ -33228,17 +33404,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-09T14:10:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_locks_stock_level_tuples_with_company_id'
     blocked_reason: null
     history:
       -
@@ -33257,6 +33433,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T14:10:30Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 9f1f054cbeea6a809af716131d533a06b6343ce0c4debb1e3ec2199a838b99b2
+        new_yaml_sha256: fd82aa90952deceb5e05221e28b8c9f5e39e9b610445c250e34f36f9d98be246
+        target_ids:
+          - api.inventory.032
+        from_status: pending
+        to_status: claimed
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T14:10:40Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 058d8c49c4016de59d91dd2099a4abad4b1669b17a5dfbfc268ae08db6a6a46f
+        new_yaml_sha256: ac8b4d386be48a5b0efc43a7de86993146d2abeae4ca798c7f700f915076210e
+        target_ids:
+          - api.inventory.032
+        from_status: claimed
+        to_status: in_progress
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:25:14Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cb44ea38b6951f766f51ecca4b04ea83a73ad8b0b8ccb39aa6911edb8cb8692f
+        new_yaml_sha256: 687859f0ded0e9492cfe3a572695835077ebc4bf4f4b6f3d3cad6d0b22ea1543
+        target_ids:
+          - api.inventory.032
+        from_status: in_progress
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_locks_stock_level_tuples_with_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.inventory.033
     stable_key: 'manual:api.inventory:release-by-source-not-tenant-scoped'
@@ -33274,17 +33498,17 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-09T14:10:31Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 1585720e
+    regression_test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_release_by_source_to_caller_tenant_and_company'
     blocked_reason: null
     history:
       -
@@ -33303,6 +33527,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T14:10:31Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fd82aa90952deceb5e05221e28b8c9f5e39e9b610445c250e34f36f9d98be246
+        new_yaml_sha256: 78e3f84a550afb1bd690a5f50729919aaf296db4e1c1abf16b1adcd13f14aa30
+        target_ids:
+          - api.inventory.033
+        from_status: pending
+        to_status: claimed
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T14:10:41Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ac8b4d386be48a5b0efc43a7de86993146d2abeae4ca798c7f700f915076210e
+        new_yaml_sha256: 80e6a9be4c487106fd74a096ebd4fd6e9674fbb5d95d9cb60cff3d597f4c6117
+        target_ids:
+          - api.inventory.033
+        from_status: claimed
+        to_status: in_progress
+        commit: c501344fc1a913e482d043188127cb83b0a944d1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:25:15Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 687859f0ded0e9492cfe3a572695835077ebc4bf4f4b6f3d3cad6d0b22ea1543
+        new_yaml_sha256: 7ffc90d429e762fba40451d4f78a3fd8069bc61a86a232812bc28414cb4b26b1
+        target_ids:
+          - api.inventory.033
+        from_status: in_progress
+        to_status: under_review
+        commit: 1585720e
+        test: 'tests/Feature/Inventory/InventoryTenantIsolationTest.php::it_scopes_release_by_source_to_caller_tenant_and_company'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.workshop.005
     stable_key: 'manual:api.workshop:eloquent-work-order-repository-find-no-tenant-id'
