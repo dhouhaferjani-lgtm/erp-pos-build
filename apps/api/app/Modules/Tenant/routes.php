@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Tenant\Presentation\Controllers\CompanySettingsController;
 use App\Modules\Tenant\Presentation\Controllers\OnboardingController;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Company settings (requires settings.view or settings.update permission)
     Route::get('settings/company', [CompanySettingsController::class, 'show'])->name('settings.company.show');
     Route::patch('settings/company', [CompanySettingsController::class, 'update'])->name('settings.company.update');

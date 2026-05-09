@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Controllers\AuthController;
 use App\Modules\Identity\Presentation\Controllers\RoleController;
 use App\Modules\Identity\Presentation\Controllers\UserController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
@@ -39,7 +40,7 @@ Route::prefix('api/v1/auth')->middleware('web')->group(function () {
         ->name('auth.reset-password');
 
     // Protected routes (no company context required for auth endpoints)
-    Route::middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {
+    Route::middleware(['auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
         Route::get('me', [AuthController::class, 'me'])->name('auth.me');
         Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::post('logout-all', [AuthController::class, 'logoutAll'])->name('auth.logout-all');
@@ -50,13 +51,13 @@ Route::prefix('api/v1/auth')->middleware('web')->group(function () {
 });
 
 // Routes that don't require company context
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Current user routes (no company context - used to get available companies)
     Route::get('user/companies', [UserController::class, 'companies'])->name('user.companies');
 });
 
 // Routes that require company context
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Role management (requires roles.view or roles.manage permission)
     Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
     Route::post('roles', [RoleController::class, 'store'])->name('roles.store');

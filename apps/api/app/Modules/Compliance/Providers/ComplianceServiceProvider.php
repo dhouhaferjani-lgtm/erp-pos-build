@@ -16,6 +16,7 @@ use App\Modules\Compliance\Services\AnomalyDetectionService;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Compliance\Services\FraudAlertNotificationService;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
@@ -103,7 +104,7 @@ class ComplianceServiceProvider extends ServiceProvider
         Route::middleware([
             'api',
             'auth:sanctum',
-            SetPermissionsTeam::class,
+            SetPermissionsTeam::class, EnforceTokenTenantClaim::class,
         ])
             ->prefix('api/v1')
             ->group(function (): void {

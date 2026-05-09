@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Providers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Import\Presentation\Controllers\ImportController;
 use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
@@ -53,7 +54,7 @@ class ImportServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
+        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
             ->prefix('api/v1')
             ->group(function (): void {
                 // Import routes

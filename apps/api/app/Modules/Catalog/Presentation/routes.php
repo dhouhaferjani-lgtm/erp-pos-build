@@ -8,11 +8,12 @@ use App\Modules\Catalog\Presentation\Controllers\ModifierController;
 use App\Modules\Catalog\Presentation\Controllers\ModifierGroupController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeController;
 use App\Modules\Catalog\Presentation\Controllers\RecipeLineController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
 // Group 1: Composite items — ungated (no Inventory module required)
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Composite Items
     Route::get('composite-items', [CompositeItemController::class, 'index'])->middleware('can:composite-items.view');
     Route::post('composite-items', [CompositeItemController::class, 'store'])->middleware('can:composite-items.create');
@@ -24,7 +25,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 });
 
 // Group 2: Recipes, recipe lines, variants, modifier groups — gated behind Inventory module
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Inventory'])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Inventory'])->group(function () {
     // Recipes (nested under composite items for creation, standalone for show/update)
     Route::get('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'index'])->middleware('can:composite-items.manage-recipes');
     Route::post('composite-items/{compositeItemId}/recipes', [RecipeController::class, 'store'])->middleware('can:composite-items.manage-recipes');

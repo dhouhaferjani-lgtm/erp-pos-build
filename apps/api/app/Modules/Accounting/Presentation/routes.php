@@ -9,6 +9,7 @@ use App\Modules\Accounting\Presentation\Controllers\LedgerController;
 use App\Modules\Accounting\Presentation\Controllers\OpeningBalanceBatchController;
 use App\Modules\Accounting\Presentation\Controllers\PartnerBalanceController;
 use App\Modules\Accounting\Presentation\Controllers\ReportsController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
@@ -21,7 +22,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function (): void {
     // Chart of Accounts
     Route::get('/accounts', [AccountController::class, 'index'])
         ->middleware('can:accounts.view')

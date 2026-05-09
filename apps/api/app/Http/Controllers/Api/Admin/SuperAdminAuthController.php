@@ -42,7 +42,11 @@ class SuperAdminAuthController extends Controller
             'last_login_ip' => $request->ip(),
         ]);
 
-        $token = $admin->createToken('super-admin-token')->plainTextToken;
+        // Encode `super-admin` ability so EnforceTokenTenantClaim
+        // (Invariant D, master plan §15) recognizes the super-admin pipeline
+        // and exits early — super-admins operate cross-tenant by design and
+        // SuperAdmin lacks `tenant_id`.
+        $token = $admin->createToken('super-admin-token', ['super-admin'])->plainTextToken;
 
         return response()->json([
             'data' => [

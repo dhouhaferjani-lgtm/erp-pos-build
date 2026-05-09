@@ -90,8 +90,11 @@ class AuthController extends Controller
 
         // Create token for mobile/API clients that need it
         // SPA clients will use the session cookie instead
+        // Encode tenant_id as a `tenant:<uuid>` ability so EnforceTokenTenantClaim
+        // (Invariant D, master plan §15) can reject stale tokens after a
+        // user's tenant_id changes.
         $tokenName = $validated['device_name'] ?? 'api-token';
-        $token = $user->createToken($tokenName, ['*']);
+        $token = $user->createToken($tokenName, ['tenant:'.$user->tenant_id, '*']);
 
         $response = new LoginResponseData(
             user: AuthUserData::fromUser($user),
@@ -229,8 +232,11 @@ class AuthController extends Controller
             $device = $this->handleDevice($user, $validated);
 
             // Create auth token
+            // Encode tenant_id as a `tenant:<uuid>` ability so EnforceTokenTenantClaim
+            // (Invariant D, master plan §15) can reject stale tokens after a
+            // user's tenant_id changes.
             $tokenName = $validated['device_name'] ?? 'api-token';
-            $token = $user->createToken($tokenName, ['*']);
+            $token = $user->createToken($tokenName, ['tenant:'.$user->tenant_id, '*']);
 
             return [
                 'user' => $user,

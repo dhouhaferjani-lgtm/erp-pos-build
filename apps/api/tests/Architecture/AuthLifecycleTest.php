@@ -102,13 +102,24 @@ final class AuthLifecycleTest extends TestCase
         'app/Modules/*/Presentation/routes.php',
         'app/Modules/*/routes.php',
         'app/Modules/Workshop/*/Presentation/routes.php',
+        // POS sub-route files registered via per-feature service providers
+        // (HeldOrderServiceProvider, KitchenServiceProvider, OrderServiceProvider,
+        // TableServiceProvider). Their filenames are `routes_*.php`, not
+        // `routes.php`, so the standard glob misses them — admitted explicitly.
+        'app/Modules/POS/routes_*.php',
+        // ServiceProviders that mount their own protected route groups
+        // (Compliance/AuditController, Import) inline rather than via a
+        // routes.php file. Discovered alongside the per-module routes files.
+        'app/Modules/*/Providers/*ServiceProvider.php',
     ];
 
     /**
      * Floor for the production scan vacuous-pass guard. The cluster has
-     * 38 protected groups today across 37 files (per triage Section B).
-     * A discovery regression that drops below this is a test-infrastructure
-     * bug, not a green signal.
+     * 38+ protected groups across 37+ files plus 4 POS sub-route files plus
+     * 2 ServiceProviders that mount their own protected groups (per triage
+     * Section B and the PR2 expansion of ROUTE_FILE_GLOBS). A discovery
+     * regression that drops below this is a test-infrastructure bug, not a
+     * green signal.
      */
     private const PROTECTED_GROUP_FLOOR = 30;
 
@@ -151,6 +162,18 @@ final class AuthLifecycleTest extends TestCase
         );
 
         $this->assertEmpty(
+            $violations['protected_without_enforce_token_tenant_claim'],
+            "Found Route::middleware([...]) call(s) using `auth:sanctum` (NOT `auth:sanctum-admin`) but missing `EnforceTokenTenantClaim::class`:\n  - "
+            .implode("\n  - ", $violations['protected_without_enforce_token_tenant_claim'])
+            ."\n\nEvery protected route group MUST include EnforceTokenTenantClaim::class in its middleware list "
+            .'so that a Sanctum personal-access token whose `tenant:<uuid>` ability does not match the live '
+            .'`User::tenant_id` is rejected at the request boundary (defense-in-depth atop Invariant A '
+            .'lifecycle hooks). Per master plan §15 Invariant D. '
+            ."\nFix: add `App\\Modules\\Identity\\Presentation\\Middleware\\EnforceTokenTenantClaim::class` "
+            .'to the middleware array, immediately after SetPermissionsTeam::class.',
+        );
+
+        $this->assertEmpty(
             $violations['dynamic_middleware'],
             "Found Route::middleware(...) call(s) with a non-literal-array argument:\n  - "
             .implode("\n  - ", $violations['dynamic_middleware'])
@@ -172,16 +195,18 @@ final class AuthLifecycleTest extends TestCase
      */
     public function test_classifier_catches_known_shapes(): void
     {
-        // Positive control: protected group WITH SetPermissionsTeam — clean.
+        // Positive control: protected group WITH BOTH SetPermissionsTeam + EnforceTokenTenantClaim — clean.
         $clean = $this->classifyEntries($this->parseFixture(<<<'PHP'
 <?php
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
-Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {});
+Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {});
 PHP));
         $this->assertEmpty($clean['protected_without_set_permissions_team']);
+        $this->assertEmpty($clean['protected_without_enforce_token_tenant_claim']);
         $this->assertEmpty($clean['dynamic_middleware']);
 
-        // Bug shape: protected group MISSING SetPermissionsTeam.
+        // Bug shape: protected group MISSING BOTH SetPermissionsTeam and EnforceTokenTenantClaim.
         $missing = $this->classifyEntries($this->parseFixture(<<<'PHP'
 <?php
 Route::middleware(['api', 'auth:sanctum'])->group(function () {});
@@ -190,8 +215,30 @@ PHP));
             $missing['protected_without_set_permissions_team'],
             'Protected group without SetPermissionsTeam should fail classification',
         );
+        $this->assertNotEmpty(
+            $missing['protected_without_enforce_token_tenant_claim'],
+            'Protected group without EnforceTokenTenantClaim should fail classification',
+        );
 
-        // Super-admin exemption: auth:sanctum-admin without SetPermissionsTeam — clean.
+        // Bug shape: protected group has SetPermissionsTeam but MISSING EnforceTokenTenantClaim.
+        // This is the regression-protection failure that catches a future module
+        // adding SetPermissionsTeam (per the Invariant B contract from PR1) but
+        // forgetting EnforceTokenTenantClaim (the Invariant D contract).
+        $partialMissing = $this->classifyEntries($this->parseFixture(<<<'PHP'
+<?php
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {});
+PHP));
+        $this->assertEmpty(
+            $partialMissing['protected_without_set_permissions_team'],
+            'Group with SetPermissionsTeam should NOT be in the SetPermissionsTeam violation bucket',
+        );
+        $this->assertNotEmpty(
+            $partialMissing['protected_without_enforce_token_tenant_claim'],
+            'Group missing EnforceTokenTenantClaim must surface in the tenant-claim bucket',
+        );
+
+        // Super-admin exemption: auth:sanctum-admin without either middleware — clean.
         $superAdmin = $this->classifyEntries($this->parseFixture(<<<'PHP'
 <?php
 Route::middleware(['auth:sanctum-admin', 'super_admin'])->group(function () {});
@@ -199,6 +246,10 @@ PHP));
         $this->assertEmpty(
             $superAdmin['protected_without_set_permissions_team'],
             'Super-admin pipeline should be exempt from SetPermissionsTeam requirement',
+        );
+        $this->assertEmpty(
+            $superAdmin['protected_without_enforce_token_tenant_claim'],
+            'Super-admin pipeline should be exempt from EnforceTokenTenantClaim requirement',
         );
 
         // Public group: no auth — clean.
@@ -209,6 +260,10 @@ PHP));
         $this->assertEmpty(
             $public['protected_without_set_permissions_team'],
             'Public group (no auth) should be exempt from SetPermissionsTeam requirement',
+        );
+        $this->assertEmpty(
+            $public['protected_without_enforce_token_tenant_claim'],
+            'Public group (no auth) should be exempt from EnforceTokenTenantClaim requirement',
         );
 
         // Dynamic middleware: variable array — must surface as dynamic_middleware.
@@ -225,24 +280,33 @@ PHP));
         // Chained middleware via prefix(...)->middleware([...]) — should be discovered.
         $chained = $this->classifyEntries($this->parseFixture(<<<'PHP'
 <?php
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {});
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {});
 PHP));
         $this->assertEmpty(
             $chained['protected_without_set_permissions_team'],
-            'Chained prefix()->middleware()->group() with SetPermissionsTeam should pass',
+            'Chained prefix()->middleware()->group() with both middlewares should pass',
+        );
+        $this->assertEmpty(
+            $chained['protected_without_enforce_token_tenant_claim'],
+            'Chained prefix()->middleware()->group() with both middlewares should pass',
         );
 
         // Inner protected sub-group inheriting `web` from parent (Identity routes:42 shape).
-        // The inner group has auth:sanctum + SetPermissionsTeam — clean.
         $innerProtected = $this->classifyEntries($this->parseFixture(<<<'PHP'
 <?php
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
-Route::middleware(['auth:sanctum', SetPermissionsTeam::class])->group(function () {});
+Route::middleware(['auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {});
 PHP));
         $this->assertEmpty(
             $innerProtected['protected_without_set_permissions_team'],
-            'Inner protected sub-group with SetPermissionsTeam should pass regardless of parent stack',
+            'Inner protected sub-group with both middlewares should pass regardless of parent stack',
+        );
+        $this->assertEmpty(
+            $innerProtected['protected_without_enforce_token_tenant_claim'],
+            'Inner protected sub-group with both middlewares should pass regardless of parent stack',
         );
     }
 
@@ -257,12 +321,14 @@ PHP));
      * }>  $entries
      * @return array{
      *     protected_without_set_permissions_team: list<string>,
+     *     protected_without_enforce_token_tenant_claim: list<string>,
      *     dynamic_middleware: list<string>,
      * }
      */
     private function classifyEntries(array $entries): array
     {
         $protectedWithoutTeam = [];
+        $protectedWithoutTokenClaim = [];
         $dynamicMiddleware = [];
 
         foreach ($entries as $entry) {
@@ -288,14 +354,18 @@ PHP));
                 continue;
             }
 
-            $hasSetPermissionsTeam = $this->containsSetPermissionsTeam($tokens);
-            if (! $hasSetPermissionsTeam) {
+            if (! $this->containsSetPermissionsTeam($tokens)) {
                 $protectedWithoutTeam[] = $location;
+            }
+
+            if (! $this->containsEnforceTokenTenantClaim($tokens)) {
+                $protectedWithoutTokenClaim[] = $location;
             }
         }
 
         return [
             'protected_without_set_permissions_team' => $protectedWithoutTeam,
+            'protected_without_enforce_token_tenant_claim' => $protectedWithoutTokenClaim,
             'dynamic_middleware' => $dynamicMiddleware,
         ];
     }
@@ -387,6 +457,20 @@ PHP));
         // FQCN form is admitted defensively for robustness.
         foreach ($tokens as $token) {
             if (str_ends_with($token, 'SetPermissionsTeam::class')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<string>  $tokens
+     */
+    private function containsEnforceTokenTenantClaim(array $tokens): bool
+    {
+        foreach ($tokens as $token) {
+            if (str_ends_with($token, 'EnforceTokenTenantClaim::class')) {
                 return true;
             }
         }

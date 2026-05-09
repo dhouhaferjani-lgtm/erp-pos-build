@@ -17,6 +17,7 @@ use App\Modules\Document\Presentation\Controllers\RefundController;
 use App\Modules\Document\Presentation\Controllers\ReportsController;
 use App\Modules\Document\Presentation\Controllers\ReturnNoteController;
 use App\Modules\Document\Presentation\Controllers\SalesOrderController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
@@ -29,7 +30,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function (): void {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function (): void {
     // Draft auto-save (no permissions required - fraud detection)
     Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])
         ->name('documents.auto-save');
