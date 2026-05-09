@@ -111,6 +111,11 @@ final class AuthLifecycleTest extends TestCase
         // (Compliance/AuditController, Import) inline rather than via a
         // routes.php file. Discovered alongside the per-module routes files.
         'app/Modules/*/Providers/*ServiceProvider.php',
+        // Top-level ServiceProviders registering broadcasting / non-module
+        // route shapes — e.g. BroadcastServiceProvider's `Broadcast::routes(
+        // ['middleware' => [...]])` which sits outside `Route::middleware([...])`
+        // groups. PR2-001 (Codex round-1) surfaced this as a coverage gap.
+        'app/Providers/*ServiceProvider.php',
     ];
 
     /**
@@ -171,6 +176,19 @@ final class AuthLifecycleTest extends TestCase
             .'lifecycle hooks). Per master plan §15 Invariant D. '
             ."\nFix: add `App\\Modules\\Identity\\Presentation\\Middleware\\EnforceTokenTenantClaim::class` "
             .'to the middleware array, immediately after SetPermissionsTeam::class.',
+        );
+
+        $this->assertEmpty(
+            $violations['enforce_token_tenant_claim_before_set_permissions_team'],
+            "Found Route::middleware([...]) call(s) where EnforceTokenTenantClaim::class precedes SetPermissionsTeam::class:\n  - "
+            .implode("\n  - ", $violations['enforce_token_tenant_claim_before_set_permissions_team'])
+            ."\n\nEnforceTokenTenantClaim::class MUST appear AFTER SetPermissionsTeam::class in the "
+            .'middleware list — auth:sanctum resolves the token first, SetPermissionsTeam binds Spatie '
+            .'team_id from the resolved user, then EnforceTokenTenantClaim verifies the token claim. '
+            .'Inverting the order moves the tenant-claim check ahead of the team-id binding and makes '
+            .'the topological contract from master plan §15 Invariant D non-deterministic. '
+            ."\nFix: reorder the middleware array to "
+            .'[..., SetPermissionsTeam::class, EnforceTokenTenantClaim::class, ...].',
         );
 
         $this->assertEmpty(
@@ -308,6 +326,82 @@ PHP));
             $innerProtected['protected_without_enforce_token_tenant_claim'],
             'Inner protected sub-group with both middlewares should pass regardless of parent stack',
         );
+        $this->assertEmpty(
+            $innerProtected['enforce_token_tenant_claim_before_set_permissions_team'],
+            'Inner protected sub-group with both middlewares in correct order should pass',
+        );
+
+        // Broadcast::routes — auth:sanctum + both middlewares — clean.
+        // PR2-001 (Codex round-1): the Broadcast::routes(['middleware' => [...]])
+        // call shape sits outside Route::middleware([...]) groups; the
+        // matcher must classify it the same way for Invariants B + D to hold.
+        $broadcastClean = $this->classifyEntries($this->parseFixture(<<<'PHP'
+<?php
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+Broadcast::routes(['middleware' => ['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]]);
+PHP));
+        $this->assertEmpty(
+            $broadcastClean['protected_without_set_permissions_team'],
+            'Broadcast::routes with both middlewares should pass',
+        );
+        $this->assertEmpty(
+            $broadcastClean['protected_without_enforce_token_tenant_claim'],
+            'Broadcast::routes with both middlewares should pass',
+        );
+
+        // Broadcast::routes — auth:sanctum WITHOUT EnforceTokenTenantClaim — flagged.
+        // This is the exact regression PR2-001 was raised against. The
+        // failure message must point at the Broadcast::routes line.
+        $broadcastMissingClaim = $this->classifyEntries($this->parseFixture(<<<'PHP'
+<?php
+Broadcast::routes(['middleware' => ['api', 'auth:sanctum']]);
+PHP));
+        $this->assertNotEmpty(
+            $broadcastMissingClaim['protected_without_set_permissions_team'],
+            'Broadcast::routes without SetPermissionsTeam must surface in the SetPermissionsTeam bucket',
+        );
+        $this->assertNotEmpty(
+            $broadcastMissingClaim['protected_without_enforce_token_tenant_claim'],
+            'Broadcast::routes without EnforceTokenTenantClaim must surface in the tenant-claim bucket',
+        );
+
+        // Broadcast::routes() with NO arguments → exempt (uses default web
+        // middleware, no auth:sanctum). Must NOT surface in any violation
+        // bucket.
+        $broadcastNoArgs = $this->classifyEntries($this->parseFixture(<<<'PHP'
+<?php
+Broadcast::routes();
+PHP));
+        $this->assertEmpty(
+            $broadcastNoArgs['protected_without_set_permissions_team'],
+            'Broadcast::routes() with no args is exempt (default web middleware, no auth:sanctum)',
+        );
+        $this->assertEmpty(
+            $broadcastNoArgs['protected_without_enforce_token_tenant_claim'],
+            'Broadcast::routes() with no args is exempt (default web middleware, no auth:sanctum)',
+        );
+
+        // PR2-002 — order inversion: EnforceTokenTenantClaim BEFORE
+        // SetPermissionsTeam. Must surface in the order-violation bucket.
+        $invertedOrder = $this->classifyEntries($this->parseFixture(<<<'PHP'
+<?php
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
+use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+Route::middleware(['api', 'auth:sanctum', EnforceTokenTenantClaim::class, SetPermissionsTeam::class])->group(function () {});
+PHP));
+        $this->assertEmpty(
+            $invertedOrder['protected_without_set_permissions_team'],
+            'Inverted-order group has both middlewares present',
+        );
+        $this->assertEmpty(
+            $invertedOrder['protected_without_enforce_token_tenant_claim'],
+            'Inverted-order group has both middlewares present',
+        );
+        $this->assertNotEmpty(
+            $invertedOrder['enforce_token_tenant_claim_before_set_permissions_team'],
+            'Inverted-order group must surface in the order-violation bucket',
+        );
     }
 
     /**
@@ -322,6 +416,7 @@ PHP));
      * @return array{
      *     protected_without_set_permissions_team: list<string>,
      *     protected_without_enforce_token_tenant_claim: list<string>,
+     *     enforce_token_tenant_claim_before_set_permissions_team: list<string>,
      *     dynamic_middleware: list<string>,
      * }
      */
@@ -329,6 +424,7 @@ PHP));
     {
         $protectedWithoutTeam = [];
         $protectedWithoutTokenClaim = [];
+        $tokenClaimBeforeTeam = [];
         $dynamicMiddleware = [];
 
         foreach ($entries as $entry) {
@@ -361,11 +457,16 @@ PHP));
             if (! $this->containsEnforceTokenTenantClaim($tokens)) {
                 $protectedWithoutTokenClaim[] = $location;
             }
+
+            if (! $this->enforceTokenClaimAfterSetPermissionsTeam($tokens)) {
+                $tokenClaimBeforeTeam[] = $location;
+            }
         }
 
         return [
             'protected_without_set_permissions_team' => $protectedWithoutTeam,
             'protected_without_enforce_token_tenant_claim' => $protectedWithoutTokenClaim,
+            'enforce_token_tenant_claim_before_set_permissions_team' => $tokenClaimBeforeTeam,
             'dynamic_middleware' => $dynamicMiddleware,
         ];
     }
@@ -479,6 +580,37 @@ PHP));
     }
 
     /**
+     * Verifies the documented topological order: when both middlewares are
+     * present, EnforceTokenTenantClaim MUST appear AFTER SetPermissionsTeam.
+     *
+     * Returns true if either middleware is absent (separate violation
+     * buckets surface those gaps) or if the order is correct. Returns
+     * false only when BOTH are present and the order is inverted —
+     * the actionable runtime risk this assertion guards against.
+     *
+     * @param  list<string>  $tokens
+     */
+    private function enforceTokenClaimAfterSetPermissionsTeam(array $tokens): bool
+    {
+        $teamIndex = null;
+        $claimIndex = null;
+        foreach ($tokens as $i => $token) {
+            if ($teamIndex === null && str_ends_with($token, 'SetPermissionsTeam::class')) {
+                $teamIndex = $i;
+            }
+            if ($claimIndex === null && str_ends_with($token, 'EnforceTokenTenantClaim::class')) {
+                $claimIndex = $i;
+            }
+        }
+
+        if ($teamIndex === null || $claimIndex === null) {
+            return true;
+        }
+
+        return $claimIndex > $teamIndex;
+    }
+
+    /**
      * Walk the configured route files and return one entry per
      * Route::middleware([...])->group(...) call discovered.
      *
@@ -516,6 +648,20 @@ PHP));
                     'middleware_array' => $middlewareArray,
                     'file' => $relPath,
                     'line' => $call->getStartLine(),
+                ];
+            }
+
+            $broadcastCalls = $finder->find(
+                $ast,
+                fn (Node $n): bool => $this->isBroadcastRoutesCall($n)
+            );
+
+            foreach ($broadcastCalls as $broadcastCall) {
+                $middlewareArray = $this->extractMiddlewareArrayFromBroadcastRoutes($broadcastCall);
+                $entries[] = [
+                    'middleware_array' => $middlewareArray,
+                    'file' => $relPath,
+                    'line' => $broadcastCall->getStartLine(),
                 ];
             }
         }
@@ -580,6 +726,24 @@ PHP));
     }
 
     /**
+     * Match `Broadcast::routes($attributes)` static call.
+     *
+     * Sanctum's broadcast auth endpoint is registered via this call shape
+     * (rather than a `Route::middleware([...])` group), so the standard
+     * matcher misses it. The middleware list lives in the `middleware`
+     * key of the first-arg associative array. PR2-001 (Codex round-1)
+     * surfaced this as a coverage gap.
+     */
+    private function isBroadcastRoutesCall(Node $node): bool
+    {
+        return $node instanceof StaticCall
+            && $node->name instanceof Identifier
+            && $node->name->name === 'routes'
+            && $node->class instanceof Name
+            && $node->class->getLast() === 'Broadcast';
+    }
+
+    /**
      * Walk a MethodCall chain back to its root and return true iff the
      * root is a `Route::xxx(...)` static call.
      */
@@ -632,8 +796,65 @@ PHP));
     }
 
     /**
+     * Extract the middleware list from a `Broadcast::routes($attributes)` call.
+     *
+     * Returns null if:
+     *   - The first argument is not a literal array (dynamic — flagged elsewhere)
+     *   - The first argument is missing entirely (Broadcast::routes() with no
+     *     args uses the default `web` middleware — exempt by classification
+     *     because it has no `auth:sanctum` token)
+     *   - The `middleware` key is missing or has a non-literal-array value
+     */
+    private function extractMiddlewareArrayFromBroadcastRoutes(Node $call): ?Array_
+    {
+        if (! $call instanceof StaticCall) {
+            return null;
+        }
+        $args = $call->args;
+        if (count($args) === 0) {
+            // Broadcast::routes() with no args — use an empty literal array
+            // so the classifier sees it as "no auth:sanctum, no middlewares
+            // to require" → exempt (public).
+            $synthetic = new Array_;
+
+            return $synthetic;
+        }
+        $firstArg = $args[0];
+        if (! $firstArg instanceof Arg) {
+            return null;
+        }
+
+        $value = $firstArg->value;
+        if (! $value instanceof Array_) {
+            // Variable / dynamic attributes — surface as dynamic_middleware.
+            return null;
+        }
+
+        foreach ($value->items as $item) {
+            $key = $item->key;
+            if (! $key instanceof String_ || $key->value !== 'middleware') {
+                continue;
+            }
+            $middlewareValue = $item->value;
+            if (! $middlewareValue instanceof Array_) {
+                // `'middleware' => $var` or other non-literal — dynamic.
+                return null;
+            }
+
+            return $middlewareValue;
+        }
+
+        // No `middleware` key in the attributes array → no auth:sanctum,
+        // exempt by classification.
+        $synthetic = new Array_;
+
+        return $synthetic;
+    }
+
+    /**
      * Parse a PHP fixture string and return discovered Route::middleware()
-     * entries from it. Used by the self-test. Independent of file I/O.
+     * AND Broadcast::routes() entries from it. Used by the self-test.
+     * Independent of file I/O.
      *
      * @return list<array{middleware_array: ?Array_, file: string, line: int}>
      */
@@ -654,6 +875,16 @@ PHP));
                 'middleware_array' => $this->extractMiddlewareArrayFromCall($call),
                 'file' => '<fixture>',
                 'line' => $call->getStartLine(),
+            ];
+        }
+
+        $broadcastCalls = $finder->find($ast, fn (Node $n): bool => $this->isBroadcastRoutesCall($n));
+
+        foreach ($broadcastCalls as $broadcastCall) {
+            $entries[] = [
+                'middleware_array' => $this->extractMiddlewareArrayFromBroadcastRoutes($broadcastCall),
+                'file' => '<fixture>',
+                'line' => $broadcastCall->getStartLine(),
             ];
         }
 
