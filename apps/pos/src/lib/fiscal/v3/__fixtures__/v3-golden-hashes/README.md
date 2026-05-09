@@ -41,3 +41,7 @@ When intentionally changing the canonicalization algorithm:
 - `05-return-with-voucher-issuance-eur.json` — credit note with audit + voucher issuance
 - `06-exchange-pair-eur.json` — exchange_group_id committed in hash
 - `07-tnd-residual.json` — TND scale-3 with sub-millime voucher residual at internal precision
+- `08-store-voucher-binding-eur.json` — cash + store_voucher 50/50 with explicit
+  `instrument_type`/`instrument_serial`. Drives the V3ReceiptHashComputer
+  Receipt-end-to-end test that the model snapshot columns flow through to the
+  canonical hash (Codex review B2, 2026-04-30).
