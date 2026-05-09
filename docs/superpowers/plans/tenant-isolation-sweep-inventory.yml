@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: fb000741e9c9ec33f7069c556b8fc2e6f487392a8aaca7fdcb24567f34493d6d
+  yaml_sha256: 1ee27694cfde3967f836a71f1de825ca0fabdfc2d532ed7c75ce1f27a1a7e3b0
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -33072,9 +33072,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:10Z'
     review:
       reviewer: null
       verdict: null
@@ -33101,6 +33101,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:11Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fb000741e9c9ec33f7069c556b8fc2e6f487392a8aaca7fdcb24567f34493d6d
+        new_yaml_sha256: ef9e98d08e7b02c9edcd0724633d0d1971fa8adc65202f0699597ee85db11655
+        target_ids:
+          - api.catalog.018
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:31Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e6cfceda6f192325a86d5292474a47ca3db95b518efcec40a4d72cff6acceeb2
+        new_yaml_sha256: 628f1f29db10700c470834d1ccb4f19aaef6fc5e41a6d75fb91a0c4cbdf38767
+        target_ids:
+          - api.catalog.018
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.019
     stable_key: 'manual:api.catalog:recipe-controller-bare-where-chains'
@@ -33118,9 +33150,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:11Z'
     review:
       reviewer: null
       verdict: null
@@ -33147,6 +33179,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:12Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ef9e98d08e7b02c9edcd0724633d0d1971fa8adc65202f0699597ee85db11655
+        new_yaml_sha256: efd448c55396fa71c74761729725c42f82ceb6977e78abce9bafe6c679dc97fe
+        target_ids:
+          - api.catalog.019
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 628f1f29db10700c470834d1ccb4f19aaef6fc5e41a6d75fb91a0c4cbdf38767
+        new_yaml_sha256: 60a73a1d2ba081ce9cfe36021e0e730dd4e14f85c64c28b811c068d1d4d8e531
+        target_ids:
+          - api.catalog.019
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.020
     stable_key: 'manual:api.catalog:recipe-line-controller-store-bare-where-chain'
@@ -33164,9 +33228,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:13Z'
     review:
       reviewer: null
       verdict: null
@@ -33193,6 +33257,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:13Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: efd448c55396fa71c74761729725c42f82ceb6977e78abce9bafe6c679dc97fe
+        new_yaml_sha256: 56fa07a76551192ea5d0fb4ce136337e47c2da6e95185d8fbed479bd5ae9d77b
+        target_ids:
+          - api.catalog.020
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:33Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 60a73a1d2ba081ce9cfe36021e0e730dd4e14f85c64c28b811c068d1d4d8e531
+        new_yaml_sha256: 6c29b206718a9a9445743d3ceb793009984a323c66cbda85f557d23e725887e2
+        target_ids:
+          - api.catalog.020
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.021
     stable_key: 'manual:api.catalog:composite-item-variant-controller-bare-where-chain'
@@ -33210,9 +33306,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:14Z'
     review:
       reviewer: null
       verdict: null
@@ -33239,6 +33335,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:14Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 56fa07a76551192ea5d0fb4ce136337e47c2da6e95185d8fbed479bd5ae9d77b
+        new_yaml_sha256: 27de58d109a0b52b7895852c272d1da5ce743378ca15595dcfb66230d8f6e6ae
+        target_ids:
+          - api.catalog.021
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:35Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 6c29b206718a9a9445743d3ceb793009984a323c66cbda85f557d23e725887e2
+        new_yaml_sha256: dd4ae8f5090053c3bc7b9810e7e81db37ede6da00853ffcb67f683c9a1fbb480
+        target_ids:
+          - api.catalog.021
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.022
     stable_key: 'manual:api.catalog:units-bare-exists-eight-callsites'
@@ -33256,9 +33384,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:15Z'
     review:
       reviewer: null
       verdict: null
@@ -33285,6 +33413,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:15Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 27de58d109a0b52b7895852c272d1da5ce743378ca15595dcfb66230d8f6e6ae
+        new_yaml_sha256: 199d69aac26cee9ba75da879f30fe78ec75b894ef625536649a85486187a4a5e
+        target_ids:
+          - api.catalog.022
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:36Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dd4ae8f5090053c3bc7b9810e7e81db37ede6da00853ffcb67f683c9a1fbb480
+        new_yaml_sha256: d5b56a34c82a4ea59e9aa1a8cb049d241e7e2d96b50fe17388ba81173106ff2c
+        target_ids:
+          - api.catalog.022
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.023
     stable_key: 'manual:api.catalog:tax-configurations-country-guard-overstated'
@@ -33302,9 +33462,9 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:16Z'
     review:
       reviewer: null
       verdict: null
@@ -33331,6 +33491,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:16Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 199d69aac26cee9ba75da879f30fe78ec75b894ef625536649a85486187a4a5e
+        new_yaml_sha256: 6f0753918815be1587ebb088b9855b409842bd4c33d9ee6ab7ffccc8602b6cbc
+        target_ids:
+          - api.catalog.023
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:37Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d5b56a34c82a4ea59e9aa1a8cb049d241e7e2d96b50fe17388ba81173106ff2c
+        new_yaml_sha256: 2726aa7d82beba35b004e180234375f4859b4664d02d44c89d7aa415e3523307
+        target_ids:
+          - api.catalog.023
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.024
     stable_key: 'manual:api.catalog:modifier-controller-component-type-not-enum'
@@ -33348,9 +33540,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:17Z'
     review:
       reviewer: null
       verdict: null
@@ -33377,6 +33569,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:18Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f0753918815be1587ebb088b9855b409842bd4c33d9ee6ab7ffccc8602b6cbc
+        new_yaml_sha256: a74a29e225aada5018cb13cfc0401023448b31fd71dde3b70ef22775a6654c46
+        target_ids:
+          - api.catalog.024
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:38Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2726aa7d82beba35b004e180234375f4859b4664d02d44c89d7aa415e3523307
+        new_yaml_sha256: 115853e71ec3754a22c5fe01ad8891d84bf1ebbf566ec90dda6deacddc682b76
+        target_ids:
+          - api.catalog.024
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.025
     stable_key: 'manual:api.catalog:composite-item-check-availability-location-unscoped'
@@ -33394,9 +33618,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:18Z'
     review:
       reviewer: null
       verdict: null
@@ -33423,6 +33647,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:19Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a74a29e225aada5018cb13cfc0401023448b31fd71dde3b70ef22775a6654c46
+        new_yaml_sha256: 7396e75ce1f5fe634d54c6a4a568c7221e0e60e8f0891084738a91f3132cb082
+        target_ids:
+          - api.catalog.025
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:39Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 115853e71ec3754a22c5fe01ad8891d84bf1ebbf566ec90dda6deacddc682b76
+        new_yaml_sha256: e3b879d5681854df3d13b7cac0b892586c5a867a46c8cb269d528590a4d303da
+        target_ids:
+          - api.catalog.025
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.catalog.026
     stable_key: 'manual:api.catalog:no-circular-composite-reference-unscoped-find'
@@ -33440,9 +33696,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-09T16:47:20Z'
     review:
       reviewer: null
       verdict: null
@@ -33469,6 +33725,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T16:47:20Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7396e75ce1f5fe634d54c6a4a568c7221e0e60e8f0891084738a91f3132cb082
+        new_yaml_sha256: e6cfceda6f192325a86d5292474a47ca3db95b518efcec40a4d72cff6acceeb2
+        target_ids:
+          - api.catalog.026
+        from_status: pending
+        to_status: claimed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-09T16:47:40Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e3b879d5681854df3d13b7cac0b892586c5a867a46c8cb269d528590a4d303da
+        new_yaml_sha256: 42c929979c5832296b9e052d5dc518f1341c18753f102eed60f4d3a4a1457d99
+        target_ids:
+          - api.catalog.026
+        from_status: claimed
+        to_status: in_progress
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: api.inventory.029
     stable_key: 'manual:api.inventory:counting-item-controller-trigger-third-count-bare-exists'
@@ -35511,15 +35799,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:37Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_product_rejects_cross_tenant_id'
     blocked_reason: null
@@ -35588,6 +35876,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 42c929979c5832296b9e052d5dc518f1341c18753f102eed60f4d3a4a1457d99
+        new_yaml_sha256: cacc0fb777d54f72605d555b6c7a761f92c7e7417209146595dba9469085d018
+        target_ids:
+          - api.catalog.027
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.028
     stable_key: 'manual:api.catalog:product-controller-update-bare-where-route-anchored-read'
@@ -35605,15 +35910,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:38Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:44Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_product_rejects_cross_tenant_id'
     blocked_reason: null
@@ -35682,6 +35987,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:44Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: cacc0fb777d54f72605d555b6c7a761f92c7e7417209146595dba9469085d018
+        new_yaml_sha256: db563001beb25cab6471846cb563d64cab53546ce6130ca00866bbe0b4e380ff
+        target_ids:
+          - api.catalog.028
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.029
     stable_key: 'manual:api.catalog:product-controller-destroy-bare-where-route-anchored-read'
@@ -35699,15 +36021,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:39Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_destroy_product_rejects_cross_tenant_id'
     blocked_reason: null
@@ -35776,6 +36098,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:45Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: db563001beb25cab6471846cb563d64cab53546ce6130ca00866bbe0b4e380ff
+        new_yaml_sha256: 5a8296ffa1e02537df6c31c6b6ac557b129f2b1324d99f526d4db5243b6cc47d
+        target_ids:
+          - api.catalog.029
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.030
     stable_key: 'manual:api.catalog:product-controller-stock-levels-bare-where-route-anchored-read'
@@ -35793,15 +36132,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:40Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:46Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_stock_levels_rejects_cross_tenant_product_id'
     blocked_reason: null
@@ -35870,6 +36209,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:47Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5a8296ffa1e02537df6c31c6b6ac557b129f2b1324d99f526d4db5243b6cc47d
+        new_yaml_sha256: 818a83fa58e2de0dbfe7bdf08fccfdb3ef92dc9756657873d4f9efbe4b9812cc
+        target_ids:
+          - api.catalog.030
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.031
     stable_key: 'manual:api.catalog:enrichment-review-controller-show-bare-where-route-anchored-read'
@@ -35887,15 +36243,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:41Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:47Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_enrichment_result_rejects_cross_tenant_id'
     blocked_reason: null
@@ -35964,6 +36320,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:48Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 818a83fa58e2de0dbfe7bdf08fccfdb3ef92dc9756657873d4f9efbe4b9812cc
+        new_yaml_sha256: b76aa2d431a55c2762d9a6a43de5bf2189b91549869c3934837bf1f75b98c081
+        target_ids:
+          - api.catalog.031
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.032
     stable_key: 'manual:api.catalog:enrichment-review-controller-accept-bare-where-route-anchored-read'
@@ -35981,15 +36354,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:42Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_accept_enrichment_result_rejects_cross_tenant_id'
     blocked_reason: null
@@ -36058,6 +36431,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:49Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b76aa2d431a55c2762d9a6a43de5bf2189b91549869c3934837bf1f75b98c081
+        new_yaml_sha256: 868d5b147ab5e30235a3f589e9ce498c31a957011f27f4cc28f043165b293e61
+        target_ids:
+          - api.catalog.032
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.033
     stable_key: 'manual:api.catalog:enrichment-review-controller-reject-bare-where-route-anchored-read'
@@ -36075,15 +36465,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:25:43Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T16:48:50Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+      review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     fix_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
     regression_test: 'tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_reject_enrichment_result_rejects_cross_tenant_id'
     blocked_reason: null
@@ -36152,6 +36542,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T16:48:50Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 868d5b147ab5e30235a3f589e9ce498c31a957011f27f4cc28f043165b293e61
+        new_yaml_sha256: 1ee27694cfde3967f836a71f1de825ca0fabdfc2d532ed7c75ce1f27a1a7e3b0
+        target_ids:
+          - api.catalog.033
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 28d7a5385ab5a625e3d215949a28c2173c3d0360
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-codex-rereview.md
+        review_commit: 48ff4bb961c5bdf4de2181741206acf8b26cfaa6
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.pos-stabilization.046
     stable_key: 'manual:api.pos-stabilization:order-management-service-route-order-lookups-unscoped'
