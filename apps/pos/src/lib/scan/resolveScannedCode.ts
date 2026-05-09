@@ -1,7 +1,15 @@
 /**
- * T2.1 Step B — three-tier scan resolver.
+ * T2.1 Step B — three-tier scan resolver, plus the post-T2.1 LRU
+ * recent-scan cache (Tier 0).
  *
- * Resolves a barcode/SKU scan code through three tiers in order:
+ * Resolves a barcode/SKU scan code through tiers in order:
+ *   0. **Recent-scan LRU** (`scanResolutionCache`) — O(1). Caches the
+ *      last `SCAN_CACHE_MAX_SIZE` successful resolutions in this
+ *      process. Repeat scans within the session skip the resolution
+ *      chain entirely. Also doubles as the chooser-pick preference
+ *      cache: when the cashier picks a product from a multi-match
+ *      collision, that pick is cached so the same code's next scan
+ *      doesn't re-mount the chooser modal.
  *   1. **In-memory** (`productStore.products`) — O(n), fast for n ≤ 5000.
  *      Matches `barcode === code || sku === code` (preserved from the
  *      pre-T2.1 inline scan handler at HomePage.tsx).
@@ -18,6 +26,12 @@
  *     next scan in the same session is a Tier 2 hit.
  *   - >1 results → `{ kind: 'choose', candidates }` — the caller mounts a
  *     chooser modal (collision UX, matches Toast / Shopify POS pattern).
+ *
+ * After any tier 1/2/3 hit we ALSO write the resolved product to the
+ * Tier 0 LRU so the next scan of the same code is an O(1) hit. Tier 3
+ * `choose` is NOT cached here — the cashier hasn't expressed a
+ * preference yet. The chooser pick handler in `HomePage.tsx` writes the
+ * picked product to the cache once the cashier resolves the collision.
  *
  * Pre-tier guard: codes shorter than 2 chars or whitespace-only are
  * treated as phantom scanner events and short-circuit to `'miss'`
@@ -36,6 +50,7 @@ import {
 } from '@/lib/db/repositories/productRepository';
 import { fetchProductByBarcode } from '@/api/productApi';
 import { serializeErrorForLog } from '@/lib/errorLogging';
+import { getCachedScan, setCachedScan } from './scanResolutionCache';
 
 /**
  * Tunable Tier 3 (API) timeout. The cashier sees an inline subtle
@@ -54,6 +69,12 @@ export type ResolveScannedCodeResult =
 export interface ResolveScannedCodeDeps {
   db: Database;
   products: POSProduct[];
+  /**
+   * Active company id — passed through to the Tier 0 LRU so cache
+   * lookups are tenant-scoped. Codex round-2 P2 (PR #98): a barcode
+   * cached in company A must NEVER resolve a scan in company B.
+   */
+  companyId: string;
   /** Optional caller-provided abort signal — supports concurrent-scan cancellation. */
   signal?: AbortSignal;
 }
@@ -67,12 +88,23 @@ export async function resolveScannedCode(
     return { kind: 'miss' };
   }
 
+  // Tier 0 — recent-scan LRU. O(1) hit before any tier work; also the
+  // chooser-pick preference: a code that previously triggered the
+  // chooser and was resolved by the cashier comes back here as a hit.
+  // Tenant-scoped via deps.companyId — cross-company collisions
+  // resolve to a miss.
+  const cachedHit = getCachedScan(code, deps.companyId);
+  if (cachedHit) {
+    return { kind: 'hit', product: cachedHit };
+  }
+
   // Tier 1 — in-memory snapshot. Preserves barcode OR sku disjunction
   // from the pre-T2.1 inline handler.
   const inMemoryHit = deps.products.find(
     (p) => p.barcode === code || p.sku === code,
   );
   if (inMemoryHit) {
+    setCachedScan(code, inMemoryHit, deps.companyId);
     return { kind: 'hit', product: inMemoryHit };
   }
 
@@ -81,6 +113,7 @@ export async function resolveScannedCode(
   try {
     const sqliteHit = await getProductByBarcode(deps.db, code);
     if (sqliteHit) {
+      setCachedScan(code, sqliteHit, deps.companyId);
       return { kind: 'hit', product: sqliteHit };
     }
   } catch (err) {
@@ -116,10 +149,14 @@ export async function resolveScannedCode(
           serializeErrorForLog(err),
         );
       }
+      setCachedScan(code, product, deps.companyId);
       return { kind: 'hit', product };
     }
     // Multiple matches — collision UX. Caller resolves with chooser
-    // modal; no auto-pick.
+    // modal; no auto-pick AND no Tier 0 cache write here. The chooser
+    // pick handler in HomePage.tsx writes to the LRU once the cashier
+    // resolves the collision, so the next scan of the same code skips
+    // the chooser.
     return { kind: 'choose', candidates: apiResults };
   } catch (err) {
     console.error(

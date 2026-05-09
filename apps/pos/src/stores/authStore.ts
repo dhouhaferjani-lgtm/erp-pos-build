@@ -10,6 +10,7 @@ import {
 } from '@/lib/storage';
 import { getDeviceId } from '@/lib/device';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { clearScanCache } from '@/lib/scan/scanResolutionCache';
 
 export interface User {
   id: string;
@@ -300,5 +301,15 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     void removeStoredValue(StorageKeys.TERMINAL);
     void removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
     useTerminalStore.getState().reset();
+
+    // Codex round-3 P2 (PR #98) — clear the tenant-scoped scan LRU
+    // from the CENTRAL logout path, not only from the UI flows that
+    // happen to call productStore.reset() first. The sync scheduler's
+    // confirmed-401 path goes through here directly, so this is the
+    // canonical session-ending hook. Companion clear in
+    // productStore.reset() stays as defense-in-depth for code paths
+    // that reset products without calling logout (e.g. PinEntryPage's
+    // explicit user-switch flow).
+    clearScanCache();
   },
 }));

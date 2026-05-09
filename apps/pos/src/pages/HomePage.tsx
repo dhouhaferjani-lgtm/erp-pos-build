@@ -13,6 +13,7 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { resolveScannedCode } from '@/lib/scan/resolveScannedCode';
+import { setCachedScan } from '@/lib/scan/scanResolutionCache';
 import { BarcodeChooserModal } from '@/components/molecules/BarcodeChooserModal/BarcodeChooserModal';
 import { getDatabase } from '@/lib/db';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
@@ -304,6 +305,7 @@ export function HomePage() {
           const result = await resolveScannedCode(barcode, {
             db,
             products,
+            companyId,
             signal: controller.signal,
           });
 
@@ -1195,6 +1197,26 @@ export function HomePage() {
         scannedCode={chooserState?.scannedCode ?? ''}
         candidates={chooserState?.candidates ?? []}
         onPick={(product) => {
+          // Remember the cashier's pick for this code so the next scan
+          // of the same colliding barcode skips the chooser entirely
+          // (chooser-pick preference cache; resolves to a Tier 0 LRU
+          // hit). Tenant-scoped via companyId — a pick in company A
+          // can't bleed into company B after a session switch.
+          // Bounded by the cache's session lifetime + LRU eviction
+          // window.
+          if (chooserState !== null) {
+            const companyIdForCache = useAuthStore.getState().companyId;
+            if (companyIdForCache) {
+              // Codex round-3 P3 (PR #98) — trim parity with the
+              // resolver. resolveScannedCode does code = rawCode.trim()
+              // before all cache reads/writes, so caching the
+              // chooser's scannedCode untrimmed would store under a
+              // raw key that the next scan's trimmed lookup never
+              // hits — chooser preference would never take effect for
+              // scanners that emit surrounding whitespace.
+              setCachedScan(chooserState.scannedCode.trim(), product, companyIdForCache);
+            }
+          }
           setChooserState(null);
           addProductToCartWithToast(product);
         }}

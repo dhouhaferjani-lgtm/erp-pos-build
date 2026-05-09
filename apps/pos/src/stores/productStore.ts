@@ -6,6 +6,7 @@ import { getAllProducts, upsertProducts } from '@/lib/db/repositories/productRep
 import { useAuthStore } from '@/stores/authStore';
 import { diffProducts } from '@/lib/sync/productDiff';
 import { pullProductsForeground } from '@/lib/sync/syncService';
+import { clearScanCache } from '@/lib/scan/scanResolutionCache';
 import type { POSProduct } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 
@@ -105,6 +106,20 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         if (cachedProducts.length > 0) {
           hasLocalData = true;
           const categories = extractCategories(cachedProducts);
+          // Codex round-4 P2 (PR #98) — invalidate the scan LRU when
+          // the initial SQLite hydration replaces in-memory products.
+          // SQLite can be ahead of the in-memory snapshot if a sync
+          // tick wrote rows but a cache entry from before that tick
+          // is still present (e.g. fetchProducts called from a
+          // remounting route after a sync, before the next
+          // refreshFromSQLite path runs). Clearing here means scans
+          // can't resolve to a Tier 0 entry that pre-dates the
+          // fresher SQLite catalog.
+          const currentInMemory = get().products;
+          if (diffProducts(currentInMemory, cachedProducts).changed
+              || currentInMemory.length === 0) {
+            clearScanCache();
+          }
           set({
             products: cachedProducts,
             categories,
@@ -158,6 +173,9 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         const currentProducts = get().products;
         const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
         if (changed || currentProducts.length === 0) {
+          // Codex round-1 P2 (PR #98) — drop scan LRU when the
+          // Menu-mode fetch updates in-memory state.
+          clearScanCache();
           set({
             products: merged,
             categories: extractCategories(merged),
@@ -231,11 +249,17 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         const currentProducts = get().products;
         if (freshProducts.length === 0) {
           if (currentProducts.length > 0) {
+            // Codex round-1 P2 (PR #98) — drop scan LRU on
+            // tombstone-driven catalog wipe.
+            clearScanCache();
             set({ products: [], categories: [] });
           }
         } else {
           const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
           if (changed || currentProducts.length === 0) {
+            // Codex round-1 P2 (PR #98) — drop scan LRU when the
+            // foreground pull updates in-memory state.
+            clearScanCache();
             set({
               products: merged,
               categories: extractCategories(merged),
@@ -279,6 +303,14 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       if (freshProducts.length === 0) return;
       const { changed, products: merged } = diffProducts(get().products, freshProducts);
       if (changed) {
+        // Codex round-1 P2 (PR #98) — invalidate the recent-scan LRU
+        // when the in-memory catalog actually changes. Without this,
+        // a deleted / updated product keeps resolving via Tier 0 to
+        // its stale cached state until app restart or LRU eviction.
+        // Clearing before `set()` means any concurrent resolver call
+        // sees a cold cache and falls through to the fresh in-memory
+        // + SQLite state.
+        clearScanCache();
         set({ products: merged, categories: extractCategories(merged) });
       }
     } catch (error) {
@@ -291,6 +323,14 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
   },
 
   reset: () => {
+    // Codex round-2 P2 (PR #98) defense-in-depth — also clear the
+    // tenant-scoped scan LRU. The cache key already includes the
+    // companyId (so cross-tenant collisions are impossible), but
+    // reset() is the canonical "this session is over" signal (called
+    // from logout in Header / PinEntryPage), so dropping the cache
+    // here keeps the process clean across rapid session churn even
+    // before the LRU's natural eviction window catches up.
+    clearScanCache();
     set(initialState);
   },
 }));
