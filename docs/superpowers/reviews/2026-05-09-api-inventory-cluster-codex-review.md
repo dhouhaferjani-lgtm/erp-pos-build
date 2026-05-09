@@ -2,7 +2,9 @@
 
 Verdict: APPROVE-WITH-MINOR-EDITS-APPLIED
 
-Commit reviewed: 1585720e (code), 0f7f7c72 (YAML state)
+Commit reviewed: 1585720e
+
+YAML state anchor: 0f7f7c72 (claim/start/submit events + atomic-mutation transitions for needs_recheck callsites; metadata-only, not part of the code review).
 
 ## Findings
 
