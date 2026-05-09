@@ -1604,6 +1604,14 @@ final class CatalogTenantIsolationTest extends TestCase
                 'yield_quantity' => 1,
             ]);
         $cross->assertStatus(404);
+
+        // No Recipe row may have been created against tenant B's composite
+        // item (Codex round-2 F2-R2-1: assert no foreign mutation).
+        $this->assertSame(
+            0,
+            Recipe::query()->where('composite_item_id', $this->compositeItemB->id)->count(),
+            'Cross-tenant recipe-store must not create a Recipe row.',
+        );
     }
 
     public function test_recipe_update_rejects_cross_tenant_via_composite_item(): void
@@ -1659,6 +1667,13 @@ final class CatalogTenantIsolationTest extends TestCase
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson("/api/v1/recipes/{$recipeB->id}/calculate-cost");
         $cross->assertStatus(404);
+
+        // RecipeCostCalculationService persists `calculated_cost` if it
+        // reaches the controller — verify the foreign recipe's stored cost
+        // remained null (Codex round-2 F2-R2-1).
+        $freshRecipe = $recipeB->fresh();
+        $this->assertNotNull($freshRecipe);
+        $this->assertNull($freshRecipe->calculated_cost);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1748,6 +1763,12 @@ final class CatalogTenantIsolationTest extends TestCase
                 'price_adjustment' => 0,
             ]);
         $cross->assertStatus(404);
+
+        // No CompositeItemVariant row may have been created (Codex round-2
+        // F2-R2-1: assert no foreign mutation).
+        $this->assertDatabaseMissing('composite_item_variants', [
+            'code' => 'VAR-HIJACK',
+        ]);
     }
 
     public function test_destroy_variant_rejects_cross_tenant_via_composite_item(): void
