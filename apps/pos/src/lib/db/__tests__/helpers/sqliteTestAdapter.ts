@@ -34,6 +34,21 @@ function isSelect(sql: string): boolean {
   return /^\s*(SELECT|PRAGMA|WITH)\b/i.test(sql);
 }
 
+/**
+ * Multi-statement SQL contains a `;` followed by more SQL (i.e. additional
+ * statements after the trailing terminator). `node:sqlite`'s `prepare()`
+ * only accepts single statements; multi-statement blocks must go through
+ * `exec()`. Migration `m.sql` blocks are the canonical caller.
+ *
+ * Heuristic: strip an optional trailing semicolon, then look for any
+ * remaining `;` followed by non-whitespace. Test fixtures don't contain
+ * `;` inside string literals, so this is safe for the fixture surface.
+ */
+function isMultiStatement(sql: string): boolean {
+  const trimmed = sql.trim().replace(/;\s*$/, '');
+  return /;\s*\S/.test(trimmed);
+}
+
 export class SqliteTestAdapter {
   readonly inner: DatabaseSync;
 
@@ -42,14 +57,18 @@ export class SqliteTestAdapter {
   }
 
   async execute(sql: string, params?: unknown[]): Promise<ExecResult> {
-    const bound = bindParams(params);
-    if (!bound) {
-      // Multi-statement blocks (migration.sql) land here; `exec` handles them.
+    // Multi-statement migration blocks must go through `exec`. A
+    // single-statement query (with or without params) goes through
+    // `prepare(...).run()` so callers get an accurate `rowsAffected`
+    // — production `execute` defaults `params = []`, which would
+    // otherwise be misrouted to `exec` and silently lose rowsAffected.
+    if (isMultiStatement(sql)) {
       this.inner.exec(sql);
       return { rowsAffected: 0 };
     }
     const stmt = this.inner.prepare(sql);
-    const res = stmt.run(bound);
+    const bound = bindParams(params);
+    const res = bound ? stmt.run(bound) : stmt.run();
     return {
       rowsAffected: Number(res.changes),
       lastInsertId: Number(res.lastInsertRowid),

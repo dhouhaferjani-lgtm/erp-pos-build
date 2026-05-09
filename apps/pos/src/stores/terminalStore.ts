@@ -146,6 +146,32 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
       );
     }
 
+    // Cash-drawer counterpart of the Step D recovery above. Same crash-
+    // stranding pattern at `syncService.pushCashDrawerOps:506`. A SIGKILL/
+    // power-cut between updateCashDrawerOpStatus(... 'syncing') and the
+    // response handler strands the row at 'syncing' permanently, invisible
+    // to getPendingCashDrawerOps's `status IN ('pending','failed')` filter.
+    // Recovery demotes back to 'pending' so the next sync tick re-attempts.
+    // T0.2 idempotency_key dedups any double-send server-side. Independent
+    // try/catch from the receipts recovery so one path's SQLite blip can't
+    // strand the other.
+    try {
+      const { recoverStrandedSyncingCashDrawerOps } = await import(
+        '@/lib/db/repositories/cashDrawerRepository'
+      );
+      const recovered = await recoverStrandedSyncingCashDrawerOps(db);
+      if (recovered > 0) {
+        console.info(
+          `[POS][terminalStore][recover] demoted ${String(recovered)} stranded 'syncing' cash-drawer op(s) on boot`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][recover] strandedSyncingCashDrawer failed',
+        serializeErrorForLog(err),
+      );
+    }
+
     // Start the background sync scheduler
     const scheduler = new SyncScheduler(db, terminalId);
     useSyncStore.getState().setScheduler(scheduler);

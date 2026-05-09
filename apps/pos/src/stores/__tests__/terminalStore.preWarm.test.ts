@@ -33,6 +33,11 @@ const getSyncMetadataSpy = vi.fn().mockResolvedValue(null);
 // handler.
 const recoverStrandedSyncingReceiptsSpy = vi.fn().mockResolvedValue(0);
 
+// Cash-drawer ops counterpart of Step D: same crash-stranding pattern
+// at `syncService.pushCashDrawerOps` advancing rows to `'syncing'`
+// before the HTTP call.
+const recoverStrandedSyncingCashDrawerOpsSpy = vi.fn().mockResolvedValue(0);
+
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn().mockResolvedValue({}),
 }));
@@ -72,6 +77,10 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   recoverStrandedSyncingReceipts: recoverStrandedSyncingReceiptsSpy,
 }));
 
+vi.mock('@/lib/db/repositories/cashDrawerRepository', () => ({
+  recoverStrandedSyncingCashDrawerOps: recoverStrandedSyncingCashDrawerOpsSpy,
+}));
+
 vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
   getSyncMetadata: getSyncMetadataSpy,
 }));
@@ -108,6 +117,8 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     syncStoreMockState.lastSyncAt = null;
     recoverStrandedSyncingReceiptsSpy.mockClear();
     recoverStrandedSyncingReceiptsSpy.mockResolvedValue(0);
+    recoverStrandedSyncingCashDrawerOpsSpy.mockClear();
+    recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValue(0);
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -325,6 +336,97 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     // The scheduler still starts despite the recovery failure — a
     // SQLite-level bad state shouldn't strand the cashier with a
     // dead scheduler.
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
+  });
+
+  // ---------------------------------------------------------------------
+  // Cash-drawer Step-D counterpart — same crash-stranding pattern at
+  // `syncService.pushCashDrawerOps:506`. updateCashDrawerOpStatus(... 'syncing')
+  // runs BEFORE the sync HTTP call. SIGKILL/power-cut between the status
+  // update and the response handler leaves the row at 'syncing'
+  // permanently. getPendingCashDrawerOps filters
+  //   WHERE status IN ('pending','failed') AND retry_count < 5
+  // → orphan invisible to every retry → silent loss of a deposit / payout
+  // the cashier counted on for till reconciliation.
+  //
+  // Recovery shape mirrors Step D exactly: an UPDATE …'pending' WHERE
+  // status='syncing' on boot, BEFORE scheduler.start so the first tick
+  // sees the demoted rows.
+  // ---------------------------------------------------------------------
+
+  it('cash-drawer E.1: seedOfflineHashChain calls recoverStrandedSyncingCashDrawerOps on boot', async () => {
+    recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValueOnce(2);
+
+    await seedOfflineHashChain('term-1');
+
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledTimes(1);
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledWith(expect.anything());
+  });
+
+  it('cash-drawer E.2: stranded-syncing recovery runs BEFORE scheduler.start()', async () => {
+    recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValueOnce(1);
+
+    await seedOfflineHashChain('term-1');
+
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    const recoverOrder = recoverStrandedSyncingCashDrawerOpsSpy.mock.invocationCallOrder[0]!;
+    const startOrder = startSpy.mock.invocationCallOrder[0]!;
+    expect(recoverOrder).toBeLessThan(startOrder);
+  });
+
+  it('cash-drawer E.3: recovery is idempotent across multiple boots', async () => {
+    recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValueOnce(1);
+    await seedOfflineHashChain('term-1');
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledTimes(1);
+
+    recoverStrandedSyncingCashDrawerOpsSpy.mockResolvedValueOnce(0);
+    await seedOfflineHashChain('term-1');
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('cash-drawer E.4: recovery error is caught + serialized via serializeErrorForLog (does NOT propagate)', async () => {
+    recoverStrandedSyncingCashDrawerOpsSpy.mockRejectedValueOnce(
+      new Error('SQLite UPDATE failed'),
+    );
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+
+    const recoverErrorLog = consoleError.mock.calls.find(
+      (call) =>
+        typeof call[0] === 'string' &&
+        call[0].toLowerCase().includes('strandedsyncingcashdrawer'),
+    );
+    expect(recoverErrorLog).toBeDefined();
+    if (recoverErrorLog) {
+      const payload = recoverErrorLog[1] as Record<string, unknown>;
+      expect(payload).toHaveProperty('errorName');
+      expect(payload).toHaveProperty('message');
+    }
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
+  });
+
+  it('cash-drawer E.5: cash-drawer recovery error does NOT prevent the receipts recovery from also running', async () => {
+    // Independence guarantee: a SQLite blip in one recovery path must not
+    // strand the other. Both should be invoked and swallowed
+    // independently.
+    recoverStrandedSyncingCashDrawerOpsSpy.mockRejectedValueOnce(
+      new Error('cash drawer SQLite blip'),
+    );
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValueOnce(1);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+
+    expect(recoverStrandedSyncingCashDrawerOpsSpy).toHaveBeenCalledTimes(1);
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(1);
     expect(startSpy).toHaveBeenCalledTimes(1);
 
     consoleError.mockRestore();
