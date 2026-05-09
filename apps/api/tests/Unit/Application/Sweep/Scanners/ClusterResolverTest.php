@@ -95,25 +95,13 @@ class ClusterResolverTest extends TestCase
             'apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php',
             'api.super-admin-context',
         ];
-    }
-
-    /**
-     * Deliberate negative test: Marketplace is the ONE module triaged this
-     * round that stays unmapped. The pin forces anyone removing the deferral
-     * (by adding a Marketplace mapping) to also justify the cluster choice
-     * and update this test — not silently route it. See
-     * `defaultModuleToClusterMap` docblock for the rationale.
-     */
-    public function test_marketplace_remains_deferred_to_api_unmapped(): void
-    {
-        $resolver = new ClusterResolver(ClusterResolver::defaultModuleToClusterMap(), 'api.unmapped');
-
-        $this->assertSame(
-            'api.unmapped',
-            $resolver->resolve('apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnPriceChange.php'),
-            'Marketplace is not in master plan Section 6 catalogue. Until a cluster owner + scope is decided, '.
-            'its callsites must remain in api.unmapped so the warning surfaces. Anyone updating this mapping '.
-            'must also document the cluster choice in defaultModuleToClusterMap.',
-        );
+        yield 'Marketplace → api.marketplace (added 2026-05-09 — own cluster, not folded into platform-integration)' => [
+            'apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnPriceChange.php',
+            'api.marketplace',
+        ];
+        yield 'Marketplace controllers → api.marketplace (forward-looking pin for the rest of the module surface)' => [
+            'apps/api/app/Modules/Marketplace/Presentation/Controllers/MarketplaceListingController.php',
+            'api.marketplace',
+        ];
     }
 }

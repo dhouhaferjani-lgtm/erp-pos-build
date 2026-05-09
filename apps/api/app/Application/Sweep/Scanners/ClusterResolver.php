@@ -117,11 +117,22 @@ final class ClusterResolver
             'Permission' => 'api.auth-permissions',
             'Permissions' => 'api.auth-permissions',
             // Marketplace module (multi-seller listings, sync to external
-            // marketplaces) is intentionally NOT mapped here. It is not
-            // catalogued in master plan Section 6 and the listeners' tenant
-            // scoping pattern needs an explicit cluster-owner + scope decision
-            // before mechanical fixes are safe. Two callsites currently land
-            // in api.unmapped; triage in a follow-up master plan revision.
+            // marketplaces — Amazon/eBay-style, distinct from internal
+            // Synerivia platform integration). Triaged 2026-05-09 to its own
+            // api.marketplace cluster. Justification:
+            //   1. Listeners are genuinely unscoped — `Product::query()->find()`
+            //      with no tenant_id filter; MarketplaceSeller lookups by
+            //      company_id alone despite both columns being present.
+            //   2. Surface is non-trivial — 26 PHP files (3 controllers, 4
+            //      services, 2 jobs, 6 domain models with tenant_id+company_id).
+            //      Two listener callsites are the tip; controllers + services
+            //      will surface more once swept.
+            //   3. Threat model is distinct from api.platform-integration
+            //      (B2B internal data sync) — Marketplace publishes to external
+            //      consumer marketplaces, different trust boundary.
+            // Cluster placement reviewed by Codex pending lock at submission
+            // commit; see master plan Section 6 update + commit body.
+            'Marketplace' => 'api.marketplace',
         ];
     }
 }

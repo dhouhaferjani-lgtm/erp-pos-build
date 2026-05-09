@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-08T23:20:17Z'
+  generated_at: '2026-05-09T11:07:34Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 15404dde71b4948a9b81029fb2e8e4e34649ed5a9d35047e6ec9429ca41d9e2e
+  yaml_sha256: dc110802f85de2e60eff119a5d43872e68125f2e27c5808946d9245d04827a02
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -784,6 +784,29 @@ clusters:
       required: true
       reviewer_must_differ_from_owner: true
       review_file: docs/superpowers/reviews/2026-05-XX-tauri-sync-envelope-cluster-claude-review.md
+      accepted_verdicts:
+        - APPROVE
+        - APPROVE-WITH-MINOR-EDITS-APPLIED
+      verify_review_commit_linkage: true
+  -
+    id: api.marketplace
+    display_name: 'Marketplace (multi-seller, external sync)'
+    surface: api
+    owner: null
+    required_owner: claude
+    status: pending
+    blocked_by:
+      - api.treasury
+    blocked_by_external: null
+    blocked_reason: null
+    blocks: {  }
+    is_reference: false
+    expected_callsite_count: null
+    test_file: apps/api/tests/Feature/Marketplace/MarketplaceTenantIsolationTest.php
+    review_gate:
+      required: true
+      reviewer_must_differ_from_owner: true
+      review_file: docs/superpowers/reviews/2026-05-XX-marketplace-cluster-codex-review.md
       accepted_verdicts:
         - APPROVE
         - APPROVE-WITH-MINOR-EDITS-APPLIED
@@ -13861,7 +13884,7 @@ callsites:
     id: api.unmapped.015
     stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.marketplace
     scanner: php_ast_find
     file: apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnPriceChange.php
     line: 31
@@ -13903,11 +13926,29 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T11:07:21Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot api.marketplace)'
+        previous_yaml_sha256: 15404dde71b4948a9b81029fb2e8e4e34649ed5a9d35047e6ec9429ca41d9e2e
+        new_yaml_sha256: 5437c1452ea0c3da23ef19a248287461d44ddf292db1da390cd99729507f8d80
+        target_ids:
+          - api.unmapped.015
+          - api.unmapped
+          - api.marketplace
+        from_status: pending
+        to_status: pending
+        commit: 4f1d347572009203e02b45bfde54bcabaa555ef5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster reassigned: api.unmapped → api.marketplace. ClusterResolver::defaultModuleToClusterMap was extended to map Marketplace → api.marketplace. The new cluster definition is added in the same atomic mutation; the new metadata.yaml_sha256 is anchored in this and the sibling callsite history event so sweep:inventory:verify-history passes. Identity (id field) preserved at api.unmapped.015/.016 to keep the audit chain target_ids references valid (precedent: commit b23e09db).'
   -
     id: api.unmapped.016
     stable_key: 'sha256:18c3c202b8a598bf4f72a15ece5aa50521645894f0e770acc70b0cce7d63b7a5'
     surface: api
-    cluster_id: api.unmapped
+    cluster_id: api.marketplace
     scanner: php_ast_find
     file: apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnStockChange.php
     line: 31
@@ -13949,6 +13990,24 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-09T11:07:21Z'
+        actor: claude
+        action: edit_applied
+        command: 'sweep:inventory:reassign-unmapped (one-shot api.marketplace)'
+        previous_yaml_sha256: 15404dde71b4948a9b81029fb2e8e4e34649ed5a9d35047e6ec9429ca41d9e2e
+        new_yaml_sha256: 5437c1452ea0c3da23ef19a248287461d44ddf292db1da390cd99729507f8d80
+        target_ids:
+          - api.unmapped.016
+          - api.unmapped
+          - api.marketplace
+        from_status: pending
+        to_status: pending
+        commit: 4f1d347572009203e02b45bfde54bcabaa555ef5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster reassigned: api.unmapped → api.marketplace. ClusterResolver::defaultModuleToClusterMap was extended to map Marketplace → api.marketplace. The new cluster definition is added in the same atomic mutation; the new metadata.yaml_sha256 is anchored in this and the sibling callsite history event so sweep:inventory:verify-history passes. Identity (id field) preserved at api.unmapped.015/.016 to keep the audit chain target_ids references valid (precedent: commit b23e09db).'
   -
     id: api.taxation.008
     stable_key: 'sha256:496783c190bf60bbac1d3e805bafd1a9505bb9c31fbdd38d08a078876563b755'
