@@ -1,5 +1,13 @@
 import type Database from '@tauri-apps/plugin-sql';
 
+// TODO(go-live-followup): image preloading manifest (Phase 0 deferred). Today
+//   each product image is fetched lazily on first render via the download
+//   queue; large catalogs see staggered network bursts as a cashier scrolls.
+//   A server-side manifest of {product_id, etag, size} delivered with the
+//   catalog warmup would let the client compute deltas + pre-fetch the top-N
+//   most-likely-viewed images during idle time. See
+//   docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
+//   §"Out of scope".
 interface ImageManifestEntry {
   product_id: string;
   remote_url: string;

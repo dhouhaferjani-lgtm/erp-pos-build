@@ -12,6 +12,9 @@ vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   insertOfflineReceipt: vi.fn().mockResolvedValue(undefined),
+  // T2.2 Step 5.1: scheduleDebouncedSync moved from inside insertOfflineReceipt
+  // to receiptService.createOfflineReceipt (post-COMMIT). Test mock now includes it.
+  scheduleDebouncedSync: vi.fn(),
 }));
 
 // Codex review B5 (2026-05-01): mock the local voucher repository so the
@@ -27,7 +30,10 @@ vi.mock('@/lib/offline/voucherRepository', () => ({
 import { createOfflineReceipt } from '../receiptService';
 import { computeFiscalHash } from '@/lib/fiscal/hashService';
 import { getTerminalState, advanceHashChain } from '@/lib/db/repositories/terminalStateRepository';
-import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  insertOfflineReceipt,
+  scheduleDebouncedSync,
+} from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   findByCode as findVoucherByCode,
   insertPendingVoucherLedgerRow,
@@ -1084,5 +1090,80 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
     expect(findVoucherByCode).not.toHaveBeenCalled();
     expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
     expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('T2.2 Step 5.1: post-COMMIT sync trigger', () => {
+  // Pre-T2.2 the sync trigger lived inside the SQLite transaction
+  // (offlineReceiptRepository.insertOfflineReceipt called scheduleDebouncedSync
+  // before COMMIT). Step 5.1 moves the trigger to the service layer, fired
+  // immediately after a successful db.execute('COMMIT'). The contract:
+  //   - Successful path: trigger fires AFTER COMMIT, not before.
+  //   - Repository function: never fires the trigger (regression-guarded in
+  //     offlineReceiptRepository.insert.test.ts).
+  //   - COMMIT-throw path: trigger does NOT fire — the receipt did not
+  //     durably persist, so the scheduler must not be told about it.
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(getTerminalState).mockResolvedValue(terminalState);
+    vi.mocked(findVoucherByCode).mockResolvedValue(null);
+  });
+
+  function makeBaseInput() {
+    return {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      cartItems: [makeCartItem()],
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 20,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    };
+  }
+
+  it('fires scheduleDebouncedSync AFTER db.execute(\'COMMIT\') on the happy path', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      callOrder.push(`db.execute(${sql})`);
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+    vi.mocked(scheduleDebouncedSync).mockImplementation(() => {
+      callOrder.push('scheduleDebouncedSync');
+    });
+
+    await createOfflineReceipt(db, makeBaseInput());
+
+    const commitIdx = callOrder.indexOf("db.execute(COMMIT)");
+    const triggerIdx = callOrder.indexOf('scheduleDebouncedSync');
+    expect(commitIdx).toBeGreaterThanOrEqual(0);
+    expect(triggerIdx).toBeGreaterThanOrEqual(0);
+    expect(triggerIdx).toBeGreaterThan(commitIdx);
+    expect(scheduleDebouncedSync).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT fire scheduleDebouncedSync when db.execute(\'COMMIT\') throws', async () => {
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      if (sql === 'COMMIT') {
+        throw new Error('disk full');
+      }
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+
+    await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('disk full');
+
+    expect(scheduleDebouncedSync).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire scheduleDebouncedSync when insertOfflineReceipt fails (transaction rolls back before COMMIT)', async () => {
+    vi.mocked(insertOfflineReceipt).mockRejectedValueOnce(new Error('insert failed'));
+
+    await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('insert failed');
+
+    expect(scheduleDebouncedSync).not.toHaveBeenCalled();
   });
 });

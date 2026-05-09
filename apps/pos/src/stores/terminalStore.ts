@@ -87,6 +87,15 @@ const initialState: TerminalState = {
  * pre-warm fires in the right order. No production callers outside
  * this module.
  */
+// TODO(go-live-followup): full offline cold-start mode for fresh devices
+//   (Phase 0 deferred). Today the first launch requires online connectivity
+//   for auth + initial catalog/payment-config seed; once seeded the terminal
+//   is offline-first. Field signal will tell us whether merchants need a
+//   one-online-then-offline activation flow vs. a fully-offline activation
+//   path (per the offline-first research doc). See
+//   docs/superpowers/research/2026-04-30-pos-first-launch-offline-activation-research.md
+//   and docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
+//   §"Out of scope".
 export async function seedOfflineHashChain(terminalId: string): Promise<void> {
   const companyId = useAuthStore.getState().companyId;
   if (!companyId) return;

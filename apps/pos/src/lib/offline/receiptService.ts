@@ -9,6 +9,7 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
+  scheduleDebouncedSync,
   getReceiptByIdempotencyKey,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
@@ -515,6 +516,14 @@ export async function createOfflineReceipt(
     }
     throw error;
   }
+
+  // T2.2 Step 5.1: fire the debounced sync trigger AFTER the COMMIT has
+  // durably persisted. Pre-T2.2 this lived inside insertOfflineReceipt,
+  // letting the 250 ms debounced syncStore read race the commit under load.
+  // Catch-block above re-throws on any pre-COMMIT failure, so reaching this
+  // line means the receipt + chain advance + voucher balances are all
+  // durably persisted.
+  scheduleDebouncedSync();
 
   return {
     receiptNumber,

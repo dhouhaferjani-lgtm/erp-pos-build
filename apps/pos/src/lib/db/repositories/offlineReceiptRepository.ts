@@ -6,7 +6,12 @@ export type OfflineReceiptStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 // Module-level debounce handle — one pending sync at most.
 let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
-function scheduleDebouncedSync(): void {
+// T2.2 Step 5.1: exported so the service layer can fire it AFTER
+// db.execute('COMMIT'). The trigger used to live inside insertOfflineReceipt
+// (i.e. inside the BEGIN/COMMIT window) which let the debounced syncStore
+// read race the COMMIT under load. Callers must invoke this only after the
+// transaction has durably committed.
+export function scheduleDebouncedSync(): void {
   if (pendingSyncTimer !== null) {
     clearTimeout(pendingSyncTimer);
   }
@@ -63,6 +68,15 @@ export interface OfflineReceipt {
   sync_error: string | null;
 }
 
+// TODO(go-live-followup): optimistic +1 increment of pendingReceiptCount on
+//   insert (deferred from T1.3 PR #90). Today the badge hydrates from SQLite
+//   after each sync tick (~60 s interval), so an insert is invisible in the
+//   header until the next tick. An optimistic +1 here would close that
+//   visible delay; the next SQLite-sourced hydration corrects any drift.
+//   Hooks needed: this function (insert success → +1) and the rollback path
+//   in receiptService (compensating −1, but only if we got to +1 first). See
+//   docs/superpowers/plans/2026-05-08-pos-t1.3-sync-indicator-truthfulness-kickoff-prompt.md
+//   Section 3 Step 4.1.
 export async function insertOfflineReceipt(
   db: Database,
   receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'>,
@@ -91,10 +105,10 @@ export async function insertOfflineReceipt(
       receipt.fiscal_schema_version,
     ]
   );
-
-  // Fire-and-forget debounced sync. Must not block caller — payment success UI
-  // depends on this function returning immediately.
-  scheduleDebouncedSync();
+  // T2.2 Step 5.1: this function is now transactionally pure. The
+  // scheduleDebouncedSync trigger has moved to receiptService.createOfflineReceipt,
+  // fired after `db.execute('COMMIT')`, so the scheduler never reads SQLite
+  // before the commit has durably persisted.
 }
 
 export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]> {
@@ -104,6 +118,14 @@ export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]
   );
 }
 
+// TODO(go-live-followup): stranded-receipt operator/admin UI (Phase 0
+//   deferred). Today a 'failed' row is visible in the badge count but has no
+//   surface for an operator to inspect, retry, or void. Pre-go-live this is
+//   acceptable because failures are rare and the cashier can rely on the next
+//   automatic retry; post-go-live we want a manager-screen tile listing
+//   stranded receipts with their last sync error and a retry/abandon action.
+//   See docs/superpowers/plans/2026-04-30-pos-offline-first-hardening.md
+//   §"Out of scope".
 export async function getPendingReceiptCount(db: Database): Promise<number> {
   const result = await queryOne<{ count: number }>(
     db,
