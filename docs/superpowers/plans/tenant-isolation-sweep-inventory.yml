@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 281bd118ab39692dd50245c5a51f7a0365de57e573bb83ad5142e7221424b371
+  yaml_sha256: 9fc617d4781c8689df536cfc378f36cceeebb4a73ef08f0abfca2d5f4d18cc7c
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -40205,15 +40205,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T00:08:42Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+      review_commit: 6d1e4a70
     fix_commit: 6d1e4a70
     regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_suspension_revokes_all_user_tokens'
     blocked_reason: null
@@ -40282,6 +40282,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T00:08:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 281bd118ab39692dd50245c5a51f7a0365de57e573bb83ad5142e7221424b371
+        new_yaml_sha256: 60ed323e10cd962768b160c67cc6f33f40e57570dc83321a68dee4997d271bbf
+        target_ids:
+          - api.auth-permissions.001
+          - api.auth-permissions
+        from_status: under_review
+        to_status: fixed
+        commit: a474bb6de1d41c2f85ddc1982f6c7cbf3390c918
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+        review_commit: 6d1e4a70
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.auth-permissions.002
     stable_key: 'manual:api.auth-permissions:tenant-deletion-token-revocation'
@@ -40299,15 +40316,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T00:08:50Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+      review_commit: 6d1e4a70
     fix_commit: 6d1e4a70
     regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_deletion_revokes_all_user_tokens'
     blocked_reason: null
@@ -40376,6 +40393,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T00:08:50Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 60ed323e10cd962768b160c67cc6f33f40e57570dc83321a68dee4997d271bbf
+        new_yaml_sha256: e0a1ee9dd63f411132c187254da36ee3cb782615581bc67c1f53dab905dd6e36
+        target_ids:
+          - api.auth-permissions.002
+          - api.auth-permissions
+        from_status: under_review
+        to_status: fixed
+        commit: a474bb6de1d41c2f85ddc1982f6c7cbf3390c918
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+        review_commit: 6d1e4a70
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.auth-permissions.003
     stable_key: 'manual:api.auth-permissions:user-tenant-change-token-revocation'
@@ -40393,15 +40427,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T00:08:57Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+      review_commit: 6d1e4a70
     fix_commit: 6d1e4a70
     regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_user_tenant_change_revokes_old_tokens'
     blocked_reason: null
@@ -40470,6 +40504,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T00:08:57Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e0a1ee9dd63f411132c187254da36ee3cb782615581bc67c1f53dab905dd6e36
+        new_yaml_sha256: 10a16f5332655fa7b617e17a013284bf43be0902dc07eee4876866cfac983232
+        target_ids:
+          - api.auth-permissions.003
+          - api.auth-permissions
+        from_status: under_review
+        to_status: fixed
+        commit: a474bb6de1d41c2f85ddc1982f6c7cbf3390c918
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+        review_commit: 6d1e4a70
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.auth-permissions.004
     stable_key: 'manual:api.auth-permissions:setpermissionsteam-universal-coverage-arch-test'
@@ -40487,15 +40538,15 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: under_review
+    status: fixed
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T00:09:04Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+      review_commit: 6d1e4a70
     fix_commit: 6d1e4a70
     regression_test: 'tests/Architecture/AuthLifecycleTest.php::test_every_auth_sanctum_route_group_includes_set_permissions_team'
     blocked_reason: null
@@ -40564,6 +40615,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T00:09:05Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 10a16f5332655fa7b617e17a013284bf43be0902dc07eee4876866cfac983232
+        new_yaml_sha256: 9fc617d4781c8689df536cfc378f36cceeebb4a73ef08f0abfca2d5f4d18cc7c
+        target_ids:
+          - api.auth-permissions.004
+          - api.auth-permissions
+        from_status: under_review
+        to_status: fixed
+        commit: a474bb6de1d41c2f85ddc1982f6c7cbf3390c918
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-08-api-auth-permissions-pr1-cluster-codex-review.md
+        review_commit: 6d1e4a70
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.auth-permissions.005
     stable_key: 'manual:api.auth-permissions:token-tenant-claim-defense-in-depth'
