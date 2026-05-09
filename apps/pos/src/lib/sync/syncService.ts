@@ -286,6 +286,15 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   let chainBreak = false;
   const errors: string[] = [];
 
+  // TODO(go-live-followup): batch receipt push for 1000-receipt offline
+  //   backlogs (Phase 0 deferred). Today the loop pushes one receipt per
+  //   round-trip ("batch-of-one"); a terminal that comes online after a
+  //   long offline period needs N round-trips for N receipts. The server
+  //   already accepts a batch payload — switching the client to chunked
+  //   batches (e.g. 50 per request) would dramatically cut sync wall-time
+  //   on backlog recovery. See
+  //   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+  //   Section 3 Step 5.3 row 8.
   for (const receipt of pending) {
     try {
       await updateReceiptStatus(db, receipt.id, 'syncing');

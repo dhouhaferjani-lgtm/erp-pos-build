@@ -49,7 +49,12 @@ function makeReceipt(): Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_
   };
 }
 
-describe('insertOfflineReceipt — event-driven sync trigger', () => {
+describe('insertOfflineReceipt — pure repository (no side-effects)', () => {
+  // T2.2 Step 5.1: the sync trigger has moved from the repository to the
+  // service layer (createOfflineReceipt, post-COMMIT). The repository
+  // function is now transactionally pure: DB-work only, no scheduler
+  // side-effects. Tests for the trigger itself live in
+  // receiptService.test.ts under "T2.2 Step 5.1: post-COMMIT sync trigger".
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -58,24 +63,25 @@ describe('insertOfflineReceipt — event-driven sync trigger', () => {
     vi.useRealTimers();
   });
 
-  it('schedules a debounced triggerSync 250 ms after a successful insert', async () => {
+  it('T2.2 regression guard: insertOfflineReceipt does NOT trigger sync (single insert)', async () => {
     await insertOfflineReceipt(db, makeReceipt());
 
-    // Immediate check: the sync must NOT have fired yet (payment UI must unblock first).
+    // Pre-T2.2 the repository called scheduleDebouncedSync() at the end of
+    // insertOfflineReceipt; after the 250 ms debounce that fired triggerSync.
+    // Post-T2.2 the trigger lives in receiptService.createOfflineReceipt
+    // after db.execute('COMMIT'), so the repository must not call it.
+    await vi.advanceTimersByTimeAsync(500);
+
     expect(triggerSyncSpy).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(250);
-
-    expect(triggerSyncSpy).toHaveBeenCalledOnce();
   });
 
-  it('collapses multiple rapid inserts into a single sync trigger', async () => {
+  it('T2.2 regression guard: insertOfflineReceipt does NOT trigger sync (multiple rapid inserts)', async () => {
     await insertOfflineReceipt(db, { ...makeReceipt(), id: 'r-1', idempotency_key: 'k-1' });
     await insertOfflineReceipt(db, { ...makeReceipt(), id: 'r-2', idempotency_key: 'k-2' });
     await insertOfflineReceipt(db, { ...makeReceipt(), id: 'r-3', idempotency_key: 'k-3' });
 
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(500);
 
-    expect(triggerSyncSpy).toHaveBeenCalledOnce();
+    expect(triggerSyncSpy).not.toHaveBeenCalled();
   });
 });

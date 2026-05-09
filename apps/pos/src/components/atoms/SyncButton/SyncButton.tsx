@@ -28,6 +28,11 @@ export function SyncButton() {
   // the most recent tick degraded. Pre-T1.3 SyncButton showed the
   // green "Last sync 5m ago" affordance even after a tick that failed
   // to push receipts or pull payment config.
+  // TODO(go-live-followup): animated transition between sync states (green
+  //   ↔ amber) deferred from T1.3 PR #90. Today the dot pops in/out without
+  //   easing, which is jarring when a tick degrades mid-cashier-session.
+  //   Pure-CSS opacity/scale transition on the dot's mount/unmount would fix
+  //   it without touching state.
   const lastSyncResult = useSyncStore((s) => s.lastSyncResult);
   const isDegraded = lastSyncResult?.degraded === true;
   const triggerSync = useSyncStore((s) => s.triggerSync);

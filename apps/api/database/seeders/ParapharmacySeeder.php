@@ -321,6 +321,23 @@ class ParapharmacySeeder extends Seeder
      */
     private function seedProducts(Company $company): Collection
     {
+        // TODO(go-live-followup): bulk-insert refactor for SCALE>1 (deferred from
+        //   T1.0 PR #89). seedProducts currently does one Eloquent ::create per
+        //   product; at SCALE=10 (10000 products) this is the slowest part of
+        //   the smoke fixture. Switching to chunked DB::insert would cut
+        //   seeding time meaningfully without changing the data shape. See
+        //   docs/superpowers/plans/2026-05-08-pos-t1.0-large-catalog-fixture-kickoff-prompt.md.
+        // TODO(go-live-followup): extract a shared SCALE trait or base class
+        //   so other seeders (e.g. CoffeeShopSeeder, DemoTenantSeeder) can opt
+        //   into the same env-var multiplier without copy-pasting the
+        //   resolveScale + DEFAULT_SCALE plumbing. Deferred from T1.0 PR #89.
+        // TODO(go-live-followup): CSV-driven product import (deferred from
+        //   T1.0 PR #89 / kickoff "Out of scope"). Today fixture growth means
+        //   editing the category distribution map in code; a CSV-driven
+        //   importer would let ops change the smoke-fixture composition
+        //   without a code change + re-deploy. See
+        //   docs/superpowers/plans/2026-05-08-pos-t1.0-large-catalog-fixture-kickoff-prompt.md
+        //   §"Out of scope" line "CSV-driven product import".
         // Load reference data
         $ingredients = Ingredient::all();
         $certifications = Certification::all();
