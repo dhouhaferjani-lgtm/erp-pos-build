@@ -239,6 +239,13 @@ class StockReservationService implements InventoryReservationServiceInterface
      * reservations (api.inventory.033).
      *
      * This is called when a sales order is cancelled or delivered.
+     *
+     * Note: $expectedTenantId is accepted for API symmetry with other tenant-
+     * scoped service methods, but is NOT used in the WHERE clause —
+     * stock_reservations has no tenant_id column. company_id is sufficient
+     * because each company belongs to exactly one tenant. If a future
+     * migration adds tenant_id to stock_reservations, wire $expectedTenantId
+     * into the predicate here. See Codex review M1 (2026-05-09).
      */
     public function releaseBySource(
         ReservationSource $sourceType,

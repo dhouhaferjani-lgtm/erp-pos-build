@@ -77,6 +77,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 newQuantity: $newQuantity,
                 reason: $reference,
                 userId: $event->completedBy,
+                expectedCompanyId: $counting->company_id,
             );
 
             $adjustedCount++;

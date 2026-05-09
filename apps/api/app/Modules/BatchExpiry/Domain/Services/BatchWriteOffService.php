@@ -65,6 +65,7 @@ final class BatchWriteOffService
                 reference: "Write-off: Batch {$batch->batch_number}".($notes !== null ? " - {$notes}" : ''),
                 userId: $userId,
                 batchId: (int) $batch->id,
+                expectedCompanyId: $batch->company_id,
             );
 
             // 2. Deduct batch-level stock
