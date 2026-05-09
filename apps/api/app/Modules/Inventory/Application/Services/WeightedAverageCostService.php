@@ -58,10 +58,14 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first to prevent concurrent modifications
+            // Lock stock level first to prevent concurrent modifications.
+            // company_id added to the tuple (api.inventory.032) so the lock
+            // cannot be satisfied by a StockLevel row from another company
+            // even if product_id + location_id happen to collide cross-company.
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -207,10 +211,12 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level to prevent concurrent modifications
+            // Lock stock level to prevent concurrent modifications.
+            // company_id added to the tuple (api.inventory.032).
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -305,10 +311,11 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $originalCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first
+            // Lock stock level first. company_id added to the tuple (api.inventory.032).
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->first();
 

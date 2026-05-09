@@ -11,14 +11,21 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Compliance\Domain\FraudAlert;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Enums\ReleaseReason;
+use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\InventoryCountingItem;
+use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -1065,6 +1072,360 @@ final class InventoryTenantIsolationTest extends TestCase
         // matches by id alone), while post-fix the scoped lookup
         // returns null for cross-tenant → '0.00'.
         $this->assertSame('10.00', $sameTenantAmount);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.017 — StockAdjustmentService::getOrCreateStockLevel
+    // Location lookup must be scoped by company_id so a forged location
+    // from another company cannot be used to mix stock-level rows.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_scopes_get_or_create_stock_level_by_company(): void
+    {
+        // Pin the SQL shape: the Location lookup inside getOrCreateStockLevel
+        // must include a company_id predicate so a forged cross-company
+        // locationId cannot be used to seed a mixed-company StockLevel.
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => '5.00',
+            'reserved' => '0.00',
+        ]);
+
+        /** @var StockAdjustmentService $svc */
+        $svc = $this->app->make(StockAdjustmentService::class);
+
+        DB::enableQueryLog();
+
+        // Use adjust() which calls getOrCreateStockLevel() internally with
+        // a company-scoped path; same-company call so it succeeds.
+        $svc->adjust(
+            productId: $this->productA->id,
+            locationId: $this->locationA->id,
+            newQuantity: '6.00',
+            reason: 'TEST-017',
+            userId: (string) $this->userA->id,
+            expectedCompanyId: $this->companyA->id,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Find the Location SELECT that fires inside getOrCreateStockLevel.
+        $locationQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "locations"')
+                && str_contains($sql, '"id" =')
+            ) {
+                $locationQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $locationQuery,
+            'A Location lookup query must fire inside getOrCreateStockLevel. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $locationQuery,
+            'getOrCreateStockLevel Location lookup must filter by company_id. Got SQL: '.$locationQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.018 — StockAdjustmentService::recordMovement
+    // Location lookup in recordMovement must be scoped by company_id.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_scopes_record_movement_location_lookup_by_company(): void
+    {
+        DB::enableQueryLog();
+
+        /** @var StockAdjustmentService $svc */
+        $svc = $this->app->make(StockAdjustmentService::class);
+
+        // First seed a valid stock level for productA / locationA so
+        // getOrCreateStockLevel succeeds; then verify the Location query
+        // inside recordMovement is company-scoped.
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => '10.00',
+            'reserved' => '0.00',
+        ]);
+
+        $svc->receive(
+            productId: $this->productA->id,
+            locationId: $this->locationA->id,
+            quantity: '1.00',
+            reference: 'TEST-018',
+            userId: (string) $this->userA->id,
+            expectedCompanyId: $this->companyA->id,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Find the Location SELECT that fires inside recordMovement.
+        $locationQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "locations"')
+                && str_contains($sql, '"id" =')
+            ) {
+                $locationQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $locationQuery,
+            'A Location lookup query must fire inside recordMovement. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $locationQuery,
+            'recordMovement Location lookup must filter by company_id. Got SQL: '.$locationQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.029 — CountingItemController::triggerThirdCount
+    // item_ids.* validator must be scoped to the parent counting_id.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_rejects_cross_company_item_id_in_trigger_third_count_validator(): void
+    {
+        // Create a counting for tenantB / companyB with one item.
+        $countingB = InventoryCounting::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'created_by_user_id' => (string) $this->userB->id,
+            'status' => CountingStatus::Draft,
+            'scope_type' => 'product',
+            'scope_filters' => ['product_ids' => []],
+            'execution_mode' => 'sequential',
+        ]);
+
+        $itemB = InventoryCountingItem::create([
+            'counting_id' => $countingB->id,
+            'product_id' => $this->productB->id,
+            'location_id' => $this->locationB->id,
+            'theoretical_qty' => '0.00',
+        ]);
+
+        // userA tries to trigger a third count on draftCountingA but injects
+        // itemB (from companyB) as the item_id. The scoped validator must
+        // reject this with a 422 because itemB.counting_id !== draftCountingA.id.
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/inventory/countings/{$this->draftCountingA->id}/trigger-third-count", [
+                'item_ids' => [(string) $itemB->id],
+            ]);
+
+        $response->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.030 — FraudTriggeredCountingService::createCountingFromAlert
+    // System-user lookup must be scoped to alert.tenant_id; must fail loud
+    // if no system user exists for that tenant (no cross-tenant fallback).
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_scopes_fraud_system_user_to_alert_tenant(): void
+    {
+        // Create an alert for tenantB.
+        $alert = FraudAlert::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'user_id' => $this->userB->id,
+            'alert_type' => 'abandoned_drafts',
+            'severity' => 'medium',
+            'description' => 'Test alert',
+            'detected_at' => now(),
+            'flagged_products' => [
+                [
+                    'product_id' => $this->productB->id,
+                    'product_name' => 'Product B',
+                    'count' => 3,
+                ],
+            ],
+            'status' => 'open',
+        ]);
+
+        // There is NO system@autoerp.local user for tenantB. The old code
+        // fell back to User::first() (which would return userA, crossing tenants).
+        // The fixed code must throw a RuntimeException instead.
+        /** @var FraudTriggeredCountingService $svc */
+        $svc = $this->app->make(FraudTriggeredCountingService::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/No system user found for tenant/');
+
+        $svc->createCountingFromAlert($alert);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.031 — InventoryCountingController::createDraft
+    // tenant_id must be stamped on the new InventoryCounting record.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_persists_tenant_id_on_inventory_counting_draft_create(): void
+    {
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/inventory/countings/drafts', [
+                'scope_type' => 'product',
+                'scope_filters' => ['product_ids' => []],
+            ]);
+
+        $response->assertStatus(201);
+
+        $id = $response->json('data.id');
+        $this->assertNotNull($id, 'Response must include data.id');
+
+        /** @var InventoryCounting $counting */
+        $counting = InventoryCounting::findOrFail($id);
+        $this->assertSame(
+            $this->tenantA->id,
+            $counting->tenant_id,
+            'createDraft must persist tenant_id on the InventoryCounting row.',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.032 — WeightedAverageCostService
+    // StockLevel lock tuples in recordPurchase/Sale/Return must include
+    // company_id so a forged location from another company cannot be used.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_locks_stock_level_tuples_with_company_id(): void
+    {
+        /** @var WeightedAverageCostService $wac */
+        $wac = $this->app->make(WeightedAverageCostService::class);
+
+        // Seed a stock level so lockForUpdate finds a row (otherwise
+        // recordSale throws InsufficientStock before the lock query fires).
+        StockLevel::create([
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'product_id' => $this->productA->id,
+            'location_id' => $this->locationA->id,
+            'quantity' => '50.00',
+            'reserved' => '0.00',
+        ]);
+
+        DB::enableQueryLog();
+
+        $wac->recordSale(
+            product: $this->productA,
+            location: $this->locationA,
+            quantity: 1.0,
+        );
+
+        $log = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Find the StockLevel SELECT (lock) that fires inside recordSale.
+        $stockLevelLockQuery = null;
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            if (
+                str_contains($sql, 'from "stock_levels"')
+                && str_contains($sql, '"product_id"')
+                && str_contains($sql, '"location_id"')
+            ) {
+                $stockLevelLockQuery = $sql;
+                break;
+            }
+        }
+
+        $this->assertNotNull(
+            $stockLevelLockQuery,
+            'StockLevel lock query must be captured. Log: '
+                .json_encode(array_map(static fn ($e) => $e['query'], $log)),
+        );
+        $this->assertStringContainsString(
+            '"company_id"',
+            $stockLevelLockQuery,
+            'WAC StockLevel lock tuple must include company_id. Got SQL: '.$stockLevelLockQuery,
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.inventory.033 — StockReservationService::releaseBySource
+    // Must accept caller-supplied tenant+company scope and filter
+    // reservations so a forged sourceId from another company cannot
+    // trigger release of cross-tenant reservations.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** @test */
+    public function it_scopes_release_by_source_to_caller_tenant_and_company(): void
+    {
+        /** @var StockReservationService $svc */
+        $svc = $this->app->make(StockReservationService::class);
+
+        // Seed a stock level for companyB so a reservation can be created.
+        StockLevel::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'product_id' => $this->productB->id,
+            'location_id' => $this->locationB->id,
+            'quantity' => '10.00',
+            'reserved' => '5.00',
+        ]);
+
+        // Create a reservation for companyB using a known sourceId.
+        $sourceId = Str::uuid()->toString();
+        $reservationB = StockReservation::create([
+            'id' => Str::uuid()->toString(),
+            'company_id' => $this->companyB->id,
+            'product_id' => $this->productB->id,
+            'location_id' => $this->locationB->id,
+            'quantity' => '1.00',
+            'source_type' => ReservationSource::SalesOrder,
+            'source_id' => $sourceId,
+            'priority' => 0,
+        ]);
+
+        // userA (companyA) calls releaseBySource with companyA's scope
+        // but passes companyB's sourceId. The scoped filter must return
+        // zero rows → no reservations released (no cross-company release).
+        $released = $svc->releaseBySource(
+            sourceType: ReservationSource::SalesOrder,
+            sourceId: $sourceId,
+            reason: ReleaseReason::Cancelled,
+            releasedBy: (string) $this->userA->id,
+            expectedTenantId: $this->tenantA->id,
+            expectedCompanyId: $this->companyA->id,
+        );
+
+        $this->assertSame(
+            0,
+            $released,
+            'releaseBySource with companyA scope must not release companyB reservations.',
+        );
+
+        // The companyB reservation must still be active (not released).
+        $reservationB->refresh();
+        $this->assertNull(
+            $reservationB->released_at,
+            'CompanyB reservation must remain active after cross-company release attempt.',
+        );
     }
 
     /**

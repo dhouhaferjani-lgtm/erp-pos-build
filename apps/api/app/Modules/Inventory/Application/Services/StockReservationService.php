@@ -232,6 +232,12 @@ class StockReservationService implements InventoryReservationServiceInterface
     /**
      * Release all active reservations for a source (e.g., sales order).
      *
+     * Accepts optional caller-supplied $expectedTenantId and $expectedCompanyId
+     * so the query is scoped to the caller's company. When provided, only
+     * reservations whose company_id matches $expectedCompanyId are released,
+     * preventing a forged cross-company sourceId from releasing foreign
+     * reservations (api.inventory.033).
+     *
      * This is called when a sales order is cancelled or delivered.
      */
     public function releaseBySource(
@@ -239,11 +245,18 @@ class StockReservationService implements InventoryReservationServiceInterface
         string $sourceId,
         ReleaseReason $reason,
         ?string $releasedBy = null,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
     ): int {
-        $reservations = StockReservation::where('source_type', $sourceType)
+        $query = StockReservation::where('source_type', $sourceType)
             ->where('source_id', $sourceId)
-            ->active()
-            ->get();
+            ->active();
+
+        if ($expectedCompanyId !== null) {
+            $query->where('company_id', $expectedCompanyId);
+        }
+
+        $reservations = $query->get();
 
         $count = 0;
         foreach ($reservations as $reservation) {
@@ -495,6 +508,8 @@ class StockReservationService implements InventoryReservationServiceInterface
     public function releaseForWorkOrder(
         string $workOrderId,
         string $reasonCode,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
     ): int {
         $reason = ReleaseReason::tryFrom($reasonCode) ?? ReleaseReason::ManualRelease;
 
@@ -502,6 +517,8 @@ class StockReservationService implements InventoryReservationServiceInterface
             sourceType: ReservationSource::WorkOrder,
             sourceId: $workOrderId,
             reason: $reason,
+            expectedTenantId: $expectedTenantId,
+            expectedCompanyId: $expectedCompanyId,
         );
     }
 }

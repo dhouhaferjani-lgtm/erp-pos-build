@@ -190,11 +190,14 @@ class MarketplaceOrderService
                 'cancellation_reason' => 'Order cancelled',
             ]);
 
-            // Release any reservations tied to this order
+            // Release any reservations tied to this order, scoped to the
+            // buyer's tenant + company (api.inventory.033).
             $this->stockReservationService->releaseBySource(
                 sourceType: ReservationSource::MarketplaceOrder,
                 sourceId: $order->id,
                 reason: ReleaseReason::Cancelled,
+                expectedTenantId: $order->buyer_tenant_id,
+                expectedCompanyId: $order->buyer_company_id,
             );
         });
     }

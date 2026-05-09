@@ -75,7 +75,12 @@ final readonly class InventoryReservationAdapter
      */
     public function releaseFor(WorkOrder $wo, string $reasonCode): int
     {
-        return $this->reservations->releaseForWorkOrder($wo->id, $reasonCode);
+        return $this->reservations->releaseForWorkOrder(
+            workOrderId: $wo->id,
+            reasonCode: $reasonCode,
+            expectedTenantId: $wo->tenant_id,
+            expectedCompanyId: $wo->company_id,
+        );
     }
 
     private function partNeedFrom(WorkOrder $wo, WorkOrderLine $line): PartNeed

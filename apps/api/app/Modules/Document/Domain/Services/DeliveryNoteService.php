@@ -177,12 +177,15 @@ final class DeliveryNoteService
             return; // Source is not a sales order
         }
 
-        // Release all active reservations for this sales order
+        // Release all active reservations for this sales order, scoped to the
+        // delivery note's own tenant + company (api.inventory.033).
         $this->stockReservationService->releaseBySource(
             sourceType: ReservationSource::SalesOrder,
             sourceId: $sourceDoc->id,
             reason: ReleaseReason::Delivered,
             releasedBy: (string) auth()->id(),
+            expectedTenantId: $deliveryNote->tenant_id,
+            expectedCompanyId: $deliveryNote->company_id,
         );
     }
 

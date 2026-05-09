@@ -41,10 +41,15 @@ interface InventoryReservationServiceInterface
     /**
      * Release all active reservations for a WorkOrder (e.g. cancellation).
      *
+     * Pass the work order's tenant_id and company_id to scope the release
+     * to that company only (api.inventory.033).
+     *
      * @return int Number of reservations released.
      */
     public function releaseForWorkOrder(
         string $workOrderId,
         string $reasonCode,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
     ): int;
 }

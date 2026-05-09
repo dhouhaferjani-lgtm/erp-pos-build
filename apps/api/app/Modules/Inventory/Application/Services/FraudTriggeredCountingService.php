@@ -51,10 +51,22 @@ final class FraudTriggeredCountingService
                 throw new \InvalidArgumentException('Fraud alert has no flagged products to count');
             }
 
-            // Get a system user for creating the counting (fraud detection is system-initiated)
+            // Get a system user for creating the counting (fraud detection is system-initiated).
+            // Scoped to alert.tenant_id so we never return a cross-tenant user.
+            // Fail loud if no system user exists for this tenant — the operator
+            // must provision system@autoerp.local per-tenant before enabling
+            // fraud-triggered counting.
+            $systemUser = User::where('tenant_id', $alert->tenant_id)
+                ->where('email', 'system@autoerp.local')
+                ->first();
+
+            if ($systemUser === null) {
+                throw new \RuntimeException(
+                    "No system user found for tenant {$alert->tenant_id}; cannot create counting from fraud alert {$alert->id}."
+                );
+            }
+
             /** @var User $systemUser */
-            $systemUser = User::where('email', 'system@autoerp.local')->first()
-                ?? User::first(); // Fallback to first user if system user doesn't exist
 
             // Create counting operation
             $counting = $this->countingService->create(

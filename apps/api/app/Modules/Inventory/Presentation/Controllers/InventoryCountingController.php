@@ -421,6 +421,7 @@ class InventoryCountingController extends Controller
 
         $counting = new InventoryCounting;
         $counting->id = (string) Str::uuid();
+        $counting->tenant_id = $user->tenant_id;
         $counting->company_id = $companyId;
         $counting->created_by_user_id = $userId;
         $counting->created_on_mobile = $request->input('created_on_mobile', true);
