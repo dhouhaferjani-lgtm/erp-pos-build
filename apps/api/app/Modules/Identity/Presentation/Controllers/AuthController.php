@@ -38,10 +38,90 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /**
+     * T1.4 — POS-tauri client header. The cashier's desktop app at
+     * `apps/pos/src/lib/api.ts` sets this header on every outbound
+     * request; when it lands on the login/register endpoint we issue
+     * a 12-month token instead of relying on the default 30-day
+     * sanctum.expiration policy. Web back-office tokens stay on the
+     * default — they pass no header and fall through to NULL
+     * `expires_at` (lifetime governed by config).
+     */
+    private const POS_CLIENT_TYPE_HEADER = 'X-Client-Type';
+
+    private const POS_CLIENT_TYPE_VALUE = 'pos-tauri';
+
+    /**
+     * Tauri desktop targets — the runtime supports Windows, macOS, and
+     * Linux. Browsers report `web` or omit the platform field, which
+     * makes this list a useful additional spoofing barrier.
+     */
+    private const POS_DESKTOP_PLATFORMS = ['windows', 'macos', 'linux'];
+
     public function __construct(
         private readonly EmailVerificationService $emailVerificationService,
         private readonly TenantInitializationService $tenantInitializationService,
     ) {}
+
+    /**
+     * T1.4 — choose token expiry based on the request's client signals.
+     * Returns `null` for the default (web back-office) path so Sanctum's
+     * per-request `sanctum.expiration` policy stays in charge, or a
+     * concrete `now()->addYear()` for POS terminals where a stable
+     * 12-month lifetime is required so cashiers don't see "Session
+     * expired" mid-shift after monthly token churn.
+     *
+     * Triple-gate: a request must satisfy ALL THREE to receive the
+     * 12-month token —
+     *
+     *   1. `X-Client-Type: pos-tauri` (the literal value)
+     *   2. A non-empty `device_id` in the login body (the Tauri client
+     *      always sends one; web back-office requests do not)
+     *   3. `platform` is a Tauri desktop target (windows / macos /
+     *      linux) — browsers report `web` or omit the field
+     *
+     * Web back-office requests fall through every gate (no header, no
+     * device_id, no platform). The legitimate POS path is unchanged.
+     *
+     * **Accepted residual risk (Codex round-3 P2 carry):** every gate
+     * signal is client-controlled. A scripted attacker with valid
+     * credentials can craft a request that satisfies all three gates
+     * and obtain a 12-month token instead of the default 30-day one.
+     * The activation hardening plan §Phase 2 explicitly accepted this
+     * risk class — see `docs/superpowers/plans/2026-04-30-pos-activation-hardening.md`
+     * lines 105-107 — with two compensating controls already in place:
+     *
+     *   - **Server-side revocation:** admins revoke a token via
+     *     Filament back-office; the next `checkSession()` call returns
+     *     401 → forced logout.
+     *   - **Per-shift re-validation:** POS calls `checkSession()` on
+     *     every shift open, re-checking that the token is still in
+     *     `personal_access_tokens` and the user is still active.
+     *
+     * **Long-term hardening (Path B from the round-3 review):** replace
+     * this with a dedicated terminal-pairing endpoint that issues long
+     * tokens after a cryptographic device handshake — server-verified
+     * trusted state instead of client-asserted intent. Queued as a
+     * separate workstream; not blocking T1.4's QoL win.
+     */
+    private function tokenExpiresAt(Request $request): ?\DateTimeInterface
+    {
+        if ($request->header(self::POS_CLIENT_TYPE_HEADER) !== self::POS_CLIENT_TYPE_VALUE) {
+            return null;
+        }
+
+        $deviceId = $request->input('device_id');
+        if (! is_string($deviceId) || $deviceId === '') {
+            return null;
+        }
+
+        $platform = $request->input('platform');
+        if (! is_string($platform) || ! in_array($platform, self::POS_DESKTOP_PLATFORMS, true)) {
+            return null;
+        }
+
+        return now()->addYear();
+    }
 
     /**
      * Authenticate user and return token.
@@ -88,9 +168,12 @@ class AuthController extends Controller
         $device = $this->handleDevice($user, $validated);
 
         // Create token for mobile/API clients that need it
-        // SPA clients will use the session cookie instead
+        // SPA clients will use the session cookie instead.
+        // T1.4 — POS-tauri client gets a 12-month per-token expiry; web
+        // back-office tokens fall through to NULL expires_at and use the
+        // global sanctum.expiration policy.
         $tokenName = $validated['device_name'] ?? 'api-token';
-        $token = $user->createToken($tokenName, ['*']);
+        $token = $user->createToken($tokenName, ['*'], $this->tokenExpiresAt($request));
 
         $response = new LoginResponseData(
             user: AuthUserData::fromUser($user),
@@ -121,7 +204,13 @@ class AuthController extends Controller
     {
         $validated = $request->validated();
 
-        $result = DB::transaction(function () use ($validated) {
+        // T1.4 — compute the per-token expiry BEFORE entering the
+        // transaction closure so the closure doesn't capture the Request.
+        // POS-tauri client → 12-month token; default → NULL (use the
+        // global sanctum.expiration policy).
+        $tokenExpiresAt = $this->tokenExpiresAt($request);
+
+        $result = DB::transaction(function () use ($validated, $tokenExpiresAt) {
             // 1. Create Tenant (subscription account)
             $timezone = $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']);
             $locale = $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']);
@@ -227,9 +316,10 @@ class AuthController extends Controller
             // Handle device registration if provided
             $device = $this->handleDevice($user, $validated);
 
-            // Create auth token
+            // Create auth token. T1.4 — same per-client branching as
+            // login: POS-tauri → 12mo, default → NULL (global policy).
             $tokenName = $validated['device_name'] ?? 'api-token';
-            $token = $user->createToken($tokenName, ['*']);
+            $token = $user->createToken($tokenName, ['*'], $tokenExpiresAt);
 
             return [
                 'user' => $user,

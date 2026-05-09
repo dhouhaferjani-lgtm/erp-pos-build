@@ -63,6 +63,13 @@ function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
+    // T1.4 — announces this client to the backend's AuthController, which
+    // then issues a 12-month per-token expiry on /auth/login (instead of
+    // the 30-day global sanctum default). Web back-office clients omit
+    // this header and stay on the default. Set on every outbound request
+    // (not just /auth/login) so future server-side routing decisions
+    // (e.g. preferred response shape, telemetry) can also key on it.
+    'X-Client-Type': 'pos-tauri',
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
