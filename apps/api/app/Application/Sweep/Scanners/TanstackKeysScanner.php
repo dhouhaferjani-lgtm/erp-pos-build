@@ -57,6 +57,19 @@ final class TanstackKeysScanner implements Scanner
             return [];
         }
 
+        return $this->parseViolationsPayload($payload);
+    }
+
+    /**
+     * Parses a `--json` payload from {@see audit-tanstack-keys.mjs} into a
+     * list of CallsiteRows. Exposed separately from {@see scan()} so unit
+     * tests can pin the JS/PHP contract without forking a Node subprocess
+     * — `scan()` is one line of process glue around this method.
+     *
+     * @return list<CallsiteRow>
+     */
+    public function parseViolationsPayload(string $payload): array
+    {
         $decoded = json_decode($payload, true);
         if (! is_array($decoded) || ! isset($decoded['violations']) || ! is_array($decoded['violations'])) {
             return [];
