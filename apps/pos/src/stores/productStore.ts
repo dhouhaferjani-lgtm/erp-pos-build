@@ -5,8 +5,19 @@ import { getDatabase } from '@/lib/db';
 import { getAllProducts, upsertProducts } from '@/lib/db/repositories/productRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { diffProducts } from '@/lib/sync/productDiff';
+import { pullProductsForeground } from '@/lib/sync/syncService';
 import type { POSProduct } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
+
+/**
+ * T2.1 Step A — foreground full-catalog pull timeout (per-page).
+ *
+ * The legacy `fetchPOSProducts({ limit: 500 })` API call was bounded by
+ * `apiGet`'s default 10s; the foreground full-catalog pull paginates so
+ * we apply the 30s ceiling per page (5K SKUs over Slow-3G is plausibly
+ * ~30-60s total, but each individual page should stay well under 30s).
+ */
+const FOREGROUND_PULL_TIMEOUT_MS = 30_000;
 
 interface ProductState {
   products: POSProduct[];
@@ -49,11 +60,26 @@ export function hasModule(config: CompanyConfig | null, moduleName: string): boo
   return config?.all_enabled_modules?.includes(moduleName) ?? false;
 }
 
-async function fetchProductsFromAPI(config: CompanyConfig | null): Promise<POSProduct[]> {
-  if (hasModule(config, 'Menu')) {
-    const menu = await fetchActiveMenu();
-    return flattenMenuToProducts(menu);
-  }
+/**
+ * Menu-tenant API fetch — verbatim from pre-T2.1.
+ *
+ * The Menu-mode catalog is published as a hierarchical menu structure
+ * (categories + items + modifiers) rather than the flat /products
+ * endpoint. T2.1 Step A explicitly does NOT touch this branch — the
+ * Menu-tenant catalog desync (audit finding C2) is a separate session.
+ */
+async function fetchMenuProductsFromAPI(): Promise<POSProduct[]> {
+  const menu = await fetchActiveMenu();
+  return flattenMenuToProducts(menu);
+}
+
+/**
+ * Standard-retail API fetch — legacy shape preserved for callers that
+ * lack a `companyId` / SQLite handle (defensive fallback only). The
+ * normal cold-start path uses `pullProductsForeground` instead — see
+ * the non-Menu branch in `fetchProducts` below.
+ */
+async function fetchStandardProductsFromAPILegacy(): Promise<POSProduct[]> {
   return fetchPOSProducts({ limit: 500 });
 }
 
@@ -101,12 +127,25 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       }
     }
 
-    // Step 3: Fetch from API in parallel (background if we have local data)
-    const doApiFetch = async () => {
-      try {
-        const freshProducts = await fetchProductsFromAPI(config);
+    // Step 3: Fetch from API.
+    //
+    // Two paths after T2.1 Step A:
+    //   - Menu-tenant: legacy menu-flatten path (verbatim). Catalog
+    //     truthfulness for Menu-mode tenants is tracked separately
+    //     (audit finding C2 — Otospex go-live coordination).
+    //   - Non-Menu (standard-retail): paginated full pull via
+    //     `pullProductsForeground`, then refresh the in-memory store
+    //     from SQLite. Closes the 500-cap cold-start gap that left
+    //     the cashier seeing only ~10% of a 5000-SKU catalog.
+    const isMenuTenant = hasModule(config, 'Menu');
 
-        // Upsert to SQLite
+    const doMenuApiFetch = async () => {
+      try {
+        const freshProducts = await fetchMenuProductsFromAPI();
+
+        // Upsert to SQLite (Menu-mode still writes to the generic
+        // products table — the Menu desync is what makes this
+        // partial; out of T2.1 scope).
         if (companyId) {
           try {
             const db = await getDatabase(companyId);
@@ -116,7 +155,6 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
           }
         }
 
-        // Diff against in-memory products to minimize re-renders
         const currentProducts = get().products;
         const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
         if (changed || currentProducts.length === 0) {
@@ -129,12 +167,10 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
           set({ lastFetched: Date.now() });
         }
 
-        // Clear loading if still set (first launch with no local data)
         if (get().isLoading) {
           set({ isLoading: false });
         }
       } catch (error) {
-        // API failed — if we already have local data, silently continue
         if (!hasLocalData) {
           set({
             isLoading: false,
@@ -145,6 +181,82 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         }
       }
     };
+
+    const doStandardForegroundPull = async () => {
+      // Defensive: if we somehow got here without a companyId, fall
+      // back to the legacy 500-cap helper so the cashier sees SOMETHING.
+      // The standard cold-start path always has a companyId by the
+      // time productStore.fetchProducts runs.
+      if (!companyId) {
+        try {
+          const freshProducts = await fetchStandardProductsFromAPILegacy();
+          const currentProducts = get().products;
+          const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+          if (changed || currentProducts.length === 0) {
+            set({
+              products: merged,
+              categories: extractCategories(merged),
+              lastFetched: Date.now(),
+            });
+          } else {
+            set({ lastFetched: Date.now() });
+          }
+          if (get().isLoading) set({ isLoading: false });
+        } catch (error) {
+          if (!hasLocalData) {
+            set({
+              isLoading: false,
+              error: error instanceof Error ? error.message : i18n.t('errors.unexpected', { ns: 'pos' }),
+            });
+          } else if (get().isLoading) {
+            set({ isLoading: false });
+          }
+        }
+        return;
+      }
+
+      try {
+        const db = await getDatabase(companyId);
+        await pullProductsForeground(db, { timeoutMs: FOREGROUND_PULL_TIMEOUT_MS });
+        // Read the now-complete catalog directly from SQLite. We
+        // bypass `refreshFromSQLite` here because that helper returns
+        // early when SQLite has zero rows — which is wrong for the
+        // tombstone-driven catalog-wipe case (server-side wipe of all
+        // products → pull tombstones the SQLite rows → in-memory still
+        // has the stale set unless we explicitly clear it).
+        //
+        // T2.1 Step A Codex round-1 BLOCKER fix: handle the empty-
+        // SQLite-post-pull case by clearing in-memory state too.
+        const freshProducts = await getAllProducts(db);
+        const currentProducts = get().products;
+        if (freshProducts.length === 0) {
+          if (currentProducts.length > 0) {
+            set({ products: [], categories: [] });
+          }
+        } else {
+          const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+          if (changed || currentProducts.length === 0) {
+            set({
+              products: merged,
+              categories: extractCategories(merged),
+            });
+          }
+        }
+        set({ lastFetched: Date.now() });
+        if (get().isLoading) set({ isLoading: false });
+      } catch (error) {
+        if (!hasLocalData) {
+          set({
+            isLoading: false,
+            error: error instanceof Error ? error.message : i18n.t('errors.unexpected', { ns: 'pos' }),
+          });
+        } else if (get().isLoading) {
+          set({ isLoading: false });
+        }
+      }
+    };
+
+    const doApiFetch = isMenuTenant ? doMenuApiFetch : doStandardForegroundPull;
 
     if (hasLocalData) {
       // Non-blocking: fire and forget the API fetch (guard against concurrent syncs)

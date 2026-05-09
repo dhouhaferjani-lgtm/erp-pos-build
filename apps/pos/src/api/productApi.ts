@@ -1,4 +1,4 @@
-import { apiGet } from '@/lib/api';
+import { apiGet, type ApiRequestOptions } from '@/lib/api';
 import type { POSProduct, GetPOSProductsParams } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 import type { ModifierGroup } from '@/types/modifier';
@@ -13,8 +13,28 @@ export async function fetchPOSProducts(params?: GetPOSProductsParams): Promise<P
   return Array.isArray(result) ? result : result.data;
 }
 
-export async function fetchProductByBarcode(barcode: string): Promise<POSProduct[]> {
-  const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products', { barcode, per_page: 10 });
+/**
+ * Look up products by barcode OR SKU. The backend filter at
+ * `apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php:181-187`
+ * matches `barcode` OR `sku` server-side, so this helper handles SKU lookups
+ * too despite the legacy name. Returns up to 10 matches — collisions on a
+ * single barcode/SKU code are allowed (UPC overlap, internal renumbering,
+ * weight-embedded barcodes); callers should resolve with a chooser modal.
+ *
+ * T2.1 Step B: signature extended with optional `opts` so the foreground
+ * scan resolver can apply a 5s per-call timeout (tunable) + thread an
+ * AbortSignal for concurrent-scan cancellation. Default behavior unchanged
+ * for callers that omit `opts`.
+ */
+export async function fetchProductByBarcode(
+  barcode: string,
+  opts?: ApiRequestOptions,
+): Promise<POSProduct[]> {
+  const result = await apiGet<POSProduct[] | { data: POSProduct[] }>(
+    '/products',
+    { barcode, per_page: 10 },
+    opts,
+  );
   return Array.isArray(result) ? result : result.data;
 }
 

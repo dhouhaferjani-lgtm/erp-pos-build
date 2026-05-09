@@ -115,6 +115,37 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
       await initImageCache(db);
     } catch { /* image caching is non-critical */ }
 
+    // T2.1 Step D: stranded-syncing receipt recovery. A SIGKILL/power-cut
+    // between syncService.updateReceiptStatus(... 'syncing') and the
+    // response handler can strand a row at 'syncing' permanently —
+    // getPendingReceiptsForSync filters WHERE status IN ('pending',
+    // 'failed') so the orphan is invisible to every retry. On boot,
+    // demote any such row back to 'pending' so the next sync tick
+    // re-attempts it. Idempotent by construction (T0.2 idempotency_key
+    // dedups any double-send server-side).
+    //
+    // Order matters: this MUST run BEFORE scheduler.start() so the
+    // first tick sees the demoted rows in getPendingReceiptsForSync.
+    // A SQLite-level failure here is logged + serialized but never
+    // propagated — letting the scheduler still start matters more than
+    // the recovery succeeding (the next boot retries).
+    try {
+      const { recoverStrandedSyncingReceipts } = await import(
+        '@/lib/db/repositories/offlineReceiptRepository'
+      );
+      const recovered = await recoverStrandedSyncingReceipts(db);
+      if (recovered > 0) {
+        console.info(
+          `[POS][terminalStore][recover] demoted ${String(recovered)} stranded 'syncing' receipt(s) on boot`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        '[POS][terminalStore][recover] strandedSyncing failed',
+        serializeErrorForLog(err),
+      );
+    }
+
     // Start the background sync scheduler
     const scheduler = new SyncScheduler(db, terminalId);
     useSyncStore.getState().setScheduler(scheduler);

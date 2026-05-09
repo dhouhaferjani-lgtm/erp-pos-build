@@ -1,5 +1,5 @@
 import type Database from '@tauri-apps/plugin-sql';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
 import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
 import {
   upsertPaymentMethods,
@@ -562,62 +562,227 @@ export function zReportToSyncPayload(report: LocalZReport): Record<string, unkno
  * `updated_since` is present, removing locally-cached rows for soft-deleted
  * server-side products.
  */
+/**
+ * T2.1 Step A — typed error class for `pullProductsCore` rejections.
+ *
+ * Distinguishes the three classes of failure the foreground caller
+ * (`pullProductsForeground` → `productStore.fetchProducts`) needs to
+ * surface to the cashier-facing error banner: HTTP 5xx (server is down /
+ * overloaded), network (Tauri-side fetch failure / no DNS / no route),
+ * and parse (server returned non-JSON or malformed JSON).
+ *
+ * Timeout is propagated as the existing `FetchTimeoutError` (T0.3) — not
+ * wrapped into `PullProductsError` — so callers that already discriminate
+ * timeout vs other errors (e.g. the receipt-sync POST path) continue to
+ * see the same shape.
+ */
+export class PullProductsError extends Error {
+  constructor(
+    public readonly kind: 'http_5xx' | 'network' | 'parse',
+    public readonly cause: unknown,
+    public readonly status?: number,
+  ) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(`pullProducts ${kind}${status !== undefined ? ` (${String(status)})` : ''}: ${causeMsg}`);
+    this.name = 'PullProductsError';
+  }
+}
+
+/**
+ * T2.1 Step A — lower-level pagination loop that THROWS typed errors.
+ *
+ * Extracted from the legacy `pullProducts(db)` so the foreground caller
+ * can distinguish timeout / 5xx / network / parse failures (where the
+ * scheduler-side caller still wants the swallow-and-retry-next-tick
+ * semantics — see `pullProducts` below for the bit-equivalent wrapper).
+ *
+ * Idempotency contract:
+ *   - Page upserts happen mid-loop; partial commits survive a mid-pull
+ *     throw.
+ *   - The `products_last_sync` cursor is written ONLY after the full
+ *     loop completes (preserves the legacy per-pull cursor semantics).
+ *     A mid-pull throw therefore does not advance the cursor — the next
+ *     call re-fetches from the same `updated_since` watermark, and the
+ *     idempotent SQLite upserts dedup the already-committed pages.
+ *   - Tombstoning (`deleted_ids` accumulation + final `deleteProducts`)
+ *     also runs only on full-loop completion. A mid-pull throw leaves
+ *     stale rows in SQLite until the next successful pull — acceptable
+ *     for a transient retry; the alternative (delete-on-each-page)
+ *     would risk losing tombstones if the server's `deleted_ids` list
+ *     is split across pages.
+ */
+export async function pullProductsCore(
+  db: Database,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ count: number }> {
+  const lastSync = await getSyncMetadata(db, 'products_last_sync');
+  const params: Record<string, string> = { per_page: '500' };
+  if (lastSync) {
+    params['updated_since'] = lastSync;
+  }
+
+  let totalPulled = 0;
+  let page = 1;
+  let hasMore = true;
+  const deletedIdsAccumulator: string[] = [];
+
+  while (hasMore) {
+    let result: POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] };
+    try {
+      result = await apiGet<
+        POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] }
+      >('/products', { ...params, page: String(page) }, opts);
+    } catch (err) {
+      // FetchTimeoutError propagates verbatim — callers already
+      // discriminate it via `instanceof` (T0.3 contract).
+      if (err instanceof FetchTimeoutError) throw err;
+      // ApiRequestError carries an HTTP status — classify 5xx vs other.
+      if (err instanceof ApiRequestError) {
+        if (err.status >= 500 && err.status < 600) {
+          throw new PullProductsError('http_5xx', err, err.status);
+        }
+        // 4xx on the catalog endpoint is a programming error, not a
+        // transient retryable — propagate as a network-class typed
+        // error so the cashier-facing banner reads consistently.
+        throw new PullProductsError('network', err, err.status);
+      }
+      // SyntaxError = response body wasn't JSON (server returned HTML
+      // or malformed JSON). Parse class.
+      if (err instanceof SyntaxError) {
+        throw new PullProductsError('parse', err);
+      }
+      // Default = network-class (TypeError from fetch, undici-style
+      // ECONNRESET, etc.).
+      throw new PullProductsError('network', err);
+    }
+
+    const products = Array.isArray(result) ? result : result.data;
+    const deletedIds = Array.isArray(result) ? [] : (result.deleted_ids ?? []);
+
+    if (products.length > 0) {
+      await upsertProducts(db, products);
+      totalPulled += products.length;
+    }
+
+    if (deletedIds.length > 0) {
+      deletedIdsAccumulator.push(...deletedIds);
+    }
+
+    hasMore = products.length === 500;
+    page++;
+  }
+
+  if (deletedIdsAccumulator.length > 0) {
+    await deleteProducts(db, deletedIdsAccumulator);
+  }
+
+  if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
+    await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
+    await logSyncOperation(
+      db,
+      'pull',
+      'products',
+      null,
+      'success',
+      `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
+    );
+  }
+
+  return { count: totalPulled };
+}
+
+/**
+ * T2.1 Step A — scheduler-side thin wrapper around `pullProductsCore`.
+ *
+ * Preserves the bit-equivalent legacy contract: swallows ALL errors
+ * (typed and otherwise), logs to `sync_log`, returns `0`. The
+ * scheduler retries on its next tick; the `isSyncing` guard +
+ * idempotent SQLite upserts cover correctness.
+ *
+ * DO NOT change this wrapper's observable behavior without also
+ * updating the scheduler-side test surface — it's load-bearing for
+ * the every-60s background pull.
+ */
 export async function pullProducts(db: Database): Promise<number> {
   try {
-    const lastSync = await getSyncMetadata(db, 'products_last_sync');
-    const params: Record<string, string> = { per_page: '500' };
-    if (lastSync) {
-      params['updated_since'] = lastSync;
-    }
-
-    let totalPulled = 0;
-    let page = 1;
-    let hasMore = true;
-    const deletedIdsAccumulator: string[] = [];
-
-    while (hasMore) {
-      const result = await apiGet<
-        POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] }
-      >('/products', { ...params, page: String(page) });
-
-      const products = Array.isArray(result) ? result : result.data;
-      const deletedIds = Array.isArray(result) ? [] : (result.deleted_ids ?? []);
-
-      if (products.length > 0) {
-        await upsertProducts(db, products);
-        totalPulled += products.length;
-      }
-
-      if (deletedIds.length > 0) {
-        deletedIdsAccumulator.push(...deletedIds);
-      }
-
-      hasMore = products.length === 500;
-      page++;
-    }
-
-    if (deletedIdsAccumulator.length > 0) {
-      await deleteProducts(db, deletedIdsAccumulator);
-    }
-
-    if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
-      await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
-      await logSyncOperation(
-        db,
-        'pull',
-        'products',
-        null,
-        'success',
-        `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
-      );
-    }
-
-    return totalPulled;
+    const result = await pullProductsCore(db);
+    return result.count;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     await logSyncOperation(db, 'pull', 'products', null, 'error', message);
     return 0;
   }
+}
+
+/**
+ * T2.1 Step A — foreground full-catalog pull for `productStore.fetchProducts`.
+ *
+ * Differs from the scheduler-side `pullProducts(db)` wrapper in three ways:
+ *   1. Calls `pullProductsCore` DIRECTLY so typed errors (FetchTimeoutError,
+ *      PullProductsError) propagate to the cashier-facing UI rather than
+ *      being silently swallowed.
+ *   2. Wraps each page request with the foreground 30s per-page timeout
+ *      (caller-overridable via `opts.timeoutMs`).
+ *   3. Deduplicates concurrent foreground calls — if a cashier rapid-taps
+ *      "refresh" while a pull is in flight, the second call awaits the
+ *      same in-flight promise rather than firing a parallel pull.
+ *
+ * Acceptance contract for the foreground/scheduler race (Codex round-2 R1):
+ * `useSyncStore.isSyncing` is set by `SyncScheduler.startSync` (a method
+ * on the scheduler instance), NOT by this free-function wrapper. Therefore
+ * a benign rare double-pull is possible (foreground + scheduler-tick
+ * concurrent). SQLite per-statement atomicity + idempotent upserts cover
+ * correctness; in-memory snapshot is last-write-wins. Future architectural
+ * session can add a free-function-level mutex if the cost becomes
+ * user-visible (rare on Slow-3G + 10K SKUs).
+ */
+let foregroundPullInFlight: Promise<{ ok: true; count: number }> | null = null;
+
+export async function pullProductsForeground(
+  db: Database,
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<{ ok: true; count: number }> {
+  if (foregroundPullInFlight) return foregroundPullInFlight;
+
+  const promise = (async () => {
+    try {
+      const result = await pullProductsCore(db, {
+        timeoutMs: opts.timeoutMs ?? 30_000,
+        signal: opts.signal,
+      });
+      return { ok: true as const, count: result.count };
+    } catch (err) {
+      console.error(
+        '[POS][syncService][pullProductsForeground] pull failed',
+        serializeErrorForLog(err),
+      );
+      // Best-effort log to sync_log_repository for parity with the
+      // scheduler-side `pullProducts` swallow path; never let the log
+      // failure mask the original error.
+      await logSyncOperation(
+        db,
+        'pull',
+        'products',
+        null,
+        'error',
+        err instanceof Error ? err.message : 'Unknown error',
+      ).catch(() => undefined);
+      throw err;
+    }
+  })();
+
+  foregroundPullInFlight = promise;
+  // Use .then(onFulfilled, onRejected) with the same callback so the
+  // cleanup chain doesn't produce its own unhandled rejection when
+  // `promise` rejects. The original `promise` is what we return to
+  // callers — they catch the rejection there.
+  const cleanup = (): void => {
+    if (foregroundPullInFlight === promise) {
+      foregroundPullInFlight = null;
+    }
+  };
+  promise.then(cleanup, cleanup);
+  return promise;
 }
 
 /**

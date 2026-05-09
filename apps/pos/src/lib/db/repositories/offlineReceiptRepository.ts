@@ -134,6 +134,46 @@ export async function getPendingReceiptCount(db: Database): Promise<number> {
   return result?.count ?? 0;
 }
 
+/**
+ * T2.1 Step D — boot-time recovery for stranded `'syncing'` rows.
+ *
+ * `syncService.updateReceiptStatus(... 'syncing')` advances a receipt's
+ * status BEFORE the sync HTTP call completes. On success the response
+ * handler advances to `'synced'`; on failure to `'failed'`. A
+ * SIGKILL / power-cut / OS-level kill BETWEEN the status update and
+ * the response handler leaves the row at `'syncing'` permanently —
+ * `getPendingReceiptsForSync` filters `WHERE status IN ('pending',
+ * 'failed')`, so the orphan is invisible to every subsequent retry.
+ * Net effect: a fiscal record with a hash-chain advance but no
+ * server-side counterpart, never retried, eventually visible only via
+ * `php artisan pos:verify-chains` as a chain break.
+ *
+ * This recovery demotes any `'syncing'` row back to `'pending'` so the
+ * next sync tick re-attempts it. Idempotent across multiple boots —
+ * subsequent calls find no `'syncing'` rows and are no-ops.
+ *
+ * Idempotency reasoning: a row at `'syncing'` is in one of three
+ * states post-crash:
+ *   1. HTTP request never left the device → server has nothing →
+ *      retry as fresh send. ✓
+ *   2. HTTP request succeeded server-side but response was lost →
+ *      retry → server detects via T0.2 idempotency_key and returns
+ *      the prior result → client advances to `'synced'`. ✓
+ *   3. HTTP request succeeded AND response landed but the local
+ *      status update failed → retry → same as (2). ✓
+ *
+ * Returns the number of rows demoted (for boot-time observability).
+ */
+export async function recoverStrandedSyncingReceipts(
+  db: Database,
+): Promise<number> {
+  const result = await execute(
+    db,
+    "UPDATE offline_receipts SET status = 'pending' WHERE status = 'syncing'",
+  );
+  return result.rowsAffected;
+}
+
 export async function updateReceiptStatus(
   db: Database,
   id: string,

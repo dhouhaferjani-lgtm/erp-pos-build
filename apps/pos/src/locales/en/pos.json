@@ -79,7 +79,15 @@
     "productAdded": "{{name}} added to cart",
     "inputPlaceholder": "Scan or type barcode / SKU...",
     "inputLabel": "Barcode or SKU lookup",
-    "clearInput": "Clear barcode input"
+    "clearInput": "Clear barcode input",
+    "lookingUp": "Looking up..."
+  },
+  "barcodeChooser": {
+    "title": "Multiple products match this code",
+    "subtitle": "Select the product to add (scanned: {{code}})",
+    "stock": "{{count}} in stock",
+    "cancel": "Cancel",
+    "dismiss": "Close"
   },
   "receiptScan": {
     "title": "Sale receipt detected",

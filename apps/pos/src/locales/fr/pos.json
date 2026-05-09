@@ -79,7 +79,15 @@
     "productAdded": "{{name}} ajouté au panier",
     "inputPlaceholder": "Scanner ou saisir code-barres / SKU...",
     "inputLabel": "Recherche code-barres ou SKU",
-    "clearInput": "Effacer"
+    "clearInput": "Effacer",
+    "lookingUp": "Recherche..."
+  },
+  "barcodeChooser": {
+    "title": "Plusieurs produits correspondent à ce code",
+    "subtitle": "Sélectionnez le produit à ajouter (scanné : {{code}})",
+    "stock": "{{count}} en stock",
+    "cancel": "Annuler",
+    "dismiss": "Fermer"
   },
   "receiptScan": {
     "title": "Reçu de vente détecté",

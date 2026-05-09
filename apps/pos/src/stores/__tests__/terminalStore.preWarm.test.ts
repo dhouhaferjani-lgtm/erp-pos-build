@@ -27,6 +27,12 @@ const setLastSyncAtSpy = vi.fn();
 const getPendingReceiptCountSpy = vi.fn().mockResolvedValue(0);
 const getSyncMetadataSpy = vi.fn().mockResolvedValue(null);
 
+// T2.1 Step D: stranded-syncing recovery spy — invoked BEFORE
+// scheduler.start to demote any rows left at `'syncing'` after a
+// SIGKILL / power-cut between updateReceiptStatus and the response
+// handler.
+const recoverStrandedSyncingReceiptsSpy = vi.fn().mockResolvedValue(0);
+
 vi.mock('@/lib/db', () => ({
   getDatabase: vi.fn().mockResolvedValue({}),
 }));
@@ -63,6 +69,7 @@ vi.mock('@/stores/syncStore', () => ({
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   getPendingReceiptCount: getPendingReceiptCountSpy,
+  recoverStrandedSyncingReceipts: recoverStrandedSyncingReceiptsSpy,
 }));
 
 vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
@@ -99,6 +106,8 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     getSyncMetadataSpy.mockClear();
     getSyncMetadataSpy.mockResolvedValue(null);
     syncStoreMockState.lastSyncAt = null;
+    recoverStrandedSyncingReceiptsSpy.mockClear();
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValue(0);
 
     useAuthStore.setState({ companyId: 'company-1' } as never);
   });
@@ -237,5 +246,87 @@ describe('T1.2 Step 2.4 — seedOfflineHashChain pre-warms payment config', () =
     await Promise.resolve();
 
     expect(setLastSyncAtSpy).toHaveBeenCalledWith(1717891300000);
+  });
+
+  // ---------------------------------------------------------------------
+  // T2.1 Step D — boot-time stranded-syncing receipt recovery.
+  //
+  // The bug: syncService.updateReceiptStatus(id, 'syncing') runs BEFORE
+  // the sync HTTP call. SIGKILL/power-cut between the status update and
+  // the response handler leaves the row at 'syncing' permanently.
+  // getPendingReceiptsForSync filters WHERE status IN ('pending','failed')
+  // → orphan invisible to every retry → silent fiscal-record loss.
+  //
+  // The fix: seedOfflineHashChain runs an UPDATE …'pending' WHERE
+  // status='syncing' on boot, BEFORE scheduler.start so the first tick
+  // sees the demoted rows in getPendingReceiptsForSync.
+  // ---------------------------------------------------------------------
+
+  it('T2.1 D.1: seedOfflineHashChain calls recoverStrandedSyncingReceipts on boot', async () => {
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValueOnce(2);
+
+    await seedOfflineHashChain('term-1');
+
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(1);
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledWith(expect.anything());
+  });
+
+  it('T2.1 D.2: stranded-syncing recovery runs BEFORE scheduler.start()', async () => {
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValueOnce(1);
+
+    await seedOfflineHashChain('term-1');
+
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    const recoverOrder = recoverStrandedSyncingReceiptsSpy.mock.invocationCallOrder[0]!;
+    const startOrder = startSpy.mock.invocationCallOrder[0]!;
+    expect(recoverOrder).toBeLessThan(startOrder);
+  });
+
+  it('T2.1 D.3: recovery is idempotent across multiple boots', async () => {
+    // First boot: 1 stranded row.
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValueOnce(1);
+    await seedOfflineHashChain('term-1');
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(1);
+
+    // Second boot: 0 stranded rows (the first boot demoted them).
+    recoverStrandedSyncingReceiptsSpy.mockResolvedValueOnce(0);
+    await seedOfflineHashChain('term-1');
+    expect(recoverStrandedSyncingReceiptsSpy).toHaveBeenCalledTimes(2);
+
+    // Both calls succeeded (no thrown errors); seedOfflineHashChain
+    // resolves cleanly across both boots.
+  });
+
+  it('T2.1 D.4: recovery error is caught + serialized via serializeErrorForLog (does NOT propagate)', async () => {
+    recoverStrandedSyncingReceiptsSpy.mockRejectedValueOnce(
+      new Error('SQLite UPDATE failed'),
+    );
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // seedOfflineHashChain MUST resolve cleanly even though the recovery
+    // UPDATE rejected.
+    await expect(seedOfflineHashChain('term-1')).resolves.toBeUndefined();
+
+    // The error was logged via serializeErrorForLog's payload shape.
+    const recoverErrorLog = consoleError.mock.calls.find(
+      (call) =>
+        typeof call[0] === 'string' &&
+        call[0].toLowerCase().includes('strandedsyncing'),
+    );
+    expect(recoverErrorLog).toBeDefined();
+    if (recoverErrorLog) {
+      const payload = recoverErrorLog[1] as Record<string, unknown>;
+      expect(payload).toHaveProperty('errorName');
+      expect(payload).toHaveProperty('message');
+    }
+
+    // The scheduler still starts despite the recovery failure — a
+    // SQLite-level bad state shouldn't strand the cashier with a
+    // dead scheduler.
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    consoleError.mockRestore();
   });
 });
