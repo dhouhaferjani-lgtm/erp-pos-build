@@ -13,6 +13,7 @@ use App\Application\Sweep\Scanners\ManualScanner;
 use App\Application\Sweep\Scanners\PhpAstFindScanner;
 use App\Application\Sweep\Scanners\PhpPresentationExistsScanner;
 use App\Application\Sweep\Scanners\Scanner;
+use App\Application\Sweep\Scanners\TanstackKeysScanner;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -49,6 +50,7 @@ final class SweepInventoryGenerateCommand extends Command
         {--schema-path= : Override the JSON Schema path (defaults to app/Application/Sweep/InventoryYamlSchema.json)}
         {--scan-root= : Override the scan root directory (defaults to app/Modules)}
         {--manual-stub= : Override the manual-callsites stub path (defaults to docs/superpowers/plans/tenant-isolation-sweep-manual-callsites.yml)}
+        {--scanners= : Comma-separated list of scanner names to run (php_presentation_exists, php_ast_find, ts_query_key, manual). Default: all four. Useful for foundation/debug runs that should only seed one surface without touching fixed clusters from other surfaces.}
         {--dry-run : Print summary to stderr without writing the YAML}';
 
     /** @var string */
@@ -81,11 +83,20 @@ final class SweepInventoryGenerateCommand extends Command
             ClusterResolver::defaultModuleToClusterMap(),
             ClusterResolver::DEFAULT_FALLBACK_CLUSTER_ID,
         );
-        $scanners = [
+        $allScanners = [
             new PhpPresentationExistsScanner($scanRoot, $repoRoot, $resolver),
             new PhpAstFindScanner($scanRoot, $repoRoot, $resolver),
+            new TanstackKeysScanner($repoRoot),
             new ManualScanner($manualStub),
         ];
+
+        $selectedScannerNames = $this->parseScannerFilter();
+        $scanners = $selectedScannerNames === null
+            ? $allScanners
+            : array_values(array_filter(
+                $allScanners,
+                static fn (Scanner $s): bool => in_array($s->name(), $selectedScannerNames, true),
+            ));
 
         /** @var list<CallsiteRow> $rows */
         $rows = [];
@@ -505,5 +516,28 @@ final class SweepInventoryGenerateCommand extends Command
         }
 
         return $value;
+    }
+
+    /**
+     * Parse the --scanners= flag into a normalized list of scanner names, or
+     * null when the flag is absent (signaling "run every registered scanner").
+     * Empty / whitespace-only entries are dropped; unknown names pass through
+     * and simply match no scanner.
+     *
+     * @return list<string>|null
+     */
+    private function parseScannerFilter(): ?array
+    {
+        $raw = $this->stringOption('scanners');
+        if ($raw === null) {
+            return null;
+        }
+        $parts = array_map('trim', explode(',', $raw));
+        $names = array_values(array_filter(
+            $parts,
+            static fn (string $n): bool => $n !== '',
+        ));
+
+        return $names === [] ? null : $names;
     }
 }

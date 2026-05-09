@@ -178,4 +178,94 @@ describe('Gate C — TanStack queryKey scanner', () => {
       expect(v).toEqual([]);
     });
   });
+
+  describe('violation metadata (sweep:inventory:generate wiring)', () => {
+    // The TanstackKeysScanner.php (apps/api/.../Sweep/Scanners/) consumes
+    // these fields to build a CallsiteRow with a stable_key, enclosing
+    // symbol, and resource label. Pinning the shape here so any scanner
+    // edit that drops a field surfaces immediately.
+
+    it('emits factory + enclosing_symbol + resource + statement_fingerprint + ast_kind', () => {
+      const v = scanCode(`
+        function useUsers() {
+          return useQuery({
+            queryKey: ['users', 42],
+            queryFn: () => fetch('/users'),
+          });
+        }
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      const e = v[0];
+      expect(e.factory).toBe('useQuery');
+      expect(e.enclosing_symbol).toBe('useUsers');
+      expect(e.resource).toBe('users');
+      expect(e.ast_kind).toBe('array_literal');
+      // Statement fingerprint is whitespace-normalized + suffixed with the
+      // queryKey expression's byte offset for collision-free identity.
+      expect(e.statement_fingerprint).toMatch(/^\['users', 42\]@\d+$/);
+    });
+
+    it('disambiguates two queryKey expressions sharing the same enclosing symbol via byte offset', () => {
+      const v = scanCode(`
+        function Component() {
+          useMutation({
+            mutationFn: () => f(),
+            onSuccess: () => {
+              queryClient.invalidateQueries({ queryKey: ['orders'] });
+            },
+          });
+          useMutation({
+            mutationFn: () => g(),
+            onSuccess: () => {
+              queryClient.invalidateQueries({ queryKey: ['orders'] });
+            },
+          });
+        }
+      `, 'inline.tsx');
+      expect(v).toHaveLength(2);
+      // Both have the same enclosing symbol (onSuccess) and same fingerprint
+      // text (['orders']) — but byte offsets differ, so the full fingerprints
+      // are distinct.
+      expect(v[0].enclosing_symbol).toBe('onSuccess');
+      expect(v[1].enclosing_symbol).toBe('onSuccess');
+      expect(v[0].statement_fingerprint).not.toBe(v[1].statement_fingerprint);
+    });
+
+    it('extracts no resource when the queryKey is not an array literal', () => {
+      // useQueries inside a `queries` array still flags entries whose key
+      // is opaque (Codex C4 nested-entry path); the resource extractor
+      // returns null for non-array-literal keys.
+      const v = scanCode(`
+        useQuery({
+          queryKey: dynamicKey,
+          queryFn: () => fetch('/x'),
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].resource).toBeNull();
+      expect(v[0].ast_kind).toBe('identifier');
+    });
+
+    it('classifies ast_kind as call_expression for unknown factory calls', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: someUnknownFactory(['x']),
+          queryFn: () => fetch('/x'),
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].ast_kind).toBe('call_expression');
+    });
+
+    it('extracts the first string-literal element from a multi-segment array', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: ['products', 'detail', someId],
+          queryFn: () => fetch('/p'),
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].resource).toBe('products');
+    });
+  });
 });

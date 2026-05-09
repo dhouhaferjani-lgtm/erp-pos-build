@@ -132,11 +132,110 @@ function queryKeyExpressionIsApproved(expr) {
 }
 
 /**
+ * Walk up from a node to find the nearest enclosing function-like
+ * declaration and return its identifier. Mirrors the symbol-resolution
+ * the PHP scanners use (enclosing class+method) so violation metadata
+ * carries enough context to populate `CallsiteRow.symbol`.
+ *
+ * Recognized parents:
+ *   - FunctionDeclaration / FunctionExpression with a name
+ *   - MethodDeclaration with an identifier name
+ *   - VariableDeclaration whose initializer is an arrow function or
+ *     function expression (covers `const useFoo = () => {...}`)
+ *   - PropertyAssignment whose initializer is an arrow function (covers
+ *     object-literal hooks like `{ useFoo: () => {...} }`)
+ *
+ * Returns null when no named parent is found (e.g., a top-level call
+ * outside any function body).
+ *
+ * @param {ts.Node} node
+ * @returns {string | null}
+ */
+function findEnclosingSymbol(node) {
+  let current = node.parent;
+  while (current) {
+    if (ts.isFunctionDeclaration(current) && current.name) {
+      return current.name.text;
+    }
+    if (ts.isMethodDeclaration(current) && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+    if (
+      ts.isVariableDeclaration(current) &&
+      ts.isIdentifier(current.name) &&
+      current.initializer &&
+      (ts.isArrowFunction(current.initializer) || ts.isFunctionExpression(current.initializer))
+    ) {
+      return current.name.text;
+    }
+    if (
+      ts.isPropertyAssignment(current) &&
+      ts.isIdentifier(current.name) &&
+      (ts.isArrowFunction(current.initializer) || ts.isFunctionExpression(current.initializer))
+    ) {
+      return current.name.text;
+    }
+    if (ts.isFunctionExpression(current) && current.name) {
+      return current.name.text;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
+ * Extract the first string-literal element from a queryKey array, if any.
+ * Used as the `resource` field on the callsite row — for keys like
+ * `['payment-methods', companyId]`, this returns 'payment-methods', which
+ * makes the inventory rows greppable by domain area without forcing the
+ * scanner to know about every web feature.
+ *
+ * @param {ts.Expression} queryKey
+ * @returns {string | null}
+ */
+function extractQueryKeyResource(queryKey) {
+  let expr = queryKey;
+  while (
+    ts.isAsExpression(expr) ||
+    ts.isTypeAssertionExpression(expr) ||
+    ts.isSatisfiesExpression(expr)
+  ) {
+    expr = expr.expression;
+  }
+  if (!ts.isArrayLiteralExpression(expr)) {
+    return null;
+  }
+  for (const element of expr.elements) {
+    if (ts.isStringLiteralLike(element)) {
+      return element.text;
+    }
+  }
+  return null;
+}
+
+/**
+ * Normalize a queryKey expression's source text into a stable fingerprint.
+ * Whitespace is collapsed to single spaces so cosmetic edits to the
+ * surrounding code don't shift the hash; the resulting string is what
+ * `TanstackKeysScanner` feeds into `StableKey::statement_fingerprint`
+ * to discriminate between multiple useQuery calls in the same enclosing
+ * symbol.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {ts.Expression} expr
+ * @returns {string}
+ */
+function fingerprintExpression(sourceFile, expr) {
+  const raw = expr.getText(sourceFile);
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * @param {ts.ObjectLiteralExpression} options
  * @param {string} factoryName
  * @param {ts.SourceFile} sourceFile
  * @param {string} relPath
- * @param {Array<{file: string, line: number, column: number, reason: string}>} out
+ * @param {Array<{file: string, line: number, column: number, reason: string, factory: string, enclosing_symbol: string | null, resource: string | null, statement_fingerprint: string, ast_kind: string}>} out
  */
 function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
   const queryKeyProp = options.properties.find(
@@ -149,17 +248,54 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
   if (queryKeyProp && ts.isPropertyAssignment(queryKeyProp)) {
     const initializer = queryKeyProp.initializer;
     if (!queryKeyExpressionIsApproved(initializer)) {
-      const { line, character } = sourceFile.getLineAndCharacterOfPosition(
-        queryKeyProp.getStart(sourceFile),
-      );
+      const startPos = queryKeyProp.getStart(sourceFile);
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
+      // Byte-offset-into-source disambiguator matches the PHP scanner pattern
+      // (PhpAstFindScanner uses start_file_pos in its statement_fingerprint).
+      // Distinct violations at the same fingerprint text — e.g., multiple
+      // `invalidateQueries({queryKey: batchKeys.all})` calls inside several
+      // `onSuccess` callbacks of the same file — stay distinct because their
+      // byte offsets differ. Stable across edits to UNRELATED parts of the
+      // file (anything after the violation's offset shifts, but THIS
+      // violation's offset is anchored to its own start position).
+      const fingerprintWithOffset = `${fingerprintExpression(sourceFile, initializer)}@${startPos}`;
       out.push({
         file: relPath,
         line: line + 1,
         column: character + 1,
         reason: `${factoryName}({ queryKey: ... }) lacks an approved tenant scope`,
+        factory: factoryName,
+        enclosing_symbol: findEnclosingSymbol(queryKeyProp),
+        resource: extractQueryKeyResource(initializer),
+        statement_fingerprint: fingerprintWithOffset,
+        ast_kind: classifyQueryKeyAstKind(initializer),
       });
     }
   }
+}
+
+/**
+ * Classify the queryKey expression into a coarse AST-kind label that lets
+ * downstream consumers (the inventory generator, the architecture-test
+ * gate) distinguish "bare array literal" from "unknown factory call"
+ * without re-parsing.
+ *
+ * @param {ts.Expression} expr
+ * @returns {string}
+ */
+function classifyQueryKeyAstKind(expr) {
+  let inner = expr;
+  while (
+    ts.isAsExpression(inner) ||
+    ts.isTypeAssertionExpression(inner) ||
+    ts.isSatisfiesExpression(inner)
+  ) {
+    inner = inner.expression;
+  }
+  if (ts.isArrayLiteralExpression(inner)) return 'array_literal';
+  if (ts.isCallExpression(inner)) return 'call_expression';
+  if (ts.isIdentifier(inner)) return 'identifier';
+  return 'other';
 }
 
 /**
@@ -282,8 +418,9 @@ const isMain = (() => {
 })();
 
 if (isMain) {
+  const wantsJson = process.argv.includes('--json');
   const fileList = await walk(SRC_ROOT);
-  /** @type {Array<{file: string, line: number, column: number, reason: string}>} */
+  /** @type {Array<{file: string, line: number, column: number, reason: string, factory: string, enclosing_symbol: string | null, resource: string | null, statement_fingerprint: string, ast_kind: string}>} */
   const allViolations = [];
   for (const file of fileList) {
     const code = await fs.readFile(file, 'utf8');
@@ -299,6 +436,28 @@ if (isMain) {
   process.stderr.write(
     `[sweep-progress] Gate C — useQuery/useQueries/queryClient queryKeys without an approved tenant scope: ${allViolations.length}\n`,
   );
+  if (wantsJson) {
+    // Stable shape consumed by TanstackKeysScanner.php (sweep:inventory:generate
+    // wiring). Fields per violation:
+    //   file                  — apps/web-relative path (e.g. src/features/.../foo.ts)
+    //   line, column          — display-only metadata
+    //   factory               — useQuery / useMutation / useQueries.queries[] / queryClient.<method>
+    //   enclosing_symbol      — nearest enclosing function/component name, or null
+    //   resource              — first string literal in queryKey array, or null
+    //   statement_fingerprint — whitespace-normalized queryKey source text (stable_key discriminator)
+    //   ast_kind              — array_literal / call_expression / identifier / other
+    //   reason                — human-readable label (preserved for backward-compat)
+    //
+    // Stdout backpressure: large payloads (~849 violations × ~250 bytes each
+    // ≈ 200 KB) exceed Node's default pipe buffer; write asynchronously and
+    // wait for the drain before exiting so the consumer sees the whole
+    // payload, not a 64 KB-truncated prefix.
+    const payload = JSON.stringify({ violations: allViolations });
+    const wrote = process.stdout.write(payload);
+    if (!wrote) {
+      await new Promise((resolve) => process.stdout.once('drain', resolve));
+    }
+  }
   // Master plan Section 17 step 17.5: swap the exit code below from 0
   // (informational) to (allViolations.length === 0 ? 0 : 1) once the
   // tactical sweep is complete.
