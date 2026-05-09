@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 0d7b3ae92195d9524b4dd807b4e5072b91b25e7baf1cb882def7a7a1a3f83f9e
+  yaml_sha256: 339bef3fe010cc5a7dd45cf4d6ff78b48252d2f2b5ca5c428d864b5e97e80ee4
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -792,9 +792,9 @@ clusters:
     id: api.marketplace
     display_name: 'Marketplace (multi-seller, external sync)'
     surface: api
-    owner: null
+    owner: claude
     required_owner: claude
-    status: pending
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -13914,17 +13914,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: claude
+    claimed_at: '2026-05-09T14:43:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T14:51:08Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
+      review_commit: 3d0378cb
+    fix_commit: 3d0378cb
+    regression_test: 'tests/Feature/Marketplace/MarketplaceTenantIsolationTest.php::sync_on_price_change_rejects_event_with_cross_company_product_id'
     blocked_reason: null
     history:
       -
@@ -13961,6 +13961,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster reassigned: api.unmapped → api.marketplace. ClusterResolver::defaultModuleToClusterMap was extended to map Marketplace → api.marketplace. The new cluster definition is added in the same atomic mutation; the new metadata.yaml_sha256 is anchored in this and the sibling callsite history event so sweep:inventory:verify-history passes. Identity (id field) preserved at api.unmapped.015/.016 to keep the audit chain target_ids references valid (precedent: commit b23e09db).'
+      -
+        at: '2026-05-09T14:43:03Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0d7b3ae92195d9524b4dd807b4e5072b91b25e7baf1cb882def7a7a1a3f83f9e
+        new_yaml_sha256: 5f8b181960a8eace41dbf5feaa54e63d3e4c92f0e3aa6793facc367afd9eba26
+        target_ids:
+          - api.unmapped.015
+        from_status: pending
+        to_status: claimed
+        commit: 11302ad1aeb3bc78597ea704b70eb273b14e39c5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-09T14:43:04Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 5f8b181960a8eace41dbf5feaa54e63d3e4c92f0e3aa6793facc367afd9eba26
+        new_yaml_sha256: 7ba1935649e40fee323b614b915fcae9bae01fa4ea95c50ca0d8ae56600974cf
+        target_ids:
+          - api.unmapped.015
+        from_status: claimed
+        to_status: in_progress
+        commit: 11302ad1aeb3bc78597ea704b70eb273b14e39c5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:46:08Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7ba1935649e40fee323b614b915fcae9bae01fa4ea95c50ca0d8ae56600974cf
+        new_yaml_sha256: 67900c36f556736cfdb3b238367f39338f3bd71e925ae1133e41958f3715cd0a
+        target_ids:
+          - api.unmapped.015
+        from_status: in_progress
+        to_status: under_review
+        commit: 3d0378cb
+        test: 'tests/Feature/Marketplace/MarketplaceTenantIsolationTest.php::sync_on_price_change_rejects_event_with_cross_company_product_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T14:51:08Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 10241d128b47ab156c4baf902f7296633b6cd97f15a7b0c414119605caecbefc
+        new_yaml_sha256: fd5fd8734c748074fb7a7d9886370ebb9c977c43629853700fe7e3735e1a4399
+        target_ids:
+          - api.unmapped.015
+          - api.marketplace
+        from_status: under_review
+        to_status: fixed
+        commit: 3d0378cba2cb854a5690cac9eb8053254409c02a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
+        review_commit: 3d0378cb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.unmapped.016
     stable_key: 'sha256:18c3c202b8a598bf4f72a15ece5aa50521645894f0e770acc70b0cce7d63b7a5'
@@ -13978,17 +14043,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: claude
+    claimed_at: '2026-05-09T14:43:03Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T14:51:09Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
+      review_commit: 3d0378cb
+    fix_commit: 3d0378cb
+    regression_test: 'tests/Feature/Marketplace/MarketplaceTenantIsolationTest.php::sync_on_stock_change_rejects_event_with_cross_company_product_id'
     blocked_reason: null
     history:
       -
@@ -14025,6 +14090,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster reassigned: api.unmapped → api.marketplace. ClusterResolver::defaultModuleToClusterMap was extended to map Marketplace → api.marketplace. The new cluster definition is added in the same atomic mutation; the new metadata.yaml_sha256 is anchored in this and the sibling callsite history event so sweep:inventory:verify-history passes. Identity (id field) preserved at api.unmapped.015/.016 to keep the audit chain target_ids references valid (precedent: commit b23e09db).'
+      -
+        at: '2026-05-09T14:43:03Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0d7b3ae92195d9524b4dd807b4e5072b91b25e7baf1cb882def7a7a1a3f83f9e
+        new_yaml_sha256: 5f8b181960a8eace41dbf5feaa54e63d3e4c92f0e3aa6793facc367afd9eba26
+        target_ids:
+          - api.unmapped.016
+        from_status: pending
+        to_status: claimed
+        commit: 11302ad1aeb3bc78597ea704b70eb273b14e39c5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-09T14:43:04Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 5f8b181960a8eace41dbf5feaa54e63d3e4c92f0e3aa6793facc367afd9eba26
+        new_yaml_sha256: 7ba1935649e40fee323b614b915fcae9bae01fa4ea95c50ca0d8ae56600974cf
+        target_ids:
+          - api.unmapped.016
+        from_status: claimed
+        to_status: in_progress
+        commit: 11302ad1aeb3bc78597ea704b70eb273b14e39c5
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T14:46:09Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 67900c36f556736cfdb3b238367f39338f3bd71e925ae1133e41958f3715cd0a
+        new_yaml_sha256: 10241d128b47ab156c4baf902f7296633b6cd97f15a7b0c414119605caecbefc
+        target_ids:
+          - api.unmapped.016
+        from_status: in_progress
+        to_status: under_review
+        commit: 3d0378cb
+        test: 'tests/Feature/Marketplace/MarketplaceTenantIsolationTest.php::sync_on_stock_change_rejects_event_with_cross_company_product_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T14:51:10Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fd5fd8734c748074fb7a7d9886370ebb9c977c43629853700fe7e3735e1a4399
+        new_yaml_sha256: 339bef3fe010cc5a7dd45cf4d6ff78b48252d2f2b5ca5c428d864b5e97e80ee4
+        target_ids:
+          - api.unmapped.016
+          - api.marketplace
+        from_status: under_review
+        to_status: fixed
+        commit: 3d0378cba2cb854a5690cac9eb8053254409c02a
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
+        review_commit: 3d0378cb
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.taxation.008
     stable_key: 'sha256:496783c190bf60bbac1d3e805bafd1a9505bb9c31fbdd38d08a078876563b755'
