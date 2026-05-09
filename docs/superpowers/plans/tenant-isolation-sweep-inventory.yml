@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+  yaml_sha256: 281bd118ab39692dd50245c5a51f7a0365de57e573bb83ad5142e7221424b371
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -40205,7 +40205,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
@@ -40214,8 +40214,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6d1e4a70
+    regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_suspension_revokes_all_user_tokens'
     blocked_reason: null
     history:
       -
@@ -40266,6 +40266,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T00:01:36Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b85288d90dece739596c44f5da96d43eb7ea661887d7ca2b5bf41a5b7172a2b1
+        new_yaml_sha256: 124e5dac8ce6523f8430f8333473fa9f436b25a5f9137e50385fe4c514fd7bf8
+        target_ids:
+          - api.auth-permissions.001
+        from_status: in_progress
+        to_status: under_review
+        commit: 6d1e4a70
+        test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_suspension_revokes_all_user_tokens'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.auth-permissions.002
     stable_key: 'manual:api.auth-permissions:tenant-deletion-token-revocation'
@@ -40283,7 +40299,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
@@ -40292,8 +40308,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6d1e4a70
+    regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_deletion_revokes_all_user_tokens'
     blocked_reason: null
     history:
       -
@@ -40344,6 +40360,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T00:01:37Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 124e5dac8ce6523f8430f8333473fa9f436b25a5f9137e50385fe4c514fd7bf8
+        new_yaml_sha256: 9513c1245b3d9c4c7a8513d1ee73443500936f5baa09ff2fdb373aef0e3d19f8
+        target_ids:
+          - api.auth-permissions.002
+        from_status: in_progress
+        to_status: under_review
+        commit: 6d1e4a70
+        test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_tenant_deletion_revokes_all_user_tokens'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.auth-permissions.003
     stable_key: 'manual:api.auth-permissions:user-tenant-change-token-revocation'
@@ -40361,7 +40393,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
@@ -40370,8 +40402,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6d1e4a70
+    regression_test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_user_tenant_change_revokes_old_tokens'
     blocked_reason: null
     history:
       -
@@ -40422,6 +40454,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T00:01:38Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9513c1245b3d9c4c7a8513d1ee73443500936f5baa09ff2fdb373aef0e3d19f8
+        new_yaml_sha256: 63dd2779b981ad8f768bfdf2692ef29a6e1591a39a747bcd5c96e7b81332c544
+        target_ids:
+          - api.auth-permissions.003
+        from_status: in_progress
+        to_status: under_review
+        commit: 6d1e4a70
+        test: 'tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php::test_user_tenant_change_revokes_old_tokens'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.auth-permissions.004
     stable_key: 'manual:api.auth-permissions:setpermissionsteam-universal-coverage-arch-test'
@@ -40439,7 +40487,7 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-08T23:20:27Z'
     review:
@@ -40448,8 +40496,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6d1e4a70
+    regression_test: 'tests/Architecture/AuthLifecycleTest.php::test_every_auth_sanctum_route_group_includes_set_permissions_team'
     blocked_reason: null
     history:
       -
@@ -40500,6 +40548,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'cluster started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T00:01:40Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 63dd2779b981ad8f768bfdf2692ef29a6e1591a39a747bcd5c96e7b81332c544
+        new_yaml_sha256: 281bd118ab39692dd50245c5a51f7a0365de57e573bb83ad5142e7221424b371
+        target_ids:
+          - api.auth-permissions.004
+        from_status: in_progress
+        to_status: under_review
+        commit: 6d1e4a70
+        test: 'tests/Architecture/AuthLifecycleTest.php::test_every_auth_sanctum_route_group_includes_set_permissions_team'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.auth-permissions.005
     stable_key: 'manual:api.auth-permissions:token-tenant-claim-defense-in-depth'
