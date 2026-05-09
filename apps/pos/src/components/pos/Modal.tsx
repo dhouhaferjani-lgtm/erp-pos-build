@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,6 +13,14 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }: ModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap: Tab cycles within the modal; close restores focus to
+  // the element that opened it. Closes the T2.1 deferral that flagged
+  // BarcodeChooserModal — the gap was pre-existing across all modals
+  // using this base. Every consumer of <Modal> inherits the fix.
+  useFocusTrap({ isActive: isOpen, containerRef });
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -34,6 +43,9 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md' }:
 
       {/* Content */}
       <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
         className={cn(
           'relative z-10 flex w-full flex-col rounded-2xl bg-white shadow-2xl overflow-hidden',
           size === 'sm' && 'max-w-sm max-h-[45vh]',

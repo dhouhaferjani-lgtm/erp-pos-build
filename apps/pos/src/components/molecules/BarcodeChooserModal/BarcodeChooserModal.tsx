@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import type { POSProduct } from '@/types/product';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /**
  * T2.1 Step B — collision chooser modal for barcode/SKU scans that
@@ -30,8 +31,20 @@ export function BarcodeChooserModal({
 }: BarcodeChooserModalProps) {
   const { t } = useTranslation('pos');
   const firstButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Trap focus on the first candidate when the modal opens.
+  // T2.1 follow-up — full focus trap (Tab/Shift+Tab cycles within the
+  // dialog; close restores focus to the originating element). Replaces
+  // the prior first-button-only focus behaviour. The legacy
+  // firstButtonRef autofocus is kept as a small UX win — useFocusTrap
+  // will overwrite this on activation, but if the trap's effect lags,
+  // the explicit ref still gives us the right initial target.
+  useFocusTrap({ isActive: isOpen, containerRef: dialogRef });
+
+  // Initial focus race-guard — if useFocusTrap's effect fires before
+  // the dialog's first button is in the DOM (vanishingly rare), this
+  // explicit autofocus ensures the cashier's first Tab still lands on
+  // the candidate list rather than the X close button.
   useEffect(() => {
     if (isOpen) {
       firstButtonRef.current?.focus();
@@ -59,6 +72,7 @@ export function BarcodeChooserModal({
       onClick={onDismiss}
     >
       <div
+        ref={dialogRef}
         className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
