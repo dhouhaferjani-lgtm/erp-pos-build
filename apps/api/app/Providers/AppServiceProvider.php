@@ -13,6 +13,7 @@ use App\Modules\Accounting\Domain\Observers\JournalLineObserver;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
@@ -21,6 +22,7 @@ use App\Modules\Product\Infrastructure\Services\ProductEnrichmentQueryService;
 use App\Modules\Product\Infrastructure\Services\ProductInventoryQueryService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Observers\TenantObserver;
+use App\Observers\UserObserver;
 use App\Services\CompanyConfigService;
 use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
@@ -100,8 +102,14 @@ class AppServiceProvider extends ServiceProvider
         JournalEntry::observe(JournalEntryObserver::class);
         JournalLine::observe(JournalLineObserver::class);
 
-        // Register tenant observer for cache invalidation
+        // Register tenant observer for cache invalidation + Sanctum token revocation
+        // (api.auth-permissions Invariants A.1 + A.2)
         Tenant::observe(TenantObserver::class);
+
+        // Register user observer for Sanctum token revocation on tenant_id change
+        // (api.auth-permissions Invariant A.3 — forward-compat defense; no production
+        // endpoint mutates users.tenant_id today)
+        User::observe(UserObserver::class);
     }
 
     /**
