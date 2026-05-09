@@ -680,15 +680,32 @@ Regression tests:
 
 Owner: claude. One commit (or two — lifecycle hooks + architecture test as one, defense-in-depth tenant claim as second).
 
-### Section 16: POS-cluster work BLOCKED on POS orchestrator branch
+### Section 16: POS-cluster status — orchestrator gate retired 2026-05-09
 
-Per Codex S2 + the consolidation checkpoint: POS-specific tenant-isolation work is NOT done in parallel. Workflow:
+**Original framing (Codex S2 + consolidation checkpoint):** Three clusters — `api.pos-stabilization`, `tauri.sqlite-cache`, `tauri.sync-envelope` — were marked `blocked` with `blocked_by_external: pos_orchestrator_branch`, on the assumption that a separate POS orchestrator session would handle tenant-isolation inside an isolated branch and either merge first or hand explicit ownership back.
 
-1. The tenant-isolation sweep marks `api.pos-stabilization`, `tauri.sqlite-cache`, `tauri.sync-envelope` as `blocked` with `blocked_by_external: pos_orchestrator_branch`.
-2. The POS orchestrator does the tenant-isolation work inside their branch (using the Treasury cluster as the established pattern).
-3. Either the POS orchestrator branch merges first and the tenant-isolation sweep then resolves these clusters from the merged code, OR the POS orchestrator hands explicit ownership to the sweep with a documented agreement.
+**Status update (2026-05-09):** No POS orchestrator session ever materialized. The active POS work (`apps/erp-pos-stabperf` worktree, branch `feat/pos-t1.3-sync-indicator-truthfulness`) is the **stabilization-performance roadmap** — offline-first hardening, sync-indicator truthfulness, catalog warmup performance — not tenant-isolation. The orchestrator gate was a placeholder for a coordinator that doesn't exist.
 
-This explicitly respects `2026-04-30-pos-consolidation-checkpoint.md`'s "no parallel POS sessions" rule.
+**Resolution:**
+
+- `api.pos-stabilization` was claimed and locked through the regular flow on the sweep branch (status: `fixed` per the cluster rollup; review verdict recorded in the inventory). No orchestrator coordination was needed.
+- `tauri.sqlite-cache` and `tauri.sync-envelope` remain `status: blocked`. They have **zero callsites** (the seed YAML declared the cluster status without scanner-generated rows) and the sweep tooling has no CLI path that can transition a cluster-only status entry — `sweep:inventory:unblock` is per-callsite only (line 22-23 of `SweepInventoryUnblockCommand`: "cluster unblock is OUT OF SCOPE per the master plan; --cluster is refused"), and `sweep:inventory:block --cluster` requires eligible callsites by the audit-trail invariant (`SweepInventoryBlockCommand::handleClusterBlock` line 261). Manual YAML edit would pass `verify-history` (per-callsite scope) but would set bad precedent for cluster-only mutations.
+- **Un-defer condition:** EITHER the apps/pos Tauri scanners ship and seed real callsites under these clusters (then `sweep:inventory:unblock --callsite-id <id>` works once a `block` event is appended for any callsite that previously transitioned through pre-fixed states), OR a new `sweep:inventory:revive` command is added that supports cluster-only status mutations with proper audit-trail support (e.g., a top-level `coordination_history` array hashed alongside callsite history).
+- **Cleanup is post-launch concern.** Both tauri clusters target `apps/pos/src/__tests__/...` test files (`sqliteCacheTenantScope.test.ts`, `syncEnvelopeTenantScope.test.ts`) that don't yet exist. The tenant-isolation cluster guarantee for the Tauri surface is therefore deferred to whichever future session ships those scanners and tests; the sweep PR can land with these two clusters documented as deferred-blocked, not pending.
+
+### Section 16.1: Agent ownership recalibration 2026-05-09
+
+After `api.auth-permissions` locked at `df60983c` — the last architectural cluster — the agent matrix was recalibrated. **Claude takes ownership of all remaining per-cluster execution.** Codex stays as adversarial reviewer only.
+
+**Operational mechanics:**
+
+- The `agents:` block in the inventory YAML is **NOT updated**. Mutating it via `InventoryService` passes optimistic-lock + schema validation but fails `sweep:inventory:verify-history` because the new `metadata.yaml_sha256` isn't anchored in any callsite history event (Codex round-2 finding #6). The audit-trail invariant only covers callsite-level mutations; non-callsite metadata changes are structurally outside its scope.
+- Per-cluster `required_owner` fields (e.g., `required_owner: codex` on api.identity-company, api.inventory, api.catalog, …) likewise remain unchanged.
+- **Reassignment surfaces at claim time:** when Claude claims a Codex-owned cluster, use `php artisan sweep:inventory:claim --callsite-id <id> --actor=claude --force --reason "ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only" --approved-by <user>`. The `--force` flag bypasses the `required_owner` check; the `--reason` and `--approved-by` are recorded in the callsite's history event, providing per-cluster audit-trail evidence at the point where it matters.
+- This is asymmetric on purpose: Codex CANNOT claim new clusters (they would have to use `--force` against `required_owner: claude` for the original Claude clusters, which they wouldn't), and the soft `agents.codex.can_claim` list is unchanged but no longer represents intent.
+- Cross-agent review remains non-negotiable: `sweep:inventory:review --reviewer-must-differ-from-owner` enforces that Claude doesn't review her own claims; Codex reviews everything Claude submits. Roles flipped: Codex moves from review-quorum-mate to sole reviewer.
+
+**Why not retroactively rewrite the YAML or required_owner fields?** Both would require either (a) a tooling detour (new `sweep:inventory:reassign` command with non-callsite audit support — out of scope) or (b) accepting verify-history failure (sets bad precedent). The decision is documented here in the master plan + per-cluster `--force --reason` audit trail at claim time, which is sufficient evidence that the change was intentional.
 
 ### Section 17: Tactical-phase final verification + PR
 
