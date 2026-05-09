@@ -37,7 +37,8 @@ class StoreModifierRequest extends FormRequest
             'component_type' => ['nullable', new Enum(ComponentType::class)],
             'component_id' => ['nullable', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
             'component_quantity' => ['nullable', 'numeric', 'min:0'],
-            'component_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
+            // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
+            'component_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_default' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],

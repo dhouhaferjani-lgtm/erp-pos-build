@@ -53,4 +53,22 @@ final class ScopedExists
         return Rule::exists($table, $column)
             ->where('company_id', $companyId);
     }
+
+    /**
+     * api.catalog.022 round-2: Factory for tables with nullable tenant_id where
+     * NULL rows are shared system rows (e.g. the units table). Accepts both the
+     * caller's tenant rows AND system rows (tenant_id IS NULL) while rejecting
+     * rows owned by a different tenant.
+     */
+    public static function tenantOrSystem(
+        string $table,
+        string $tenantId,
+        string $column = 'id',
+    ): Exists {
+        return Rule::exists($table, $column)
+            ->where(static function ($q) use ($tenantId): void {
+                $q->where('tenant_id', $tenantId)
+                    ->orWhereNull('tenant_id');
+            });
+    }
 }

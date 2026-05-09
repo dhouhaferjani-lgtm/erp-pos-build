@@ -9,6 +9,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\CompositeItemVariant;
 use App\Modules\Catalog\Presentation\Requests\StoreVariantRequest;
 use App\Modules\Company\Services\CompanyContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -22,13 +23,17 @@ class CompositeItemVariantController extends Controller
 
     public function index(string $compositeItemId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.021 round-2: ::query() + tenant_id predicate on CompositeItem lookup.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
         $variants = CompositeItemVariant::where('composite_item_id', $item->id)
             ->orderBy('display_order')
             ->get();
@@ -40,13 +45,17 @@ class CompositeItemVariantController extends Controller
 
     public function store(StoreVariantRequest $request, string $compositeItemId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.021 round-2: ::query() + tenant_id predicate on CompositeItem lookup.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
 
         // If setting as default, unset other defaults
         if ($request->boolean('is_default')) {
@@ -64,16 +73,22 @@ class CompositeItemVariantController extends Controller
 
     public function update(Request $request, string $id): JsonResponse
     {
+        // api.catalog.021 round-2: whereHas scopes CompositeItemVariant via compositeItem
+        // (composite_item_variants has no tenant_id/company_id — ownership via FK).
+        // whereRaw required because the generic Builder<Model> closure does not narrow
+        // to CompositeItem at PHPStan level 8.
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $variant = CompositeItemVariant::with('compositeItem')->findOrFail($id);
-
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($variant->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
+        $variant = CompositeItemVariant::with('compositeItem')
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
+            ->findOrFail($id);
 
         $validated = $request->validate([
             'code' => ['sometimes', 'string', 'max:100'],
@@ -100,16 +115,19 @@ class CompositeItemVariantController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
+        // api.catalog.021 round-2: whereHas scopes CompositeItemVariant via compositeItem.
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $variant = CompositeItemVariant::with('compositeItem')->findOrFail($id);
-
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($variant->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
+        $variant = CompositeItemVariant::with('compositeItem')
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
+            ->findOrFail($id);
 
         $variant->delete();
 

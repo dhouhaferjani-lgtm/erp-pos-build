@@ -6,6 +6,7 @@ namespace Tests\Feature\Catalog;
 
 use App\Enums\Vertical;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Catalog\Domain\Entities\CompositeItemVariant;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Domain\Entities\Recipe;
@@ -104,6 +105,8 @@ final class CatalogTenantIsolationTest extends TestCase
     private Product $productA;
 
     private Product $productB;
+
+    private CompositeItem $compositeItemB;
 
     protected function setUp(): void
     {
@@ -206,8 +209,16 @@ final class CatalogTenantIsolationTest extends TestCase
             'code' => 'CI-A',
             'name' => 'Composite A',
             'base_price' => 5.00,
+            'vertical_type' => 'generic',
         ]);
-
+        $this->compositeItemB = CompositeItem::create([
+            'tenant_id' => $this->tenantB->id,
+            'company_id' => $this->companyB->id,
+            'code' => 'CI-B',
+            'name' => 'Composite B',
+            'base_price' => 5.00,
+            'vertical_type' => 'generic',
+        ]);
         $this->modifierGroupA = ModifierGroup::create([
             'tenant_id' => $this->tenantA->id,
             'company_id' => $this->companyA->id,
@@ -672,6 +683,7 @@ final class CatalogTenantIsolationTest extends TestCase
             'code' => 'CI-B-RL',
             'name' => 'Foreign Composite',
             'base_price' => 1.00,
+            'vertical_type' => 'generic',
         ]);
 
         $cross = $this->actingAsForTenant($this->userA, $this->companyA)
@@ -1211,6 +1223,378 @@ final class CatalogTenantIsolationTest extends TestCase
             'name' => 'France',
             'currency_code' => 'EUR',
             'default_locale' => 'fr_FR',
+            'is_active' => true,
+        ]);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.018 — CompositeItemController route-anchored lookups
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_composite_item_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/composite-items/{$this->compositeItemB->id}");
+        $cross->assertStatus(404);
+
+        $same = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/composite-items/{$this->compositeItemA->id}");
+        $same->assertStatus(200);
+    }
+
+    public function test_update_composite_item_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/composite-items/{$this->compositeItemB->id}", [
+                'name' => 'Hijacked',
+            ]);
+        $cross->assertStatus(404);
+
+        $this->assertSame(
+            'Composite B',
+            $this->compositeItemB->fresh()?->name,
+            'Cross-tenant update must NOT mutate the foreign composite item.',
+        );
+    }
+
+    public function test_destroy_composite_item_rejects_cross_tenant_id(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->deleteJson("/api/v1/composite-items/{$this->compositeItemB->id}");
+        $cross->assertStatus(404);
+
+        $this->assertNotNull(
+            $this->compositeItemB->fresh(),
+            'Cross-tenant composite item must NOT be deleted.',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.019 — RecipeController: CompositeItem + Recipe reads
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_recipe_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/recipes/{$recipeB->id}");
+        $cross->assertStatus(404);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.020 — RecipeLineController::store recipe lookup
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_create_recipe_line_rejects_cross_tenant_recipe_id(): void
+    {
+        /** @var Recipe $recipeB */
+        $recipeB = Recipe::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeB->id}/lines", [
+                'component_type' => 'product',
+                'component_id' => $this->productA->id,
+                'quantity' => 1.0,
+            ]);
+        // Cross-tenant recipe ownership check must yield 404 (not 403).
+        $cross->assertStatus(404);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.021 — CompositeItemVariantController
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_show_composite_item_variant_rejects_cross_tenant_via_composite_item(): void
+    {
+        /** @var CompositeItemVariant $variantB */
+        $variantB = CompositeItemVariant::create([
+            'composite_item_id' => $this->compositeItemB->id,
+            'code' => 'VAR-B',
+            'name' => 'Variant B',
+            'price_adjustment_type' => 'absolute',
+            'price_adjustment' => 0,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/composite-item-variants/{$variantB->id}", [
+                'name' => 'Hijacked',
+            ]);
+        $cross->assertStatus(404);
+
+        $this->assertSame(
+            'Variant B',
+            $variantB->fresh()?->name,
+            'Cross-tenant update must NOT mutate the foreign variant.',
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.022 — ScopedExists::tenantOrSystem for units table
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_units_validator_accepts_system_units(): void
+    {
+        // System rows have tenant_id = NULL.
+        $unitCategoryId = $this->seedUnitCategory();
+        $systemUnitId = (string) Str::uuid();
+        DB::table('units')->insert([
+            'id' => $systemUnitId,
+            'tenant_id' => null,
+            'category_id' => $unitCategoryId,
+            'code' => 'kg-sys',
+            'name' => 'Kilogram (system)',
+            'symbol' => 'kg',
+            'conversion_factor' => 1000,
+            'decimal_places' => 2,
+            'is_base_unit' => false,
+            'is_system' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 1,
+            'is_active' => true,
+            'yield_quantity' => 1,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'product',
+                'component_id' => $this->productA->id,
+                'quantity' => 1.0,
+                'unit_id' => $systemUnitId,
+            ]);
+        $response->assertStatus(201);
+    }
+
+    public function test_units_validator_accepts_caller_tenant_units(): void
+    {
+        $unitCategoryId = $this->seedUnitCategory();
+        $tenantUnitId = (string) Str::uuid();
+        DB::table('units')->insert([
+            'id' => $tenantUnitId,
+            'tenant_id' => $this->tenantA->id,
+            'category_id' => $unitCategoryId,
+            'code' => 'litre-a',
+            'name' => 'Litre (Tenant A)',
+            'symbol' => 'L',
+            'conversion_factor' => 1,
+            'decimal_places' => 2,
+            'is_base_unit' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 2,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+
+        $response = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'product',
+                'component_id' => $this->productA->id,
+                'quantity' => 1.0,
+                'unit_id' => $tenantUnitId,
+            ]);
+        $response->assertStatus(201);
+    }
+
+    public function test_units_validator_rejects_other_tenant_units(): void
+    {
+        $unitCategoryId = $this->seedUnitCategory();
+        $foreignUnitId = (string) Str::uuid();
+        DB::table('units')->insert([
+            'id' => $foreignUnitId,
+            'tenant_id' => $this->tenantB->id,
+            'category_id' => $unitCategoryId,
+            'code' => 'box-b',
+            'name' => 'Box (Tenant B)',
+            'symbol' => 'box',
+            'conversion_factor' => 1,
+            'decimal_places' => 0,
+            'is_base_unit' => false,
+            'is_system' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 3,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'product',
+                'component_id' => $this->productA->id,
+                'quantity' => 1.0,
+                'unit_id' => $foreignUnitId,
+            ]);
+        $cross->assertStatus(422);
+        $this->assertArrayHasKey('unit_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.023 — Country_code coherence on default_tax_configuration_id
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_create_composite_item_rejects_foreign_country_tax_configuration(): void
+    {
+        $this->seedFranceCountryRow();
+        $this->seedTunisiaCountryRow();
+        $tnTaxId = (string) Str::uuid();
+        DB::table('tax_configurations')->insert([
+            'id' => $tnTaxId,
+            'country_code' => 'TN',
+            'tax_type' => 'PERCENTAGE',
+            'name' => 'TVA Tunisie',
+            'percentage_rate' => 19.00,
+            'applies_to' => 'LINE_ITEMS',
+            'is_default' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // companyA is FR; TN tax_configuration should be rejected.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson('/api/v1/composite-items', [
+                'code' => 'CI-TAX-TN',
+                'name' => 'Composite TN Tax',
+                'base_price' => 1.00,
+                'default_tax_configuration_id' => $tnTaxId,
+            ]);
+        $cross->assertStatus(422);
+        $this->assertArrayHasKey('default_tax_configuration_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.024 — ModifierController component_type Enum validation
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_modifier_update_rejects_invalid_component_type_enum_value(): void
+    {
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->patchJson("/api/v1/modifiers/{$this->modifierA->id}", [
+                'component_type' => 'invalid_type',
+            ]);
+        $cross->assertStatus(422);
+        $this->assertArrayHasKey('component_type', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.025 — CompositeItemController::checkAvailability location_id scope
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_check_availability_rejects_cross_company_location_id(): void
+    {
+        // Seed a location belonging to companyB.
+        $locationBId = (string) Str::uuid();
+        DB::table('locations')->insert([
+            'id' => $locationBId,
+            'company_id' => $this->companyB->id,
+            'name' => 'Location B',
+            'type' => 'shop',
+            'is_default' => false,
+            'is_active' => true,
+            'pos_enabled' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson("/api/v1/composite-items/{$this->compositeItemA->id}/availability?location_id={$locationBId}");
+        $cross->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.026 — NoCircularCompositeItemReference cross-tenant safety
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_no_circular_composite_item_rule_silently_ignores_cross_tenant_id(): void
+    {
+        // A cross-tenant compositeItemId passed as component_id must NOT
+        // surface cross-tenant data — the rule must treat it as "no cycle".
+        /** @var Recipe $recipeA */
+        $recipeA = Recipe::create([
+            'composite_item_id' => $this->compositeItemA->id,
+            'version' => 1,
+            'is_active' => false,
+            'yield_quantity' => 1,
+        ]);
+
+        // compositeItemB belongs to tenantB. The component_id validator
+        // (ScopedExists) must reject it before the circular rule fires.
+        // So we test that the REQUEST itself rejects cross-tenant, not that the rule fires.
+        $cross = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->postJson("/api/v1/recipes/{$recipeA->id}/lines", [
+                'component_type' => 'composite_item',
+                'component_id' => $this->compositeItemB->id,
+                'quantity' => 1.0,
+            ]);
+        $cross->assertStatus(422);
+        $this->assertArrayHasKey('component_id', $cross->json('error.errors') ?? []);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Private helpers
+    // ──────────────────────────────────────────────────────────────────
+
+    private function seedUnitCategory(): string
+    {
+        $existing = DB::table('unit_categories')->where('code', 'mass-iso-test')->value('id');
+        if ($existing !== null) {
+            return (string) $existing;
+        }
+
+        $id = (string) Str::uuid();
+        DB::table('unit_categories')->insert([
+            'id' => $id,
+            'code' => 'mass-iso-test',
+            'name' => 'Mass (isolation test)',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    private function seedTunisiaCountryRow(): void
+    {
+        if (DB::table('countries')->where('code', 'TN')->exists()) {
+            return;
+        }
+        DB::table('countries')->insert([
+            'code' => 'TN',
+            'name' => 'Tunisia',
+            'currency_code' => 'TND',
+            'default_locale' => 'ar_TN',
             'is_active' => true,
         ]);
     }

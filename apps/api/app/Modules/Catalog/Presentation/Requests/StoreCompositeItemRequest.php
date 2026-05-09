@@ -7,6 +7,7 @@ namespace App\Modules\Catalog\Presentation\Requests;
 use App\Modules\Catalog\Domain\Enums\PricingMode;
 use App\Modules\Catalog\Domain\Enums\ProductionType;
 use App\Modules\Catalog\Domain\Enums\VerticalType;
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,7 +32,8 @@ class StoreCompositeItemRequest extends FormRequest
      */
     public function rules(): array
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
 
         return [
             'code' => [
@@ -47,10 +49,20 @@ class StoreCompositeItemRequest extends FormRequest
             'production_type' => ['sometimes', new Enum(ProductionType::class)],
             'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            // tax_configurations is country-scoped (see UpdateCompositeItemRequest comment).
-            'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
+            // api.catalog.023 round-2: tax_configurations is country-scoped (no tenant_id/
+            // company_id). TaxCalculationService selects applicable configs by
+            // company.country_code at calculation time (Modules/Taxation/Domain/Services/
+            // TaxCalculationService.php:38-43), so a mismatched default_tax_configuration_id
+            // is silently ignored — no cross-tenant data leak, but the field stores
+            // integrity garbage. Defense-in-depth coherence check enforced below via
+            // TaxConfigurationCountryCoherent rule.
+            'default_tax_configuration_id' => [
+                'nullable', 'uuid', 'exists:tax_configurations,id',
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
             'manual_cost' => ['nullable', 'numeric', 'min:0'],
-            'stock_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
+            // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
+            'stock_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_active' => ['sometimes', 'boolean'],
             'is_available' => ['sometimes', 'boolean'],
             'image_url' => ['nullable', 'string', 'max:500'],

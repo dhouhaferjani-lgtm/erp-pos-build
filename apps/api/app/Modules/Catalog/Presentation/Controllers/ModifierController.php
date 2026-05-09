@@ -7,6 +7,7 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 use App\Modules\Catalog\Application\DTOs\ModifierData;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
+use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Presentation\Requests\StoreModifierRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Enum;
 
 class ModifierController extends Controller
 {
@@ -62,14 +64,16 @@ class ModifierController extends Controller
             'code' => ['sometimes', 'string', 'max:100'],
             'name' => ['sometimes', 'string', 'max:255'],
             'price_adjustment' => ['sometimes', 'numeric'],
-            'component_type' => ['nullable', 'string'],
+            // api.catalog.024 round-2: enforce Enum constraint on component_type (was bare 'string').
+            'component_type' => ['nullable', new Enum(ComponentType::class)],
             'component_id' => [
                 'nullable',
                 'uuid',
                 ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
             ],
             'component_quantity' => ['nullable', 'numeric', 'min:0'],
-            'component_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
+            // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
+            'component_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_default' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],

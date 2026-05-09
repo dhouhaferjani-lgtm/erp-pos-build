@@ -43,7 +43,9 @@ class StoreRecipeLineRequest extends FormRequest
             'component_type' => ['sometimes', new Enum(ComponentType::class)],
             'component_id' => ['required', 'uuid', $componentExistsRule],
             'quantity' => ['required', 'numeric', 'min:0.0001'],
-            'unit_id' => ['nullable', 'uuid', 'exists:units,id'],
+            // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
+            // ScopedExists::tenantOrSystem accepts tenant-owned + system rows, rejects others.
+            'unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_optional' => ['sometimes', 'boolean'],
             'is_scalable' => ['sometimes', 'boolean'],
             'wastage_percent' => ['sometimes', 'numeric', 'min:0', 'max:100'],

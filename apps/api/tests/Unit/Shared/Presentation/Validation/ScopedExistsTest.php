@@ -114,4 +114,47 @@ class ScopedExistsTest extends TestCase
             (string) $rule,
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // api.catalog.022 — tenantOrSystem factory: string-shape contract.
+    // Behavioral DB tests live in CatalogTenantIsolationTest.
+    // ──────────────────────────────────────────────────────────────────
+
+    public function test_tenant_or_system_factory_returns_exists_rule(): void
+    {
+        $rule = ScopedExists::tenantOrSystem(
+            table: 'units',
+            tenantId: 'tenant-abc',
+        );
+
+        $this->assertInstanceOf(Exists::class, $rule);
+    }
+
+    public function test_tenant_or_system_factory_accepts_custom_column(): void
+    {
+        $rule = ScopedExists::tenantOrSystem(
+            table: 'units',
+            tenantId: 't-1',
+            column: 'code',
+        );
+
+        $rendered = (string) $rule;
+        $this->assertStringStartsWith('exists:units,code', $rendered);
+    }
+
+    public function test_tenant_or_system_factory_string_contains_closure_where(): void
+    {
+        // The rule uses a Closure-based where() which Laravel serialises as
+        // an empty string in the canonical form. Assert we get a valid Exists
+        // object with the table name embedded.
+        $rule = ScopedExists::tenantOrSystem(
+            table: 'units',
+            tenantId: 't-1',
+        );
+
+        $rendered = (string) $rule;
+        // The closure-where renders as the empty-where token after the column.
+        $this->assertStringContainsString('units', $rendered);
+        $this->assertInstanceOf(Exists::class, $rule);
+    }
 }
