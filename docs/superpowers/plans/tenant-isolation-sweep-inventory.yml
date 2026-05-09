@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-08T23:20:17Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 1ee27694cfde3967f836a71f1de825ca0fabdfc2d532ed7c75ce1f27a1a7e3b0
+  yaml_sha256: a563ac83f041735ddf4876b53795192a7344504125aa76f9a52edfdb84093054
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -221,7 +221,7 @@ clusters:
     surface: api
     owner: codex
     required_owner: codex
-    status: in_progress
+    status: fixed
     blocked_by:
       - api.treasury
     blocked_by_external: null
@@ -33072,17 +33072,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:10Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:34Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_duplicate_composite_item_rejects_cross_tenant_id'
     blocked_reason: null
     history:
       -
@@ -33133,6 +33133,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:40Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1ee27694cfde3967f836a71f1de825ca0fabdfc2d532ed7c75ce1f27a1a7e3b0
+        new_yaml_sha256: 525ba870d957e9b354b2f25355379d1a375da5ed280ca4de4d6d16391509654b
+        target_ids:
+          - api.catalog.018
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_composite_item_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:03Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d536f007bf4ca3ef139c19c6f3d076bd34044e113d2ec9bc43653ed324924dfc
+        new_yaml_sha256: 4d61cc276c1c1e75f45a8c75443ee256baef9d77c2c153bacdcd0bfbec2287ee
+        target_ids:
+          - api.catalog.018
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:24:55Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aa93ffc2baba140ccd839a46b0e0edcb46e4209d35264cbb55a976869b4d6439
+        new_yaml_sha256: ab0ab2d71c0818dca8bb0d175e6cdc2ba08ee52d57d6aa55da0b6d20d0376aec
+        target_ids:
+          - api.catalog.018
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_duplicate_composite_item_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:28Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1f8eab34b6f8f5a0646a66673c158bdf761912e1e4aad7988555bc0f8b4c881e
+        new_yaml_sha256: 6fa60626c5957ff4bec41f8f7124fd001180634a541b0c87e82a5b4c0f9092c3
+        target_ids:
+          - api.catalog.018
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:49Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0049478bc2ca4da5b872999a3d0f213e15be2455354a05051dc5727d60a9e589
+        new_yaml_sha256: d47d09bc9d040acf82bc9dc92922a5efce9f2c125a75bcd74168f980552aa537
+        target_ids:
+          - api.catalog.018
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_duplicate_composite_item_rejects_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:34Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 4a48235b28c31b0e6f461792bc18fd153cd7612fbe2d84dba7f822d2667340b0
+        new_yaml_sha256: 3e43c7c38ef5efd814c460fe11fa8df7c81e30d561df2dccd967aacf0fd9560a
+        target_ids:
+          - api.catalog.018
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.019
     stable_key: 'manual:api.catalog:recipe-controller-bare-where-chains'
@@ -33150,17 +33247,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:11Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:35Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_recipe_store_rejects_cross_tenant_composite_item_id'
     blocked_reason: null
     history:
       -
@@ -33211,6 +33308,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:41Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 525ba870d957e9b354b2f25355379d1a375da5ed280ca4de4d6d16391509654b
+        new_yaml_sha256: 52dceed01f7c2509ffe953b9bc7cb66fa1f20dad9d2529915d6df58383b5a250
+        target_ids:
+          - api.catalog.019
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_recipe_rejects_cross_tenant_via_composite_item'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:04Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 4d61cc276c1c1e75f45a8c75443ee256baef9d77c2c153bacdcd0bfbec2287ee
+        new_yaml_sha256: 2a28798ddfd5fa88a05c8cf21afd25e88f10d4e253188f3ba11c75fe96ba9f10
+        target_ids:
+          - api.catalog.019
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:24:56Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ab0ab2d71c0818dca8bb0d175e6cdc2ba08ee52d57d6aa55da0b6d20d0376aec
+        new_yaml_sha256: a30f421c663faf84617a8a544a91f7804ebf48dc1ee058721d14176634d1b7f4
+        target_ids:
+          - api.catalog.019
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_recipe_index_rejects_cross_tenant_composite_item_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:30Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6fa60626c5957ff4bec41f8f7124fd001180634a541b0c87e82a5b4c0f9092c3
+        new_yaml_sha256: 34d1eb37012432eaa1c6741d14586f58471c7b2b942621264e3dcf257324a03b
+        target_ids:
+          - api.catalog.019
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:50Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d47d09bc9d040acf82bc9dc92922a5efce9f2c125a75bcd74168f980552aa537
+        new_yaml_sha256: 9f411fd6334ce4a8d816741e48816b7a32e5706c40b9a42d4dd9a8966af1dabe
+        target_ids:
+          - api.catalog.019
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_recipe_store_rejects_cross_tenant_composite_item_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:35Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3e43c7c38ef5efd814c460fe11fa8df7c81e30d561df2dccd967aacf0fd9560a
+        new_yaml_sha256: 27e63ac07e387a0dd6d07dd4b4101df0b9a96e73e58db6a02dee6d6684f74009
+        target_ids:
+          - api.catalog.019
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.020
     stable_key: 'manual:api.catalog:recipe-line-controller-store-bare-where-chain'
@@ -33228,17 +33422,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:13Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:36Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_recipe_line_rejects_cross_tenant_recipe_id'
     blocked_reason: null
     history:
       -
@@ -33289,6 +33483,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:42Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 52dceed01f7c2509ffe953b9bc7cb66fa1f20dad9d2529915d6df58383b5a250
+        new_yaml_sha256: 9de995df87a1f29b5a3616f30a8f3041c834a9911f99b40091d9aab8ba01d81a
+        target_ids:
+          - api.catalog.020
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_recipe_line_rejects_cross_tenant_recipe_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:05Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2a28798ddfd5fa88a05c8cf21afd25e88f10d4e253188f3ba11c75fe96ba9f10
+        new_yaml_sha256: 1167ceb6ac09f682490bb61da32aaf7f5e1b64f5c403fe4fd44e6eb51012606e
+        target_ids:
+          - api.catalog.020
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:24:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a30f421c663faf84617a8a544a91f7804ebf48dc1ee058721d14176634d1b7f4
+        new_yaml_sha256: 6dd4d4f7a8d3d9ed046ced92130dc7492e9557890752375fad0ec08cc112acb3
+        target_ids:
+          - api.catalog.020
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_recipe_line_rejects_cross_tenant_recipe_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:31Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 34d1eb37012432eaa1c6741d14586f58471c7b2b942621264e3dcf257324a03b
+        new_yaml_sha256: 1b7e7ea18f6c298f2889031faa578ac08ca54a7aa46ed21372c1fefc06f9a8eb
+        target_ids:
+          - api.catalog.020
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:51Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9f411fd6334ce4a8d816741e48816b7a32e5706c40b9a42d4dd9a8966af1dabe
+        new_yaml_sha256: 596989996d5c53a48d0b531eafba1b714863201f8d826dcf6923b15d38c2c816
+        target_ids:
+          - api.catalog.020
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_update_recipe_line_rejects_cross_tenant_recipe_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:36Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 27e63ac07e387a0dd6d07dd4b4101df0b9a96e73e58db6a02dee6d6684f74009
+        new_yaml_sha256: 826787f55bcc942628c3065027d2692858130021420f442a81ec201bb9426c15
+        target_ids:
+          - api.catalog.020
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.021
     stable_key: 'manual:api.catalog:composite-item-variant-controller-bare-where-chain'
@@ -33306,17 +33597,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:14Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:37Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_variant_store_rejects_cross_tenant_composite_item_id'
     blocked_reason: null
     history:
       -
@@ -33367,6 +33658,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:44Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9de995df87a1f29b5a3616f30a8f3041c834a9911f99b40091d9aab8ba01d81a
+        new_yaml_sha256: 150ede57e77874085de2ec8b12fab7936f1155ef301efbbe514a501052e16f45
+        target_ids:
+          - api.catalog.021
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_composite_item_variant_rejects_cross_tenant_via_composite_item'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:06Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1167ceb6ac09f682490bb61da32aaf7f5e1b64f5c403fe4fd44e6eb51012606e
+        new_yaml_sha256: 5e0ca117d29ba0f1b6456e886cd6b66d1fb671c7fe0834a9318170a678cde381
+        target_ids:
+          - api.catalog.021
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:24:59Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6dd4d4f7a8d3d9ed046ced92130dc7492e9557890752375fad0ec08cc112acb3
+        new_yaml_sha256: 6eee7310ec7dc940bc1528345d809b47f0f2dd78c40f346fee2c5c6116336808
+        target_ids:
+          - api.catalog.021
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_show_composite_item_variant_rejects_cross_tenant_via_composite_item'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:32Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1b7e7ea18f6c298f2889031faa578ac08ca54a7aa46ed21372c1fefc06f9a8eb
+        new_yaml_sha256: f442b6f883d540a8b89b74b714cd82fabd7ee8de0c06f351a2724f39d85f7847
+        target_ids:
+          - api.catalog.021
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:53Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 596989996d5c53a48d0b531eafba1b714863201f8d826dcf6923b15d38c2c816
+        new_yaml_sha256: 9dce028cd01f2c0f30e18dab60715f921260ac90707cdc8921aad8c69dcab9f8
+        target_ids:
+          - api.catalog.021
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_variant_store_rejects_cross_tenant_composite_item_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:37Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 826787f55bcc942628c3065027d2692858130021420f442a81ec201bb9426c15
+        new_yaml_sha256: ae3ff6fa5e55418d27aed73022720412b3a4779a7df56aee8bde4712fe4a6847
+        target_ids:
+          - api.catalog.021
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.022
     stable_key: 'manual:api.catalog:units-bare-exists-eight-callsites'
@@ -33384,17 +33772,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:15Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:38Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_units_validator_rejects_other_tenant_units'
     blocked_reason: null
     history:
       -
@@ -33445,6 +33833,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:45Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 150ede57e77874085de2ec8b12fab7936f1155ef301efbbe514a501052e16f45
+        new_yaml_sha256: 9d56211897ab74410f1884a53253a0011bfc47fc42f9f9c3b0584a8d4787dd6b
+        target_ids:
+          - api.catalog.022
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_units_validator_rejects_other_tenant_units'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:08Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5e0ca117d29ba0f1b6456e886cd6b66d1fb671c7fe0834a9318170a678cde381
+        new_yaml_sha256: a3e7c6d2adfad8273df6e92fdcecd7035d7302454626b5ffcbb2759af87ed308
+        target_ids:
+          - api.catalog.022
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:25:00Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6eee7310ec7dc940bc1528345d809b47f0f2dd78c40f346fee2c5c6116336808
+        new_yaml_sha256: f56751241dcd4816f279fea405efeb375402af3f0b04a6ea69f37348fc86e12d
+        target_ids:
+          - api.catalog.022
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_units_validator_rejects_other_tenant_units'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:33Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f442b6f883d540a8b89b74b714cd82fabd7ee8de0c06f351a2724f39d85f7847
+        new_yaml_sha256: f029ef305db9f99f38958fdfccf951eb47573a126fe38761c6757fc87385c8e7
+        target_ids:
+          - api.catalog.022
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:54Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9dce028cd01f2c0f30e18dab60715f921260ac90707cdc8921aad8c69dcab9f8
+        new_yaml_sha256: 03443ce3cab613fa5b08c64db2f7488d26dd773445c6d0007a47da36070492c9
+        target_ids:
+          - api.catalog.022
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_units_validator_rejects_other_tenant_units'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:39Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ae3ff6fa5e55418d27aed73022720412b3a4779a7df56aee8bde4712fe4a6847
+        new_yaml_sha256: 30c431a8bab163de16e4a413294a4bc2b7087f2b508d4ab3651dcb1aa729bef7
+        target_ids:
+          - api.catalog.022
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.023
     stable_key: 'manual:api.catalog:tax-configurations-country-guard-overstated'
@@ -33462,17 +33947,17 @@ callsites:
     fiscal_path: true
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:16Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:39Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_composite_item_rejects_foreign_country_tax_configuration'
     blocked_reason: null
     history:
       -
@@ -33523,6 +34008,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:46Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9d56211897ab74410f1884a53253a0011bfc47fc42f9f9c3b0584a8d4787dd6b
+        new_yaml_sha256: 972449c96c5b14f9d2f7a7cfb6bbe393e730c483069fac56bc81dbc9fb97c0c7
+        target_ids:
+          - api.catalog.023
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_composite_item_rejects_foreign_country_tax_configuration'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:09Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a3e7c6d2adfad8273df6e92fdcecd7035d7302454626b5ffcbb2759af87ed308
+        new_yaml_sha256: 6790685f44fb36427bf06f77782933c5295e1c2ae5eedc902187e693ebf1b32f
+        target_ids:
+          - api.catalog.023
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:25:01Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f56751241dcd4816f279fea405efeb375402af3f0b04a6ea69f37348fc86e12d
+        new_yaml_sha256: b68a680bef59f8f886398ee153fa9f4073f1918ff95a25f74b1ec21403ab5ac8
+        target_ids:
+          - api.catalog.023
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_composite_item_rejects_foreign_country_tax_configuration'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:34Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f029ef305db9f99f38958fdfccf951eb47573a126fe38761c6757fc87385c8e7
+        new_yaml_sha256: 8b8d2c5818e151de75e189ea746f9baeb005659fc1a95b1e7e4e25fa4d1621d6
+        target_ids:
+          - api.catalog.023
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:55Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 03443ce3cab613fa5b08c64db2f7488d26dd773445c6d0007a47da36070492c9
+        new_yaml_sha256: 7f077dbfb6f8a4e2b80edf7e43c0cf574626bee0d7efa7789fadd4caa44b9532
+        target_ids:
+          - api.catalog.023
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_create_composite_item_rejects_foreign_country_tax_configuration'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:40Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 30c431a8bab163de16e4a413294a4bc2b7087f2b508d4ab3651dcb1aa729bef7
+        new_yaml_sha256: 1fe40c92f025acee292965fb54a21269f65c9d0b63763b5a8b18867ff9aeb752
+        target_ids:
+          - api.catalog.023
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.024
     stable_key: 'manual:api.catalog:modifier-controller-component-type-not-enum'
@@ -33540,17 +34122,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:17Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:41Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_modifier_update_rejects_invalid_component_type_enum_value'
     blocked_reason: null
     history:
       -
@@ -33601,6 +34183,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:47Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 972449c96c5b14f9d2f7a7cfb6bbe393e730c483069fac56bc81dbc9fb97c0c7
+        new_yaml_sha256: b045b8b0e1812862528823f4aede551c42014b78c5471c44410273ae20534f81
+        target_ids:
+          - api.catalog.024
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_modifier_update_rejects_invalid_component_type_enum_value'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:10Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6790685f44fb36427bf06f77782933c5295e1c2ae5eedc902187e693ebf1b32f
+        new_yaml_sha256: 39791bda0bbb6594a342f0b2da5491ae0be27d9ba0b58f8a56955184f3140d2d
+        target_ids:
+          - api.catalog.024
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:25:02Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b68a680bef59f8f886398ee153fa9f4073f1918ff95a25f74b1ec21403ab5ac8
+        new_yaml_sha256: 6bcdf8f1bc197b06e65e55f2ad08c8e496ce7156314f243ec50c1e0081af6f0e
+        target_ids:
+          - api.catalog.024
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_modifier_update_rejects_invalid_component_type_enum_value'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:35Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8b8d2c5818e151de75e189ea746f9baeb005659fc1a95b1e7e4e25fa4d1621d6
+        new_yaml_sha256: 81d778286eb5f7975c72fc76b1fa3ab4fdc913bac2751951b9afa256485bdb93
+        target_ids:
+          - api.catalog.024
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:56Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7f077dbfb6f8a4e2b80edf7e43c0cf574626bee0d7efa7789fadd4caa44b9532
+        new_yaml_sha256: 9b526331117efd35b1e13c88cf5b1fd4cf7f6be8262404c166be30300321e358
+        target_ids:
+          - api.catalog.024
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_modifier_update_rejects_invalid_component_type_enum_value'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:41Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 1fe40c92f025acee292965fb54a21269f65c9d0b63763b5a8b18867ff9aeb752
+        new_yaml_sha256: bb38fa3591c7b621b681495ea972d92058feb26621446ecd9176116126450dff
+        target_ids:
+          - api.catalog.024
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.025
     stable_key: 'manual:api.catalog:composite-item-check-availability-location-unscoped'
@@ -33618,17 +34297,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:18Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:42Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_check_availability_rejects_cross_company_location_id'
     blocked_reason: null
     history:
       -
@@ -33679,6 +34358,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:48Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b045b8b0e1812862528823f4aede551c42014b78c5471c44410273ae20534f81
+        new_yaml_sha256: d5797be5e7d8deca673414de96ce519379d4e12c4af1ff8ddfdd27441e675fa1
+        target_ids:
+          - api.catalog.025
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_check_availability_rejects_cross_company_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:11Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 39791bda0bbb6594a342f0b2da5491ae0be27d9ba0b58f8a56955184f3140d2d
+        new_yaml_sha256: 3b8d3222adc52d5da34c5ca5e870b5867d0b575d8c7e3f31ec37c8f42a85963f
+        target_ids:
+          - api.catalog.025
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:25:03Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6bcdf8f1bc197b06e65e55f2ad08c8e496ce7156314f243ec50c1e0081af6f0e
+        new_yaml_sha256: feea86f6208eafca8d982af3ae0fcec6d94b66ea5b8dcc0e93faaa4918bc4e8a
+        target_ids:
+          - api.catalog.025
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_check_availability_rejects_cross_company_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:37Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 81d778286eb5f7975c72fc76b1fa3ab4fdc913bac2751951b9afa256485bdb93
+        new_yaml_sha256: 9dedb8542b0a00ae05df4f870d899b11c72f4c1db5e9a34451d2d9295d09385e
+        target_ids:
+          - api.catalog.025
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9b526331117efd35b1e13c88cf5b1fd4cf7f6be8262404c166be30300321e358
+        new_yaml_sha256: adcc61217127249d678d78e14bdbb6ac4467241e92a98b3c01f92c40d95fc165
+        target_ids:
+          - api.catalog.025
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_check_availability_rejects_cross_company_location_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:42Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: bb38fa3591c7b621b681495ea972d92058feb26621446ecd9176116126450dff
+        new_yaml_sha256: 30f6a0e9b75cbffada729dd55e684301dd3a36808a12351c58782ed7df8266d1
+        target_ids:
+          - api.catalog.025
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.catalog.026
     stable_key: 'manual:api.catalog:no-circular-composite-reference-unscoped-find'
@@ -33696,17 +34472,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: fixed
     owner: claude
     claimed_at: '2026-05-09T16:47:20Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: codex
+      verdict: APPROVE
+      reviewed_at: '2026-05-09T17:42:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+      review_commit: 900b0131
+    fix_commit: 900b0131
+    regression_test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_no_circular_composite_item_rule_silently_ignores_cross_tenant_id'
     blocked_reason: null
     history:
       -
@@ -33757,6 +34533,103 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-09T17:10:49Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d5797be5e7d8deca673414de96ce519379d4e12c4af1ff8ddfdd27441e675fa1
+        new_yaml_sha256: d536f007bf4ca3ef139c19c6f3d076bd34044e113d2ec9bc43653ed324924dfc
+        target_ids:
+          - api.catalog.026
+        from_status: in_progress
+        to_status: under_review
+        commit: 63c1bc95
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_no_circular_composite_item_rule_silently_ignores_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:19:12Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3b8d3222adc52d5da34c5ca5e870b5867d0b575d8c7e3f31ec37c8f42a85963f
+        new_yaml_sha256: aa93ffc2baba140ccd839a46b0e0edcb46e4209d35264cbb55a976869b4d6439
+        target_ids:
+          - api.catalog.026
+        from_status: under_review
+        to_status: in_progress
+        commit: 63c1bc9564e8e88da2e3eed192cf975f6bafed98
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:25:04Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: feea86f6208eafca8d982af3ae0fcec6d94b66ea5b8dcc0e93faaa4918bc4e8a
+        new_yaml_sha256: 1f8eab34b6f8f5a0646a66673c158bdf761912e1e4aad7988555bc0f8b4c881e
+        target_ids:
+          - api.catalog.026
+        from_status: in_progress
+        to_status: under_review
+        commit: 3df52927
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_no_circular_composite_item_rule_silently_ignores_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:33:38Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 9dedb8542b0a00ae05df4f870d899b11c72f4c1db5e9a34451d2d9295d09385e
+        new_yaml_sha256: 0049478bc2ca4da5b872999a3d0f213e15be2455354a05051dc5727d60a9e589
+        target_ids:
+          - api.catalog.026
+        from_status: under_review
+        to_status: in_progress
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
+      -
+        at: '2026-05-09T17:33:58Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: adcc61217127249d678d78e14bdbb6ac4467241e92a98b3c01f92c40d95fc165
+        new_yaml_sha256: 4a48235b28c31b0e6f461792bc18fd153cd7612fbe2d84dba7f822d2667340b0
+        target_ids:
+          - api.catalog.026
+        from_status: in_progress
+        to_status: under_review
+        commit: 900b0131
+        test: 'apps/api/tests/Feature/Catalog/CatalogTenantIsolationTest.php::test_no_circular_composite_item_rule_silently_ignores_cross_tenant_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-09T17:42:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 30f6a0e9b75cbffada729dd55e684301dd3a36808a12351c58782ed7df8266d1
+        new_yaml_sha256: a563ac83f041735ddf4876b53795192a7344504125aa76f9a52edfdb84093054
+        target_ids:
+          - api.catalog.026
+          - api.catalog
+        from_status: under_review
+        to_status: fixed
+        commit: 900b01316473ec9b7d74667c65ed2c742958d618
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fix-cycle-codex-rereview-r3.md
+        review_commit: 900b0131
+        note: 'review verdict=APPROVE by codex via sweep:inventory:review'
   -
     id: api.inventory.029
     stable_key: 'manual:api.inventory:counting-item-controller-trigger-third-count-bare-exists'
