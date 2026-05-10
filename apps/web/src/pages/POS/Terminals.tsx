@@ -18,6 +18,9 @@ import {
 } from '@/features/pos/hooks/useTerminals'
 import { getLocations } from '@/features/locations/api/locations'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 /**
  * POS Terminals Management Page
@@ -26,6 +29,8 @@ import { toast } from 'sonner'
  */
 export function TerminalsPage() {
   const { t } = useTranslation()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTerminal, setEditingTerminal] = useState<Terminal | undefined>()
   const [archiveTarget, setArchiveTarget] = useState<Terminal | null>(null)
@@ -36,8 +41,9 @@ export function TerminalsPage() {
   // Fetch terminals and locations
   const { data: terminals = [], isLoading: terminalsLoading } = useTerminals()
   const { data: locationsData } = useQuery({
-    queryKey: ['locations'],
+    queryKey: tenantScopedKey(['locations']),
     queryFn: getLocations,
+    enabled: !!tenantId && !!companyId,
   })
 
   const locations = locationsData || []

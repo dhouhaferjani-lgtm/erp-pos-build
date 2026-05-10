@@ -28,6 +28,10 @@ import { useCurrency } from '@/hooks/useCurrency'
 import type { ConsumptionMode } from '@/features/pos/atoms/ConsumptionModeToggle/ConsumptionModeToggle'
 import { Loader2, MapPin, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { posShiftInvalidationPredicate } from './_invalidation'
 
 /**
  * Extract a human-readable error message from API errors.
@@ -56,6 +60,8 @@ function extractApiErrorMessage(err: unknown, fallback: string): string {
 export function POSTransactions() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { currentLocationId, currentLocation: _currentLocation, isLoading: isLocationLoading } = useLocation()
   const { hasModule } = useCompanyConfig()
   const { decimals } = useCurrency()
@@ -125,10 +131,10 @@ export function POSTransactions() {
     isLoading: isLoadingShift,
     error: shiftError,
   } = useQuery({
-    queryKey: ['pos', 'shift', terminalCode],
+    queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
     queryFn: () => getCurrentShift(terminalCode!),
     refetchInterval: 30000,
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && !!tenantId && !!companyId,
   })
 
   // Fetch products: retail uses /products, F&B uses /active-menu
@@ -142,17 +148,17 @@ export function POSTransactions() {
 
   // Fetch payment methods + repositories for quick checkout
   const { data: paymentMethods = [] } = useQuery({
-    queryKey: ['pos', 'payment-methods'],
+    queryKey: tenantScopedKey(['pos', 'payment-methods']),
     queryFn: fetchPaymentMethods,
     staleTime: 10 * 60 * 1000,
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && !!tenantId && !!companyId,
   })
 
   const { data: paymentRepositories = [] } = useQuery({
-    queryKey: ['pos', 'payment-repositories'],
+    queryKey: tenantScopedKey(['pos', 'payment-repositories']),
     queryFn: fetchPaymentRepositories,
     staleTime: 10 * 60 * 1000,
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && !!tenantId && !!companyId,
   })
 
   // Show OpenShiftModal if no shift exists
@@ -399,7 +405,9 @@ export function POSTransactions() {
       toast.success(t('pos:transactions.toasts.transactionCompleted', { number: receiptNumber }))
 
       // Invalidate shift data
-      void queryClient.invalidateQueries({ queryKey: ['pos', 'shift'] })
+      void queryClient.invalidateQueries({
+        predicate: posShiftInvalidationPredicate(tenantId, companyId),
+      })
 
       // Earn loyalty points if member is enrolled
       if (loyaltyEnrollment) {
@@ -449,7 +457,9 @@ export function POSTransactions() {
     toast.success(t('pos:transactions.toasts.transactionCompleted', { number: result.receiptNumber }))
 
     // Invalidate shift data
-    void queryClient.invalidateQueries({ queryKey: ['pos', 'shift'] })
+    void queryClient.invalidateQueries({
+      predicate: posShiftInvalidationPredicate(tenantId, companyId),
+    })
 
     // Earn loyalty points if member is enrolled
     if (loyaltyEnrollment) {
@@ -519,7 +529,7 @@ export function POSTransactions() {
         terminalId={terminalCode ?? ''}
         onSuccess={() => {
           // Refetch shift data after opening
-          queryClient.invalidateQueries({ queryKey: ['pos', 'shift', terminalCode] })
+          queryClient.invalidateQueries({ queryKey: tenantScopedKey(['pos', 'shift', terminalCode]) })
         }}
       />
     )

@@ -17,10 +17,19 @@ import type { XReportResponse } from '@/features/pos/api/shiftApi'
 import { useLocation } from '@/hooks/useLocation'
 import { Loader2, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import {
+  posShiftBalanceInvalidationPredicate,
+  posShiftInvalidationPredicate,
+} from './_invalidation'
 
 export function POSShiftsDashboard() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { currentLocationId, isLoading: isLocationLoading } = useLocation()
   const [xReportData, setXReportData] = useState<XReportResponse | null>(null)
 
@@ -45,23 +54,27 @@ export function POSShiftsDashboard() {
     data: shift,
     isLoading: isLoadingShift,
   } = useQuery({
-    queryKey: ['pos', 'shift', terminalCode],
+    queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
     queryFn: () => getCurrentShift(terminalCode!),
     refetchInterval: 30000,
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && !!tenantId && !!companyId,
   })
 
   // Fetch cash drawer balance when shift is open
   const { data: balance } = useQuery({
-    queryKey: ['pos', 'shift-balance', shift?.id],
+    queryKey: tenantScopedKey(['pos', 'shift-balance', shift?.id]),
     queryFn: () => getShiftBalance(shift!.id),
     refetchInterval: 30000,
-    enabled: !!shift?.id,
+    enabled: !!shift?.id && !!tenantId && !!companyId,
   })
 
   const invalidateShiftData = () => {
-    void queryClient.invalidateQueries({ queryKey: ['pos', 'shift'] })
-    void queryClient.invalidateQueries({ queryKey: ['pos', 'shift-balance'] })
+    void queryClient.invalidateQueries({
+      predicate: posShiftInvalidationPredicate(tenantId, companyId),
+    })
+    void queryClient.invalidateQueries({
+      predicate: posShiftBalanceInvalidationPredicate(tenantId, companyId),
+    })
   }
 
   const handleOpenShift = async (openingCash: string) => {
