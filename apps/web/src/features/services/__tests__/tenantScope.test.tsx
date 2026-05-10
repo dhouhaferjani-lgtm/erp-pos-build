@@ -302,4 +302,50 @@ describe('cross-tenant isolation', () => {
     expect(tBQuery?.state.data).toEqual({ data: [{ id: 's-tenant-b' }] })
     expect(tBQuery?.state.isInvalidated).toBe(false)
   })
+
+  it('cross-tenant data isolation: tenant-A ServiceListPage results do not contain tenant-B entries', async () => {
+    // B12 round-1 BLOCK lesson restated for B13: prove tenant-A's QUERY
+    // RESULTS are free of tenant-B data, not just that the tenant-B cache
+    // ENTRY survives. Pre-seed tenant-B services data, render
+    // ServiceListPage under tenant-A, assert tenant-A's query result is
+    // the empty tenant-A mock response — NOT the seeded tenant-B payload.
+    const queryClient = createTestQueryClient()
+
+    const tenantBServicesKey = ['services', '', 'all', 'all', 'all', 'tenant-B', 'company-1']
+    queryClient.setQueryData(tenantBServicesKey, {
+      data: [{ id: 'leaked-tenant-b-service' }],
+      meta: { total: 1 },
+    })
+    const tenantBCategoriesKey = ['service-categories', 'tenant-B', 'company-1']
+    queryClient.setQueryData(tenantBCategoriesKey, {
+      data: [{ id: 'leaked-tenant-b-category' }],
+    })
+
+    setTenant('tenant-A', 'company-1')
+    renderWithProviders(<ServiceListPage />, { queryClient })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/services/categories')
+    })
+
+    // tenant-A queryKey carries 'tenant-A' suffix — different cache slot
+    // from tenantBServicesKey. tenant-A query must hold ONLY the mock
+    // response for tenant-A (empty array), not the seeded tenant-B payload.
+    const tenantAServicesKey = ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1']
+    const tAServices = queryClient.getQueryCache().find({ queryKey: tenantAServicesKey, exact: true })
+    expect(tAServices).toBeDefined()
+    const tAServicesData = tAServices?.state.data as { data?: Array<{ id: string }> } | undefined
+    expect(tAServicesData?.data ?? []).toEqual([])
+    const tAServiceIds = (tAServicesData?.data ?? []).map((entry) => entry.id)
+    expect(tAServiceIds).not.toContain('leaked-tenant-b-service')
+
+    // Same assertion for service-categories.
+    const tenantACategoriesKey = ['service-categories', 'tenant-A', 'company-1']
+    const tACategories = queryClient.getQueryCache().find({ queryKey: tenantACategoriesKey, exact: true })
+    expect(tACategories).toBeDefined()
+    const tACategoriesData = tACategories?.state.data as { data?: Array<{ id: string }> } | undefined
+    expect(tACategoriesData?.data ?? []).toEqual([])
+    const tACategoryIds = (tACategoriesData?.data ?? []).map((entry) => entry.id)
+    expect(tACategoryIds).not.toContain('leaked-tenant-b-category')
+  })
 })
