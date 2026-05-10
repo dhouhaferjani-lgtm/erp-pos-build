@@ -311,5 +311,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     // that reset products without calling logout (e.g. PinEntryPage's
     // explicit user-switch flow).
     clearScanCache();
+
+    // T2.4 Day 2 (Codex PR #108 r1 P2) — every logout path (sign-out
+    // from BootstrapErrorScreen, sync-scheduler 401, PinEntryPage,
+    // and this store's own initialize-time 401) must also reset the
+    // bootstrap state machine. Without this, a logout while bootstrap
+    // is in `phase === 'error'` would leave AppRouter rendering the
+    // error screen indefinitely because that branch is checked before
+    // the `!isAuthenticated` LoginPage branch. Dynamic import keeps
+    // the bootstrapStore → authStore dependency one-way; the runtime
+    // chunk is tiny.
+    void import('@/stores/bootstrapStore').then(({ useBootstrapStore }) => {
+      useBootstrapStore.getState().reset();
+    });
   },
 }));

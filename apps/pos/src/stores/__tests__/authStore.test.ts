@@ -193,6 +193,43 @@ describe('authStore', () => {
     expect(removeStoredValue).toHaveBeenCalledWith('auth_token');
   });
 
+  it('resets bootstrap state on logout (Codex PR #108 r1 P2 — sign-out escape hatch)', async () => {
+    const { useBootstrapStore } = await import('@/stores/bootstrapStore');
+
+    // Pre-set bootstrap into the error state — the trap scenario the
+    // fix targets. AppRouter's early-return checks `phase === 'error'`
+    // before the `!isAuthenticated` LoginPage branch, so without the
+    // logout-side reset the cashier stays on BootstrapErrorScreen
+    // after signing out.
+    useBootstrapStore.setState({
+      phase: 'error',
+      error: {
+        phase: 'fetching-terminal',
+        errorName: 'FetchTimeoutError',
+        recoverable: true,
+        retryCount: 2,
+      },
+      lastSuccessfulPhase: 'fetching-companies',
+      running: false,
+    } as never);
+
+    useAuthStore.getState().logout();
+
+    // The reset wiring uses a dynamic import (avoids cyclic static
+    // bootstrap → auth → bootstrap dependency). Wait for the import
+    // promise to settle and its .then() to run; one macrotask flush is
+    // enough because the module was pre-imported above so it is cached.
+    await vi.waitFor(() => {
+      expect(useBootstrapStore.getState().phase).toBe('ready');
+    });
+
+    const state = useBootstrapStore.getState();
+    expect(state.phase).toBe('ready');
+    expect(state.error).toBeNull();
+    expect(state.lastSuccessfulPhase).toBeNull();
+    expect(state.running).toBe(false);
+  });
+
   it('checkSession updates user from server', async () => {
     const updatedUser = { ...mockUser, name: 'Updated Name' };
     vi.mocked(apiGet).mockResolvedValue(updatedUser);

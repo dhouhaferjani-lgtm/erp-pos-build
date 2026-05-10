@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { withTimeout } from '@/lib/bootstrap/withTimeout';
+import { safeErrorName } from '@/lib/safeErrorNames';
 
 /**
  * T2.4 — bootstrap state machine that wraps the four existing init paths
@@ -54,10 +55,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  *   - `authenticating`: always false. The login token is the entry point
  *     — there is no cached fallback for "I am authenticated"; the cashier
  *     must log in again.
- *   - `fetching-companies`: always false. The phase only runs when the
- *     companies cache is already empty (Codex r6 P2 gates the call), so
- *     a failure here means the recovery cache is also empty — there is
- *     nothing to "skip to".
+ *   - `fetching-companies`: always false. The phase body is now a no-op
+ *     (PR #108 r3 P2 — CompanyRecoveryScreen owns the empty-companies
+ *     fetch exclusively to avoid a concurrent /user/companies race), so
+ *     there is no failure path that lands here at runtime; the declaration
+ *     is kept for completeness.
  *   - `fetching-terminal`: true iff SQLite has a cached terminal record.
  *     `terminalStore.initialize()` populates `terminal` from the SQLite
  *     mirror before any network call, so if the in-memory `terminal` is
@@ -78,29 +80,6 @@ function phaseRecoverable(phase: RunnablePhase): boolean {
     case 'checking-pins':
       return false;
   }
-}
-
-/**
- * Mirrors `App.tsx::SAFE_ERROR_NAMES` (T0.1 banner-opacity contract). Any
- * errorName not in this set is coerced to `'Error'` so vendor / API class
- * names cannot leak to the cashier UI. We re-declare the set here to keep
- * `bootstrapStore` independent of `App.tsx`; if the allowlist evolves,
- * this constant should be kept in sync (Day 2 may extract it to a shared
- * constants module).
- */
-const SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
-  'ApiRequestError',
-  'FetchTimeoutError',
-  'AbortError',
-  'TypeError',
-  'Error',
-]);
-
-function safeErrorName(error: unknown): string {
-  if (error instanceof Error && SAFE_ERROR_NAMES.has(error.name)) {
-    return error.name;
-  }
-  return 'Error';
 }
 
 export interface BootstrapError {
@@ -124,12 +103,34 @@ interface BootstrapState {
    * can tighten and Phase 6 smoke can loosen for slow-network phases.
    */
   timeoutMs: number;
+  /**
+   * True while a `runFromPhase` invocation is in flight. AppRouter (Day 2)
+   * drives the state machine from multiple useEffects — one on mount, one
+   * on the dependent-state changes that follow login (auth → companies →
+   * terminal). Without this guard, an effect-fired `retry()` could land
+   * mid-phase on a still-running `start()` and produce interleaved phase
+   * writes. `start` / `retry` / `skipWithCache` all short-circuit when
+   * this flag is true so the orchestrator is single-flight by construction.
+   */
+  running: boolean;
 }
 
 interface BootstrapActions {
   start: () => Promise<void>;
   retry: () => Promise<void>;
   skipWithCache: () => Promise<void>;
+  /**
+   * Reset every phase/error/progress field back to the post-construction
+   * baseline. Called by `authStore.logout` so a logout from the
+   * BootstrapErrorScreen (and every other logout path — PinEntryPage,
+   * the sync scheduler's confirmed-401 branch, the auth initialize 401
+   * branch) doesn't leave the cashier trapped on the error screen after
+   * authStore clears its own state. `phase` is set to `'ready'` (not
+   * `'idle'`) so AppRouter's dep-change effect can pick up the cashier's
+   * next login and call `retry()` from the fresh `lastSuccessfulPhase=null`
+   * baseline.
+   */
+  reset: () => void;
 }
 
 const initialState: BootstrapState = {
@@ -137,6 +138,7 @@ const initialState: BootstrapState = {
   error: null,
   lastSuccessfulPhase: null,
   timeoutMs: DEFAULT_TIMEOUT_MS,
+  running: false,
 };
 
 function nextPhaseAfter(phase: RunnablePhase | null): RunnablePhase | null {
@@ -153,17 +155,24 @@ async function runPhase(phase: RunnablePhase, timeoutMs: number): Promise<void> 
       await withTimeout(phase, useAuthStore.getState().initialize(), timeoutMs);
       return;
     case 'fetching-companies':
-      // Codex review (PR #106 round 6, P2): the existing AppRouter only
-      // calls fetchCompanies from the empty-companies recovery branch
-      // (`App.tsx::CompanyRecoveryScreen`), not on every boot. A returning
-      // cashier with cached COMPANIES who boots offline would otherwise
-      // see an unnecessary network failure here even though their cached
-      // company list is fully usable. Skip the call entirely when
-      // companies are already loaded; only fetch when the cache is empty.
-      if (useAuthStore.getState().companies.length > 0) {
-        return;
-      }
-      await withTimeout(phase, useAuthStore.getState().fetchCompanies(), timeoutMs);
+      // No-op by design. The empty-companies recovery flow is owned
+      // exclusively by `App.tsx::CompanyRecoveryScreen` — it auto-fires
+      // `fetchCompanies()` on mount and surfaces its own typed error UI.
+      //
+      // Codex review (PR #106 round 6, P2) first gated this phase to
+      // skip when companies were already cached; Codex review (PR #108
+      // round 3, P2) then surfaced that the remaining empty-cache fetch
+      // raced the recovery screen: a cached-authenticated boot with
+      // zero companies would issue two concurrent `/user/companies`
+      // requests, and a bootstrap-side failure / timeout would preempt
+      // a now-recovered recovery screen with the bootstrap error
+      // screen. The full fix is to never fetch from this phase at all;
+      // the recovery screen is the single owner.
+      //
+      // The phase entry stays in the enum so `canEnterPhase` keeps
+      // gating fetching-terminal on `isAuthenticated` before any
+      // terminal API call, and so the sequencing semantics remain
+      // explicit for the next maintainer.
       return;
     case 'fetching-terminal':
       await withTimeout(phase, useTerminalStore.getState().initialize(), timeoutMs);
@@ -212,15 +221,24 @@ function canEnterPhase(phase: RunnablePhase): boolean {
       // Only fetch the company list once we have a token (post-`initialize`).
       return useAuthStore.getState().isAuthenticated === true;
     case 'fetching-terminal':
-      // Need both auth AND a selected company before any terminal API call.
+      // Need auth, a non-empty companies cache, AND a selected company
+      // before any terminal API call. The companies-non-empty check
+      // (Codex PR #108 r4 P2) prevents advancing past the orphan
+      // empty-companies cached-session state — a stale non-null
+      // companyId from a prior session would otherwise satisfy the
+      // gate, run the terminal phase, and on failure surface the
+      // bootstrap error screen instead of the CompanyRecoveryScreen
+      // that's specifically designed to repair that exact state.
       return (
         useAuthStore.getState().isAuthenticated === true
+        && useAuthStore.getState().companies.length > 0
         && useAuthStore.getState().companyId !== null
       );
     case 'checking-pins':
       // Same prerequisites as terminal init plus a hydrated terminal.
       return (
         useAuthStore.getState().isAuthenticated === true
+        && useAuthStore.getState().companies.length > 0
         && useAuthStore.getState().companyId !== null
         && useTerminalStore.getState().terminal !== null
       );
@@ -269,30 +287,56 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
   ...initialState,
 
   start: async () => {
-    // Codex review (PR #106 round 1, P2): clear residual progress so a
-    // fresh start() never inherits a stale `lastSuccessfulPhase` from a
-    // previous run. Without this, calling start() after a prior `ready`
-    // run that then fails in an earlier phase leaves the old
-    // `lastSuccessfulPhase` in place, and a follow-on retry() would
-    // skip past the actually-failing phase and falsely promote to ready.
-    set({ lastSuccessfulPhase: null, error: null });
-    await runFromPhase(RUNNABLE_PHASES[0], 0, set, get);
+    // Single-flight guard. AppRouter (Day 2) wires `start()` to mount and
+    // `retry()` to dependent-state changes; without this short-circuit a
+    // login-time state flip during the still-in-flight cold-boot run would
+    // race a second orchestration call against the first.
+    if (get().running) return;
+    set({ running: true });
+    try {
+      // Codex review (PR #106 round 1, P2): clear residual progress so a
+      // fresh start() never inherits a stale `lastSuccessfulPhase` from a
+      // previous run. Without this, calling start() after a prior `ready`
+      // run that then fails in an earlier phase leaves the old
+      // `lastSuccessfulPhase` in place, and a follow-on retry() would
+      // skip past the actually-failing phase and falsely promote to ready.
+      set({ lastSuccessfulPhase: null, error: null });
+      await runFromPhase(RUNNABLE_PHASES[0], 0, set, get);
+    } finally {
+      set({ running: false });
+    }
   },
 
   retry: async () => {
-    const { lastSuccessfulPhase, error } = get();
-    const startPhase = nextPhaseAfter(lastSuccessfulPhase);
-    if (startPhase === null) {
-      // Already at the end — nothing to retry. Tag as ready so subscribers
-      // unblock.
-      set({ phase: 'ready', error: null });
-      return;
+    if (get().running) return;
+    set({ running: true });
+    try {
+      const { lastSuccessfulPhase, error } = get();
+      const startPhase = nextPhaseAfter(lastSuccessfulPhase);
+      if (startPhase === null) {
+        // Already at the end — nothing to retry. Tag as ready so subscribers
+        // unblock.
+        set({ phase: 'ready', error: null });
+        return;
+      }
+      const nextRetryCount = (error?.retryCount ?? -1) + 1;
+      await runFromPhase(startPhase, nextRetryCount, set, get);
+    } finally {
+      set({ running: false });
     }
-    const nextRetryCount = (error?.retryCount ?? -1) + 1;
-    await runFromPhase(startPhase, nextRetryCount, set, get);
+  },
+
+  reset: () => {
+    set({
+      phase: 'ready',
+      error: null,
+      lastSuccessfulPhase: null,
+      running: false,
+    });
   },
 
   skipWithCache: async () => {
+    if (get().running) return;
     const { error } = get();
     if (error === null) {
       // No error to skip past — defensive no-op rather than throw, since
@@ -304,15 +348,20 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
         `Bootstrap phase "${error.phase}" is not recoverable; cannot skip with cache.`,
       );
     }
-    // "Skip" means: pretend the failing phase succeeded (the cached value
-    // is already in place by contract — see RECOVERABLE doc above) and
-    // continue from the NEXT phase.
-    const nextPhase = nextPhaseAfter(error.phase);
-    if (nextPhase === null) {
-      set({ phase: 'ready', error: null, lastSuccessfulPhase: error.phase });
-      return;
+    set({ running: true });
+    try {
+      // "Skip" means: pretend the failing phase succeeded (the cached value
+      // is already in place by contract — see RECOVERABLE doc above) and
+      // continue from the NEXT phase.
+      const nextPhase = nextPhaseAfter(error.phase);
+      if (nextPhase === null) {
+        set({ phase: 'ready', error: null, lastSuccessfulPhase: error.phase });
+        return;
+      }
+      set({ lastSuccessfulPhase: error.phase });
+      await runFromPhase(nextPhase, error.retryCount + 1, set, get);
+    } finally {
+      set({ running: false });
     }
-    set({ lastSuccessfulPhase: error.phase });
-    await runFromPhase(nextPhase, error.retryCount + 1, set, get);
   },
 }));

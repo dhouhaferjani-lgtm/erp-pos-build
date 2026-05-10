@@ -102,11 +102,15 @@ beforeEach(() => {
     return mockedHasPins ?? false;
   });
 
-  // Reset the store between tests so each one starts from `idle`.
+  // Reset the store between tests so each one starts from `idle`. The
+  // `running` flag must also be reset — a hung test that leaves the
+  // single-flight guard latched would silently swallow all subsequent
+  // start/retry calls.
   useBootstrapStore.setState({
     phase: 'idle',
     error: null,
     lastSuccessfulPhase: null,
+    running: false,
   } as never);
 });
 
@@ -139,20 +143,26 @@ describe('bootstrapStore — happy path', () => {
     expect(checkHasPins).toHaveBeenCalledTimes(1);
   });
 
-  it('calls fetchCompanies only when companies cache is empty (Codex r6 P2)', async () => {
+  it('never calls fetchCompanies — CompanyRecoveryScreen is the sole owner (Codex PR #108 r3 P2)', async () => {
+    // The empty-companies recovery is owned exclusively by
+    // CompanyRecoveryScreen in App.tsx, which auto-fires fetchCompanies()
+    // on mount. Bootstrap firing a concurrent /user/companies request
+    // raced the recovery screen and could preempt a successful recovery
+    // with a bootstrap-side timeout error. The full fix: the
+    // fetching-companies phase is a no-op regardless of cache state.
     mockedAuth = { ...mockedAuth, companies: [] };
 
     const startPromise = useBootstrapStore.getState().start();
     await vi.runAllTimersAsync();
     await startPromise;
 
-    expect(fetchCompanies).toHaveBeenCalledTimes(1);
+    expect(fetchCompanies).not.toHaveBeenCalled();
   });
 
-  it('cached-offline boot does not regress to bootstrap error when fetchCompanies would fail (Codex r6 P2)', async () => {
+  it('cached-offline boot does not regress to bootstrap error even if fetchCompanies would fail (Codex r6 P2 + PR #108 r3 P2)', async () => {
     // Returning cashier with cached TOKEN/USER/COMPANIES boots offline.
     // initialize succeeds (cache hydrated). fetchCompanies WOULD fail
-    // (no network) but must never be called because companies are cached.
+    // (no network) but must never be called from bootstrap.
     fetchCompanies.mockRejectedValue(
       Object.assign(new Error('offline'), { name: 'TypeError' }),
     );
@@ -185,37 +195,22 @@ describe('bootstrapStore — failure handling', () => {
     expect(checkHasPins).not.toHaveBeenCalled();
   });
 
-  it('declares authenticating non-recoverable; fetching-companies non-recoverable (no cache to fall back to)', async () => {
+  it('declares authenticating non-recoverable (no cache to fall back to)', async () => {
     // Codex review (PR #106 round 7, P2): recoverable is computed from
     // actual cache availability. Authenticating has no cached fallback;
-    // fetching-companies only runs when the cache is empty, so its
-    // failure means there is nothing to skip to.
+    // the cashier must log in again. fetching-companies cannot fail
+    // from bootstrap any more (PR #108 r3 P2 made it a no-op), so its
+    // recoverability declaration is dead — kept in the matrix for
+    // completeness but no longer covered here.
     initializeAuth.mockRejectedValue(
       Object.assign(new Error('auth failed'), { name: 'ApiRequestError' }),
     );
 
-    let startPromise = useBootstrapStore.getState().start();
+    const startPromise = useBootstrapStore.getState().start();
     await vi.runAllTimersAsync();
     await startPromise;
 
-    expect(useBootstrapStore.getState().error?.recoverable).toBe(false);
-
-    // Now exercise fetching-companies — auth must succeed first to reach it,
-    // and companies cache must be empty (otherwise the phase is skipped per
-    // Codex r6 P2). Recoverable=false because we entered this phase
-    // precisely because the cache was empty (Codex r7 P2).
-    initializeAuth.mockReset().mockResolvedValue(undefined);
-    fetchCompanies.mockRejectedValue(
-      Object.assign(new Error('companies down'), { name: 'ApiRequestError' }),
-    );
-    mockedAuth = { ...mockedAuth, companies: [] };
-    useBootstrapStore.setState({ phase: 'idle', error: null, lastSuccessfulPhase: null } as never);
-
-    startPromise = useBootstrapStore.getState().start();
-    await vi.runAllTimersAsync();
-    await startPromise;
-
-    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-companies');
+    expect(useBootstrapStore.getState().error?.phase).toBe('authenticating');
     expect(useBootstrapStore.getState().error?.recoverable).toBe(false);
   });
 
@@ -234,7 +229,7 @@ describe('bootstrapStore — failure handling', () => {
 
     // Cache empty → recoverable=false.
     mockedTerminal = null;
-    useBootstrapStore.setState({ phase: 'idle', error: null, lastSuccessfulPhase: null } as never);
+    useBootstrapStore.setState({ phase: 'idle', error: null, lastSuccessfulPhase: null, running: false } as never);
 
     p = useBootstrapStore.getState().start();
     await vi.runAllTimersAsync();
@@ -455,8 +450,9 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
   });
 
   it('stops at "ready" without entering fetching-terminal when companyId is null (multi-company select)', async () => {
-    // Force the empty-companies path so fetchCompanies actually runs —
-    // exercises the post-fetch gate (companyId still null).
+    // Empty companies + no selected company → fetching-companies is a
+    // no-op (PR #108 r3 P2: CompanyRecoveryScreen owns that fetch) and
+    // fetching-terminal's canEnterPhase gate fails on the null companyId.
     mockedAuth = { isAuthenticated: true, companyId: null, companies: [] };
 
     const startPromise = useBootstrapStore.getState().start();
@@ -464,7 +460,27 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
     await startPromise;
 
     expect(initializeAuth).toHaveBeenCalledTimes(1);
-    expect(fetchCompanies).toHaveBeenCalledTimes(1);
+    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(initializeTerminal).not.toHaveBeenCalled();
+    expect(checkHasPins).not.toHaveBeenCalled();
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
+
+  it('stops at "ready" without entering fetching-terminal when companies cache is empty even if companyId is non-null (Codex PR #108 r4 P2 — orphan recovery)', async () => {
+    // The orphan state CompanyRecoveryScreen is designed to repair:
+    // cached session has a stale non-null companyId from a prior
+    // session but the companies list is empty. Pre-fix, the
+    // fetching-terminal gate only checked companyId; bootstrap would
+    // advance into terminal init, and on failure the bootstrap error
+    // screen would preempt CompanyRecoveryScreen — blocking recovery.
+    mockedAuth = { isAuthenticated: true, companyId: 'stale-company-1', companies: [] };
+
+    const startPromise = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await startPromise;
+
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+    expect(fetchCompanies).not.toHaveBeenCalled();
     expect(initializeTerminal).not.toHaveBeenCalled();
     expect(checkHasPins).not.toHaveBeenCalled();
     expect(useBootstrapStore.getState().phase).toBe('ready');
@@ -486,6 +502,183 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
   });
 });
 
+describe('bootstrapStore — single-flight guard (Day 2 AppRouter wiring)', () => {
+  it('start() short-circuits when another start() is already running', async () => {
+    // Hold `initializeAuth` indefinitely so the first start() stays in
+    // flight; that lets the second call observe `running===true`.
+    let resolveAuth: (() => void) | undefined;
+    initializeAuth.mockImplementation(
+      () => new Promise<void>((res) => { resolveAuth = res; }),
+    );
+
+    const first = useBootstrapStore.getState().start();
+
+    // The first call has set running=true and is awaiting initializeAuth.
+    expect(useBootstrapStore.getState().running).toBe(true);
+
+    const second = useBootstrapStore.getState().start();
+
+    // Second call must early-return without re-invoking the wrapped init.
+    await second;
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+
+    // Release the first call so the suite can move on.
+    resolveAuth?.();
+    await vi.runAllTimersAsync();
+    await first;
+
+    expect(useBootstrapStore.getState().running).toBe(false);
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
+
+  it('retry() short-circuits when start() is already running', async () => {
+    let resolveAuth: (() => void) | undefined;
+    initializeAuth.mockImplementation(
+      () => new Promise<void>((res) => { resolveAuth = res; }),
+    );
+
+    const startPromise = useBootstrapStore.getState().start();
+    // Mid-flight retry must not race the start orchestrator. The guard
+    // protects AppRouter's two useEffects (mount → start, dep-change →
+    // retry) from interleaving phase writes when login flips state mid-
+    // boot.
+    const retryPromise = useBootstrapStore.getState().retry();
+    await retryPromise;
+
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+
+    resolveAuth?.();
+    await vi.runAllTimersAsync();
+    await startPromise;
+  });
+
+  it('running flag clears when a phase rejects (try/finally discipline)', async () => {
+    initializeTerminal.mockRejectedValue(
+      Object.assign(new Error('boom'), { name: 'TypeError' }),
+    );
+
+    const p = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await p;
+
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().running).toBe(false);
+
+    // A follow-up retry must be able to acquire the guard cleanly.
+    initializeTerminal.mockReset().mockResolvedValue(undefined);
+    const retryP = useBootstrapStore.getState().retry();
+    await vi.runAllTimersAsync();
+    await retryP;
+
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
+});
+
+describe('bootstrapStore — retry()-from-ready (Day 2 AppRouter wiring)', () => {
+  it('is a safe no-op when the state machine is already ready', async () => {
+    // Reach ready via start().
+    let p = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await p;
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().lastSuccessfulPhase).toBe('checking-pins');
+
+    // AppRouter's dep-change useEffect may fire retry() after start()
+    // already lands ready. nextPhaseAfter('checking-pins') is null so
+    // retry tags the phase as ready (no-op) without re-invoking any
+    // init method.
+    initializeAuth.mockClear();
+    fetchCompanies.mockClear();
+    initializeTerminal.mockClear();
+    checkHasPins.mockClear();
+
+    p = useBootstrapStore.getState().retry();
+    await vi.runAllTimersAsync();
+    await p;
+
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(initializeTerminal).not.toHaveBeenCalled();
+    expect(checkHasPins).not.toHaveBeenCalled();
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
+
+  it('advances past a "ready"-via-gate stop when prerequisites become satisfied (post-login flow)', async () => {
+    // Cold-boot: not authenticated yet. The gate stops at authenticating
+    // and tags ready (no error).
+    mockedAuth = { isAuthenticated: false, companyId: null, companies: [] };
+
+    let p = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await p;
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().lastSuccessfulPhase).toBe('authenticating');
+
+    // Cashier logs in via LoginPage → auth flips true, single company
+    // selected. AppRouter's dep-change useEffect fires retry(), which
+    // resumes from `nextPhaseAfter('authenticating')` = fetching-companies.
+    mockedAuth = { isAuthenticated: true, companyId: 'company-1', companies: [{ id: 'company-1' }] };
+
+    initializeAuth.mockClear();
+    fetchCompanies.mockClear();
+    initializeTerminal.mockClear();
+    checkHasPins.mockClear();
+
+    p = useBootstrapStore.getState().retry();
+    await vi.runAllTimersAsync();
+    await p;
+
+    // Auth phase already succeeded — must not re-run. fetchCompanies is
+    // skipped because cached companies non-empty (Codex r6 P2). Terminal
+    // + PIN phases fire.
+    expect(initializeAuth).not.toHaveBeenCalled();
+    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(initializeTerminal).toHaveBeenCalledTimes(1);
+    expect(checkHasPins).toHaveBeenCalledTimes(1);
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
+});
+
+describe('bootstrapStore — reset (Codex PR #108 r1 P2: logout escape)', () => {
+  it('reset() clears phase / error / lastSuccessfulPhase / running back to a clean baseline', async () => {
+    // Drive the store into the error state first.
+    initializeTerminal.mockRejectedValue(
+      Object.assign(new Error('boom'), { name: 'TypeError' }),
+    );
+    const p = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await p;
+
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error).not.toBeNull();
+    expect(useBootstrapStore.getState().lastSuccessfulPhase).toBe('fetching-companies');
+
+    useBootstrapStore.getState().reset();
+
+    const state = useBootstrapStore.getState();
+    expect(state.phase).toBe('ready');
+    expect(state.error).toBeNull();
+    expect(state.lastSuccessfulPhase).toBeNull();
+    expect(state.running).toBe(false);
+  });
+
+  it('phase=`ready` after reset lets the dep-change effect restart from authenticating on next login', async () => {
+    // After reset, lastSuccessfulPhase=null. A retry() therefore resumes
+    // from `nextPhaseAfter(null)` = authenticating — which is exactly
+    // the post-logout-then-login flow AppRouter's dep-change effect drives.
+    useBootstrapStore.getState().reset();
+    initializeAuth.mockClear();
+
+    const p = useBootstrapStore.getState().retry();
+    await vi.runAllTimersAsync();
+    await p;
+
+    expect(initializeAuth).toHaveBeenCalledTimes(1);
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().lastSuccessfulPhase).toBe('checking-pins');
+  });
+});
+
 describe('bootstrapStore — timeout', () => {
   it('a phase that hangs longer than the per-phase timeout fails with BootstrapTimeoutError name', async () => {
     initializeTerminal.mockImplementation(() => new Promise(() => {})); // never resolves
@@ -498,11 +691,10 @@ describe('bootstrapStore — timeout', () => {
     const state = useBootstrapStore.getState();
     expect(state.phase).toBe('error');
     expect(state.error?.phase).toBe('fetching-terminal');
-    // BootstrapTimeoutError is in our own code, but it is not in the
-    // SAFE_ERROR_NAMES allowlist (App.tsx:161). Until the allowlist is
-    // extended to include it, the contract is "coerce to 'Error'". This
-    // test pins the current behaviour so a future allowlist change is
-    // explicit, not silent.
-    expect(state.error?.errorName).toBe('Error');
+    // Day 2: SAFE_ERROR_NAMES was extracted to `lib/safeErrorNames.ts`
+    // and extended to include `'BootstrapTimeoutError'`. Engineering and
+    // structured logs can now distinguish a phase-level timeout from a
+    // generic error label without leaking message content.
+    expect(state.error?.errorName).toBe('BootstrapTimeoutError');
   });
 });

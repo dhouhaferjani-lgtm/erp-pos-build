@@ -27,6 +27,23 @@
       "retrying": "Actualisation...",
       "retry": "Réessayer",
       "signOut": "Se déconnecter"
+    },
+    "bootstrap": {
+      "title": "Impossible de finaliser la configuration du terminal",
+      "message": "L'étape « {{phase}} » a échoué. Réessayez ou utilisez les données en cache si disponibles.",
+      "errorHint": "Vérifiez votre connexion et réessayez. Déconnectez-vous si le problème persiste.",
+      "retry": "Réessayer",
+      "retrying": "Nouvel essai...",
+      "useCachedData": "Utiliser les données en cache",
+      "signOut": "Se déconnecter",
+      "viewDetails": "Voir les détails",
+      "hideDetails": "Masquer les détails",
+      "phase": {
+        "authenticating": "connexion",
+        "fetching-companies": "chargement de votre boutique",
+        "fetching-terminal": "configuration du terminal",
+        "checking-pins": "vérification des codes opérateur"
+      }
     }
   },
   "trainingMode": {

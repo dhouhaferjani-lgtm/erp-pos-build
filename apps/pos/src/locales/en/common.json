@@ -27,6 +27,23 @@
       "retrying": "Refreshing...",
       "retry": "Retry",
       "signOut": "Sign out"
+    },
+    "bootstrap": {
+      "title": "We couldn't finish setting up your terminal",
+      "message": "The {{phase}} step failed. Try again, or use your cached data if available.",
+      "errorHint": "Check your connection and try again. Sign out if the problem keeps happening.",
+      "retry": "Retry",
+      "retrying": "Retrying...",
+      "useCachedData": "Use cached data",
+      "signOut": "Sign out",
+      "viewDetails": "View details",
+      "hideDetails": "Hide details",
+      "phase": {
+        "authenticating": "signing in",
+        "fetching-companies": "loading your shop",
+        "fetching-terminal": "setting up your terminal",
+        "checking-pins": "checking operator PINs"
+      }
     }
   },
   "trainingMode": {
