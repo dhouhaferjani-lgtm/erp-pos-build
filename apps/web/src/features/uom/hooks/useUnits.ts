@@ -1,9 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchUnits, fetchCategories, createUnit, updateUnit, deleteUnit } from '../api/uomApi'
 import type { CreateUnitInput } from '../api/uomApi'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 /**
- * Query keys factory
+ * Query keys factory.
+ *
+ * Returns un-scoped structural prefixes; the tenant + company scope is
+ * appended at the useQuery call site via tenantScopedKey([...]). The
+ * audit-tanstack-keys gate only approves a queryKey expression that is
+ * either an array literal carrying an approved scope identifier OR a
+ * bare-Identifier call expression `tenantScopedKey(...)`. A property-
+ * access factory call like `uomKeys.units(...)` is neither, so the
+ * wrap MUST happen at the call site.
  */
 export const uomKeys = {
   all: ['uom'] as const,
@@ -14,12 +25,59 @@ export const uomKeys = {
 }
 
 /**
+ * Predicate factories for tenant-scoped invalidation across the
+ * `[uom, units, ...]` and `[uom, categories, ...]` namespaces.
+ *
+ * tenantScopedKey() puts t/c at the SUFFIX of leaf keys. A wrapped
+ * `tenantScopedKey([...uomKeys.units()])` resolves to `[uom, units, t, c]`
+ * which is NOT a prefix of leaf `[uom, units, { categoryId }, t, c]`
+ * because position 2 mismatches. Predicate-based invalidation sidesteps
+ * the positional issue.
+ */
+export function uomUnitsInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'uom' &&
+      k[1] === 'units' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+export function uomCategoriesInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'uom' &&
+      k[1] === 'categories' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+/**
  * Fetch all categories
  */
 export function useCategories() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: uomKeys.categories(),
+    queryKey: tenantScopedKey([...uomKeys.categories()]),
     queryFn: fetchCategories,
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -27,9 +85,12 @@ export function useCategories() {
  * Fetch all units (optionally filtered by category)
  */
 export function useUnits(categoryId?: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: uomKeys.unitsByCategory(categoryId),
+    queryKey: tenantScopedKey([...uomKeys.unitsByCategory(categoryId)]),
     queryFn: () => fetchUnits(categoryId),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -37,13 +98,21 @@ export function useUnits(categoryId?: string) {
  * Create a custom unit
  */
 export function useCreateUnit() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: createUnit,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: uomKeys.units() })
-      queryClient.invalidateQueries({ queryKey: uomKeys.categories() })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: uomUnitsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: uomCategoriesInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -52,14 +121,22 @@ export function useCreateUnit() {
  * Update a unit
  */
 export function useUpdateUnit() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Partial<CreateUnitInput> }) =>
       updateUnit(id, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: uomKeys.units() })
-      queryClient.invalidateQueries({ queryKey: uomKeys.categories() })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: uomUnitsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: uomCategoriesInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -68,13 +145,21 @@ export function useUpdateUnit() {
  * Delete (deactivate) a unit
  */
 export function useDeleteUnit() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: deleteUnit,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: uomKeys.units() })
-      queryClient.invalidateQueries({ queryKey: uomKeys.categories() })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: uomUnitsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: uomCategoriesInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
