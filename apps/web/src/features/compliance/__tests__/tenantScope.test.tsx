@@ -256,23 +256,40 @@ describe('compliance modal cascades — fetch-count signals', () => {
       await waitFor(() => {
         expect(getCounters().users()).toBe(1)
       })
+      // Wait for the option element from the loaded users to render, then
+      // pick it via the labelled <select>.
+      await waitFor(() => {
+        expect(
+          screen.getByLabelText('compliance:fraudAlerts.detail.assignedTo'),
+        ).toBeInTheDocument()
+      })
+      fireEvent.change(
+        screen.getByLabelText('compliance:fraudAlerts.detail.assignedTo'),
+        { target: { value: 'u-1' } },
+      )
+    } else {
+      // Dismiss + Resolve modals require notes (form is disabled otherwise).
+      const noteLabel = Modal === DismissAlertModal
+        ? 'compliance:fraudAlerts.modals.dismiss.notesLabel'
+        : 'compliance:fraudAlerts.modals.resolve.notesLabel'
+      fireEvent.change(screen.getByLabelText(noteLabel), { target: { value: 'note' } })
     }
 
-    // Drive the cascade via the same predicates the production onSuccess uses,
-    // confirming the predicate-only path produces the expected counter shape.
-    // (The mutation hook IS in the modal render tree but driving the form is
-    // out of scope; predicate-direct invalidate exercises the same cascade.)
-    await Promise.all([
-      queryClient.invalidateQueries({
-        predicate: fraudAlertsInvalidationPredicate('tenant-A', 'company-1'),
-      }),
-      queryClient.invalidateQueries({
-        predicate: fraudAlertStatisticsInvalidationPredicate('tenant-A', 'company-1'),
-      }),
-    ])
+    // Drive the actual modal mutation by clicking the production submit button
+    // so onSuccess fires its predicate-based invalidates exactly as the user
+    // would. Removing either invalidate from the modal's onSuccess Promise.all
+    // would leave the corresponding counter at 1 and fail this test.
+    const submitName = Modal === AssignAlertModal
+      ? 'compliance:fraudAlerts.actions.assign'
+      : Modal === DismissAlertModal
+        ? 'compliance:fraudAlerts.actions.dismiss'
+        : 'compliance:fraudAlerts.actions.resolve'
+    fireEvent.click(screen.getByRole('button', { name: submitName }))
 
-    expect(getCounters().alerts()).toBe(2)
-    expect(getCounters().stats()).toBe(2)
+    await waitFor(() => {
+      expect(getCounters().alerts()).toBe(2)
+      expect(getCounters().stats()).toBe(2)
+    })
     // users sibling untouched — counter unchanged from before invalidate.
     expect(getCounters().users()).toBe(hasUsersQuery ? 1 : usersBefore)
   })
