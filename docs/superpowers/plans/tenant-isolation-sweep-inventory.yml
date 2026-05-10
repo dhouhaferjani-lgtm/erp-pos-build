@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 9f62db232e95a27d063eea5e56dc633c8f868a71c47a994fd900911245da0ded
+  yaml_sha256: 21b1b795620a07e71973eb897cbdf30bc94cd8ce973a6554e6fa03f775727a12
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -47193,7 +47193,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:00Z'
     review:
@@ -47202,8 +47202,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
     blocked_reason: null
     history:
       -
@@ -47254,6 +47254,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:29Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9f62db232e95a27d063eea5e56dc633c8f868a71c47a994fd900911245da0ded
+        new_yaml_sha256: bb63850a527839187bf3ee0c114ecc4ed8e4ea7efb7c84ede4445e0f56c308f1
+        target_ids:
+          - web.tanstack-keys.095
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.096
     stable_key: 'sha256:2c2451b0b62d914983dcbe4766fc2008ee834c1a51f82d41bb90bee53b509b1f'
@@ -47271,7 +47287,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:02Z'
     review:
@@ -47280,8 +47296,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
     blocked_reason: null
     history:
       -
@@ -47332,6 +47348,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:31Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: bb63850a527839187bf3ee0c114ecc4ed8e4ea7efb7c84ede4445e0f56c308f1
+        new_yaml_sha256: a22aa90614a350a76fcbc2a653589884f0133abb63390f2881e3da3a2590e7c2
+        target_ids:
+          - web.tanstack-keys.096
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.097
     stable_key: 'sha256:d2dd2cd8d174d0b138abf81b149ea43a200f81bfc5a9abcb77e292b5f7f72ac8'
@@ -47349,7 +47381,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:04Z'
     review:
@@ -47358,8 +47390,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
     blocked_reason: null
     history:
       -
@@ -47410,6 +47442,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:33Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a22aa90614a350a76fcbc2a653589884f0133abb63390f2881e3da3a2590e7c2
+        new_yaml_sha256: bc1d5980817be2f5409ab05ac1c76f8259c485797d688de91a2ffd6bd39b4254
+        target_ids:
+          - web.tanstack-keys.097
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::every queryKey includes tenant_id and company_id when both stores are populated'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.098
     stable_key: 'sha256:901de405fa4d814a21948befcd7ceb916a5943edeff7532b12a2a61ad4f406f3'
@@ -47427,7 +47475,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:06Z'
     review:
@@ -47436,8 +47484,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47488,6 +47536,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:34Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: bc1d5980817be2f5409ab05ac1c76f8259c485797d688de91a2ffd6bd39b4254
+        new_yaml_sha256: a73f453ca872f6e2b712c2d4e94e14d4a732fca51c8d05cf3a0506dd1b34eb05
+        target_ids:
+          - web.tanstack-keys.098
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.099
     stable_key: 'sha256:0e12a81f982fee793894d008828509919b1ad7af4c566e2ac515ea25cbad8e42'
@@ -47505,7 +47569,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:08Z'
     review:
@@ -47514,8 +47578,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47566,6 +47630,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:36Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a73f453ca872f6e2b712c2d4e94e14d4a732fca51c8d05cf3a0506dd1b34eb05
+        new_yaml_sha256: a1d49a17bb95ed2ea23c3e5eac6f9b6014aae07f5b0c214a9f5d1893c3149f87
+        target_ids:
+          - web.tanstack-keys.099
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.100
     stable_key: 'sha256:4ea34effb59cb65597a5b563284a1549727228369dbaa4ae3762bd4d1829ba7d'
@@ -47583,7 +47663,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:10Z'
     review:
@@ -47592,8 +47672,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47644,6 +47724,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:38Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a1d49a17bb95ed2ea23c3e5eac6f9b6014aae07f5b0c214a9f5d1893c3149f87
+        new_yaml_sha256: 94a04e47e9b996e1c66f69ba06f02a326d804c39e99f1c33da678558f2bdcc09
+        target_ids:
+          - web.tanstack-keys.100
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.101
     stable_key: 'sha256:579923695e0d3c6ee82d488a58c12d97c26a78e75c8215c98b0cdf04a19c29b2'
@@ -47661,7 +47757,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:12Z'
     review:
@@ -47670,8 +47766,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47722,6 +47818,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:40Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 94a04e47e9b996e1c66f69ba06f02a326d804c39e99f1c33da678558f2bdcc09
+        new_yaml_sha256: be177adac5691241c6ec8413eb0244a30060fd299f234193106cd28233f601a2
+        target_ids:
+          - web.tanstack-keys.101
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.102
     stable_key: 'sha256:98fc289fa76465a7741ad013f5f7fea4b0d640b955e9d1ee5a09f575c47a6ea6'
@@ -47739,7 +47851,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:14Z'
     review:
@@ -47748,8 +47860,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47800,6 +47912,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:41Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: be177adac5691241c6ec8413eb0244a30060fd299f234193106cd28233f601a2
+        new_yaml_sha256: ffd11a9d4ffd663c3516d3b6e068bf0b3abbf09491af646078b80975f3d02f54
+        target_ids:
+          - web.tanstack-keys.102
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.103
     stable_key: 'sha256:c33453d06320cffc45cab082fb7202e0bf65e648002e55cd664d5862a852d5ea'
@@ -47817,7 +47945,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:16Z'
     review:
@@ -47826,8 +47954,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47878,6 +48006,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:43Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ffd11a9d4ffd663c3516d3b6e068bf0b3abbf09491af646078b80975f3d02f54
+        new_yaml_sha256: 3fc64ba6143144af4e4ab1c88db04f74eb6795ffd33d18972e3cc7153cbfb950
+        target_ids:
+          - web.tanstack-keys.103
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.104
     stable_key: 'sha256:ba8000a58979547a2823570fc269bb416d8f5524f32c478f9eca51d0ca53b0e9'
@@ -47895,7 +48039,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T09:16:18Z'
     review:
@@ -47904,8 +48048,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ed238367
+    regression_test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
     blocked_reason: null
     history:
       -
@@ -47956,6 +48100,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T09:23:45Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3fc64ba6143144af4e4ab1c88db04f74eb6795ffd33d18972e3cc7153cbfb950
+        new_yaml_sha256: 21b1b795620a07e71973eb897cbdf30bc94cd8ce973a6554e6fa03f775727a12
+        target_ids:
+          - web.tanstack-keys.104
+        from_status: in_progress
+        to_status: under_review
+        commit: ed238367
+        test: 'apps/web/src/features/categories/hooks/__tests__/useCategories.tenantScope.test.tsx::mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.105
     stable_key: 'sha256:194d013dc33e50d9bf0f6e76b7baf2cdd88d22be36a0c46834569d94d0129ff4'
