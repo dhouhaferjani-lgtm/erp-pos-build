@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: f70337ebeff6ee3826cfaf5ad7a318559f896212a3a71d2f169665a32f2aaebc
+  yaml_sha256: ceb950eceb214a55fa8adf0eb917481cb3a8ff3b82661e42fb5179fe9b231660
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -69231,14 +69231,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:16Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:41Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::setPrimary refetches product-images for the current tenant (.555 + .556)'
@@ -69308,6 +69308,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:41Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: f70337ebeff6ee3826cfaf5ad7a318559f896212a3a71d2f169665a32f2aaebc
+        new_yaml_sha256: 4d692de5372217ac7be43d66dfb28685675ef300d6c3abc917f1ac93bf75562b
+        target_ids:
+          - web.tanstack-keys.553
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.554
     stable_key: 'sha256:64cb0e90f48bdb77beee591cc917e91605a5b0d22c09ad31cae5ed52cde5e351'
@@ -69325,14 +69341,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:18Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:43Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::setPrimary refetches product-images for the current tenant (.555 + .556)'
@@ -69402,6 +69418,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:43Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 4d692de5372217ac7be43d66dfb28685675ef300d6c3abc917f1ac93bf75562b
+        new_yaml_sha256: 6de4c5cbcddfda8fc1380829bbb80a0cbbd2c018d5fdf1555b2f5957c0dddb96
+        target_ids:
+          - web.tanstack-keys.554
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.555
     stable_key: 'sha256:9b459545ba4bc256d141211c3a143baa807c999666705b70eb0959be75d190a4'
@@ -69419,14 +69451,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:20Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::setPrimary refetches product-images for the current tenant (.555 + .556)'
@@ -69496,6 +69528,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:45Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6de4c5cbcddfda8fc1380829bbb80a0cbbd2c018d5fdf1555b2f5957c0dddb96
+        new_yaml_sha256: 8907ff9c5b5a878da0767a13be625d6c7c843ae3b6d61461c06fd59a527ce548
+        target_ids:
+          - web.tanstack-keys.555
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.556
     stable_key: 'sha256:926d36057369cc611634a0ff28e6f87c81cc8481e803a6dd0f372d62e30e68f5'
@@ -69513,14 +69561,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:22Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:47Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::setPrimary refetches product-images for the current tenant (.555 + .556)'
@@ -69590,6 +69638,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:47Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8907ff9c5b5a878da0767a13be625d6c7c843ae3b6d61461c06fd59a527ce548
+        new_yaml_sha256: e36154d5628b6b8ebf106adbad1a4a35c1ba737d7c7a938b2a7530b13d1d0381
+        target_ids:
+          - web.tanstack-keys.556
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.557
     stable_key: 'sha256:a409c440d9ec57c8ad99e5dd1c20ec5bbe4d8a1c720b41e1646ac4fb5bedbc0a'
@@ -69607,14 +69671,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:24Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::ProductImageSection.useQuery (callsite .557)'
@@ -69684,6 +69748,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:49Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: e36154d5628b6b8ebf106adbad1a4a35c1ba737d7c7a938b2a7530b13d1d0381
+        new_yaml_sha256: 242900400d3e0542a880337922ca7a1232d2a6d461c181f0dfc09158e515494d
+        target_ids:
+          - web.tanstack-keys.557
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.558
     stable_key: 'sha256:3eb07c6defc0fdc14fe9d54abb413c66f7ac14cf319f76d2522c2a57df2f7e2b'
@@ -69701,14 +69781,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:25Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:50Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::upload refetches the product-images query (callsite .558)'
@@ -69778,6 +69858,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:51Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 242900400d3e0542a880337922ca7a1232d2a6d461c181f0dfc09158e515494d
+        new_yaml_sha256: 8a52cec3a5669fbe208656ce0e259001958bc22e2ea57c97c7b239376102cf0f
+        target_ids:
+          - web.tanstack-keys.558
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.559
     stable_key: 'sha256:08f11212ccf0686d0db59332b3a67a1c0ef1ba921bd70527cbaae0c4baee0cb9'
@@ -69795,14 +69891,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:52Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::upload refetches the product-images query (callsite .558)'
@@ -69872,6 +69968,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:53Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8a52cec3a5669fbe208656ce0e259001958bc22e2ea57c97c7b239376102cf0f
+        new_yaml_sha256: 77c7e253c123ccfbe8a1d89f3815512be95974822b74d345ddd127a4c08db323
+        target_ids:
+          - web.tanstack-keys.559
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.560
     stable_key: 'sha256:40de0011425dcff9a478389fc8c912fbaf71bf1d6dc576f9dcaaa48e7545a5d7'
@@ -69889,14 +70001,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:29Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:54Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::ProductPrimaryImageDisplay.useQuery (callsite .560)'
@@ -69966,6 +70078,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:55Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 77c7e253c123ccfbe8a1d89f3815512be95974822b74d345ddd127a4c08db323
+        new_yaml_sha256: 41b20bb96cfba147fc9f35a07b7a24f720ce4bcde4cd76b992f98237bce947b0
+        target_ids:
+          - web.tanstack-keys.560
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.561
     stable_key: 'sha256:83723dddae5aa16eb3315b6148a4c2d0e724d0522c31ed0e631d454a91b89462'
@@ -69983,14 +70111,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:31Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::matches ANY tenant-scoped products key (list or detail) for the given t/c'
@@ -70060,6 +70188,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:57Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 41b20bb96cfba147fc9f35a07b7a24f720ce4bcde4cd76b992f98237bce947b0
+        new_yaml_sha256: c0f9a48f7eb07eb59dcddb06aa9d80f87a9316aee595a3aab5fa12cb1307963d
+        target_ids:
+          - web.tanstack-keys.561
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.562
     stable_key: 'sha256:b114daa060196c2553bc37ffc27657c0ad8e48f2f15acc7b14de9a817441eb9c'
@@ -70077,14 +70221,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:32Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:48:58Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::matches ANY tenant-scoped products key (list or detail) for the given t/c'
@@ -70154,6 +70298,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:48:59Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c0f9a48f7eb07eb59dcddb06aa9d80f87a9316aee595a3aab5fa12cb1307963d
+        new_yaml_sha256: c6d78e025b4eba63c7e471c5cb80ff6acaaea7f84c133d61e65cd043681aa98b
+        target_ids:
+          - web.tanstack-keys.562
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.563
     stable_key: 'sha256:b88d358ccda8ef2da44ff203faed4af65d5046efd261f626b1d9c7f038a55a93'
@@ -70171,14 +70331,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:34Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:49:00Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::useProducts queryKey carries tenant_id + company_id at the suffix'
@@ -70248,6 +70408,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:49:01Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c6d78e025b4eba63c7e471c5cb80ff6acaaea7f84c133d61e65cd043681aa98b
+        new_yaml_sha256: 7e6e6f06cd79b3561c642f82c76c93dc716088ca86abf2f37091e32f545d2085
+        target_ids:
+          - web.tanstack-keys.563
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.564
     stable_key: 'sha256:3df8c9100348b2d7d6354ba049619ee2723442f28d0e571feaef45f06c392c17'
@@ -70265,14 +70441,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: in_progress
     owner: claude
     claimed_at: '2026-05-10T10:28:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
+      reviewer: codex
+      verdict: REQUEST-CHANGES
+      reviewed_at: '2026-05-10T10:49:02Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
       review_commit: null
     fix_commit: bbba88ff
     regression_test: 'apps/web/src/features/products/__tests__/tenantScope.test.tsx::useProducts queryKey carries tenant_id + company_id at the suffix'
@@ -70342,6 +70518,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by claude via sweep:inventory:submit'
+      -
+        at: '2026-05-10T10:49:02Z'
+        actor: codex
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 7e6e6f06cd79b3561c642f82c76c93dc716088ca86abf2f37091e32f545d2085
+        new_yaml_sha256: ceb950eceb214a55fa8adf0eb917481cb3a8ff3b82661e42fb5179fe9b231660
+        target_ids:
+          - web.tanstack-keys.564
+        from_status: under_review
+        to_status: in_progress
+        commit: d06a84cb1b69627210536dc61c5aeb961a63ad66
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-2-codex-review.md
+        review_commit: null
+        note: 'review verdict=REQUEST-CHANGES by codex via sweep:inventory:review'
   -
     id: web.tanstack-keys.565
     stable_key: 'sha256:20b5752148d6d0f0e057e8812b1912361f4341e56672b21aa9b5bb395c6067dd'

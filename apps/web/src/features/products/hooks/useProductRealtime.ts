@@ -59,12 +59,18 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
   const { productId, onUpdate, enabled = true } = options
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { user } = useAuthStore()
-  const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
-  const currentCompany = getCurrentCompany()
+  // Subscribe to TENANT-ID and COMPANY-ID directly (state values) so the
+  // hook re-renders on tenant/company switch — that's what forces the
+  // closure-captured tenantId/companyId below to update. Subscribing to the
+  // `getCurrentCompany` action selector alone wouldn't fire a re-render
+  // because action identities are stable across switches.
+  const user = useAuthStore((s) => s.user)
+  const currentCompanyId = useCompanyStore((s) => s.currentCompanyId)
+  const companies = useCompanyStore((s) => s.companies)
+  const currentCompany = companies.find((c) => c.id === currentCompanyId) ?? null
 
   const tenantId = user?.tenant_id ?? null
-  const companyId = currentCompany?.id ?? null
+  const companyId = currentCompanyId ?? null
 
   const handleUpdate = useCallback(
     (data: ProductCostPriceUpdatePayload) => {

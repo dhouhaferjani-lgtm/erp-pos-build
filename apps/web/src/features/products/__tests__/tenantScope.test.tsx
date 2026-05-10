@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
-import { QueryClient, useMutation, useQueryClient } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
+import { QueryClient } from '@tanstack/react-query'
 
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { createTestQueryClient, renderWithProviders } from '@/test/renderWithProviders'
 
-import { uploadProductImage } from '../api/productImages'
 import { ProductImageGallery } from '../components/ProductImageGallery'
 import { ProductImageSection } from '../components/ProductImageSection'
 import { ProductImageUpload } from '../components/ProductImageUpload'
@@ -18,6 +17,7 @@ import {
   useProduct,
   useProducts,
 } from '../hooks/useProducts'
+import { useProductRealtime } from '../hooks/useProductRealtime'
 
 // ─── API mocks ────────────────────────────────────────────────────────────────
 
@@ -50,12 +50,17 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-// useRealtimeChannel is exercised by useProductRealtime; mock to a no-op so the
-// hook can render without a live WebSocket. The realtime callsites (.561,
-// .562) live inside the hook's `handleUpdate` callback — our predicate test
-// invokes that callback directly via the helper.
+// useRealtimeChannel is mocked to capture the onEvent handler in a global ref
+// so realtime tests can simulate a backend event and drive the production
+// `handleUpdate` callback (where callsites .561 + .562 live) through the real
+// useProductRealtime hook — instead of duplicating the predicate logic in the
+// test (which would be vacuous on the production wiring).
+const realtimeRef = { onEvent: null as ((data: unknown) => void) | null }
 vi.mock('@/hooks/useRealtimeChannel', () => ({
-  useRealtimeChannel: () => undefined,
+  useRealtimeChannel: ({ onEvent }: { onEvent: (data: unknown) => void }) => {
+    realtimeRef.onEvent = onEvent
+    return undefined
+  },
 }))
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -381,38 +386,15 @@ describe('ProductImageGallery mutations cascade tenant-scoped invalidation', () 
 
 // ─── ProductImageUpload mutation cascade (callsites .558, .559) ──────────────
 
-describe('ProductImageUpload mutation cascade', () => {
-  // Re-creates ProductImageUpload's uploadMutation so the test can invoke it
-  // directly (the file-input + dispatchEvent path doesn't reliably propagate
-  // `files` through React's synthetic event system in jsdom). Keep the
-  // mutation contract aligned with ProductImageUpload.tsx's uploadMutation.
-  function UploadHookProbe({ productId }: { productId: string }) {
-    const queryClient = useQueryClient()
-    const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
-    const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
-    void tenantId
-    void companyId
-    const mutation = useMutation({
-      mutationFn: (file: File) => uploadProductImage(productId, file),
-      onSuccess: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
-          queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
-        ])
-      },
-    })
-    ;(globalThis as Record<string, unknown>)['__uploadMutation'] = mutation
-    return null
-  }
-
-  it('upload refetches the product-images query (callsite .558)', async () => {
+describe('ProductImageUpload mutation cascade (callsites .558 + .559)', () => {
+  it('uploading via the rendered ProductImageUpload component refetches the product-images query', async () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
 
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <>
         <ProductImageSection productId="prod-1" />
-        <UploadHookProbe productId="prod-1" />
+        <ProductImageUpload productId="prod-1" />
       </>,
       { queryClient },
     )
@@ -421,31 +403,67 @@ describe('ProductImageUpload mutation cascade', () => {
       expect(mockApiGet).toHaveBeenCalledTimes(1)
     })
 
-    const upload = (globalThis as Record<string, unknown>)['__uploadMutation'] as {
-      mutateAsync: (file: File) => Promise<unknown>
-    }
+    // userEvent.upload drives React's synthetic event system properly,
+    // unlike a manual dispatchEvent on a defineProperty-mutated input.
+    // The handleFileInput → uploadMutation.mutate → onSuccess cascade is
+    // the production path — removing the invalidate at ProductImageUpload.tsx:32
+    // (callsite .558) would make this test fail.
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).not.toBeNull()
     const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
-    await upload.mutateAsync(file)
-    delete (globalThis as Record<string, unknown>)['__uploadMutation']
+    const user = userEvent.setup()
+    await user.upload(input, file)
 
-    // After cascade: product-images was re-fetched (the cascade key matches
-    // ProductImageSection's useQuery key exactly).
-    expect(mockApiGet).toHaveBeenCalledTimes(2)
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(2)
+    })
   })
+})
 
-  it('upload mutation in ProductImageUpload component itself uses tenant-scoped invalidation (callsites .558 + .559)', () => {
-    // Static-shape test for the production component: render it and confirm
-    // it doesn't throw; the queryKey shape is verified by the audit-tanstack-keys
-    // scanner (call site is bare-array tenantScopedKey wrap). The fetch-count
-    // cascade is exercised by the previous test using the same mutation
-    // contract.
+// ─── useProductRealtime cascade (callsites .561, .562) ───────────────────────
+
+describe('useProductRealtime production cascade through handleUpdate', () => {
+  it('simulating a backend cost-price-updated event invalidates products + product-images caches', async () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
-    const { container } = renderWithProviders(
-      <ProductImageUpload productId="prod-1" />,
-      { queryClient },
-    )
-    // Component renders an input[type=file] without throwing.
-    expect(container.querySelector('input[type="file"]')).not.toBeNull()
+
+    function RealtimeProbe() {
+      // useProducts seeds the tenant-scoped products list cache.
+      useProducts({ per_page: 1 })
+      // useProductRealtime registers the onEvent handler via the mocked
+      // useRealtimeChannel; the mock captures onEvent into realtimeRef.
+      useProductRealtime({ productId: 'prod-1' })
+      return null
+    }
+
+    renderWithProviders(<RealtimeProbe />, { queryClient })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(1)
+      expect(realtimeRef.onEvent).not.toBeNull()
+    })
+
+    // Simulate the backend event. The production handleUpdate (lines 70-83
+    // of useProductRealtime.ts) fires:
+    //   1. invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) })
+    //   2. invalidateQueries({ predicate: productsInvalidationPredicate(t, c) })
+    // Removing either callsite from production code would prevent this
+    // refetch — which is the test-honesty signal F2 demanded.
+    realtimeRef.onEvent!({
+      productId: 'prod-1',
+      productSku: 'SKU',
+      oldCostPrice: '10.00',
+      newCostPrice: '12.00',
+      oldSalePrice: '20.00',
+      newSalePrice: '24.00',
+      reason: 'cost-update',
+      timestamp: '2026-01-01T00:00:00Z',
+    })
+
+    // The seeded useProducts list query refetches because the predicate
+    // matched it. mockApiGet count goes from 1 → 2.
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledTimes(2)
+    })
   })
 })
