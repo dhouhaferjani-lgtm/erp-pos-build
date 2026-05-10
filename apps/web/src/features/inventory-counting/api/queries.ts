@@ -1,4 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { countingApi } from './countingApi'
 import type { CountingFilters, CreateCountingFormData } from '../types'
 import { toast } from 'sonner'
@@ -16,43 +19,72 @@ export const countingKeys = {
   dashboard: () => [...countingKeys.all, 'dashboard'] as const,
 }
 
+export function countingListInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'counting' &&
+      k[1] === 'list' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 // Queries
 export function useCountingDashboard() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: countingKeys.dashboard(),
+    queryKey: tenantScopedKey([...countingKeys.dashboard()]),
     queryFn: countingApi.getDashboard,
+    enabled: !!tenantId && !!companyId,
     refetchInterval: 30000, // Refresh every 30s
   })
 }
 
 export function useCountingList(filters: CountingFilters) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: countingKeys.list(filters),
+    queryKey: tenantScopedKey([...countingKeys.list(filters)]),
     queryFn: () => countingApi.list(filters),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
 export function useCountingDetail(id: number) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: countingKeys.detail(id),
+    queryKey: tenantScopedKey([...countingKeys.detail(id)]),
     queryFn: () => countingApi.getDetail(id),
-    enabled: !!id,
+    enabled: !!id && !!tenantId && !!companyId,
   })
 }
 
 export function useReconciliation(countingId: number) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: countingKeys.reconciliation(countingId),
+    queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
     queryFn: () => countingApi.getReconciliation(countingId),
-    enabled: !!countingId,
+    enabled: !!countingId && !!tenantId && !!companyId,
   })
 }
 
 export function useDiscrepancyReport(countingId: number) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: countingKeys.report(countingId),
+    queryKey: tenantScopedKey([...countingKeys.report(countingId)]),
     queryFn: () => countingApi.getReport(countingId),
-    enabled: !!countingId,
+    enabled: !!countingId && !!tenantId && !!companyId,
   })
 }
 
@@ -60,12 +92,18 @@ export function useDiscrepancyReport(countingId: number) {
 export function useCreateCounting() {
   const queryClient = useQueryClient()
   const { t } = useTranslation('inventory')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (data: CreateCountingFormData) => countingApi.create(data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: countingKeys.lists() })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.dashboard() })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: countingListInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+      ])
       toast.success(t('counting.messages.created'))
     },
     onError: (error: Error) => {
@@ -80,9 +118,11 @@ export function useActivateCounting() {
 
   return useMutation({
     mutationFn: (id: number) => countingApi.activate(id),
-    onSuccess: (_, id) => {
-      void queryClient.invalidateQueries({ queryKey: countingKeys.detail(id) })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.dashboard() })
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+      ])
       toast.success(t('counting.messages.activated'))
     },
     onError: (error: Error) => {
@@ -98,9 +138,11 @@ export function useCancelCounting() {
   return useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       countingApi.cancel(id, reason),
-    onSuccess: (_, { id }) => {
-      void queryClient.invalidateQueries({ queryKey: countingKeys.detail(id) })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.dashboard() })
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+      ])
       toast.success(t('counting.messages.cancelled'))
     },
     onError: (error: Error) => {
@@ -115,9 +157,11 @@ export function useFinalizeCounting() {
 
   return useMutation({
     mutationFn: (id: number) => countingApi.finalize(id),
-    onSuccess: (_, id) => {
-      void queryClient.invalidateQueries({ queryKey: countingKeys.detail(id) })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.dashboard() })
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.dashboard()]) }),
+      ])
       toast.success(t('counting.messages.finalized'))
     },
     onError: (error: Error) => {
@@ -133,9 +177,13 @@ export function useTriggerThirdCount() {
   return useMutation({
     mutationFn: ({ countingId, itemIds }: { countingId: number; itemIds: number[] }) =>
       countingApi.triggerThirdCount(countingId, itemIds),
-    onSuccess: (_, { countingId }) => {
-      void queryClient.invalidateQueries({ queryKey: countingKeys.reconciliation(countingId) })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.detail(countingId) })
+    onSuccess: async (_, { countingId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+      ])
       toast.success(t('counting.messages.thirdCountTriggered'))
     },
     onError: (error: Error) => {
@@ -158,10 +206,14 @@ export function useManualOverride(countingId: number) {
       quantity: number
       notes: string
     }) => countingApi.manualOverride(itemId, quantity, notes),
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate reconciliation for this counting
-      void queryClient.invalidateQueries({ queryKey: countingKeys.reconciliation(countingId) })
-      void queryClient.invalidateQueries({ queryKey: countingKeys.detail(countingId) })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+      ])
       toast.success(t('counting.messages.overrideApplied'))
     },
     onError: (error: Error) => {
