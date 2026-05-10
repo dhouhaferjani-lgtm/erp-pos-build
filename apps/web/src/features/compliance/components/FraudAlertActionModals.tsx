@@ -4,7 +4,14 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, UserPlus, XCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { assignFraudAlert, dismissFraudAlert, resolveFraudAlert, getUsersWithAdminRole } from '../api/fraudApi'
+import {
+  fraudAlertStatisticsInvalidationPredicate,
+  fraudAlertsInvalidationPredicate,
+} from '../_invalidation'
 import type { FraudAlert } from '../types/fraudAlerts'
 
 interface AssignModalProps {
@@ -15,6 +22,8 @@ interface AssignModalProps {
 export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [selectedUserId, setSelectedUserId] = useState<string>('')
 
   // Fetch tenant-scoped users with admin role (NOT super-admin users).
@@ -22,15 +31,22 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
   // a sub-segment 'admin-role' so it doesn't collide with the super-admin
   // 'admin' cache namespace used by features/admin/.
   const { data: adminUsersData, isLoading: loadingUsers } = useQuery({
-    queryKey: ['users', 'admin-role'],
+    queryKey: tenantScopedKey(['users', 'admin-role']),
     queryFn: getUsersWithAdminRole,
+    enabled: !!tenantId && !!companyId,
   })
 
   const assignMutation = useMutation({
     mutationFn: (userId: string) => assignFraudAlert(alert.id, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fraud-alerts'] })
-      queryClient.invalidateQueries({ queryKey: ['fraud-alert-statistics'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: fraudAlertsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: fraudAlertStatisticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('compliance:fraudAlerts.messages.assignSuccess'))
       onClose()
     },
@@ -130,13 +146,21 @@ interface DismissModalProps {
 export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [notes, setNotes] = useState('')
 
   const dismissMutation = useMutation({
     mutationFn: (dismissNotes: string) => dismissFraudAlert(alert.id, dismissNotes),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fraud-alerts'] })
-      queryClient.invalidateQueries({ queryKey: ['fraud-alert-statistics'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: fraudAlertsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: fraudAlertStatisticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('compliance:fraudAlerts.messages.dismissSuccess'))
       onClose()
     },
@@ -221,13 +245,21 @@ interface ResolveModalProps {
 export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [notes, setNotes] = useState('')
 
   const resolveMutation = useMutation({
     mutationFn: (resolveNotes: string) => resolveFraudAlert(alert.id, resolveNotes),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fraud-alerts'] })
-      queryClient.invalidateQueries({ queryKey: ['fraud-alert-statistics'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: fraudAlertsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: fraudAlertStatisticsInvalidationPredicate(tenantId, companyId),
+        }),
+      ])
       toast.success(t('compliance:fraudAlerts.messages.resolveSuccess'))
       onClose()
     },
