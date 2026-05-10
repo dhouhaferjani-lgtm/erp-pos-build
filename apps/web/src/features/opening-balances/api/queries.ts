@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
 import { openingBalancesApi } from './openingBalancesApi'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type {
@@ -24,15 +26,39 @@ export const openingBalanceKeys = {
     [...openingBalanceKeys.all, 'preview', companyId, batchId] as const,
 }
 
+export function openingBalanceRowsInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+  batchId: string,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 6 &&
+      k[0] === 'opening-balances' &&
+      k[1] === 'rows' &&
+      k[2] === companyId &&
+      k[3] === batchId &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 // Queries
 
 /**
  * Get available batch types
  */
 export function useOpeningBatchTypes() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: openingBalanceKeys.types(),
+    queryKey: tenantScopedKey([...openingBalanceKeys.types()]),
     queryFn: () => openingBalancesApi.getTypes(),
+    enabled: !!tenantId && !!companyId,
     staleTime: 1000 * 60 * 60, // Types are static, cache for 1 hour
   })
 }
@@ -41,12 +67,13 @@ export function useOpeningBatchTypes() {
  * Get status for all batch types
  */
 export function useOpeningBatchStatus() {
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: openingBalanceKeys.status(companyId ?? ''),
+    queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId ?? '')]),
     queryFn: () => openingBalancesApi.getStatus(companyId!),
-    enabled: Boolean(companyId),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -54,12 +81,13 @@ export function useOpeningBatchStatus() {
  * List all opening balance batches
  */
 export function useOpeningBatches() {
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: openingBalanceKeys.list(companyId ?? ''),
+    queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId ?? '')]),
     queryFn: () => openingBalancesApi.list(companyId!),
-    enabled: Boolean(companyId),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -67,12 +95,13 @@ export function useOpeningBatches() {
  * Get a single batch
  */
 export function useOpeningBatch(batchId: string | undefined) {
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: openingBalanceKeys.detail(companyId ?? '', batchId ?? ''),
+    queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId ?? '', batchId ?? '')]),
     queryFn: () => openingBalancesApi.get(companyId!, batchId!),
-    enabled: Boolean(companyId) && Boolean(batchId),
+    enabled: !!tenantId && !!companyId && Boolean(batchId),
   })
 }
 
@@ -83,12 +112,13 @@ export function useOpeningBatchRows(
   batchId: string | undefined,
   params?: { page?: number; per_page?: number; status?: string }
 ) {
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: [...openingBalanceKeys.rows(companyId ?? '', batchId ?? ''), params],
+    queryKey: tenantScopedKey([...openingBalanceKeys.rows(companyId ?? '', batchId ?? ''), params]),
     queryFn: () => openingBalancesApi.getRows(companyId!, batchId!, params),
-    enabled: Boolean(companyId) && Boolean(batchId),
+    enabled: !!tenantId && !!companyId && Boolean(batchId),
   })
 }
 
@@ -96,12 +126,13 @@ export function useOpeningBatchRows(
  * Get post preview for a batch
  */
 export function useOpeningBatchPreview(batchId: string | undefined) {
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: openingBalanceKeys.preview(companyId ?? '', batchId ?? ''),
+    queryKey: tenantScopedKey([...openingBalanceKeys.preview(companyId ?? '', batchId ?? '')]),
     queryFn: () => openingBalancesApi.preview(companyId!, batchId!),
-    enabled: Boolean(companyId) && Boolean(batchId),
+    enabled: !!tenantId && !!companyId && Boolean(batchId),
   })
 }
 
@@ -113,14 +144,18 @@ export function useOpeningBatchPreview(batchId: string | undefined) {
 export function useCreateOpeningBatch() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (payload: CreateBatchPayload) =>
       openingBalancesApi.create(companyId!, payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.list(companyId!) })
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.status(companyId!) })
+    onSuccess: async () => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+      ])
       toast.success(t('openingBalances.messages.batchCreated'))
     },
     onError: (error: Error) => {
@@ -135,14 +170,18 @@ export function useCreateOpeningBatch() {
 export function useDeleteOpeningBatch() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (batchId: string) =>
       openingBalancesApi.delete(companyId!, batchId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.list(companyId!) })
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.status(companyId!) })
+    onSuccess: async () => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+      ])
       toast.success(t('openingBalances.messages.batchDeleted'))
     },
     onError: (error: Error) => {
@@ -157,18 +196,22 @@ export function useDeleteOpeningBatch() {
 export function useImportOpeningRows() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({ batchId, payload }: { batchId: string; payload: ImportRowPayload }) =>
       openingBalancesApi.importRows(companyId!, batchId, payload),
-    onSuccess: (data, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.detail(companyId!, variables.batchId),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.rows(companyId!, variables.batchId),
-      })
+    onSuccess: async (data, variables) => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, variables.batchId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: openingBalanceRowsInvalidationPredicate(tenantId, companyId, variables.batchId),
+        }),
+      ])
       toast.success(t('openingBalances.messages.rowsImported', { count: data.imported }))
     },
     onError: (error: Error) => {
@@ -183,18 +226,22 @@ export function useImportOpeningRows() {
 export function useValidateOpeningBatch() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (batchId: string) =>
       openingBalancesApi.validate(companyId!, batchId),
-    onSuccess: (data, batchId) => {
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.detail(companyId!, batchId),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.rows(companyId!, batchId),
-      })
+    onSuccess: async (data, batchId) => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: openingBalanceRowsInvalidationPredicate(tenantId, companyId, batchId),
+        }),
+      ])
       if (data.valid) {
         toast.success(t('openingBalances.messages.validationSuccess'))
       } else {
@@ -213,16 +260,20 @@ export function useValidateOpeningBatch() {
 export function usePostOpeningBatch() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (batchId: string) =>
       openingBalancesApi.post(companyId!, batchId),
-    onSuccess: (_data, batchId) => {
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.detail(companyId!, batchId),
-      })
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.status(companyId!) })
+    onSuccess: async (_data, batchId) => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+      ])
       toast.success(t('openingBalances.messages.postSuccess'))
     },
     onError: (error: Error) => {
@@ -237,17 +288,21 @@ export function usePostOpeningBatch() {
 export function useLockOpeningBatch() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (batchId: string) =>
       openingBalancesApi.lock(companyId!, batchId),
-    onSuccess: (_data, batchId) => {
-      void queryClient.invalidateQueries({
-        queryKey: openingBalanceKeys.detail(companyId!, batchId),
-      })
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.status(companyId!) })
-      void queryClient.invalidateQueries({ queryKey: openingBalanceKeys.list(companyId!) })
+    onSuccess: async (_data, batchId) => {
+      if (!tenantId || !companyId) return
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...openingBalanceKeys.detail(companyId, batchId)]),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.status(companyId)]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...openingBalanceKeys.list(companyId)]) }),
+      ])
       toast.success(t('openingBalances.messages.lockSuccess'))
     },
     onError: (error: Error) => {
