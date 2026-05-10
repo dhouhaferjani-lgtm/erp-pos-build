@@ -8,6 +8,9 @@ import { Input } from '@/components/atoms/Input/Input'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Select } from '@/components/atoms/Select/Select'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { TranslationEditor, type Translation } from '../components'
 import {
   fetchIngredient,
@@ -15,6 +18,7 @@ import {
   updateIngredient,
   type CreateIngredientInput,
 } from '../api/ingredientApi'
+import { parapharmacyListInvalidationPredicate } from './tenantScope'
 import { toast } from 'sonner'
 
 export function IngredientFormPage() {
@@ -22,6 +26,8 @@ export function IngredientFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const isEdit = !!id && id !== 'new'
 
   const [slug, setSlug] = useState('')
@@ -37,9 +43,9 @@ export function IngredientFormPage() {
   ])
 
   const { data: ingredient, isLoading } = useQuery({
-    queryKey: ['parapharmacy', 'ingredients', id],
+    queryKey: tenantScopedKey(['parapharmacy', 'ingredients', id]),
     queryFn: () => fetchIngredient(id!),
-    enabled: isEdit,
+    enabled: isEdit && !!tenantId && !!companyId,
   })
 
   useEffect(() => {
@@ -65,8 +71,10 @@ export function IngredientFormPage() {
 
   const createMutation = useMutation({
     mutationFn: createIngredient,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'ingredients'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'ingredients'),
+      })
       toast.success(t('parapharmacy:ingredientCreated'))
       navigate('/parapharmacy/ingredients')
     },
@@ -80,8 +88,10 @@ export function IngredientFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateIngredientInput) => updateIngredient(id!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'ingredients'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'ingredients'),
+      })
       toast.success(t('parapharmacy:ingredientUpdated'))
       navigate('/parapharmacy/ingredients')
     },

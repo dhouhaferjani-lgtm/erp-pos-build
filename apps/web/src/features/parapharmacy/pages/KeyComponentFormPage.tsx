@@ -6,6 +6,9 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/atoms/Button/Button';
 import { Input } from '@/components/atoms/Input/Input';
 import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { tenantScopedKey } from '@/lib/tenantScopedKey';
+import { useAuthStore } from '@/stores/authStore';
+import { useCompanyStore } from '@/stores/companyStore';
 import { TranslationEditor, type Translation } from '../components';
 import {
   fetchKeyComponent,
@@ -13,6 +16,7 @@ import {
   updateKeyComponent,
   type CreateKeyComponentInput,
 } from '../api/keyComponentApi';
+import { parapharmacyListInvalidationPredicate } from './tenantScope';
 import { toast } from 'sonner';
 
 export function KeyComponentFormPage() {
@@ -20,6 +24,8 @@ export function KeyComponentFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null);
   const isEdit = !!id && id !== 'new';
 
   const [slug, setSlug] = useState('');
@@ -29,9 +35,9 @@ export function KeyComponentFormPage() {
   ]);
 
   const { data: keyComponent, isLoading } = useQuery({
-    queryKey: ['parapharmacy', 'key-components', id],
+    queryKey: tenantScopedKey(['parapharmacy', 'key-components', id]),
     queryFn: () => fetchKeyComponent(id!),
-    enabled: isEdit,
+    enabled: isEdit && !!tenantId && !!companyId,
   });
 
   useEffect(() => {
@@ -51,8 +57,10 @@ export function KeyComponentFormPage() {
 
   const createMutation = useMutation({
     mutationFn: createKeyComponent,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'key-components'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'key-components'),
+      });
       toast.success(t('parapharmacy:keyComponentCreated'));
       navigate('/parapharmacy/key-components');
     },
@@ -66,8 +74,10 @@ export function KeyComponentFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateKeyComponentInput) => updateKeyComponent(id!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'key-components'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'key-components'),
+      });
       toast.success(t('parapharmacy:keyComponentUpdated'));
       navigate('/parapharmacy/key-components');
     },

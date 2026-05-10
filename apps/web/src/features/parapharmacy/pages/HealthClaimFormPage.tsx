@@ -7,6 +7,9 @@ import { Button } from '@/components/atoms/Button/Button';
 import { Input } from '@/components/atoms/Input/Input';
 import { Select } from '@/components/atoms/Select/Select';
 import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { tenantScopedKey } from '@/lib/tenantScopedKey';
+import { useAuthStore } from '@/stores/authStore';
+import { useCompanyStore } from '@/stores/companyStore';
 import { TranslationEditor, type Translation } from '../components';
 import {
   fetchHealthClaim,
@@ -14,6 +17,7 @@ import {
   updateHealthClaim,
   type CreateHealthClaimInput,
 } from '../api/healthClaimApi';
+import { parapharmacyListInvalidationPredicate } from './tenantScope';
 import { toast } from 'sonner';
 
 export function HealthClaimFormPage() {
@@ -21,6 +25,8 @@ export function HealthClaimFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null);
   const isEdit = !!id && id !== 'new';
 
   const [claimType, setClaimType] = useState<
@@ -39,9 +45,9 @@ export function HealthClaimFormPage() {
   ]);
 
   const { data: healthClaim, isLoading } = useQuery({
-    queryKey: ['parapharmacy', 'health-claims', id],
+    queryKey: tenantScopedKey(['parapharmacy', 'health-claims', id]),
     queryFn: () => fetchHealthClaim(id!),
-    enabled: isEdit,
+    enabled: isEdit && !!tenantId && !!companyId,
   });
 
   useEffect(() => {
@@ -69,8 +75,10 @@ export function HealthClaimFormPage() {
 
   const createMutation = useMutation({
     mutationFn: createHealthClaim,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'health-claims'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'health-claims'),
+      });
       toast.success(t('parapharmacy:healthClaimCreated'));
       navigate('/parapharmacy/health-claims');
     },
@@ -84,8 +92,10 @@ export function HealthClaimFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateHealthClaimInput) => updateHealthClaim(id!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'health-claims'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'health-claims'),
+      });
       toast.success(t('parapharmacy:healthClaimUpdated'));
       navigate('/parapharmacy/health-claims');
     },
