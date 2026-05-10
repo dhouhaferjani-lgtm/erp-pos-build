@@ -64,15 +64,8 @@ class AuthController extends Controller
     ) {}
 
     /**
-     * T1.4 — choose token expiry based on the request's client signals.
-     * Returns `null` for the default (web back-office) path so Sanctum's
-     * per-request `sanctum.expiration` policy stays in charge, or a
-     * concrete `now()->addYear()` for POS terminals where a stable
-     * 12-month lifetime is required so cashiers don't see "Session
-     * expired" mid-shift after monthly token churn.
-     *
-     * Triple-gate: a request must satisfy ALL THREE to receive the
-     * 12-month token —
+     * T1.4 — POS request triple-gate. Returns `true` only if the request
+     * satisfies ALL THREE signals that mark it as a POS-tauri terminal:
      *
      *   1. `X-Client-Type: pos-tauri` (the literal value)
      *   2. A non-empty `device_id` in the login body (the Tauri client
@@ -80,15 +73,19 @@ class AuthController extends Controller
      *   3. `platform` is a Tauri desktop target (windows / macos /
      *      linux) — browsers report `web` or omit the field
      *
-     * Web back-office requests fall through every gate (no header, no
-     * device_id, no platform). The legitimate POS path is unchanged.
+     * Web back-office requests fail every gate (no header, no
+     * device_id, no platform). The legitimate POS path passes all three.
      *
-     * **Accepted residual risk (Codex round-3 P2 carry):** every gate
-     * signal is client-controlled. A scripted attacker with valid
-     * credentials can craft a request that satisfies all three gates
-     * and obtain a 12-month token instead of the default 30-day one.
-     * The activation hardening plan §Phase 2 explicitly accepted this
-     * risk class — see `docs/superpowers/plans/2026-04-30-pos-activation-hardening.md`
+     * Both `tokenExpiresAt` (12-month per-row TTL) and `tokenAbilities`
+     * (scoped `pos:*` instead of `*`) branch on the same gate so a
+     * single signal classifies the request.
+     *
+     * **Accepted residual risk (Codex round-3 P2 carry from PR #96):**
+     * every gate signal is client-controlled. A scripted attacker with
+     * valid credentials can craft a request that satisfies all three
+     * gates and obtain a POS-flavoured token. The activation hardening
+     * plan §Phase 2 accepted this risk class — see
+     * `docs/superpowers/plans/2026-04-30-pos-activation-hardening.md`
      * lines 105-107 — with two compensating controls already in place:
      *
      *   - **Server-side revocation:** admins revoke a token via
@@ -98,29 +95,69 @@ class AuthController extends Controller
      *     every shift open, re-checking that the token is still in
      *     `personal_access_tokens` and the user is still active.
      *
-     * **Long-term hardening (Path B from the round-3 review):** replace
-     * this with a dedicated terminal-pairing endpoint that issues long
-     * tokens after a cryptographic device handshake — server-verified
-     * trusted state instead of client-asserted intent. Queued as a
-     * separate workstream; not blocking T1.4's QoL win.
+     * **PR #101 follow-up (this method):** the ability scoping below
+     * adds defense-in-depth on top of the gate. Even if the gate is
+     * spoofed, the resulting POS-flavoured token carries `['pos:*']`
+     * abilities only — any future route guarded by `auth:sanctum,*`
+     * with a non-`pos:*` ability check will reject it. Web back-office
+     * routes are the obvious target; today none of them check, but the
+     * scoping is in place for when they do.
+     *
+     * **Long-term hardening (Path B from the PR #96 round-3 review):**
+     * replace this with a dedicated terminal-pairing endpoint that
+     * issues long tokens after a cryptographic device handshake —
+     * server-verified trusted state instead of client-asserted intent.
+     * Queued as a separate workstream.
      */
-    private function tokenExpiresAt(Request $request): ?\DateTimeInterface
+    private function isPosClient(Request $request): bool
     {
         if ($request->header(self::POS_CLIENT_TYPE_HEADER) !== self::POS_CLIENT_TYPE_VALUE) {
-            return null;
+            return false;
         }
 
         $deviceId = $request->input('device_id');
         if (! is_string($deviceId) || $deviceId === '') {
-            return null;
+            return false;
         }
 
         $platform = $request->input('platform');
         if (! is_string($platform) || ! in_array($platform, self::POS_DESKTOP_PLATFORMS, true)) {
-            return null;
+            return false;
         }
 
-        return now()->addYear();
+        return true;
+    }
+
+    /**
+     * T1.4 — choose token expiry based on the request's client signals.
+     * Returns `null` for the default (web back-office) path so Sanctum's
+     * per-request `sanctum.expiration` policy stays in charge, or a
+     * concrete `now()->addYear()` for POS terminals where a stable
+     * 12-month lifetime is required so cashiers don't see "Session
+     * expired" mid-shift after monthly token churn.
+     */
+    private function tokenExpiresAt(Request $request): ?\DateTimeInterface
+    {
+        return $this->isPosClient($request) ? now()->addYear() : null;
+    }
+
+    /**
+     * PR #101 follow-up to T1.4 — scope POS-issued tokens to `['pos:*']`
+     * instead of the catch-all `['*']`. Defense-in-depth on top of the
+     * triple-gate: a POS token cannot be used to access a web back-office
+     * route guarded by `auth:sanctum,*` with a non-`pos:*` ability check.
+     *
+     * Web back-office tokens keep the historical `['*']` (catch-all)
+     * because the back-office surface has no consistent ability scoping
+     * yet — narrowing here would silently break unrelated endpoints.
+     * When the back-office surface adopts ability checks, we can scope
+     * those tokens too.
+     *
+     * @return array<int, string>
+     */
+    private function tokenAbilities(Request $request): array
+    {
+        return $this->isPosClient($request) ? ['pos:*'] : ['*'];
     }
 
     /**
@@ -171,9 +208,16 @@ class AuthController extends Controller
         // SPA clients will use the session cookie instead.
         // T1.4 — POS-tauri client gets a 12-month per-token expiry; web
         // back-office tokens fall through to NULL expires_at and use the
-        // global sanctum.expiration policy.
+        // global sanctum.expiration policy. PR #101 follow-up: POS
+        // tokens are also scoped to `['pos:*']` abilities so a spoofed
+        // long token can't reach web back-office routes that may later
+        // adopt ability checks.
         $tokenName = $validated['device_name'] ?? 'api-token';
-        $token = $user->createToken($tokenName, ['*'], $this->tokenExpiresAt($request));
+        $token = $user->createToken(
+            $tokenName,
+            $this->tokenAbilities($request),
+            $this->tokenExpiresAt($request),
+        );
 
         $response = new LoginResponseData(
             user: AuthUserData::fromUser($user),
@@ -207,10 +251,13 @@ class AuthController extends Controller
         // T1.4 — compute the per-token expiry BEFORE entering the
         // transaction closure so the closure doesn't capture the Request.
         // POS-tauri client → 12-month token; default → NULL (use the
-        // global sanctum.expiration policy).
+        // global sanctum.expiration policy). PR #101 follow-up: also
+        // pre-compute the abilities (POS → `['pos:*']`, default → `['*']`)
+        // so the closure stays Request-free.
         $tokenExpiresAt = $this->tokenExpiresAt($request);
+        $tokenAbilities = $this->tokenAbilities($request);
 
-        $result = DB::transaction(function () use ($validated, $tokenExpiresAt) {
+        $result = DB::transaction(function () use ($validated, $tokenExpiresAt, $tokenAbilities) {
             // 1. Create Tenant (subscription account)
             $timezone = $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']);
             $locale = $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']);
@@ -317,9 +364,10 @@ class AuthController extends Controller
             $device = $this->handleDevice($user, $validated);
 
             // Create auth token. T1.4 — same per-client branching as
-            // login: POS-tauri → 12mo, default → NULL (global policy).
+            // login: POS-tauri → 12mo + `['pos:*']` abilities, default →
+            // NULL expiry + `['*']` abilities (global policy).
             $tokenName = $validated['device_name'] ?? 'api-token';
-            $token = $user->createToken($tokenName, ['*'], $tokenExpiresAt);
+            $token = $user->createToken($tokenName, $tokenAbilities, $tokenExpiresAt);
 
             return [
                 'user' => $user,

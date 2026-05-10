@@ -613,6 +613,129 @@ class AuthenticationTest extends TestCase
     }
 
     /**
+     * PR #101 follow-up to T1.4 — POS-issued tokens must carry the scoped
+     * `['pos:*']` ability set, not the catch-all `['*']`. Defense-in-depth
+     * on top of the triple-gate: even if the gate is spoofed, the
+     * resulting token cannot pass an `auth:sanctum,*` check that requires
+     * a non-`pos:*` ability.
+     */
+    public function test_t14_pos_client_header_issues_pos_scoped_abilities_token(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'POS Cashier',
+            'email' => 'cashier-abilities@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'cashier-abilities@example.com',
+                'password' => 'password123',
+                'device_id' => 'pos-tauri-device-uuid-abilities',
+                'platform' => 'macos',
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'POS login should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+
+        $this->assertSame(
+            ['pos:*'],
+            $abilities,
+            'POS-issued token must carry exactly [pos:*] abilities, not the catch-all [*].',
+        );
+
+        // Cross-check via Sanctum's PersonalAccessToken model — `tokenCan`
+        // is what every consumer route would call.
+        $token = PersonalAccessToken::query()->find($row->id);
+        $this->assertNotNull($token);
+        $this->assertTrue($token->can('pos:*'), 'POS token must satisfy pos:* ability check');
+        $this->assertFalse($token->can('*'), 'POS token must NOT satisfy the catch-all ability check');
+    }
+
+    /**
+     * PR #101 follow-up to T1.4 — web back-office logins keep the historical
+     * catch-all `['*']` abilities. Narrowing them would silently break
+     * unrelated endpoints since the back-office surface has no consistent
+     * ability scoping yet. This test is the regression guard.
+     */
+    public function test_t14_default_login_keeps_catchall_abilities_for_web_backoffice(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Web User',
+            'email' => 'web-abilities@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'web-abilities@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'Default login should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+
+        $this->assertSame(
+            ['*'],
+            $abilities,
+            'Web back-office tokens must keep the catch-all [*] abilities until the back-office surface adopts scoped abilities.',
+        );
+
+        $token = PersonalAccessToken::query()->find($row->id);
+        $this->assertNotNull($token);
+        $this->assertTrue($token->can('*'), 'Web token must satisfy the catch-all ability check');
+        $this->assertTrue($token->can('pos:*'), 'Catch-all `*` ability also satisfies pos:* (Sanctum semantics)');
+    }
+
+    /**
+     * PR #101 follow-up — verify the same scoping applies to the registration
+     * endpoint. Triple-gate satisfied at register time → POS-flavoured token
+     * with `['pos:*']` abilities + 12-month expiry.
+     */
+    public function test_t14_register_with_pos_client_header_issues_pos_scoped_abilities(): void
+    {
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/register', [
+                'name' => 'Register POS Owner',
+                'email' => 'register-pos-abilities@example.com',
+                'password' => 'MyStr0ng!Pass',
+                'password_confirmation' => 'MyStr0ng!Pass',
+                'company_name' => 'POS Register Co',
+                'country_code' => 'FR',
+                'vertical' => 'retail',
+                'device_id' => 'pos-tauri-register-uuid',
+                'platform' => 'windows',
+            ]);
+
+        $response->assertCreated();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'POS register should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+        $this->assertSame(['pos:*'], $abilities);
+
+        $this->assertNotNull(
+            $row->expires_at,
+            'POS-issued register token must also carry the 12-month expires_at (T1.4 wiring intact).',
+        );
+    }
+
+    /**
      * T1.4 Codex round-1 P1 — close global-TTL bypass.
      *
      * Sanctum's default Guard::isValidAccessToken ANDs the global
