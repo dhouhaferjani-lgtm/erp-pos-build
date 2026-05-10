@@ -9,6 +9,10 @@ import {
   useCategories,
   useCategory,
   useCategoryTree,
+  useCreateCategory,
+  useDeleteCategory,
+  useReorderCategories,
+  useUpdateCategory,
 } from '../useCategories'
 
 // ─── API mock ─────────────────────────────────────────────────────────────────
@@ -162,6 +166,73 @@ describe('useCategories tenant-scoped queryKeys (web.tanstack-keys.095-104)', ()
     expect(keys1).not.toEqual(keys2)
     for (const k of keys2) expect(k).not.toContain('company-1')
     for (const k of keys1) expect(k).not.toContain('company-2')
+  })
+
+  it('mutation invalidations target tenant-scoped queryKeys (callsites .098-.104)', async () => {
+    setTenant('tenant-A', 'company-1')
+
+    // Spy on QueryClient.invalidateQueries by intercepting at the prototype
+    // level — captures every call from every mutation onSuccess in this test.
+    const invalidateSpy = vi.fn()
+
+    function MutationsProbe() {
+      const create = useCreateCategory()
+      const update = useUpdateCategory()
+      const del = useDeleteCategory()
+      const reorder = useReorderCategories()
+      // Expose the mutation handles on a global so the test can fire them.
+      ;(globalThis as Record<string, unknown>)['__categoryMutations'] = {
+        create,
+        update,
+        del,
+        reorder,
+      }
+      return null
+    }
+
+    mockApiPost.mockResolvedValue({ id: 1, company_id: 'c', name: 'x', slug: 'x' })
+    mockApiPut.mockResolvedValue({ id: 1, company_id: 'c', name: 'x', slug: 'x' })
+    mockApiDelete.mockResolvedValue(undefined)
+
+    const queryClient = createTestQueryClient()
+    const realInvalidate = queryClient.invalidateQueries.bind(queryClient)
+    queryClient.invalidateQueries = ((arg: { queryKey: unknown[] }) => {
+      invalidateSpy(arg.queryKey)
+      return realInvalidate(arg)
+    }) as typeof queryClient.invalidateQueries
+
+    renderWithProviders(<MutationsProbe />, { queryClient })
+
+    const mutations = (globalThis as Record<string, unknown>)['__categoryMutations'] as {
+      create: { mutateAsync: (input: unknown) => Promise<unknown> }
+      update: { mutateAsync: (input: unknown) => Promise<unknown> }
+      del: { mutateAsync: (input: unknown) => Promise<unknown> }
+      reorder: { mutateAsync: (input: unknown) => Promise<unknown> }
+    }
+
+    await mutations.create.mutateAsync({ name: 'Foo' })
+    await mutations.update.mutateAsync({ id: 7, data: { name: 'Bar' } })
+    await mutations.del.mutateAsync(7)
+    await mutations.reorder.mutateAsync([])
+
+    delete (globalThis as Record<string, unknown>)['__categoryMutations']
+
+    // 7 invalidations expected:
+    //  - create:  1 (categoryKeys.all)
+    //  - update:  3 (detail, lists, trees)
+    //  - delete:  1 (categoryKeys.all)
+    //  - reorder: 2 (lists, trees)
+    expect(invalidateSpy).toHaveBeenCalledTimes(7)
+
+    // Every invalidation must target a tenant-scoped queryKey.
+    for (const [key] of invalidateSpy.mock.calls) {
+      expect(key, `invalidation queryKey ${JSON.stringify(key)} missing tenant_id`).toContain(
+        'tenant-A',
+      )
+      expect(key, `invalidation queryKey ${JSON.stringify(key)} missing company_id`).toContain(
+        'company-1',
+      )
+    }
   })
 
   it('factory still exposes structural prefixes (wrap-at-callsite contract)', () => {
