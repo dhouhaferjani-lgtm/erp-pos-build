@@ -533,11 +533,14 @@ final class ReceiptCreationService
             // and chain_sequence remain null until ReceiptFinalizationService::finalize()).
             // Training receipts are sealed inline with a placeholder hash because they
             // are never finalized and are excluded from the fiscal hash chain.
+            // chain_sequence stays null for training: the pos_receipts_sequence PG
+            // CHECK constraint rejects 0 (`chain_sequence IS NULL OR chain_sequence > 0`).
+            // Mirrors the offline-sync path closed by PR #103.
             $receiptId = Str::uuid()->toString();
 
             $fiscalStatus = $isTraining ? FiscalStatus::Fiscalized : FiscalStatus::PendingSeal;
             $trainingFiscalHash = $isTraining ? hash('sha256', 'TRAINING-'.$receiptId) : null;
-            $trainingChainSequence = $isTraining ? 0 : null;
+            $trainingChainSequence = null;
 
             /** @var Receipt $receipt */
             $receipt = new Receipt([
@@ -597,15 +600,17 @@ final class ReceiptCreationService
             }
 
             // Advance terminal receipt-number sequence for ALL receipt types so that
-            // every receipt gets a unique number. Non-training receipt chain state
-            // (last_hash, chain_sequence on the receipt row) is NOT updated here —
-            // that happens in ReceiptFinalizationService::finalize().
-            // Training receipts skip this advance because they use a separate counter
-            // (chain_sequence = 0) and are never part of the fiscal chain.
-            if (! $isTraining) {
-                $terminal->current_sequence = $sequence + 1;
-                $terminal->save();
-            }
+            // every receipt gets a unique number. Training receipts share the same
+            // counter because the receipt_number column has a UNIQUE index — without
+            // the advance, two sequential training receipts on the same terminal
+            // collide. The TRN- prefix keeps training and production in distinct
+            // numbering namespaces but the underlying counter is shared.
+            // Non-training receipt chain state (last_hash, chain_sequence on the
+            // receipt row) is NOT updated here — that happens in
+            // ReceiptFinalizationService::finalize(). Training receipts never enter
+            // the fiscal chain, so chain_sequence stays NULL.
+            $terminal->current_sequence = $sequence + 1;
+            $terminal->save();
 
             // 11. Decrement stock for each line (with pessimistic locking)
             // Also collect receipt line IDs for batch allocation
