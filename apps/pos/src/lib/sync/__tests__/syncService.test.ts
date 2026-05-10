@@ -34,6 +34,10 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   upsertProducts: vi.fn().mockResolvedValue(undefined),
   deleteProducts: vi.fn().mockResolvedValue(undefined),
+  // C2 Day 1 — pullActiveMenu now calls reconcileMenuProducts to flatten
+  // the just-pulled menu into the products table; mock returns void so
+  // the existing sync tests stay green.
+  reconcileMenuProducts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/paymentRepository', () => ({
@@ -1320,6 +1324,82 @@ describe('pullActiveMenu', () => {
     const { pullActiveMenu } = await import('../syncService');
     vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
     expect(await pullActiveMenu(db)).toBe(false);
+  });
+
+  it('Codex r6 P1 (Menu tenant): flattens the just-pulled menu and calls reconcileMenuProducts so background sync ticks update the cashier grid', async () => {
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    // Codex r8 P1: the reconcile is now gated on the Menu module.
+    // Set companyConfig to a Menu tenant so the gate fires.
+    useProductStore.setState({
+      companyConfig: {
+        company_id: 'company-1',
+        all_enabled_modules: ['Menu'],
+      } as never,
+    });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      categories: [{
+        id: 'cat-drinks-uuid', name: 'Drinks', position: 0,
+        items: [{
+          id: 'item-coca-drinks', sellable_id: 'sellable-coca', sellable_type: 'product',
+          name: 'Coca', code: 'COCA', barcode: null,
+          base_price: '3.00', effective_price: '3.00', image_url: null,
+          tax_rate: '7.00', display_order: 0, is_available: true,
+        }],
+      }],
+    });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).toHaveBeenCalledTimes(1);
+    const [, freshProducts] = vi.mocked(reconcileMenuProducts).mock.calls[0]!;
+    expect(freshProducts).toHaveLength(1);
+    // Flatten emits composite ids per (sellable, category) pair.
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.id).toBe('sellable-coca_cat-drinks-uuid');
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.sellable_id).toBe('sellable-coca');
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.menu_category_id).toBe('cat-drinks-uuid');
+  });
+
+  it('Codex r8 P1: standard-retail tenant — empty /active-menu does NOT wipe the products table', async () => {
+    // Regression guard: a standard-retail tenant's /active-menu can
+    // succeed with categories: []. The reconcile MUST be skipped or
+    // it would call `wipeAllProductRows` and delete the entire
+    // products catalog populated by `pullProducts`.
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    useProductStore.setState({
+      companyConfig: {
+        company_id: 'company-1',
+        all_enabled_modules: ['POS'],
+      } as never,
+    });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ categories: [] });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).not.toHaveBeenCalled();
+  });
+
+  it('Codex r8 P1: companyConfig null — defers the reconcile (does NOT call reconcileMenuProducts)', async () => {
+    // Defer-on-unknown-config matches the pullProducts gate's posture:
+    // skipping is safer than risking a standard-retail catalog wipe.
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    useProductStore.setState({ companyConfig: null });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ categories: [] });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).not.toHaveBeenCalled();
   });
 });
 

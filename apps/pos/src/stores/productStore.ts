@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import i18n from '@/lib/i18n';
 import { fetchPOSProducts, fetchCompanyConfig, fetchActiveMenu, flattenMenuToProducts } from '@/api/productApi';
 import { getDatabase } from '@/lib/db';
-import { getAllProducts, upsertProducts } from '@/lib/db/repositories/productRepository';
+import {
+  getAllProducts,
+  reconcileMenuProducts,
+} from '@/lib/db/repositories/productRepository';
 import { useAuthStore } from '@/stores/authStore';
 import { diffProducts } from '@/lib/sync/productDiff';
 import { pullProductsForeground } from '@/lib/sync/syncService';
@@ -158,15 +161,23 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       try {
         const freshProducts = await fetchMenuProductsFromAPI();
 
-        // Upsert to SQLite (Menu-mode still writes to the generic
-        // products table — the Menu desync is what makes this
-        // partial; out of T2.1 scope).
+        // Reconcile the local SQLite catalog. Post-C2 Day 1, Menu-tenant
+        // rows write at the composite primary key
+        // `${sellable_id}_${menu_category_id}`. The reconciler at
+        // `productRepository.reconcileMenuProducts` handles all four
+        // codex review closures uniformly:
+        //   - success-empty (r4 P2) ⇒ wipeAllProductRows.
+        //   - success-non-empty ⇒ upsertProducts + wipeAllBareRows
+        //     (r5 P2) + pruneStaleCompositeRows (r2 P2).
+        // The same helper is also called from `runFullSync` post-
+        // pullActiveMenu (r6 P1) so background sync ticks update the
+        // grid for already-running cashier sessions.
         if (companyId) {
           try {
             const db = await getDatabase(companyId);
-            await upsertProducts(db, freshProducts);
+            await reconcileMenuProducts(db, freshProducts);
           } catch {
-            // SQLite upsert failed silently — not critical
+            // SQLite reconcile failed silently — not critical
           }
         }
 
@@ -300,7 +311,17 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       if (!companyId) return;
       const db = await getDatabase(companyId);
       const freshProducts = await getAllProducts(db);
-      if (freshProducts.length === 0) return;
+      // Codex review (PR #107 round 7 P2): we used to early-return on an
+      // empty SQLite result as a defensive guard against transient empty
+      // reads. Post-C2 Day 1 (round-6 fix) the background pullActiveMenu
+      // path can authoritatively wipe the products table when /active-menu
+      // returns empty, and refreshFromSQLite is the channel through which
+      // the cashier's in-memory grid catches up. Skipping the empty case
+      // would leave the cashier selling from a stale in-memory snapshot
+      // until app restart. Let `diffProducts` produce
+      // `{ changed: true, products: [] }` when current is non-empty and
+      // fresh is empty, and let the `if (changed)` branch clear in-memory
+      // state along with the scan LRU.
       const { changed, products: merged } = diffProducts(get().products, freshProducts);
       if (changed) {
         // Codex round-1 P2 (PR #98) — invalidate the recent-scan LRU

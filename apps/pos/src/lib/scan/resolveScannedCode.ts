@@ -45,7 +45,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import type { POSProduct } from '@/types/product';
 import {
-  getProductByBarcode,
+  getProductsByBarcode,
   upsertProducts,
 } from '@/lib/db/repositories/productRepository';
 import { fetchProductByBarcode } from '@/api/productApi';
@@ -100,21 +100,40 @@ export async function resolveScannedCode(
 
   // Tier 1 — in-memory snapshot. Preserves barcode OR sku disjunction
   // from the pre-T2.1 inline handler.
-  const inMemoryHit = deps.products.find(
+  //
+  // Codex review (PR #107 round 4 P2): C2 Day 1 introduces composite-id
+  // rows for Menu-tenant cross-listed sellables. The same `barcode` /
+  // `sku` can now appear on multiple POSProducts (one per category).
+  // We must therefore look at ALL matches — auto-adding the first
+  // would lock the receipt to whichever category-priced row happened
+  // to come back first in the in-memory snapshot. Multiple matches
+  // route to the chooser modal (matching the Tier-3 API contract).
+  const inMemoryMatches = deps.products.filter(
     (p) => p.barcode === code || p.sku === code,
   );
-  if (inMemoryHit) {
-    setCachedScan(code, inMemoryHit, deps.companyId);
-    return { kind: 'hit', product: inMemoryHit };
+  if (inMemoryMatches.length === 1) {
+    const product = inMemoryMatches[0]!;
+    setCachedScan(code, product, deps.companyId);
+    return { kind: 'hit', product };
+  }
+  if (inMemoryMatches.length > 1) {
+    // Multi-match collision — defer to chooser. No Tier 0 cache write
+    // (no preference yet) — the chooser pick handler in HomePage
+    // writes the cashier's pick to the LRU once they resolve.
+    return { kind: 'choose', candidates: inMemoryMatches };
   }
 
-  // Tier 2 — SQLite. Function name is legacy ("getProductByBarcode")
-  // but the underlying SQL does `barcode = $1 OR sku = $1`.
+  // Tier 2 — SQLite. `getProductsByBarcode` (plural) returns every
+  // match; same multi-match handling as Tier 1.
   try {
-    const sqliteHit = await getProductByBarcode(deps.db, code);
-    if (sqliteHit) {
-      setCachedScan(code, sqliteHit, deps.companyId);
-      return { kind: 'hit', product: sqliteHit };
+    const sqliteMatches = await getProductsByBarcode(deps.db, code);
+    if (sqliteMatches.length === 1) {
+      const product = sqliteMatches[0]!;
+      setCachedScan(code, product, deps.companyId);
+      return { kind: 'hit', product };
+    }
+    if (sqliteMatches.length > 1) {
+      return { kind: 'choose', candidates: sqliteMatches };
     }
   } catch (err) {
     // SQLite read failure → log + fall through to Tier 3. The cashier

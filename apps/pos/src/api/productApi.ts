@@ -2,6 +2,7 @@ import { apiGet, type ApiRequestOptions } from '@/lib/api';
 import type { POSProduct, GetPOSProductsParams } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 import type { ModifierGroup } from '@/types/modifier';
+import { buildMenuCompositeId } from '@/lib/menu/compositeId';
 
 export async function fetchPOSProducts(params?: GetPOSProductsParams): Promise<POSProduct[]> {
   if (!params) {
@@ -86,6 +87,27 @@ export async function fetchActiveMenu(): Promise<ActiveMenuResponse> {
   }
 }
 
+/**
+ * C2 — Menu-tenant catalog composite-ID flatten.
+ *
+ * The active-menu API returns a hierarchical (categories → items) structure
+ * where each item carries a `sellable_id` (the underlying product UUID).
+ * Pre-C2 this flattener emitted `id = sellable_id`, which collapsed the
+ * same sellable cross-listed across two categories into a single row in
+ * the local SQLite catalog (PK conflict on `id`).
+ *
+ * Post-C2 the emitted `POSProduct.id` is the composite
+ * `${sellable_id}_${menu_category_id}`, so each (sellable, category) pair
+ * surfaces as a distinct row. The bare `sellable_id` and `menu_category_id`
+ * are also surfaced on the POSProduct so consumers (cart-line refund
+ * lookup, sync wire-payload boundary) can recover the bare reference
+ * without parsing the composite string.
+ *
+ * The wire-payload boundary at `syncService.receiptToPayload` unpacks the
+ * composite back to `sellable_id` before sending to the server, so
+ * `pos_receipt_lines.product_id` continues to satisfy the existing FK +
+ * XOR constraints. Server-side schema is unchanged Day 1.
+ */
 export function flattenMenuToProducts(menu: ActiveMenuResponse): POSProduct[] {
   const products: POSProduct[] = [];
 
@@ -93,7 +115,7 @@ export function flattenMenuToProducts(menu: ActiveMenuResponse): POSProduct[] {
     for (const item of category.items) {
       if (!item.is_available) continue;
       products.push({
-        id: item.sellable_id,
+        id: buildMenuCompositeId(item.sellable_id, category.id),
         name: item.name,
         sku: item.code,
         barcode: item.barcode,
@@ -105,6 +127,8 @@ export function flattenMenuToProducts(menu: ActiveMenuResponse): POSProduct[] {
         sellableType: (item.sellable_type as POSProduct['sellableType']) ?? 'product',
         modifier_groups: item.modifier_groups,
         position: item.display_order,
+        sellable_id: item.sellable_id,
+        menu_category_id: category.id,
       });
     }
   }

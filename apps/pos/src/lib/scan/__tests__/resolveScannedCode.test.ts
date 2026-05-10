@@ -22,7 +22,10 @@ const upsertProductsSpy = vi.fn();
 const fetchProductByBarcodeSpy = vi.fn();
 
 vi.mock('@/lib/db/repositories/productRepository', () => ({
-  getProductByBarcode: (...args: unknown[]) => getProductByBarcodeSpy(...args),
+  // C2 Day 1 — resolveScannedCode now uses the plural lookup; the spy is
+  // kept named `getProductByBarcodeSpy` for diff continuity but maps to
+  // the new export.
+  getProductsByBarcode: (...args: unknown[]) => getProductByBarcodeSpy(...args),
   upsertProducts: (...args: unknown[]) => upsertProductsSpy(...args),
 }));
 
@@ -81,7 +84,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
 
   it('B.3: in-memory miss + SQLite hit returns hit (API not called)', async () => {
     const sqliteProduct = makeProduct({ id: 'p2', barcode: '999', sku: 'Y-002' });
-    getProductByBarcodeSpy.mockResolvedValue(sqliteProduct);
+    getProductByBarcodeSpy.mockResolvedValue([sqliteProduct]);
 
     const result = await resolveScannedCode('999', { db, companyId: 'company-1', products: [] });
 
@@ -92,7 +95,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
 
   it('B.4: in-memory + SQLite miss + API single-result returns hit AND upserts SQLite', async () => {
     const apiProduct = makeProduct({ id: 'p3', barcode: '777', sku: 'Z-003' });
-    getProductByBarcodeSpy.mockResolvedValue(null);
+    getProductByBarcodeSpy.mockResolvedValue([]);
     fetchProductByBarcodeSpy.mockResolvedValue([apiProduct]);
 
     const result = await resolveScannedCode('777', { db, companyId: 'company-1', products: [] });
@@ -105,7 +108,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
   it('B.5: in-memory + SQLite miss + API multi-result returns choose with all candidates (NO auto-pick)', async () => {
     const productA = makeProduct({ id: 'pa', barcode: '555', sku: 'A-1' });
     const productB = makeProduct({ id: 'pb', barcode: '555', sku: 'B-1' });
-    getProductByBarcodeSpy.mockResolvedValue(null);
+    getProductByBarcodeSpy.mockResolvedValue([]);
     fetchProductByBarcodeSpy.mockResolvedValue([productA, productB]);
 
     const result = await resolveScannedCode('555', { db, companyId: 'company-1', products: [] });
@@ -117,7 +120,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
   });
 
   it('B.6: full miss across all three tiers returns miss', async () => {
-    getProductByBarcodeSpy.mockResolvedValue(null);
+    getProductByBarcodeSpy.mockResolvedValue([]);
     fetchProductByBarcodeSpy.mockResolvedValue([]);
 
     const result = await resolveScannedCode('404', { db, companyId: 'company-1', products: [] });
@@ -126,8 +129,74 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     expect(upsertProductsSpy).not.toHaveBeenCalled();
   });
 
+  it('Codex r4 P2 (C2 Day 1): in-memory multi-match (cross-listed Menu sellable) returns chooser, not first-match auto-add', async () => {
+    // Composite-id POSProducts for the same sellable across two
+    // categories share `barcode` / `sku`. Auto-adding the first match
+    // would lock the receipt to whichever category-priced row came
+    // back first — wrong pricing. The resolver must surface every
+    // match so the cashier picks via the chooser.
+    const sellable = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const drinks = makeProduct({
+      id: `${sellable}_cat-drinks`,
+      barcode: '5449000000996',
+      sku: 'COCA',
+      sale_price: '3.00',
+    });
+    const combos = makeProduct({
+      id: `${sellable}_cat-combos`,
+      barcode: '5449000000996',
+      sku: 'COCA',
+      sale_price: '2.50',
+    });
+
+    const result = await resolveScannedCode('5449000000996', {
+      db,
+      companyId: 'company-1',
+      products: [drinks, combos],
+    });
+
+    expect(result.kind).toBe('choose');
+    if (result.kind === 'choose') {
+      expect(result.candidates).toHaveLength(2);
+      expect(result.candidates).toEqual(expect.arrayContaining([drinks, combos]));
+    }
+    // No SQLite or API call — Tier 1 already routed to chooser.
+    expect(getProductByBarcodeSpy).not.toHaveBeenCalled();
+    expect(fetchProductByBarcodeSpy).not.toHaveBeenCalled();
+  });
+
+  it('Codex r4 P2 (C2 Day 1): SQLite multi-match returns chooser, not first-match auto-add', async () => {
+    // In-memory miss but SQLite has cached two cross-listed rows.
+    const drinks = makeProduct({
+      id: 'sellable_cat-drinks',
+      barcode: '5449000000996',
+      sku: 'COCA',
+      sale_price: '3.00',
+    });
+    const combos = makeProduct({
+      id: 'sellable_cat-combos',
+      barcode: '5449000000996',
+      sku: 'COCA',
+      sale_price: '2.50',
+    });
+    getProductByBarcodeSpy.mockResolvedValueOnce([drinks, combos]);
+
+    const result = await resolveScannedCode('5449000000996', {
+      db,
+      companyId: 'company-1',
+      products: [],
+    });
+
+    expect(result.kind).toBe('choose');
+    if (result.kind === 'choose') {
+      expect(result.candidates).toHaveLength(2);
+    }
+    // No API call — Tier 2 chooser short-circuited.
+    expect(fetchProductByBarcodeSpy).not.toHaveBeenCalled();
+  });
+
   it('B.7: API timeout returns miss with logged error (no rejection bubbles up)', async () => {
-    getProductByBarcodeSpy.mockResolvedValue(null);
+    getProductByBarcodeSpy.mockResolvedValue([]);
     fetchProductByBarcodeSpy.mockRejectedValue(
       new FetchTimeoutError('https://example.test/api/v1/products', 5000, 'GET'),
     );
@@ -177,7 +246,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     // Scan 2: API resolves quickly with one product.
     const scan2Product = makeProduct({ id: 'p-scan2', barcode: '999' });
     fetchProductByBarcodeSpy.mockResolvedValueOnce([scan2Product]);
-    getProductByBarcodeSpy.mockResolvedValue(null);
+    getProductByBarcodeSpy.mockResolvedValue([]);
 
     // Suppress the expected AbortError log from scan1.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -230,7 +299,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
 
   it('B.12: a Tier 2 SQLite hit writes back to Tier 0', async () => {
     const product = makeProduct({ id: 'p1', barcode: '123', sku: 'X' });
-    getProductByBarcodeSpy.mockResolvedValueOnce(product);
+    getProductByBarcodeSpy.mockResolvedValueOnce([product]);
 
     // First scan — Tier 2 hit.
     await resolveScannedCode('123', { db, companyId: 'company-1', products: [] });
@@ -245,7 +314,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
   it('B.13: a Tier 3 API single-result hit writes back to Tier 0', async () => {
     const product = makeProduct({ id: 'p1', barcode: '123', sku: 'X' });
     fetchProductByBarcodeSpy.mockResolvedValueOnce([product]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
     upsertProductsSpy.mockResolvedValueOnce(undefined);
 
     await resolveScannedCode('123', { db, companyId: 'company-1', products: [] });
@@ -261,7 +330,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     const a = makeProduct({ id: 'p-a', barcode: '123', sku: 'A' });
     const b = makeProduct({ id: 'p-b', barcode: '123', sku: 'B' });
     fetchProductByBarcodeSpy.mockResolvedValueOnce([a, b]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
 
     const result = await resolveScannedCode('123', { db, companyId: 'company-1', products: [] });
     expect(result).toEqual({ kind: 'choose', candidates: [a, b] });
@@ -269,7 +338,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     // Without an explicit setCachedScan from the caller, the next scan
     // must hit the API again — chooser results shouldn't auto-cache.
     fetchProductByBarcodeSpy.mockResolvedValueOnce([a, b]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
     await resolveScannedCode('123', { db, companyId: 'company-1', products: [] });
     expect(fetchProductByBarcodeSpy).toHaveBeenCalledTimes(2);
   });
@@ -278,7 +347,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     const a = makeProduct({ id: 'p-a', barcode: '123', sku: 'A' });
     const b = makeProduct({ id: 'p-b', barcode: '123', sku: 'B' });
     fetchProductByBarcodeSpy.mockResolvedValueOnce([a, b]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
 
     const choose = await resolveScannedCode('123', { db, companyId: 'company-1', products: [] });
     expect(choose.kind).toBe('choose');
@@ -294,7 +363,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
 
   it('B.16: a Tier 3 API miss does NOT cache anything (negative results not memoized)', async () => {
     fetchProductByBarcodeSpy.mockResolvedValueOnce([]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
 
     const result1 = await resolveScannedCode('999', { db, companyId: 'company-1', products: [] });
     expect(result1).toEqual({ kind: 'miss' });
@@ -303,7 +372,7 @@ describe('resolveScannedCode — T2.1 Step B', () => {
     // memoized, so a newly-onboarded product IS resolvable mid-session
     // without an app restart.
     fetchProductByBarcodeSpy.mockResolvedValueOnce([]);
-    getProductByBarcodeSpy.mockResolvedValueOnce(null);
+    getProductByBarcodeSpy.mockResolvedValueOnce([]);
     await resolveScannedCode('999', { db, companyId: 'company-1', products: [] });
     expect(fetchProductByBarcodeSpy).toHaveBeenCalledTimes(2);
   });

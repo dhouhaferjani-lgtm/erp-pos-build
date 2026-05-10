@@ -732,4 +732,45 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // C2 Day 1 — Menu-tenant catalog composite primary key.
+    //
+    // Adds two nullable TEXT columns to `products`:
+    //   - `sellable_id`: the underlying sellable UUID (parsed from `id` for
+    //     Menu-tenant rows; NULL for legacy / standard-retail rows).
+    //   - `menu_category_id`: the menu category UUID this row belongs to;
+    //     NULL for non-Menu rows.
+    //
+    // No backfill: pre-v30 rows already have `id` = bare sellable UUID and
+    // continue to work. The flatten path emits both columns going forward
+    // for Menu-tenant tenants, which together with the colon-delimited
+    // composite `id` lets the same sellable cross-listed in two categories
+    // surface as two distinct rows in the local SQLite catalog (closing
+    // the C2 collapse-on-upsert pathology).
+    //
+    // The wire-payload boundary at `syncService.receiptToPayload` unpacks
+    // composite `product_id` / `composite_item_id` to bare sellable IDs
+    // before sending to the server, so this column change is purely
+    // local — `pos_receipt_lines.product_id` continues to be a bare UUID
+    // satisfying the server's existing FK + XOR constraints.
+    version: 30,
+    name: 'add_menu_composite_columns',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE products ADD COLUMN sellable_id TEXT',
+        'ALTER TABLE products ADD COLUMN menu_category_id TEXT',
+      ];
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

@@ -1,6 +1,12 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
-import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
+import { parseMenuCompositeId } from '@/lib/menu/compositeId';
+import {
+  upsertProducts,
+  deleteProducts,
+  reconcileMenuProducts,
+} from '@/lib/db/repositories/productRepository';
+import { flattenMenuToProducts } from '@/api/productApi';
 import {
   upsertPaymentMethods,
   upsertPaymentRepositories,
@@ -713,8 +719,72 @@ export async function pullProductsCore(
  * DO NOT change this wrapper's observable behavior without also
  * updating the scheduler-side test surface — it's load-bearing for
  * the every-60s background pull.
+ *
+ * C2 Day 1 — Codex round 1 P1 + round 2 P2 closure: skip the flat
+ * product pull for Menu tenants. Their canonical catalog source is
+ * `/active-menu` (pulled separately by `pullActiveMenu`); the
+ * productStore's Menu fetch path writes composite-id rows. A
+ * concurrent `pullProductsCore` would write bare-id rows for the same
+ * sellables, polluting the local SQLite cache and surfacing as
+ * duplicates in the POS grid.
+ *
+ * Round 2 P2 — when `companyConfig` is unknown (pre-fetch boot or a
+ * failed config refresh), we DO NOT fall through to /products. Treating
+ * null-config as non-Menu would pollute Menu-tenant SQLite during the
+ * boot window. Instead, we attempt to fetch the config inline; if that
+ * fails (network down), we skip this tick — `runFullSync` reruns every
+ * 60s, so deferring is bounded. Standard-retail tenants get their
+ * catalog on the next tick once config is loaded.
+ *
+ * The dynamic import of `productStore` is intentional — `productStore`
+ * already imports `pullProductsForeground` from this module, so a
+ * static import would create a circular dependency.
  */
 export async function pullProducts(db: Database): Promise<number> {
+  let isMenuTenant = false;
+  let configKnown = false;
+
+  try {
+    const { useProductStore, hasModule } = await import('@/stores/productStore');
+    let config = useProductStore.getState().companyConfig;
+
+    if (config === null) {
+      // Pre-fetch boot — try to load config so we can route correctly.
+      try {
+        const { fetchCompanyConfig } = await import('@/api/productApi');
+        config = await fetchCompanyConfig();
+        useProductStore.setState({ companyConfig: config });
+      } catch {
+        // Config fetch failed (network down, server 5xx, etc.). Defer
+        // this tick rather than guess: a subsequent runFullSync will
+        // retry. Skipping is safer than risking bare-row pollution
+        // for a yet-unknown Menu tenant.
+        await logSyncOperation(
+          db,
+          'pull',
+          'products',
+          null,
+          'error',
+          'companyConfig unknown — deferring /products until next tick',
+        );
+        return 0;
+      }
+    }
+
+    configKnown = true;
+    isMenuTenant = hasModule(config, 'Menu');
+  } catch {
+    // Defensive: dynamic-import failure (test harness boot, module
+    // resolution edge case). Without a known config we cannot make a
+    // routing decision; defer to the next tick rather than risk
+    // pollution.
+    return 0;
+  }
+
+  if (configKnown && isMenuTenant) {
+    return 0;
+  }
+
   try {
     const result = await pullProductsCore(db);
     return result.count;
@@ -1193,6 +1263,61 @@ export async function pullActiveMenu(db: Database): Promise<boolean> {
     }
 
     await setSyncMetadata(db, 'active_menu_last_sync', new Date().toISOString());
+
+    // C2 Day 1 — Codex round 6 P1 closure (gated by round 8 P1):
+    // flatten the just-pulled menu into the `products` table for Menu
+    // tenants so background sync ticks propagate menu changes
+    // (additions / removals / repricing) to the cashier's POS grid
+    // without waiting for the next foreground fetchProducts. CRITICAL:
+    // round-8 closure — this reconcile MUST be gated on the Menu
+    // module. For a standard-retail tenant, /active-menu can succeed
+    // with `categories: []` (no menu module enabled, server simply
+    // returns empty), and `reconcileMenuProducts(db, [])` would call
+    // `wipeAllProductRows` — deleting the entire products table that
+    // `pullProducts` just populated. The dynamic import of
+    // productStore matches the gate pattern in `pullProducts`
+    // (productStore already imports from this module — static import
+    // would cycle).
+    let isMenuTenant = false;
+    try {
+      const { useProductStore: psModule, hasModule } = await import('@/stores/productStore');
+      const config = psModule.getState().companyConfig;
+      isMenuTenant = config !== null && hasModule(config, 'Menu');
+    } catch {
+      // Defensive: dynamic-import failure (test harness, edge cases).
+      // Fall through with isMenuTenant=false so the reconcile is
+      // skipped — better to defer the Menu-tenant grid update one
+      // tick than risk wiping a standard-retail catalog.
+    }
+    if (isMenuTenant) {
+      const reshapedForFlatten = {
+        categories: response.categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          position: c.position,
+          items: c.items.map((i) => ({
+            id: i.id,
+            sellable_id: i.sellable_id,
+            sellable_type: i.sellable_type,
+            name: i.name,
+            code: i.code,
+            barcode: i.barcode ?? null,
+            base_price: i.base_price,
+            effective_price: i.effective_price,
+            image_url: i.image_url ?? null,
+            tax_rate: i.tax_rate ?? null,
+            display_order: i.display_order,
+            is_available: i.is_available,
+            modifier_groups: Array.isArray(i.modifier_groups)
+              ? (i.modifier_groups as ModifierGroup[])
+              : undefined,
+          })),
+        })),
+      };
+      const freshProducts = flattenMenuToProducts(reshapedForFlatten);
+      await reconcileMenuProducts(db, freshProducts);
+    }
+
     await logSyncOperation(db, 'pull', 'active_menu', null, 'success', `${response.categories.length} categories / ${items.length} items`);
     return true;
   } catch (error) {
@@ -1579,6 +1704,50 @@ export async function runFullSync(
   };
 }
 
+/**
+ * C2 Day 1 — wire-boundary unpack for composite Menu-tenant ids.
+ *
+ * The cart-line creator at `receiptService.createOfflineReceipt` writes
+ * `item.product.id` raw into `offline_receipts.lines[].product_id` /
+ * `composite_item_id`. For Menu-tenant POSProducts post-Day-1 this is the
+ * underscore-delimited composite `${sellable_id}_${menu_category_id}`. Local
+ * SQLite intentionally KEEPS the composite — `productSalesAggregate` and
+ * the ProductGrid sort look up against `POSProduct.id` (also composite),
+ * so a composite-keyed local store keeps "frequently sold" working for
+ * Menu tenants.
+ *
+ * Server-side `pos_receipt_lines.product_id` is a `foreignUuid` with
+ * `restrictOnDelete()` referencing `products.id` (a bare UUID) plus a
+ * `_sellable_xor` CHECK that forbids both `product_id` and
+ * `composite_item_id` being set on the same line. A composite would fail
+ * both. We unpack here at the wire boundary so server-side schema is
+ * unchanged Day 1.
+ *
+ * Server-side category context restoration for refund flow (Day 3) will
+ * add a `pos_receipt_lines.menu_category_id` column and surface
+ * `menu_category_id` on this wire shape; today we drop it on the wire
+ * (matching the pre-C2 behavior where the server never saw category
+ * context for receipt lines).
+ *
+ * Bare-uuid lines (standard-retail tenants) pass through unchanged because
+ * `parseMenuCompositeId` returns `{ sellableId: input, categoryId: null }`
+ * for any string without a colon.
+ */
+function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
+  return lines.map((line) => {
+    if (line === null || typeof line !== 'object') return line;
+    const obj = line as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...obj };
+    if (typeof obj.product_id === 'string') {
+      next.product_id = parseMenuCompositeId(obj.product_id).sellableId;
+    }
+    if (typeof obj.composite_item_id === 'string') {
+      next.composite_item_id = parseMenuCompositeId(obj.composite_item_id).sellableId;
+    }
+    return next;
+  });
+}
+
 function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
   // Codex review B3 (2026-04-30): the synthesized fallback covers pre-v16
   // receipts that had no payments_json. They are cash-only by construction
@@ -1664,7 +1833,7 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     receipt_number: receipt.receipt_number,
     terminal_id: receipt.terminal_id,
     operator_id: receipt.operator_id,
-    lines: JSON.parse(receipt.lines) as unknown[],
+    lines: unpackCompositeIdsOnLines(JSON.parse(receipt.lines) as unknown[]),
     subtotal: receipt.subtotal,
     tax_amount: receipt.tax_amount,
     discount_amount: receipt.discount_amount,

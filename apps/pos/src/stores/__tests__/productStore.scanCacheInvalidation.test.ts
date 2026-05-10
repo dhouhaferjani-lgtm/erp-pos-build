@@ -116,10 +116,11 @@ describe('Codex round-1 P2 (PR #98) — scan LRU invalidation on catalog refresh
     expect(getCachedScan('111', 'company-1')).not.toBeNull();
   });
 
-  it('refreshFromSQLite is a no-op when SQLite is empty (and scan cache stays untouched)', async () => {
-    // Per the existing semantics: refreshFromSQLite returns early when
-    // SQLite has zero rows (the Step A round-1 BLOCKER fix lives in
-    // doStandardForegroundPull, NOT here).
+  it('refreshFromSQLite is a no-op when SQLite is empty AND in-memory is empty (defensive — startup state)', async () => {
+    // Both the cached in-memory snapshot AND SQLite are empty → diff is
+    // unchanged → no clearScanCache. Codex r7 P2 (PR #107) flipped the
+    // empty-SQLite early return to delegate to diffProducts, which
+    // correctly emits `changed=false` only when both sides are empty.
     const product = makeProduct({ id: 'p-stale', barcode: '999' });
     setCachedScan('999', product, 'company-1');
 
@@ -128,6 +129,24 @@ describe('Codex round-1 P2 (PR #98) — scan LRU invalidation on catalog refresh
     await useProductStore.getState().refreshFromSQLite();
 
     expect(getCachedScan('999', 'company-1')).not.toBeNull();
+  });
+
+  it('Codex r7 P2 (C2 Day 1): refreshFromSQLite clears in-memory + scan cache when SQLite wipes out a previously non-empty catalog', async () => {
+    // Reproduces the round-7 scenario: pullActiveMenu received an empty
+    // /active-menu response, reconcileMenuProducts wiped the products
+    // table, and refreshFromSQLite is the channel through which the
+    // cashier's in-memory grid catches up. Pre-r7 the early return on
+    // empty SQLite left the cashier seeing stale items.
+    const stale = makeProduct({ id: 'p-stale', barcode: '999' });
+    useProductStore.setState({ products: [stale], categories: ['Drinks'] });
+    setCachedScan('999', stale, 'company-1');
+
+    getAllProductsSpy.mockResolvedValueOnce([]);
+
+    await useProductStore.getState().refreshFromSQLite();
+
+    expect(useProductStore.getState().products).toHaveLength(0);
+    expect(getCachedScan('999', 'company-1')).toBeNull();
   });
 
   it('foreground pull (standard-retail tenant) clears the scan cache when the catalog updates', async () => {
