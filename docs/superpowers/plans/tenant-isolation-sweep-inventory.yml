@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 467ba7a5d387b94067cde14ee75d94e86a161706118364fff8e06e1669be3cd5
+  yaml_sha256: e1eeefeaf091c8eeadb69e45badd80bcac8e3f3603a20d1cb8cee86e686bcecb
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -72413,17 +72413,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:24Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72442,6 +72442,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:25Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 467ba7a5d387b94067cde14ee75d94e86a161706118364fff8e06e1669be3cd5
+        new_yaml_sha256: 1dcadc74d97e3d6312c32c369cfc543390d178f0a4fbec05c6914b1e72090aee
+        target_ids:
+          - web.tanstack-keys.407
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:27Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 1dcadc74d97e3d6312c32c369cfc543390d178f0a4fbec05c6914b1e72090aee
+        new_yaml_sha256: 58ac0e0fd4f042f567c053d956a2561f899e5b5fafc995064272f70ff2c1d362
+        target_ids:
+          - web.tanstack-keys.407
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dd12b31a1e9ba4059b58baf5a57f17a83260bf2c154e8f51f90b83e4f8d324ca
+        new_yaml_sha256: 622ee0f2b18dd81ae062891794eac5b0f4dbda6acdf539df85f57aaaa23ce98d
+        target_ids:
+          - web.tanstack-keys.407
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.408
     stable_key: 'sha256:e654293313a05417f8a31e39460ebdfeed079e5e45da3cbde4c13cea270745ce'
@@ -72459,17 +72507,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72488,6 +72536,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:29Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 58ac0e0fd4f042f567c053d956a2561f899e5b5fafc995064272f70ff2c1d362
+        new_yaml_sha256: a8e769d5230c52f69e57e93a5e188fde19dfa8f518a929edee9c43acd7737e37
+        target_ids:
+          - web.tanstack-keys.408
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:31Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a8e769d5230c52f69e57e93a5e188fde19dfa8f518a929edee9c43acd7737e37
+        new_yaml_sha256: bafc334a8cbaeee8726e20994c22ca65e72a2a1293a7a960b989e50d91751176
+        target_ids:
+          - web.tanstack-keys.408
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:20Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 622ee0f2b18dd81ae062891794eac5b0f4dbda6acdf539df85f57aaaa23ce98d
+        new_yaml_sha256: 5026ce6cac7395bd487975935f1debbd7680925aea19ab718a04e272cba94ceb
+        target_ids:
+          - web.tanstack-keys.408
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.409
     stable_key: 'sha256:bb9e65c11c42b9b867c3f92a38602a4d31000413539c300d4d252ec9a8bbaa35'
@@ -72505,17 +72601,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:33Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72534,6 +72630,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:33Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: bafc334a8cbaeee8726e20994c22ca65e72a2a1293a7a960b989e50d91751176
+        new_yaml_sha256: ebf37c8331046fce61240a2c6fa887977ba8123cfd89e51c9f8e3b2790d97093
+        target_ids:
+          - web.tanstack-keys.409
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:35Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ebf37c8331046fce61240a2c6fa887977ba8123cfd89e51c9f8e3b2790d97093
+        new_yaml_sha256: dc0c88f518a257231732ca57687f0684a7041b6851584cd8d8674ddd08b1b9d0
+        target_ids:
+          - web.tanstack-keys.409
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:22Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5026ce6cac7395bd487975935f1debbd7680925aea19ab718a04e272cba94ceb
+        new_yaml_sha256: 69c325dae3c8d2558aef879503b3ebcb38d64ee0abe48f13d9d1792b017b1e04
+        target_ids:
+          - web.tanstack-keys.409
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.410
     stable_key: 'sha256:8c76ca58773cf7a4228eb465734eec863b74c9bcea69e83416de1b8c6c5e4c9b'
@@ -72551,17 +72695,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:37Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72580,6 +72724,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:38Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: dc0c88f518a257231732ca57687f0684a7041b6851584cd8d8674ddd08b1b9d0
+        new_yaml_sha256: 8aff20a6d9a57474ec12aebfe923c9dbbda2fad47f4be2bfbab70b5dfd4c9151
+        target_ids:
+          - web.tanstack-keys.410
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:40Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8aff20a6d9a57474ec12aebfe923c9dbbda2fad47f4be2bfbab70b5dfd4c9151
+        new_yaml_sha256: 0b4e343d8bc9feb55ce116849b9bfc94d88874bd1b05ca89b5212fd5d03a7c98
+        target_ids:
+          - web.tanstack-keys.410
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:24Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 69c325dae3c8d2558aef879503b3ebcb38d64ee0abe48f13d9d1792b017b1e04
+        new_yaml_sha256: 0ce3aed42d2d93b67253fc0b2dcb68f94c04310dfa67e522c247f81073bceade
+        target_ids:
+          - web.tanstack-keys.410
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.411
     stable_key: 'sha256:256ad85f254e3478ed74ff3209b3fbc0047e4ead46ab08a79c49a3fd3d79607b'
@@ -72597,17 +72789,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72626,6 +72818,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:42Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0b4e343d8bc9feb55ce116849b9bfc94d88874bd1b05ca89b5212fd5d03a7c98
+        new_yaml_sha256: c01bff0febdb2e172fa3c4166efc77b40f36383280809bf6106d2a0c06413bf4
+        target_ids:
+          - web.tanstack-keys.411
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:44Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c01bff0febdb2e172fa3c4166efc77b40f36383280809bf6106d2a0c06413bf4
+        new_yaml_sha256: 5c78bee45d01363c50ade38e9dc9fe18c3fc5f9d370b7a3157c479f837763909
+        target_ids:
+          - web.tanstack-keys.411
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:26Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0ce3aed42d2d93b67253fc0b2dcb68f94c04310dfa67e522c247f81073bceade
+        new_yaml_sha256: 122aeb5bda49f722f20f06934f71bcd41892d7fa71fc59b4f62b7f3ec6fe019d
+        target_ids:
+          - web.tanstack-keys.411
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.412
     stable_key: 'sha256:272b6d5136dd7181e66a60584d3386a7b585bf84bc2d1cd51855ef94697896a9'
@@ -72643,17 +72883,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:45Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72672,6 +72912,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:46Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 5c78bee45d01363c50ade38e9dc9fe18c3fc5f9d370b7a3157c479f837763909
+        new_yaml_sha256: 00253a67d182f10bdb9eb8a0d75b3c2aed69ddd47bcc6af7282501a3ba723cf1
+        target_ids:
+          - web.tanstack-keys.412
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 00253a67d182f10bdb9eb8a0d75b3c2aed69ddd47bcc6af7282501a3ba723cf1
+        new_yaml_sha256: 73564442e84ffe5e7d5a8400715ed43f6891be96b3a2e109e5d0393bdbdceda2
+        target_ids:
+          - web.tanstack-keys.412
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:28Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 122aeb5bda49f722f20f06934f71bcd41892d7fa71fc59b4f62b7f3ec6fe019d
+        new_yaml_sha256: 749c8685dfb5f0aeedc741368e179bd43b97361bc830b572d75c4810c00807da
+        target_ids:
+          - web.tanstack-keys.412
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.413
     stable_key: 'sha256:b5faf2601bcf28029bbb045870b05d2e75f5c1a2c77da2289953d629a8a23488'
@@ -72689,17 +72977,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:50Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72718,6 +73006,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:50Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 73564442e84ffe5e7d5a8400715ed43f6891be96b3a2e109e5d0393bdbdceda2
+        new_yaml_sha256: 493ea7009f186b9c8578443ff270cd1246dea6e4047ffd63656b5247b1e3ee1b
+        target_ids:
+          - web.tanstack-keys.413
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:52Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 493ea7009f186b9c8578443ff270cd1246dea6e4047ffd63656b5247b1e3ee1b
+        new_yaml_sha256: 9807056079e1c0fe7d18433bc7119bde7b6b67801cc8a1105702914fa20fcda9
+        target_ids:
+          - web.tanstack-keys.413
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:30Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 749c8685dfb5f0aeedc741368e179bd43b97361bc830b572d75c4810c00807da
+        new_yaml_sha256: 7961d5734f8766bcf2e321f7ba255492e1a9b28241552cbb430fc1abdaebf69b
+        target_ids:
+          - web.tanstack-keys.413
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.414
     stable_key: 'sha256:91df5eeb2c42ee02d0efeefeffffbcec2fd1a43cc2f165c26c5110c7cd90f270'
@@ -72735,17 +73071,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:54Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72764,6 +73100,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:55Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 9807056079e1c0fe7d18433bc7119bde7b6b67801cc8a1105702914fa20fcda9
+        new_yaml_sha256: 8549bf10840d5e76278c865544dab8e7ae59827ec4787b72e11a9ecb8f4253e7
+        target_ids:
+          - web.tanstack-keys.414
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:41:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8549bf10840d5e76278c865544dab8e7ae59827ec4787b72e11a9ecb8f4253e7
+        new_yaml_sha256: 2cb8e8c492260eb81c8b00b02b2f8e79692e5de0a8c9f723fee2cac53c15033c
+        target_ids:
+          - web.tanstack-keys.414
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:32Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7961d5734f8766bcf2e321f7ba255492e1a9b28241552cbb430fc1abdaebf69b
+        new_yaml_sha256: dba03f864872fb7f63d2b0e91b0e2666aa4aad938bc0b17031d4155e4d6ab4a3
+        target_ids:
+          - web.tanstack-keys.414
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.415
     stable_key: 'sha256:d1c5265dc1b27fb370b72051fa0fd723072c1ac89886ec233cd7b80b1c1abc86'
@@ -72781,17 +73165,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:41:58Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72810,6 +73194,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:41:59Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2cb8e8c492260eb81c8b00b02b2f8e79692e5de0a8c9f723fee2cac53c15033c
+        new_yaml_sha256: dbc72a283fca6b6640570a047b4058d7a2a811e85fcd4e55f6233dadd631c67e
+        target_ids:
+          - web.tanstack-keys.415
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:01Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dbc72a283fca6b6640570a047b4058d7a2a811e85fcd4e55f6233dadd631c67e
+        new_yaml_sha256: 6510fd67e102138d7517cded81b2c28cc0cc76c8a67e63b040cc59577ed9745e
+        target_ids:
+          - web.tanstack-keys.415
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:35Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dba03f864872fb7f63d2b0e91b0e2666aa4aad938bc0b17031d4155e4d6ab4a3
+        new_yaml_sha256: 9bbb00553cd8afbfe75329f446fbab6b4ae10cd24c8ffb152519193f578aaf27
+        target_ids:
+          - web.tanstack-keys.415
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.416
     stable_key: 'sha256:8a0e843170002696cdac6207ac78971d0cca20235f267212c7a755b1ede95903'
@@ -72827,17 +73259,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:02Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72856,6 +73288,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:03Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6510fd67e102138d7517cded81b2c28cc0cc76c8a67e63b040cc59577ed9745e
+        new_yaml_sha256: c24f06215158c171335122b9ad2ea21af276d047a0decb63689b293d00f89b88
+        target_ids:
+          - web.tanstack-keys.416
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:05Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c24f06215158c171335122b9ad2ea21af276d047a0decb63689b293d00f89b88
+        new_yaml_sha256: 088ebfe1068b95d7148f340d8ca51db17b8d3c86dae5e01205f07310efce9e25
+        target_ids:
+          - web.tanstack-keys.416
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9bbb00553cd8afbfe75329f446fbab6b4ae10cd24c8ffb152519193f578aaf27
+        new_yaml_sha256: 11c95ef553537df13239ed687995318a59544f35992655d0e6134381289ff5b0
+        target_ids:
+          - web.tanstack-keys.416
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.417
     stable_key: 'sha256:c092d383da3cae4bfe5a12dedde02a9402e15d0a4883a4c80d83afc4017a4603'
@@ -72873,17 +73353,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:07Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72902,6 +73382,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:07Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 088ebfe1068b95d7148f340d8ca51db17b8d3c86dae5e01205f07310efce9e25
+        new_yaml_sha256: 9d3818db869a081db02858aaf4f80039f80f015df9aee8de4d912326ab267543
+        target_ids:
+          - web.tanstack-keys.417
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:09Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9d3818db869a081db02858aaf4f80039f80f015df9aee8de4d912326ab267543
+        new_yaml_sha256: c9f1dd785b990c5196b736ee3254fdfd62868219f9b5dd69740db79ecbd5e694
+        target_ids:
+          - web.tanstack-keys.417
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 11c95ef553537df13239ed687995318a59544f35992655d0e6134381289ff5b0
+        new_yaml_sha256: ea8ddb2c0c4b8116ee1f5048cb4df0daef459bd5335d4d9dcac7b857c6aea3df
+        target_ids:
+          - web.tanstack-keys.417
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.418
     stable_key: 'sha256:39d157656596366b00f19f602d7e5b9e7abe9ff70800d73bac1c463d3c8a330c'
@@ -72919,17 +73447,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:11Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72948,6 +73476,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:11Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c9f1dd785b990c5196b736ee3254fdfd62868219f9b5dd69740db79ecbd5e694
+        new_yaml_sha256: fd90957c534b221c91caf08787484d5fe53e176b098d3f2ca77fe7beeffc6e99
+        target_ids:
+          - web.tanstack-keys.418
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: fd90957c534b221c91caf08787484d5fe53e176b098d3f2ca77fe7beeffc6e99
+        new_yaml_sha256: 135283e8bb031ab63a4c34db5f23eb93ee22220f8cc52726a2f960638ea91d5e
+        target_ids:
+          - web.tanstack-keys.418
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:41Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ea8ddb2c0c4b8116ee1f5048cb4df0daef459bd5335d4d9dcac7b857c6aea3df
+        new_yaml_sha256: 05b17c35043c5fa3d0a904dc733b1e71eec89e04b0bac426badc1c4c7716f128
+        target_ids:
+          - web.tanstack-keys.418
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.419
     stable_key: 'sha256:10a84dcd490a66bc9d656da4bdafab109c51594008324a3b34461813d6a976fa'
@@ -72965,17 +73541,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:15Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -72994,6 +73570,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:16Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 135283e8bb031ab63a4c34db5f23eb93ee22220f8cc52726a2f960638ea91d5e
+        new_yaml_sha256: a919546c0fd7842a18914aea22fd5efab057b6f024647b9baeba706bb316b0a5
+        target_ids:
+          - web.tanstack-keys.419
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a919546c0fd7842a18914aea22fd5efab057b6f024647b9baeba706bb316b0a5
+        new_yaml_sha256: f1638167d98ddf08830acd68c02c4e59edab41e5270e4f2721aaca64af94275d
+        target_ids:
+          - web.tanstack-keys.419
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 05b17c35043c5fa3d0a904dc733b1e71eec89e04b0bac426badc1c4c7716f128
+        new_yaml_sha256: 2b195faab570359e71df274620e4b2846a26993fadf6e4db77549d11e0d7767a
+        target_ids:
+          - web.tanstack-keys.419
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.420
     stable_key: 'sha256:ecc9e8ad0d03f98352c927fe7451590997056731bf0cb48827b852e3bb053004'
@@ -73011,17 +73635,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:19Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73040,6 +73664,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:20Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f1638167d98ddf08830acd68c02c4e59edab41e5270e4f2721aaca64af94275d
+        new_yaml_sha256: 5b2458cb9da33a42145065868414b5b0f602c77a2dca0ebdc845f406ea751ff7
+        target_ids:
+          - web.tanstack-keys.420
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:22Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 5b2458cb9da33a42145065868414b5b0f602c77a2dca0ebdc845f406ea751ff7
+        new_yaml_sha256: fd0b50e85405257331b91af8977a98c3ee3116f5853e943bb2bb96184191d0fb
+        target_ids:
+          - web.tanstack-keys.420
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2b195faab570359e71df274620e4b2846a26993fadf6e4db77549d11e0d7767a
+        new_yaml_sha256: d46e950f60965f223a23cf651f9ff33d2e7ce3c42ef44d6234a2b5bedd10bcb1
+        target_ids:
+          - web.tanstack-keys.420
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.421
     stable_key: 'sha256:33d1d75ea7278ffebed96eaa56ba47d82923f1d824e1cc25d9758113a9943812'
@@ -73057,17 +73729,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:23Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73086,6 +73758,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:24Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fd0b50e85405257331b91af8977a98c3ee3116f5853e943bb2bb96184191d0fb
+        new_yaml_sha256: 087f5e4371266f6218a729da659024a23e242f276876a4f4e8d0cf9a152698cf
+        target_ids:
+          - web.tanstack-keys.421
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:26Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 087f5e4371266f6218a729da659024a23e242f276876a4f4e8d0cf9a152698cf
+        new_yaml_sha256: e81b6ff6b5101c0f8d5d495a7843490f30becf94a14ff1f2c5df4564fb23d133
+        target_ids:
+          - web.tanstack-keys.421
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:47Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d46e950f60965f223a23cf651f9ff33d2e7ce3c42ef44d6234a2b5bedd10bcb1
+        new_yaml_sha256: ce94f7e3882fde8ee8243646de7ffa862c4ee51f1f97c68981b76d9d23db19d8
+        target_ids:
+          - web.tanstack-keys.421
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.422
     stable_key: 'sha256:cfaa6ce29c36aabe9e70ed738401b8dbdbb945f4d40834cd5cede3cef6134721'
@@ -73103,17 +73823,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:28Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73132,6 +73852,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:28Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e81b6ff6b5101c0f8d5d495a7843490f30becf94a14ff1f2c5df4564fb23d133
+        new_yaml_sha256: 2a623f15e05fa690355d566ad0a0b9942b7c35d20654e559434295e6a586292f
+        target_ids:
+          - web.tanstack-keys.422
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:30Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2a623f15e05fa690355d566ad0a0b9942b7c35d20654e559434295e6a586292f
+        new_yaml_sha256: ffce90b39e391142b793e17098439fd6facad84578bc7380ba558f973f4b5e51
+        target_ids:
+          - web.tanstack-keys.422
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:49Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ce94f7e3882fde8ee8243646de7ffa862c4ee51f1f97c68981b76d9d23db19d8
+        new_yaml_sha256: da684014f51fd52c6eaead7af1c49d2fd7c89e6eb2f9399943ffa97faaa5ccd3
+        target_ids:
+          - web.tanstack-keys.422
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.423
     stable_key: 'sha256:65f960d9127ae984c73128000b1b24a95849e4dd74146899cd067df41ca1216a'
@@ -73149,17 +73917,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:32Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73178,6 +73946,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:32Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ffce90b39e391142b793e17098439fd6facad84578bc7380ba558f973f4b5e51
+        new_yaml_sha256: de8cbf823352637e992186729571fdbed893ef17412fd55e82a7efdda6cff52f
+        target_ids:
+          - web.tanstack-keys.423
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:35Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: de8cbf823352637e992186729571fdbed893ef17412fd55e82a7efdda6cff52f
+        new_yaml_sha256: a01b9ff8617e4f2c58c0923af51f36a503ccfb14724c0948ee257bc0f138fd4f
+        target_ids:
+          - web.tanstack-keys.423
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: da684014f51fd52c6eaead7af1c49d2fd7c89e6eb2f9399943ffa97faaa5ccd3
+        new_yaml_sha256: 75b50cf38d3df5d5a9dd986fdcca4ef2e1e332e660779bbcfefa4cdff31e767d
+        target_ids:
+          - web.tanstack-keys.423
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.424
     stable_key: 'sha256:214128318034aacf191cc896e14e00666b7f43a441177502d0d01f017316dfd4'
@@ -73195,17 +74011,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:36Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73224,6 +74040,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:37Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a01b9ff8617e4f2c58c0923af51f36a503ccfb14724c0948ee257bc0f138fd4f
+        new_yaml_sha256: 8c77f71b09c34520c5700842ac4e896fee86514fae9af210e993a442baa2da49
+        target_ids:
+          - web.tanstack-keys.424
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:39Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8c77f71b09c34520c5700842ac4e896fee86514fae9af210e993a442baa2da49
+        new_yaml_sha256: 57868f5f8cd63195d0f0b1d380a64b72347f5a2ee695e76c982ad63e8f4ad0e2
+        target_ids:
+          - web.tanstack-keys.424
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 75b50cf38d3df5d5a9dd986fdcca4ef2e1e332e660779bbcfefa4cdff31e767d
+        new_yaml_sha256: fa8823178112fd45a25fa783ccaeecf3a7ac7971c5a7bee48ba58fcd91fdf53c
+        target_ids:
+          - web.tanstack-keys.424
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.425
     stable_key: 'sha256:ac550fcb5a85d5477dfe9a7f99ebd2a81621799c0802e63e7db614e1094cadac'
@@ -73241,17 +74105,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73270,6 +74134,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:42Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 57868f5f8cd63195d0f0b1d380a64b72347f5a2ee695e76c982ad63e8f4ad0e2
+        new_yaml_sha256: 8ac788018adb0684834bf988cfceb172e4e7d5f73188237394e80d2bea713f17
+        target_ids:
+          - web.tanstack-keys.425
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:44Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8ac788018adb0684834bf988cfceb172e4e7d5f73188237394e80d2bea713f17
+        new_yaml_sha256: e110d5a1b731f7b22d7b4f235b8d7b901abc9a5864ffa280737650a3e25ddea2
+        target_ids:
+          - web.tanstack-keys.425
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:56Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fa8823178112fd45a25fa783ccaeecf3a7ac7971c5a7bee48ba58fcd91fdf53c
+        new_yaml_sha256: 4e15ecef84911699bada8d09b210ec85f4ef69cc2e0acfda721c5aef12215e13
+        target_ids:
+          - web.tanstack-keys.425
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.426
     stable_key: 'sha256:113d7bf7d6ca048a17379169122f3a5df2c34730e65463646f5114c35f05190d'
@@ -73287,17 +74199,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T22:42:45Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 12a75368
+    regression_test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -73316,6 +74228,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T22:42:46Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e110d5a1b731f7b22d7b4f235b8d7b901abc9a5864ffa280737650a3e25ddea2
+        new_yaml_sha256: 10e14d79a71c5a1d52668859197e77576a8b72cb587035f21b167f99da87361c
+        target_ids:
+          - web.tanstack-keys.426
+        from_status: pending
+        to_status: claimed
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T22:42:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 10e14d79a71c5a1d52668859197e77576a8b72cb587035f21b167f99da87361c
+        new_yaml_sha256: dd12b31a1e9ba4059b58baf5a57f17a83260bf2c154e8f51f90b83e4f8d324ca
+        target_ids:
+          - web.tanstack-keys.426
+        from_status: claimed
+        to_status: in_progress
+        commit: f3ea1f1ab6ea075d1958cf28e721dc78910a62b7
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T22:51:58Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4e15ecef84911699bada8d09b210ec85f4ef69cc2e0acfda721c5aef12215e13
+        new_yaml_sha256: e1eeefeaf091c8eeadb69e45badd80bcac8e3f3603a20d1cb8cee86e686bcecb
+        target_ids:
+          - web.tanstack-keys.426
+        from_status: in_progress
+        to_status: under_review
+        commit: 12a75368
+        test: 'apps/web/src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx::parapharmacy tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.427
     stable_key: 'sha256:b9d3be96e1e2a36845aa9a6e987b6e330712afa2f4bc7068ad7934c84881e733'
