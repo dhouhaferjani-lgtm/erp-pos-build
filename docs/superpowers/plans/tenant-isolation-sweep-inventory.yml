@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 0a2b4c379f46a5b0233f1df01eb9dcb08e9cdb1e29483a236a97a4e629299c46
+  yaml_sha256: ba049d8f52dbe495ee9624c2079013cf8f198e4cee1fdbd76088b502a22aa191
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -64617,17 +64617,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:01:05Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd90b658
+    regression_test: 'apps/web/src/features/locations/hooks/__tests__/useLocations.tenantScope.test.tsx::tenant-A location list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64646,6 +64646,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:01:05Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0a2b4c379f46a5b0233f1df01eb9dcb08e9cdb1e29483a236a97a4e629299c46
+        new_yaml_sha256: fd4d94b5c2f96f75a31592535acdd93e87dc8eb9710c4defa108de205c576557
+        target_ids:
+          - web.tanstack-keys.336
+        from_status: pending
+        to_status: claimed
+        commit: 1bbfebd3131c0f0f6294b61d26a0f13a677afeab
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:01:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 80c19ea05dd3bb4be1bc9c2c93d252b5a9ff26d9dffbc100f4565e9dc2581fde
+        new_yaml_sha256: ac55570f1fbef9749a72a1da7b1e09a36fcfe9209c821669250a0a6101e755a7
+        target_ids:
+          - web.tanstack-keys.336
+        from_status: claimed
+        to_status: in_progress
+        commit: 1bbfebd3131c0f0f6294b61d26a0f13a677afeab
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:51:03Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4c595227fe92dc1d4068e50648a8881d7440c1066443b9101aed0c70eb3ed478
+        new_yaml_sha256: aca31b3541560c94dd4d08eae8d7f6817ec108fe88f1dc3984661a78b4789004
+        target_ids:
+          - web.tanstack-keys.336
+        from_status: in_progress
+        to_status: under_review
+        commit: cd90b658
+        test: 'apps/web/src/features/locations/hooks/__tests__/useLocations.tenantScope.test.tsx::tenant-A location list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.337
     stable_key: 'sha256:39319b89640769db3fcebec05edc67de45f378d2d8232a604bb523b7c2caae1e'
@@ -64663,17 +64711,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:01:08Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd90b658
+    regression_test: 'apps/web/src/features/locations/hooks/__tests__/useLocations.tenantScope.test.tsx::tenant-A location list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64692,6 +64740,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:01:08Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fd4d94b5c2f96f75a31592535acdd93e87dc8eb9710c4defa108de205c576557
+        new_yaml_sha256: 80c19ea05dd3bb4be1bc9c2c93d252b5a9ff26d9dffbc100f4565e9dc2581fde
+        target_ids:
+          - web.tanstack-keys.337
+        from_status: pending
+        to_status: claimed
+        commit: 1bbfebd3131c0f0f6294b61d26a0f13a677afeab
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:01:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ac55570f1fbef9749a72a1da7b1e09a36fcfe9209c821669250a0a6101e755a7
+        new_yaml_sha256: 4c595227fe92dc1d4068e50648a8881d7440c1066443b9101aed0c70eb3ed478
+        target_ids:
+          - web.tanstack-keys.337
+        from_status: claimed
+        to_status: in_progress
+        commit: 1bbfebd3131c0f0f6294b61d26a0f13a677afeab
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:51:06Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: aca31b3541560c94dd4d08eae8d7f6817ec108fe88f1dc3984661a78b4789004
+        new_yaml_sha256: ba049d8f52dbe495ee9624c2079013cf8f198e4cee1fdbd76088b502a22aa191
+        target_ids:
+          - web.tanstack-keys.337
+        from_status: in_progress
+        to_status: under_review
+        commit: cd90b658
+        test: 'apps/web/src/features/locations/hooks/__tests__/useLocations.tenantScope.test.tsx::tenant-A location list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.338
     stable_key: 'sha256:799c60bfe0ffc441a2abf4c65dac0480dcbb43dfd3c6a428b58bc5d6ede28110'
