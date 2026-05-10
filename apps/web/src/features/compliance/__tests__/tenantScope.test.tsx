@@ -134,10 +134,11 @@ describe('fraudAlertStatisticsInvalidationPredicate', () => {
     expect(pred({ queryKey: ['fraud-alert-statistics', 'tenant-A', 'company-1'] })).toBe(true)
   })
 
-  it('rejects sibling namespaces', () => {
+  it('rejects sibling namespaces (including users)', () => {
     const pred = fraudAlertStatisticsInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['fraud-alerts', {}, 1, 'tenant-A', 'company-1'] })).toBe(false)
     expect(pred({ queryKey: ['fraud-settings', 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['users', 'admin-role', 'tenant-A', 'company-1'] })).toBe(false)
   })
 })
 
@@ -147,10 +148,11 @@ describe('fraudSettingsInvalidationPredicate', () => {
     expect(pred({ queryKey: ['fraud-settings', 'tenant-A', 'company-1'] })).toBe(true)
   })
 
-  it('rejects sibling namespaces', () => {
+  it('rejects sibling namespaces (including users)', () => {
     const pred = fraudSettingsInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['fraud-alerts', {}, 1, 'tenant-A', 'company-1'] })).toBe(false)
     expect(pred({ queryKey: ['fraud-alert-statistics', 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['users', 'admin-role', 'tenant-A', 'company-1'] })).toBe(false)
   })
 })
 
@@ -313,5 +315,42 @@ describe('compliance modal cascades — fetch-count signals', () => {
     const tBQuery = queryClient.getQueryCache().find({ queryKey: tenantBKey, exact: true })
     expect(tBQuery?.state.data).toEqual({ data: [{ id: 'a-tenant-b' }] })
     expect(tBQuery?.state.isInvalidated).toBe(false)
+  })
+
+  it('cross-tenant data isolation: tenant-A FraudAlertsPage results do not contain tenant-B entries', async () => {
+    // Stronger cross-tenant assertion (Codex B12 round-1 BLOCK fix): the
+    // previous test only proved that tenant-B's CACHE ENTRY survives a
+    // tenant-A invalidate. Codex flagged this as insufficient — it doesn't
+    // prove tenant-A's QUERY RESULTS are free of tenant-B data. Here we
+    // pre-seed tenant-B fraud-alerts data, render FraudAlertsPage under
+    // tenant-A, and assert the tenant-A query result is the empty
+    // tenant-A response from the mock — NOT the seeded tenant-B payload.
+    const queryClient = createTestQueryClient()
+
+    // Seed tenant-B fraud-alerts cache entry BEFORE rendering anything.
+    const tenantBKey = ['fraud-alerts', {}, 1, 'tenant-B', 'company-1']
+    queryClient.setQueryData(tenantBKey, {
+      data: [{ id: 'leaked-tenant-b-alert', tenant_id: 'tenant-B' }],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1 },
+    })
+
+    setTenant('tenant-A', 'company-1')
+    renderWithProviders(<FraudAlertsPage />, { queryClient })
+
+    await waitFor(() => {
+      expect(mockGetFraudAlerts).toHaveBeenCalled()
+    })
+
+    // tenant-A queryKey carries 'tenant-A' suffix — different cache slot
+    // from tenantBKey. tenant-A query must hold ONLY the mock response
+    // for tenant-A (empty array), not the seeded tenant-B payload.
+    const tenantAKey = ['fraud-alerts', {}, 1, 'tenant-A', 'company-1']
+    const tAQuery = queryClient.getQueryCache().find({ queryKey: tenantAKey, exact: true })
+    expect(tAQuery).toBeDefined()
+    const tAData = tAQuery?.state.data as { data?: Array<{ id: string }> } | undefined
+    expect(tAData?.data ?? []).toEqual([])
+    // No tenant-B entry leaked into tenant-A's data array.
+    const tAIds = (tAData?.data ?? []).map((entry) => entry.id)
+    expect(tAIds).not.toContain('leaked-tenant-b-alert')
   })
 })
