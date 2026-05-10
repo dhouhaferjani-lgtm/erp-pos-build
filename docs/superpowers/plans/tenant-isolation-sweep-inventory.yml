@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 8eeba2c30d723998bd091d0ce1ab7e7d623ab56fbebcfcebf0c25467418f7ff4
+  yaml_sha256: 00e7ca8b5fb7a367643003c7ca88841b0468eb79e36ab834c68d182294430509
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -48761,7 +48761,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:35Z'
     review:
@@ -48770,8 +48770,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -48822,6 +48822,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:05Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8eeba2c30d723998bd091d0ce1ab7e7d623ab56fbebcfcebf0c25467418f7ff4
+        new_yaml_sha256: 1e03d50da23aea2e030e7ebf50b65eed05f74b9679e0775c829e806c662ead61
+        target_ids:
+          - web.tanstack-keys.108
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.109
     stable_key: 'sha256:ccbacd88dcb3a426a19b9eccfcb67251e880eb83cdb2204cb521879569fb0e9a'
@@ -48839,7 +48855,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:38Z'
     review:
@@ -48848,8 +48864,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -48900,6 +48916,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:07Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1e03d50da23aea2e030e7ebf50b65eed05f74b9679e0775c829e806c662ead61
+        new_yaml_sha256: 3178decb9db2cc61f6d9ff046fb2601827f6ad385ee56aa20c1100b5ce2ab4f2
+        target_ids:
+          - web.tanstack-keys.109
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.110
     stable_key: 'sha256:01468baa483353585ebeb0029c74ede7663bb059e56f71d87ede56702a0b4947'
@@ -48917,7 +48949,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:41Z'
     review:
@@ -48926,8 +48958,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -48978,6 +49010,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:09Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3178decb9db2cc61f6d9ff046fb2601827f6ad385ee56aa20c1100b5ce2ab4f2
+        new_yaml_sha256: 2083df51a7896e63197ad8b40d4c367bcf3eebd0ba1745c07676c7100bdc3168
+        target_ids:
+          - web.tanstack-keys.110
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.111
     stable_key: 'sha256:b85522a587a78bb7ccee992330cc0bcd8ee865fe252d1dec3853f0a2b7a45b35'
@@ -48995,7 +49043,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:43Z'
     review:
@@ -49004,8 +49052,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49056,6 +49104,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:11Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2083df51a7896e63197ad8b40d4c367bcf3eebd0ba1745c07676c7100bdc3168
+        new_yaml_sha256: 1a0259022067fc2dbcc1dececee47f02fb112e7624cf9673ba9da78eb7bb0e78
+        target_ids:
+          - web.tanstack-keys.111
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.112
     stable_key: 'sha256:c9bc51c0644c7a34cf5971f8f425584c2e1ab183e45a73bdb8378629e4416e6e'
@@ -49073,7 +49137,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:45Z'
     review:
@@ -49082,8 +49146,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49134,6 +49198,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1a0259022067fc2dbcc1dececee47f02fb112e7624cf9673ba9da78eb7bb0e78
+        new_yaml_sha256: 3af945a2e7fbfa52e2e8f7ad18b860adf48759b2e079e774f79c881ec58e9a59
+        target_ids:
+          - web.tanstack-keys.112
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.113
     stable_key: 'sha256:1053dcfe5800f48fc7d62eef83ca41e55be6be6bfc0e11691a346d8bec489fc1'
@@ -49151,7 +49231,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:48Z'
     review:
@@ -49160,8 +49240,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49212,6 +49292,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:15Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3af945a2e7fbfa52e2e8f7ad18b860adf48759b2e079e774f79c881ec58e9a59
+        new_yaml_sha256: fc508826592397cfbca2c4a8d34c9e4723f02b635276a85bb2f8d09832121b43
+        target_ids:
+          - web.tanstack-keys.113
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.114
     stable_key: 'sha256:b3fc38d551ad711631c9458bd8a6bdfdd8d0bcbaf6eb4f809744d21f21a6be39'
@@ -49229,7 +49325,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:50Z'
     review:
@@ -49238,8 +49334,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49290,6 +49386,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:17Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fc508826592397cfbca2c4a8d34c9e4723f02b635276a85bb2f8d09832121b43
+        new_yaml_sha256: 2d161bbef20a01ccd4d99c720753ba8d9bc6906d82ccc720b62c7f333906b13c
+        target_ids:
+          - web.tanstack-keys.114
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.115
     stable_key: 'sha256:dbc7726630d84d3246dc481b897262f8686dc12457968c97b04ed9b3733c49bc'
@@ -49307,7 +49419,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:52Z'
     review:
@@ -49316,8 +49428,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49368,6 +49480,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:19Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2d161bbef20a01ccd4d99c720753ba8d9bc6906d82ccc720b62c7f333906b13c
+        new_yaml_sha256: e326b7aa5ad6962fe182ce208b7e7af3394a6e54b1b1a8ec2aff256610ae4ad6
+        target_ids:
+          - web.tanstack-keys.115
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.116
     stable_key: 'sha256:3b7e6bf86c25d451ffae2f30dc933808024215db7fbb1bbd94b86e8af49cc9f6'
@@ -49385,7 +49513,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:54Z'
     review:
@@ -49394,8 +49522,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49446,6 +49574,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:21Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e326b7aa5ad6962fe182ce208b7e7af3394a6e54b1b1a8ec2aff256610ae4ad6
+        new_yaml_sha256: 96f95d94cd259a5df77b650d381e293165fe65acb63b9fdd69b8f8ec3d02275d
+        target_ids:
+          - web.tanstack-keys.116
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.117
     stable_key: 'sha256:bf69fdef458f8132c1a8c4c92916156153c1b20cc09a8a939364736411bb9b04'
@@ -49463,7 +49607,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:56Z'
     review:
@@ -49472,8 +49616,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49524,6 +49668,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:23Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 96f95d94cd259a5df77b650d381e293165fe65acb63b9fdd69b8f8ec3d02275d
+        new_yaml_sha256: b9897a845768b43c9f89d40c2951a4e49d431c4aff3f6d591aa7e90a4957ddad
+        target_ids:
+          - web.tanstack-keys.117
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.118
     stable_key: 'sha256:19f1019cb7fb93d81f8f26569d07d0941c46ba64a378c3bcbe242d821268da9d'
@@ -49541,7 +49701,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:57:58Z'
     review:
@@ -49550,8 +49710,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49602,6 +49762,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:25Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b9897a845768b43c9f89d40c2951a4e49d431c4aff3f6d591aa7e90a4957ddad
+        new_yaml_sha256: 8ed01cd32f4e7a7f71b7e5a30bd2c93e5a9b773501f8cfb4ea9f77eaa8cf0721
+        target_ids:
+          - web.tanstack-keys.118
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.119
     stable_key: 'sha256:ddfc8468e7ff16aaf13724588b00bcd626b57a36a49aafef026db9fd2e253a6d'
@@ -49619,7 +49795,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T17:58:01Z'
     review:
@@ -49628,8 +49804,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 5780f96d
+    regression_test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
     blocked_reason: null
     history:
       -
@@ -49680,6 +49856,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:03:27Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8ed01cd32f4e7a7f71b7e5a30bd2c93e5a9b773501f8cfb4ea9f77eaa8cf0721
+        new_yaml_sha256: 00e7ca8b5fb7a367643003c7ca88841b0468eb79e36ab834c68d182294430509
+        target_ids:
+          - web.tanstack-keys.119
+        from_status: in_progress
+        to_status: under_review
+        commit: 5780f96d
+        test: 'apps/web/src/features/compliance/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A predicate-based invalidate does not refetch tenant-B fraud-alerts'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.120
     stable_key: 'sha256:87a9fb00051a82a2fd433f773ad51bda3f731d34b0663c3a59ae4839aa0f1653'
