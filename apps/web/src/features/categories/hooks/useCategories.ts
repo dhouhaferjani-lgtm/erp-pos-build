@@ -13,9 +13,21 @@ import {
   type UpdateCategoryInput,
   type ReorderCategoryInput,
 } from '../api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 /**
- * Query key factory for categories
+ * Query key factory for categories.
+ *
+ * Returns un-scoped structural prefixes; the tenant + company scope is
+ * appended at the useQuery / invalidateQueries call site via
+ * tenantScopedKey([...]). The audit-tanstack-keys gate (see
+ * apps/web/tools/audit-tanstack-keys.mjs) only approves a queryKey that
+ * is either an array literal carrying an approved scope identifier OR a
+ * bare-Identifier call expression `tenantScopedKey(...)`. A property-
+ * access factory call like `categoryKeys.list(...)` is neither, so the
+ * wrap MUST happen at the call site, not inside this factory.
  */
 export const categoryKeys = {
   all: ['categories'] as const,
@@ -43,9 +55,12 @@ export function useCategories(params?: {
   parentId?: number | null
   isActive?: boolean
 }): UseQueryResult<CategoriesListResponse> {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.list(params),
+    queryKey: tenantScopedKey([...categoryKeys.list(params)]),
     queryFn: () => fetchCategories(params),
+    enabled: !!tenantId && !!companyId,
     staleTime: 60000, // Consider data fresh for 1 minute
   })
 }
@@ -54,9 +69,12 @@ export function useCategories(params?: {
  * Hook to fetch complete category tree
  */
 export function useCategoryTree(): UseQueryResult<CategoryApiResponse[]> {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.tree(),
+    queryKey: tenantScopedKey([...categoryKeys.tree()]),
     queryFn: fetchCategoryTree,
+    enabled: !!tenantId && !!companyId,
     staleTime: 300000, // Tree structure changes less frequently - 5 minutes
   })
 }
@@ -65,10 +83,12 @@ export function useCategoryTree(): UseQueryResult<CategoryApiResponse[]> {
  * Hook to fetch a single category by ID
  */
 export function useCategory(id: number | undefined): UseQueryResult<CategoryApiResponse> {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.detail(id!),
+    queryKey: tenantScopedKey([...categoryKeys.detail(id!)]),
     queryFn: () => fetchCategory(id!),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && !!tenantId && !!companyId,
   })
 }
 
@@ -86,7 +106,7 @@ export function useCreateCategory(): UseMutationResult<
     mutationFn: createCategory,
     onSuccess: () => {
       // Invalidate all category queries to refetch with new data
-      queryClient.invalidateQueries({ queryKey: categoryKeys.all })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.all]) })
     },
   })
 }
@@ -105,9 +125,9 @@ export function useUpdateCategory(): UseMutationResult<
     mutationFn: ({ id, data }) => updateCategory(id, data),
     onSuccess: (_, variables) => {
       // Invalidate the specific category and all lists/trees
-      queryClient.invalidateQueries({ queryKey: categoryKeys.detail(variables.id) })
-      queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: categoryKeys.trees() })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.detail(variables.id)]) })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.lists()]) })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.trees()]) })
     },
   })
 }
@@ -122,7 +142,7 @@ export function useDeleteCategory(): UseMutationResult<void, Error, number> {
     mutationFn: deleteCategory,
     onSuccess: () => {
       // Invalidate all category queries
-      queryClient.invalidateQueries({ queryKey: categoryKeys.all })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.all]) })
     },
   })
 }
@@ -141,8 +161,8 @@ export function useReorderCategories(): UseMutationResult<
     mutationFn: reorderCategories,
     onSuccess: () => {
       // Invalidate lists and trees to refetch with new order
-      queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: categoryKeys.trees() })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.lists()]) })
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey([...categoryKeys.trees()]) })
     },
   })
 }
