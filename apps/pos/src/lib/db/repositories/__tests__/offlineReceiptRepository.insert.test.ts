@@ -46,6 +46,7 @@ function makeReceipt(): Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_
     consumption_mode: null,
     table_id: null,
     fiscal_schema_version: 2,
+    is_training: 0,
   };
 }
 

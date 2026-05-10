@@ -3,6 +3,7 @@ import i18n from '@/lib/i18n';
 import { fetchPaymentMethods, fetchPaymentRepositories } from '@/api/paymentApi';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
@@ -347,6 +348,16 @@ async function createReceiptLocalFirst(
 
   const db = await getDatabase(companyId);
 
+  // T2.7 — read training mode from the terminal store and forward it to
+  // createOfflineReceipt. The terminal record is hydrated at boot
+  // (terminalStore.initialize) and refreshed in-session via
+  // refreshTerminalRecord on every sync tick (T2.5), so this snapshot is
+  // current at submission time. A null/undefined terminal defaults to
+  // production (the safer fallback — a missing flag should never silently
+  // turn a real sale into a training receipt).
+  const terminal = useTerminalStore.getState().terminal;
+  const isTraining = terminal?.is_training_mode === true;
+
   const result = await createOfflineReceipt(db, {
     terminalId,
     operatorId,
@@ -373,6 +384,7 @@ async function createReceiptLocalFirst(
     })),
     consumptionMode,
     tableId: tableId ?? undefined,
+    isTraining,
   });
 
   // Fire-and-forget background sync; triggerSync() guards against concurrent calls via isSyncing.

@@ -132,6 +132,17 @@ interface SyncReceiptPayload {
    * the cutover flips them to v3.
    */
   fiscal_schema_version: 2 | 3;
+  /**
+   * T2.7 — true when sealed against a training-mode terminal. Default false
+   * (production) when the field is absent. Server-side
+   * `SyncReceiptsRequest::rules` accepts `nullable, boolean` (PR #103);
+   * `ReceiptSyncService::syncSingleReceipt` branches on this flag to skip
+   * chain validation, year roll-over, finalize, and hash mismatch. Sent on
+   * every payload (rather than omitted-when-false) so the wire shape is
+   * unambiguous and the server-side default-false branch is exercised
+   * deliberately, not by accident of an absent key.
+   */
+  is_training: boolean;
 }
 
 interface SyncReceiptResponseItem {
@@ -1673,6 +1684,10 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     consumption_mode: receipt.consumption_mode,
     table_id: receipt.table_id,
     fiscal_schema_version: fiscalSchemaVersion,
+    // T2.7 — coerce SQLite-native 0|1 to boolean. The column is NOT NULL
+    // DEFAULT 0, so a strict `=== 1` test correctly emits false for legacy
+    // pre-T2.7 rows that were backfilled with 0.
+    is_training: receipt.is_training === 1,
   };
 }
 

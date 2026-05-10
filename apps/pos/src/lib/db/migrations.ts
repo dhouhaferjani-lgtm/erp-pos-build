@@ -706,4 +706,30 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // T2.7 — track training-mode on each offline receipt row.
+    //
+    // Default 0 backfills existing rows as production receipts, which is the
+    // correct interpretation: every pre-T2.7 row was sealed against a
+    // production-mode terminal (the `is_training_mode` flag existed on the
+    // server but the offline-first POS path did not honor it). The wire-shape
+    // builder (`receiptToPayload`) reads this column and emits a boolean
+    // `is_training` field on the sync payload; the server-side T2.7 backend
+    // (PR #103) branches on that flag in `ReceiptSyncService::syncSingleReceipt`.
+    version: 29,
+    name: 'add_is_training_to_offline_receipts',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          'ALTER TABLE offline_receipts ADD COLUMN is_training INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
 ];

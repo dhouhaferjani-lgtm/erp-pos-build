@@ -1557,6 +1557,43 @@ describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', ()
   });
 });
 
+describe('T2.7: is_training wire payload', () => {
+  // The offline-first compliance gap from PR #99 round-8 closes only when the
+  // SQLite is_training column is forwarded on the wire. Default false stays
+  // backwards-compatible with pre-T2.7 server payloads (the field is
+  // `nullable, boolean` per SyncReceiptsRequest::rules in PR #103).
+
+  it('emits is_training=true when SQLite row has is_training=1', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'TRN-MAIN-T001-2026-deadbeef',
+      idempotency_key: 'idem-train-1',
+      fiscal_schema_version: 2,
+      is_training: 1,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.is_training).toBe(true);
+  });
+
+  it('emits is_training=false when SQLite row has is_training=0 (default backfill)', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'MAIN-T001-2026-00000001',
+      idempotency_key: 'idem-prod-1',
+      fiscal_schema_version: 2,
+      is_training: 0,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.is_training).toBe(false);
+  });
+});
+
 describe('B3-followup audit (Finding 4): receiptToPayload fails loudly on invalid fiscal_schema_version', () => {
   // Pre-existing comment in syncService.ts:1222-1225 said "any unexpected
   // value is a schema bug and should fail loudly via the server's hard-reject

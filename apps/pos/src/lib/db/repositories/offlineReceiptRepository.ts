@@ -63,6 +63,15 @@ export interface OfflineReceipt {
    * hard-reject if the terminal's current version drifted (Codex review B1).
    */
   fiscal_schema_version: 2 | 3;
+  /**
+   * T2.7 — when the cashier sealed this receipt against a terminal in
+   * training mode. SQLite-native 0 or 1 (mirrors `voided`); the wire-shape
+   * builder converts to a boolean before sending. Training receipts skip the
+   * local fiscal-hash chain advance and persist with a placeholder fiscal
+   * hash; the server-side sync ingest path (PR #103) honors the flag and
+   * skips chain validation, year roll-over, finalize, and hash mismatch.
+   */
+  is_training: 0 | 1;
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -89,8 +98,8 @@ export async function insertOfflineReceipt(
       total, currency, fiscal_hash, previous_hash, hash_sequence,
       transaction_discount_amount, transaction_discount_reason,
       tendered_amount, change_due, payment_method_id, payment_repository_id, status,
-      payments_json, consumption_mode, table_id, fiscal_schema_version
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+      payments_json, consumption_mode, table_id, fiscal_schema_version, is_training
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -102,7 +111,7 @@ export async function insertOfflineReceipt(
       receipt.change_due, receipt.payment_method_id, receipt.payment_repository_id,
       receipt.status,
       receipt.payments_json, receipt.consumption_mode, receipt.table_id,
-      receipt.fiscal_schema_version,
+      receipt.fiscal_schema_version, receipt.is_training,
     ]
   );
   // T2.2 Step 5.1: this function is now transactionally pure. The

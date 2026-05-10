@@ -3,6 +3,7 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 vi.mock('@/api/receiptApi', () => ({
@@ -112,6 +113,67 @@ describe('paymentStore offline-first cash checkout', () => {
           expect.objectContaining({ methodCode: 'CASH', amount: '50.00' }),
         ]),
       }),
+    );
+  });
+
+  it('forwards isTraining=true to createOfflineReceipt when terminal is in training mode (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: true,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+    } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: true }),
+    );
+  });
+
+  it('forwards isTraining=false to createOfflineReceipt when terminal is in production mode (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: false,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+    } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: false }),
+    );
+  });
+
+  it('defaults isTraining=false when terminal is null (production fallback) (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({ terminal: null } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: false }),
     );
   });
 
