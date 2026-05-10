@@ -107,6 +107,54 @@ describe('Gate C — TanStack queryKey scanner', () => {
       `, 'inline.ts');
       expect(v).toEqual([]);
     });
+
+    // Codex 2026-05-09 review F1: parenthesized queryKey expressions were
+    // not unwrapped by the prior version, so `(['users', x] as const)` was
+    // misclassified as ast_kind: 'other' and falsely flagged. The shared
+    // unwrapKeyExpression() helper now strips parentheses alongside as,
+    // type-assertion, and satisfies wrappers in all three inspection sites.
+
+    it('approves parenthesized + as-const scoped queryKey', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: (['users', currentCompanyId] as const),
+          queryFn: () => fetch('/users'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('flags parenthesized unscoped queryKey with correct resource + ast_kind', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: (['users'] as const),
+          queryFn: () => fetch('/users'),
+        });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+      expect(v[0].resource).toBe('users');
+      expect(v[0].ast_kind).toBe('array_literal');
+    });
+
+    it('approves parenthesized tenantScopedKey() factory call', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: (tenantScopedKey(['users'])),
+          queryFn: () => fetch('/users'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('approves nested parens around as-const', () => {
+      const v = scanCode(`
+        useQuery({
+          queryKey: ((['users', currentCompanyId] as const)),
+          queryFn: () => fetch('/users'),
+        });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
   });
 
   describe('useQueries (Codex C4: nested entries must be audited)', () => {

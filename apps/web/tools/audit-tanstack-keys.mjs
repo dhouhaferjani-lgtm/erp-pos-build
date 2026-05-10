@@ -114,20 +114,43 @@ function arrayHasApprovedScope(arr) {
 }
 
 /**
+ * Strip the wrappers a developer can add around a queryKey value without
+ * changing its semantic shape: parentheses, `as` casts, `<T>` type
+ * assertions, and `satisfies` clauses. Codex 2026-05-09 review F1: the
+ * prior version unwrapped casts but not parentheses, so
+ * `(['users', currentCompanyId] as const)` was misclassified as
+ * `ast_kind: 'other'` and falsely flagged.
+ *
+ * Apply this helper everywhere we inspect a queryKey expression's shape
+ * (approval check, resource extraction, AST-kind classification) so the
+ * three sites stay in sync.
+ *
+ * @param {ts.Expression} expr
+ * @returns {ts.Expression}
+ */
+function unwrapKeyExpression(expr) {
+  let inner = expr;
+  while (
+    ts.isParenthesizedExpression(inner) ||
+    ts.isAsExpression(inner) ||
+    ts.isTypeAssertionExpression(inner) ||
+    ts.isSatisfiesExpression(inner)
+  ) {
+    inner = inner.expression;
+  }
+  return inner;
+}
+
+/**
  * @param {ts.Expression} expr
  * @returns {boolean}
  */
 function queryKeyExpressionIsApproved(expr) {
-  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
-    if (APPROVED_FACTORY_CALLS.has(expr.expression.text)) return true;
+  const inner = unwrapKeyExpression(expr);
+  if (ts.isCallExpression(inner) && ts.isIdentifier(inner.expression)) {
+    if (APPROVED_FACTORY_CALLS.has(inner.expression.text)) return true;
   }
-  if (ts.isArrayLiteralExpression(expr)) return arrayHasApprovedScope(expr);
-  if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
-    return queryKeyExpressionIsApproved(expr.expression);
-  }
-  if (ts.isSatisfiesExpression(expr)) {
-    return queryKeyExpressionIsApproved(expr.expression);
-  }
+  if (ts.isArrayLiteralExpression(inner)) return arrayHasApprovedScope(inner);
   return false;
 }
 
@@ -194,14 +217,7 @@ function findEnclosingSymbol(node) {
  * @returns {string | null}
  */
 function extractQueryKeyResource(queryKey) {
-  let expr = queryKey;
-  while (
-    ts.isAsExpression(expr) ||
-    ts.isTypeAssertionExpression(expr) ||
-    ts.isSatisfiesExpression(expr)
-  ) {
-    expr = expr.expression;
-  }
+  const expr = unwrapKeyExpression(queryKey);
   if (!ts.isArrayLiteralExpression(expr)) {
     return null;
   }
@@ -284,14 +300,7 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
  * @returns {string}
  */
 function classifyQueryKeyAstKind(expr) {
-  let inner = expr;
-  while (
-    ts.isAsExpression(inner) ||
-    ts.isTypeAssertionExpression(inner) ||
-    ts.isSatisfiesExpression(inner)
-  ) {
-    inner = inner.expression;
-  }
+  const inner = unwrapKeyExpression(expr);
   if (ts.isArrayLiteralExpression(inner)) return 'array_literal';
   if (ts.isCallExpression(inner)) return 'call_expression';
   if (ts.isIdentifier(inner)) return 'identifier';

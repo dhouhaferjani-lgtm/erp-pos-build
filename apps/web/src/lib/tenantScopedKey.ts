@@ -6,11 +6,16 @@ import { useCompanyStore } from '../stores/companyStore'
  * cache entries invalidate automatically when the user switches between
  * tenants or companies.
  *
- * Reads from store snapshots via getState(); does not subscribe. The
- * queryKey is stamped at render time, and on tenant/company change the
- * subscribing component re-renders (because companyStore + authStore
- * subscriptions exist elsewhere in the tree), the new queryKey is
- * computed, and TanStack Query treats it as a fresh query.
+ * Reads from store snapshots via getState(); does NOT subscribe. The
+ * queryKey is stamped at render time, so a useQuery call that wraps its
+ * key in tenantScopedKey() will only see the new tenant/company values
+ * if its host component is ALSO subscribed to whatever store change
+ * fired (typically via useAuthStore / useCompanyStore selector hooks
+ * elsewhere in the same render tree, or via an explicit dependency
+ * threading from a provider). Don't rely on ancestor provider re-renders
+ * as the sole trigger — when in doubt, also gate the query with
+ * `{ enabled: !!user && !!currentCompanyId }` and read those values via
+ * the hook form so cache invalidation is causal, not incidental.
  *
  * The architecture-test gate at apps/web/tools/audit-tanstack-keys.mjs
  * approves any queryKey whose call expression is `tenantScopedKey(...)`.
