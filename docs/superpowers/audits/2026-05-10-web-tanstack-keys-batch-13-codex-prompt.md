@@ -2,7 +2,8 @@
 
 **Branch:** `feat/tenant-isolation-sweep-execution`
 **Fix commit:** `904349ec` (production fix; verdict pins here)
-**Test expansion (post-submit):** `5ea5d444` — replaced inline probes with direct production-component renders. Inspect tests at HEAD (5ea5d444); production at 904349ec.
+**Test expansion (post-submit):** `5ea5d444` — replaced inline probes with direct production-component renders.
+**Round-1 BLOCK fix (test only):** `53bebb48` — restored cross-tenant data-leakage assertion that 5ea5d444 silently dropped. Inspect tests at HEAD (53bebb48); production stays at 904349ec.
 **Files (4 + helper):**
 - `apps/web/src/features/services/_invalidation.ts` (new)
 - `apps/web/src/features/services/ServiceCategoryListPage.tsx`
