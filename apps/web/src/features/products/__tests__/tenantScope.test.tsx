@@ -423,9 +423,22 @@ describe('ProductImageUpload mutation cascade (callsites .558 + .559)', () => {
 // ─── useProductRealtime cascade (callsites .561, .562) ───────────────────────
 
 describe('useProductRealtime production cascade through handleUpdate', () => {
-  it('simulating a backend cost-price-updated event invalidates products + product-images caches', async () => {
+  // Use a non-zero gcTime so the seeded singular `['product', ...]` cache
+  // entry (no observer) survives long enough to assert invalidation. The
+  // default test client uses gcTime:0, which would garbage-collect the
+  // entry as soon as it's seeded.
+  function makePersistentQueryClient() {
+    return new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity },
+        mutations: { retry: false },
+      },
+    })
+  }
+
+  it('a simulated backend event invalidates BOTH the singular product entry AND the products list (callsites .561 + .562)', async () => {
     setTenant('tenant-A', 'company-1')
-    const queryClient = createTestQueryClient()
+    const queryClient = makePersistentQueryClient()
 
     function RealtimeProbe() {
       // useProducts seeds the tenant-scoped products list cache.
@@ -443,12 +456,22 @@ describe('useProductRealtime production cascade through handleUpdate', () => {
       expect(realtimeRef.onEvent).not.toBeNull()
     })
 
-    // Simulate the backend event. The production handleUpdate (lines 70-83
-    // of useProductRealtime.ts) fires:
-    //   1. invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) })
-    //   2. invalidateQueries({ predicate: productsInvalidationPredicate(t, c) })
-    // Removing either callsite from production code would prevent this
-    // refetch — which is the test-honesty signal F2 demanded.
+    // Seed a tenant-scoped singular ['product', productId, t, c] cache entry
+    // — this is the target of useProductRealtime.ts callsite .561's first
+    // invalidate. Without seeding, removing that invalidate from production
+    // would not be visible in any assertion (F2 round-2 sub-finding).
+    const singularKey = ['product', 'prod-1', 'tenant-A', 'company-1']
+    queryClient.setQueryData(singularKey, { id: 'prod-1', sku: 'SKU' })
+
+    // Pre-state: singular entry exists and is NOT invalidated.
+    const cache = queryClient.getQueryCache()
+    const singularBefore = cache.find({ queryKey: singularKey, exact: true })
+    expect(singularBefore).toBeDefined()
+    expect(singularBefore!.state.isInvalidated).toBe(false)
+
+    // Simulate the backend event. The production handleUpdate fires:
+    //   1. invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) })   [.561]
+    //   2. invalidateQueries({ predicate: productsInvalidationPredicate(t, c) })      [.562]
     realtimeRef.onEvent!({
       productId: 'prod-1',
       productSku: 'SKU',
@@ -460,10 +483,19 @@ describe('useProductRealtime production cascade through handleUpdate', () => {
       timestamp: '2026-01-01T00:00:00Z',
     })
 
-    // The seeded useProducts list query refetches because the predicate
-    // matched it. mockApiGet count goes from 1 → 2.
+    // .562 closure: predicate-based invalidate triggers a refetch of the
+    // active useProducts list query. mockApiGet goes from 1 → 2.
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalledTimes(2)
     })
+
+    // .561 closure: the singular ['product', 'prod-1', t, c] cache entry
+    // has no observer (it was setQueryData'd), so invalidate marks it
+    // invalidated WITHOUT triggering a refetch — and the flag stays true
+    // because no refetch resets it. Removing the singular invalidate from
+    // production would leave isInvalidated === false here.
+    const singularAfter = cache.find({ queryKey: singularKey, exact: true })
+    expect(singularAfter).toBeDefined()
+    expect(singularAfter!.state.isInvalidated).toBe(true)
   })
 })
