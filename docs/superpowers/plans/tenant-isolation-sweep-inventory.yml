@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: bde8e1144beb3262689bcd14a9cf2daf0c7f52040be0e406d0319297f3a39ade
+  yaml_sha256: 0a2b4c379f46a5b0233f1df01eb9dcb08e9cdb1e29483a236a97a4e629299c46
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -63019,7 +63019,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:30:59Z'
     review:
@@ -63028,8 +63028,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63080,6 +63080,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:57:50Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: bde8e1144beb3262689bcd14a9cf2daf0c7f52040be0e406d0319297f3a39ade
+        new_yaml_sha256: e2329fae177822befed86dbb3b5e10a6e2b349d1a26b9a1d4075097e9dab0ba0
+        target_ids:
+          - web.tanstack-keys.319
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.320
     stable_key: 'sha256:33b58023fb14cf4b75f7c7a48378747a9064a35b13430f4959c9f9eb8421a7be'
@@ -63097,7 +63113,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:01Z'
     review:
@@ -63106,8 +63122,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63158,6 +63174,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:57:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e2329fae177822befed86dbb3b5e10a6e2b349d1a26b9a1d4075097e9dab0ba0
+        new_yaml_sha256: 8c05b48b5a460bb2b82210ec391b3b62dfc8b1814191f1bc104b4ed318cc9a67
+        target_ids:
+          - web.tanstack-keys.320
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.321
     stable_key: 'sha256:599a8d8acb6bee004a75918acbab1da0ca98d8a99890db630d3356152bf9e366'
@@ -63175,7 +63207,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:03Z'
     review:
@@ -63184,8 +63216,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63236,6 +63268,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:57:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8c05b48b5a460bb2b82210ec391b3b62dfc8b1814191f1bc104b4ed318cc9a67
+        new_yaml_sha256: 454d112df277d39ef38e2d427a4f0a63ab21bc27380f5260e9c7595350437ad7
+        target_ids:
+          - web.tanstack-keys.321
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.322
     stable_key: 'sha256:2a91fd0649f078f73f55c9cfcb2aea401efc23bbe520a89fde2d63c6af2685e7'
@@ -63253,7 +63301,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:06Z'
     review:
@@ -63262,8 +63310,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63314,6 +63362,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:57:57Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 454d112df277d39ef38e2d427a4f0a63ab21bc27380f5260e9c7595350437ad7
+        new_yaml_sha256: 45fb3dccb84025734732d0f55c8de610ad67d94432907c74e3143669ef2b4fcf
+        target_ids:
+          - web.tanstack-keys.322
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.323
     stable_key: 'sha256:40630c794d4ca409dce9e88f3db6b444ef74590eafb4f51b0f87c11a23b97217'
@@ -63331,7 +63395,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:08Z'
     review:
@@ -63340,8 +63404,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63392,6 +63456,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:57:59Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 45fb3dccb84025734732d0f55c8de610ad67d94432907c74e3143669ef2b4fcf
+        new_yaml_sha256: 4fbd41c483625cc3ef894abb25cff4797540000f60c8390ca1c551ecd2fff496
+        target_ids:
+          - web.tanstack-keys.323
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.324
     stable_key: 'sha256:df46743a21959f3c7767eb8a36734e4a4ae15d718a98b6c79ea9a646fdd909b1'
@@ -63409,7 +63489,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:10Z'
     review:
@@ -63418,8 +63498,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63470,6 +63550,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:01Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4fbd41c483625cc3ef894abb25cff4797540000f60c8390ca1c551ecd2fff496
+        new_yaml_sha256: 0b66cee07a2eafb910be49a9ba4ddc1f24c569b0a2d5e432043989589b7fea87
+        target_ids:
+          - web.tanstack-keys.324
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.325
     stable_key: 'sha256:2a4cae1e99c3567227ba4fcaa0881aac23ed2414c582873df5115e59faade307'
@@ -63487,7 +63583,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:12Z'
     review:
@@ -63496,8 +63592,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63548,6 +63644,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:04Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0b66cee07a2eafb910be49a9ba4ddc1f24c569b0a2d5e432043989589b7fea87
+        new_yaml_sha256: 426373592b10ebc4804d358cd49a927270dc4fc382a82a29b69614076e402b52
+        target_ids:
+          - web.tanstack-keys.325
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.326
     stable_key: 'sha256:f29aeea90c3a2b24effa96483930da42eff9fd2c5f45caa272d0d16136e29f54'
@@ -63565,7 +63677,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:15Z'
     review:
@@ -63574,8 +63686,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63626,6 +63738,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:06Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 426373592b10ebc4804d358cd49a927270dc4fc382a82a29b69614076e402b52
+        new_yaml_sha256: e02ffd3e9479c875bf10ff5f4347b28dad3a1553dac6357e46db23f554533b00
+        target_ids:
+          - web.tanstack-keys.326
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.327
     stable_key: 'sha256:7c3e2f8bdef6e9672e3f54673393a4062f0ca580b59fb4a87d356461707056cd'
@@ -63643,7 +63771,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:17Z'
     review:
@@ -63652,8 +63780,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63704,6 +63832,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:08Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e02ffd3e9479c875bf10ff5f4347b28dad3a1553dac6357e46db23f554533b00
+        new_yaml_sha256: 57fdd2cf66b5edbbde1e94c54f109fdba4d53b085fb404631ebe9a86135837e4
+        target_ids:
+          - web.tanstack-keys.327
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.328
     stable_key: 'sha256:cfa6b5f56285bb73059e55e63ba3e7e0fbf577ba27fd66eadf6ba45e94034951'
@@ -63721,7 +63865,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:19Z'
     review:
@@ -63730,8 +63874,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63782,6 +63926,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:10Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 57fdd2cf66b5edbbde1e94c54f109fdba4d53b085fb404631ebe9a86135837e4
+        new_yaml_sha256: 11b72715e9735ae46cf8c0e6dd697c3a22078e58ac1fec313f4f5323c8711b34
+        target_ids:
+          - web.tanstack-keys.328
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.329
     stable_key: 'sha256:89c59e7b351cdd02797131b0d83caf56bb4ae2933822fad316e0f8099d56f30f'
@@ -63799,7 +63959,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:21Z'
     review:
@@ -63808,8 +63968,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63860,6 +64020,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:12Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 11b72715e9735ae46cf8c0e6dd697c3a22078e58ac1fec313f4f5323c8711b34
+        new_yaml_sha256: 6c655ca4aa668da1d4893cd15253c0760573fbc227650eafee6c6030b00291f2
+        target_ids:
+          - web.tanstack-keys.329
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.330
     stable_key: 'sha256:fee0c78dec0ebbbc43e89d5b97f8f6c1f073a2b4b82caa4b2a4be790c3293b9b'
@@ -63877,7 +64053,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:24Z'
     review:
@@ -63886,8 +64062,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -63938,6 +64114,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:14Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6c655ca4aa668da1d4893cd15253c0760573fbc227650eafee6c6030b00291f2
+        new_yaml_sha256: b8c71d3abc2bcf2c6e24919f154219eafb5fe9fc2bee9358472705b2251a04b2
+        target_ids:
+          - web.tanstack-keys.330
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.331
     stable_key: 'sha256:889232cd4de4c7ae59e4c776db004001fc899f2cabfa09e43e7828f7a01a0bde'
@@ -63955,7 +64147,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:26Z'
     review:
@@ -63964,8 +64156,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64016,6 +64208,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:16Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b8c71d3abc2bcf2c6e24919f154219eafb5fe9fc2bee9358472705b2251a04b2
+        new_yaml_sha256: df0ea5d98502f68aa22ad50efb9d891633a4a78e62375a070701eb4942b3d8ba
+        target_ids:
+          - web.tanstack-keys.331
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.332
     stable_key: 'sha256:58c3cfa9a0f57e3dfa592b7b31034c2389218305b86c009d98bf99ecff9c29b4'
@@ -64033,7 +64241,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:29Z'
     review:
@@ -64042,8 +64250,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64094,6 +64302,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: df0ea5d98502f68aa22ad50efb9d891633a4a78e62375a070701eb4942b3d8ba
+        new_yaml_sha256: 9c9ab32a799621f2c76fa359278e9d86edfa2b9373c183ac5d55c88837e2c717
+        target_ids:
+          - web.tanstack-keys.332
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.333
     stable_key: 'sha256:bbe6384a44b2984ad30b1f75bf2784ae4f91e9e50945e45e9384b28aaec9bedf'
@@ -64111,7 +64335,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:31Z'
     review:
@@ -64120,8 +64344,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64172,6 +64396,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9c9ab32a799621f2c76fa359278e9d86edfa2b9373c183ac5d55c88837e2c717
+        new_yaml_sha256: 38b9125ca445526fc54048d12d23ebc44d01bce56a407577bc2e6336be41dd0a
+        target_ids:
+          - web.tanstack-keys.333
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.334
     stable_key: 'sha256:c8f9a07b6c5292e0f40f36e1bd3b012d5a44071800ce87ef02a0dba1733c59e1'
@@ -64189,7 +64429,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:33Z'
     review:
@@ -64198,8 +64438,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64250,6 +64490,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:23Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 38b9125ca445526fc54048d12d23ebc44d01bce56a407577bc2e6336be41dd0a
+        new_yaml_sha256: e9e69dda6ce76f7227eee6709fb4f43496f0d0c2b3877dc07650265f29982f3d
+        target_ids:
+          - web.tanstack-keys.334
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.335
     stable_key: 'sha256:33a46a4341a2d8c2ed00082c0eac08509c4de4299ff66c24099f2f1603922dca'
@@ -64267,7 +64523,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-10T20:31:35Z'
     review:
@@ -64276,8 +64532,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 9b9fc606
+    regression_test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64328,6 +64584,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T20:58:25Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e9e69dda6ce76f7227eee6709fb4f43496f0d0c2b3877dc07650265f29982f3d
+        new_yaml_sha256: 0a2b4c379f46a5b0233f1df01eb9dcb08e9cdb1e29483a236a97a4e629299c46
+        target_ids:
+          - web.tanstack-keys.335
+        from_status: in_progress
+        to_status: under_review
+        commit: 9b9fc606
+        test: 'apps/web/src/features/inventory-counting/__tests__/tenantScope.test.tsx::tenant-A counting list data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.336
     stable_key: 'sha256:b2363204a3b3944b73bdb819e99112ae75910802e853cf3d0fc732f0120804b8'
