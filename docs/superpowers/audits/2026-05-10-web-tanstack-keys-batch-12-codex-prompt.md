@@ -1,7 +1,14 @@
 # Codex review prompt — web.tanstack-keys batch 12 (compliance)
 
 **Branch:** `feat/tenant-isolation-sweep-execution`
-**Fix commit:** `5780f96d`
+**Fix commit:** `5780f96d` (production fix; verdict pins here)
+**Test improvement (post-submit, on top of fix):** `f471ca9a` — closes the
+cascade L7 anti-pattern by driving each modal's onSuccess via
+fireEvent + screen.getByRole on the production submit button instead of
+predicate-direct invalidate. Inspect the test file at current HEAD
+(includes f471ca9a); inspect production at 5780f96d. The fix_commit
+stays at 5780f96d because that is the production wrap; the test
+improvement is a quality-only change.
 **Files (3 + helper):**
 - `apps/web/src/features/compliance/_invalidation.ts` (new)
 - `apps/web/src/features/compliance/components/FraudAlertActionModals.tsx`
