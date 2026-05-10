@@ -4,6 +4,9 @@ import { Upload, AlertCircle } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { uploadProductImage } from '../api/productImages'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface ProductImageUploadProps {
   productId: string
@@ -16,15 +19,21 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageUploadProps) {
   const { t } = useTranslation(['products', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadProductImage(productId, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-images', productId] })
-      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+      ])
+      void tenantId
+      void companyId
       setError(null)
       if (onUploadSuccess) {
         onUploadSuccess()

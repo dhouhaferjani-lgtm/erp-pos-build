@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { productsInvalidationPredicate } from './useProducts'
 
 /**
  * Product Cost Price Update payload from WebSocket.
@@ -61,22 +63,28 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
   const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
   const currentCompany = getCurrentCompany()
 
+  const tenantId = user?.tenant_id ?? null
+  const companyId = currentCompany?.id ?? null
+
   const handleUpdate = useCallback(
     (data: ProductCostPriceUpdatePayload) => {
-      // Invalidate product queries to trigger refetch
+      // Invalidate the (potentially-orphan) `product` singular cache for this
+      // productId — preserves prior intent. The plural `products` namespace
+      // (used by productKeys.list / productKeys.detail) needs predicate-based
+      // invalidation because tenantScopedKey() puts t/c at the suffix and the
+      // wrapped `[products, t, c]` tag is NOT a prefix of the leaf
+      // `[products, list, params, t, c]`.
       queryClient.invalidateQueries({
-        queryKey: ['product', productId],
+        queryKey: tenantScopedKey(['product', productId]),
       })
-
-      // Also invalidate product list queries in case product is in a list
       queryClient.invalidateQueries({
-        queryKey: ['products'],
+        predicate: productsInvalidationPredicate(tenantId, companyId),
       })
 
       // Call custom callback if provided
       onUpdate?.(data)
     },
-    [productId, queryClient, onUpdate]
+    [productId, queryClient, onUpdate, tenantId, companyId]
   )
 
   const handleError = useCallback((error: Error) => {

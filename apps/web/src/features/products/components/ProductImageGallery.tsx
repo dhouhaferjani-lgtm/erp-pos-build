@@ -9,6 +9,9 @@ import {
 } from '../api/productImages'
 import type { ProductImage } from '../types'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface ProductImageGalleryProps {
   productId: string
@@ -23,6 +26,8 @@ export function ProductImageGallery({
 }: ProductImageGalleryProps) {
   const { t } = useTranslation(['products', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null)
 
@@ -31,9 +36,15 @@ export function ProductImageGallery({
     onMutate: (imageId) => {
       setDeletingId(imageId)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-images', productId] })
-      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+      ])
+      // tenantId/companyId referenced so eslint doesn't drop the subscription;
+      // the closure above relies on the host re-render captured via these reads.
+      void tenantId
+      void companyId
     },
     onError: (error) => {
       alert(getErrorMessage(error))
@@ -48,9 +59,11 @@ export function ProductImageGallery({
     onMutate: (imageId) => {
       setSettingPrimaryId(imageId)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-images', productId] })
-      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product-images', productId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) }),
+      ])
     },
     onError: (error) => {
       alert(getErrorMessage(error))
