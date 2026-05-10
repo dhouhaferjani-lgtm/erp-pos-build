@@ -47,6 +47,7 @@ vi.mock('../../api/contactApi', () => ({
     details: () => ['contacts', 'detail'],
     detail: (id: string) => ['contacts', 'detail', id],
   },
+  contactsInvalidationPredicate: () => () => false,
 }))
 
 // Mock PartnerSelect

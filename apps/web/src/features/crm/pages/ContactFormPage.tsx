@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchContact, createContact, updateContact, contactKeys } from '../api/contactApi'
+import { fetchContact, createContact, updateContact, contactKeys, contactsInvalidationPredicate } from '../api/contactApi'
 import type { CreateContactData } from '../api/contactApi'
 import { PartnerSelect } from '../components/PartnerSelect'
 import { Input } from '@/components/atoms/Input/Input'
@@ -16,6 +16,9 @@ import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Button } from '@/components/atoms/Button/Button'
 import { FormField } from '@/components/atoms/FormField/FormField'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 const contactSchema = z.object({
   first_name: z.string().min(1, 'crm:contacts.validation.firstNameRequired'),
@@ -43,6 +46,8 @@ export function ContactFormPage() {
   const { id = '' } = useParams<{ id: string }>()
   const isEditing = id.length > 0
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const {
     register,
@@ -69,9 +74,9 @@ export function ContactFormPage() {
   })
 
   const { data: existingContact } = useQuery({
-    queryKey: contactKeys.detail(id),
+    queryKey: tenantScopedKey([...contactKeys.detail(id)]),
     queryFn: () => fetchContact(id),
-    enabled: isEditing,
+    enabled: isEditing && !!tenantId && !!companyId,
   })
 
   useEffect(() => {
@@ -96,9 +101,11 @@ export function ContactFormPage() {
 
   const createMutation = useMutation({
     mutationFn: (data: CreateContactData) => createContact(data),
-    onSuccess: (contact) => {
+    onSuccess: async (contact) => {
       toast.success(t('common:messages.saved'))
-      void queryClient.invalidateQueries({ queryKey: contactKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: contactsInvalidationPredicate(tenantId, companyId),
+      })
       void navigate(`/crm/contacts/${contact.id}`)
     },
     onError: (error: unknown) => {
@@ -108,9 +115,11 @@ export function ContactFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<CreateContactData>) => updateContact(id, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('common:messages.saved'))
-      void queryClient.invalidateQueries({ queryKey: contactKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: contactsInvalidationPredicate(tenantId, companyId),
+      })
       void navigate(`/crm/contacts/${id}`)
     },
     onError: (error: unknown) => {

@@ -4,10 +4,13 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil, Trash2, Building2, User, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchContact, deleteContact, linkContactToParty, unlinkContactFromParty, contactKeys } from '../api/contactApi'
+import { fetchContact, deleteContact, linkContactToParty, unlinkContactFromParty, contactKeys, contactsInvalidationPredicate } from '../api/contactApi'
 import type { LinkPartyData } from '../api/contactApi'
 import { PartnerSelect } from '../components/PartnerSelect'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { Button } from '@/components/atoms/Button/Button'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { Input } from '@/components/atoms/Input/Input'
@@ -17,11 +20,13 @@ export function ContactDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data: contact, isLoading } = useQuery({
-    queryKey: contactKeys.detail(id),
+    queryKey: tenantScopedKey([...contactKeys.detail(id)]),
     queryFn: () => fetchContact(id),
-    enabled: id.length > 0,
+    enabled: id.length > 0 && !!tenantId && !!companyId,
   })
 
   const [showLinkForm, setShowLinkForm] = useState(false)
@@ -30,9 +35,11 @@ export function ContactDetailPage() {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteContact(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('common:messages.deleted'))
-      void queryClient.invalidateQueries({ queryKey: contactKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: contactsInvalidationPredicate(tenantId, companyId),
+      })
       void navigate('/crm/contacts')
     },
     onError: (error: unknown) => {
@@ -42,9 +49,11 @@ export function ContactDetailPage() {
 
   const linkMutation = useMutation({
     mutationFn: (data: LinkPartyData) => linkContactToParty(id, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('common:messages.saved'))
-      void queryClient.invalidateQueries({ queryKey: contactKeys.detail(id) })
+      await queryClient.invalidateQueries({
+        predicate: contactsInvalidationPredicate(tenantId, companyId),
+      })
       setShowLinkForm(false)
       setLinkPartyId('')
       setLinkJobTitle('')
@@ -56,9 +65,11 @@ export function ContactDetailPage() {
 
   const unlinkMutation = useMutation({
     mutationFn: (partyId: string) => unlinkContactFromParty(id, partyId),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('common:messages.saved'))
-      void queryClient.invalidateQueries({ queryKey: contactKeys.detail(id) })
+      await queryClient.invalidateQueries({
+        predicate: contactsInvalidationPredicate(tenantId, companyId),
+      })
     },
     onError: (error: unknown) => {
       toast.error(getErrorMessage(error))
