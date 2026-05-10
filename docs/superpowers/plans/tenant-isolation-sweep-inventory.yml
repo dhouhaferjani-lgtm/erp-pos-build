@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 75a95c1c8b9ed9289caeb3b7723dd9acbd5b1744bafd5441ab364f9abaff04d7
+  yaml_sha256: 2514ac0d409a97c8bc793a623d0a3e5852a8c5c10cba7eb9be0f2606c375f811
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -69272,7 +69272,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:31:54Z'
     review:
@@ -69281,8 +69281,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69333,6 +69333,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 75a95c1c8b9ed9289caeb3b7723dd9acbd5b1744bafd5441ab364f9abaff04d7
+        new_yaml_sha256: da2f4b63eaeadd2508630cfe70394dd60e1af32b0c01d1dccd93060e0cb1b0ed
+        target_ids:
+          - web.tanstack-keys.544
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.545
     stable_key: 'sha256:f649dc4ad36abc96e788985d2fd13256124886c9ca3dd4793e756ac46963ad10'
@@ -69350,7 +69366,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:31:56Z'
     review:
@@ -69359,8 +69375,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69411,6 +69427,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:15Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: da2f4b63eaeadd2508630cfe70394dd60e1af32b0c01d1dccd93060e0cb1b0ed
+        new_yaml_sha256: 5f5cbb9dfa576b6a963f95d0d4ba481a2307ad43e08b4a41d280f6c4481879c1
+        target_ids:
+          - web.tanstack-keys.545
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.546
     stable_key: 'sha256:c5fdbe80c462c06828e682d7206fbe2762ca28d6cf383d5e8ad2af143c5f84d5'
@@ -69428,7 +69460,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:31:58Z'
     review:
@@ -69437,8 +69469,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69489,6 +69521,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:18Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5f5cbb9dfa576b6a963f95d0d4ba481a2307ad43e08b4a41d280f6c4481879c1
+        new_yaml_sha256: 410810368a4d9698deeb2e864f32b683d0a76f58e2b81ac9f9dc2948f5fab418
+        target_ids:
+          - web.tanstack-keys.546
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.547
     stable_key: 'sha256:6d6d346cec22098433b335a5c43440dd88f1166bdae0f8cf590d4967ca5de8e3'
@@ -69506,7 +69554,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:00Z'
     review:
@@ -69515,8 +69563,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69567,6 +69615,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:20Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 410810368a4d9698deeb2e864f32b683d0a76f58e2b81ac9f9dc2948f5fab418
+        new_yaml_sha256: 4817f71d1d19d567517536fb39c10d96434846d357d7ccb8160ab9f9815d2d35
+        target_ids:
+          - web.tanstack-keys.547
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.548
     stable_key: 'sha256:9e591b1a0e45c4f339b7f51df2b3796c4f17db507ef941a99aef4952443b503b'
@@ -69584,7 +69648,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:03Z'
     review:
@@ -69593,8 +69657,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69645,6 +69709,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:22Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4817f71d1d19d567517536fb39c10d96434846d357d7ccb8160ab9f9815d2d35
+        new_yaml_sha256: 66566ce2591abc1714c569226e9b6e176fcedb2646e47cc3c0000f11ed14cdd8
+        target_ids:
+          - web.tanstack-keys.548
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.549
     stable_key: 'sha256:db11697515dd234f29ab55bab41bf494fbafdbb58825d9236a52fe7137ffd99a'
@@ -69662,7 +69742,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:05Z'
     review:
@@ -69671,8 +69751,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69723,6 +69803,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:24Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 66566ce2591abc1714c569226e9b6e176fcedb2646e47cc3c0000f11ed14cdd8
+        new_yaml_sha256: de8482bd79ad1ae98b7010e4d3c75da12408a72f3bc3f178bb0284663bfa5ab2
+        target_ids:
+          - web.tanstack-keys.549
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.550
     stable_key: 'sha256:bad3475d3fb983ab5cd29bbc66c0d0f58e9dea0f44d424b0b2c36e948d9d08a1'
@@ -69740,7 +69836,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:07Z'
     review:
@@ -69749,8 +69845,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69801,6 +69897,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:26Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: de8482bd79ad1ae98b7010e4d3c75da12408a72f3bc3f178bb0284663bfa5ab2
+        new_yaml_sha256: 183e3ddeb1cbafaf0f30ff0e884e30d7bd2ffc1cfd76d04e8a9e3429935f4df1
+        target_ids:
+          - web.tanstack-keys.550
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.551
     stable_key: 'sha256:3693df576127d455306496bab60e0972ef83fc7c33209510282813c6256aeb83'
@@ -69818,7 +69930,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:10Z'
     review:
@@ -69827,8 +69939,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69879,6 +69991,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:28Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 183e3ddeb1cbafaf0f30ff0e884e30d7bd2ffc1cfd76d04e8a9e3429935f4df1
+        new_yaml_sha256: e02ac4744ca1d2bd2bf071872a43209353f12fa6ece55e9720e5205f45c3dd13
+        target_ids:
+          - web.tanstack-keys.551
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.552
     stable_key: 'sha256:6031ccaa2b3166e517eda786643703931c8129394456b0e8edb661f0194ff755'
@@ -69896,7 +70024,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:32:13Z'
     review:
@@ -69905,8 +70033,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b751cefe
+    regression_test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
     blocked_reason: null
     history:
       -
@@ -69957,6 +70085,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:35:30Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e02ac4744ca1d2bd2bf071872a43209353f12fa6ece55e9720e5205f45c3dd13
+        new_yaml_sha256: 2514ac0d409a97c8bc793a623d0a3e5852a8c5c10cba7eb9be0f2606c375f811
+        target_ids:
+          - web.tanstack-keys.552
+        from_status: in_progress
+        to_status: under_review
+        commit: b751cefe
+        test: 'apps/web/src/features/pricing/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B price-lists cache entry'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.553
     stable_key: 'sha256:21bcfd88f39b5b980dc05ed3bfeb3102928b1a94d0c98419762c6c15deada40a'
