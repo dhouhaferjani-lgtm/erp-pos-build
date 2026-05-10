@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 26e48fa131e7c8edec2b56d532a226ea1341869333ddc9facbd88d543c70c971
+  yaml_sha256: 8bf2deed7520d21f4169baa69b3939deee33cd41e5fdc69f00247b1a09144f21
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -77718,7 +77718,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:12:43Z'
     review:
@@ -77727,8 +77727,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -77779,6 +77779,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:35Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 26e48fa131e7c8edec2b56d532a226ea1341869333ddc9facbd88d543c70c971
+        new_yaml_sha256: 4413e55f220d6915780f10ba9462d8be05b84bb74adf86dee6e663d2d50ff8f5
+        target_ids:
+          - web.tanstack-keys.612
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.613
     stable_key: 'sha256:472fa6cb77786a28c8d59999154c9f6caea205cab6d13b8546d1c717b6616b85'
@@ -77796,7 +77812,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:12:51Z'
     review:
@@ -77805,8 +77821,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -77857,6 +77873,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:37Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4413e55f220d6915780f10ba9462d8be05b84bb74adf86dee6e663d2d50ff8f5
+        new_yaml_sha256: 263d39f8564d0a8500f21129e8041beb6af0f6e38e39b3875138aa6749df0123
+        target_ids:
+          - web.tanstack-keys.613
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.614
     stable_key: 'sha256:c6cecbb5782d2e8b402a7b817df61a886521223f1b19d61574f69b1e8ba3841d'
@@ -77874,7 +77906,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:12:53Z'
     review:
@@ -77883,8 +77915,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -77935,6 +77967,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:39Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 263d39f8564d0a8500f21129e8041beb6af0f6e38e39b3875138aa6749df0123
+        new_yaml_sha256: 433e46a88b6b630f261b6ed0c0cb4a59635892a1ef17d1f78373ec99f956701b
+        target_ids:
+          - web.tanstack-keys.614
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.615
     stable_key: 'sha256:0c3f978022693653408462d39b0244db229ca17c9fe2adf4494aa4d5d3e1bec9'
@@ -77952,7 +78000,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:12:55Z'
     review:
@@ -77961,8 +78009,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78013,6 +78061,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:41Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 433e46a88b6b630f261b6ed0c0cb4a59635892a1ef17d1f78373ec99f956701b
+        new_yaml_sha256: e018dc8599439dc70a8e05d85b8766be0c4496ff7e70b7c4aca1844203277782
+        target_ids:
+          - web.tanstack-keys.615
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.616
     stable_key: 'sha256:af3df0c6212cb730e774a20f6a6948c267b72d289a6466ab4d8336feca3aa724'
@@ -78030,7 +78094,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:12:58Z'
     review:
@@ -78039,8 +78103,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78091,6 +78155,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:43Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e018dc8599439dc70a8e05d85b8766be0c4496ff7e70b7c4aca1844203277782
+        new_yaml_sha256: 4385854ad540264a97c1daeb3b02e4939177192aa9088376923b49f89d130f2c
+        target_ids:
+          - web.tanstack-keys.616
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.617
     stable_key: 'sha256:b0f223f52521f5aad4c1cc93e93630bb97ed80f4d0b2111109382f647fc0cefd'
@@ -78108,7 +78188,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:01Z'
     review:
@@ -78117,8 +78197,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78169,6 +78249,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:45Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4385854ad540264a97c1daeb3b02e4939177192aa9088376923b49f89d130f2c
+        new_yaml_sha256: 54e5e8827de764b5fe406dbf3e69c733558d8a380e83a7b0cd61dc01ad26275e
+        target_ids:
+          - web.tanstack-keys.617
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.618
     stable_key: 'sha256:d4bce13ea2a0a55c1a48ff8f897ecb140b74997037339c770d3b75c2b982137e'
@@ -78186,7 +78282,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:03Z'
     review:
@@ -78195,8 +78291,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78247,6 +78343,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:47Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 54e5e8827de764b5fe406dbf3e69c733558d8a380e83a7b0cd61dc01ad26275e
+        new_yaml_sha256: ab622f44fabe46753cff47410f2ef2ff7b81b90fce4e51a08275e46e81f098f0
+        target_ids:
+          - web.tanstack-keys.618
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.619
     stable_key: 'sha256:e2e91018b8abbebe015c230ac937fbe40630212fb0c83e22b8ee9910cf19045e'
@@ -78264,7 +78376,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:10Z'
     review:
@@ -78273,8 +78385,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78325,6 +78437,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:49Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ab622f44fabe46753cff47410f2ef2ff7b81b90fce4e51a08275e46e81f098f0
+        new_yaml_sha256: d70dcc3b47066009bf148b8e37cdd2989c70a755a3d6bf5964b8a8e891dd9a49
+        target_ids:
+          - web.tanstack-keys.619
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.620
     stable_key: 'sha256:d048bed6325c4b2498d224f376156ec74d103d436435f2ceb63b7a5649d4df2c'
@@ -78342,7 +78470,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:17Z'
     review:
@@ -78351,8 +78479,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78403,6 +78531,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:51Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d70dcc3b47066009bf148b8e37cdd2989c70a755a3d6bf5964b8a8e891dd9a49
+        new_yaml_sha256: 6420dcd54b4367b33aea3e5f579dc9bb6a93a3ac1e6a9aa05205fe6e6a6c6c8f
+        target_ids:
+          - web.tanstack-keys.620
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.621
     stable_key: 'sha256:e5eded3292c030b7005bf557aee88100fe80666be9fe8e40a23d0913a55ce4e2'
@@ -78420,7 +78564,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:24Z'
     review:
@@ -78429,8 +78573,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78481,6 +78625,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:53Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6420dcd54b4367b33aea3e5f579dc9bb6a93a3ac1e6a9aa05205fe6e6a6c6c8f
+        new_yaml_sha256: 8a3ecfcb3f232be58517da7ec8a9e9e8a7b01e95afed93dd7eeeee99cf4b07a9
+        target_ids:
+          - web.tanstack-keys.621
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.622
     stable_key: 'sha256:15527102e6aaf4fc5b819dd0f0d4fa20c3f707bbdb6735db855db60a4ff9be16'
@@ -78498,7 +78658,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:28Z'
     review:
@@ -78507,8 +78667,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78559,6 +78719,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:55Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8a3ecfcb3f232be58517da7ec8a9e9e8a7b01e95afed93dd7eeeee99cf4b07a9
+        new_yaml_sha256: db6835eaa7004760529eee7244dffc344e58375a72b4715ddaeb7de63520a23f
+        target_ids:
+          - web.tanstack-keys.622
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.623
     stable_key: 'sha256:a28e9d705120dc420df944b2f5a69b6be346bd84448661743d34a09a10d958be'
@@ -78576,7 +78752,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:30Z'
     review:
@@ -78585,8 +78761,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78637,6 +78813,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: db6835eaa7004760529eee7244dffc344e58375a72b4715ddaeb7de63520a23f
+        new_yaml_sha256: 1ec3b8ff5ba91e9756e1e65cddde283e5c3e67eca33c457ae55ec11bbeb2bb9d
+        target_ids:
+          - web.tanstack-keys.623
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.624
     stable_key: 'sha256:f6a14b6ec3a6162732f5f992f7a5312c83910975af041f652fc1f6c761711f73'
@@ -78654,7 +78846,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T18:13:32Z'
     review:
@@ -78663,8 +78855,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 904349ec
+    regression_test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
     blocked_reason: null
     history:
       -
@@ -78715,6 +78907,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T18:19:59Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1ec3b8ff5ba91e9756e1e65cddde283e5c3e67eca33c457ae55ec11bbeb2bb9d
+        new_yaml_sha256: 8bf2deed7520d21f4169baa69b3939deee33cd41e5fdc69f00247b1a09144f21
+        target_ids:
+          - web.tanstack-keys.624
+        from_status: in_progress
+        to_status: under_review
+        commit: 904349ec
+        test: 'apps/web/src/features/services/__tests__/tenantScope.test.tsx::cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.625
     stable_key: 'sha256:f9b2f1220e7f79bdf6765d31717fa215088e4bd84a89e263db65cf4ae2c7fae7'
