@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ba049d8f52dbe495ee9624c2079013cf8f198e4cee1fdbd76088b502a22aa191
+  yaml_sha256: 677ef0797c245126d3cca804d3c7ef648cff944df5d70061dcb26eb07b98a0d2
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -64805,17 +64805,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:12Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64834,6 +64834,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:13Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ba049d8f52dbe495ee9624c2079013cf8f198e4cee1fdbd76088b502a22aa191
+        new_yaml_sha256: 86e848a4f478a9c5eed8c4aa6bbab3cbfc3df19c6183d77423a781240793a669
+        target_ids:
+          - web.tanstack-keys.338
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:15Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 86e848a4f478a9c5eed8c4aa6bbab3cbfc3df19c6183d77423a781240793a669
+        new_yaml_sha256: fa702d8f67fe544f829f1ccb500a996fff5887599768d2d20c3820de0eed013b
+        target_ids:
+          - web.tanstack-keys.338
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:09Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f17bdcf052ac4b94ad8e861b1062502716cf5b049a798ee7abef23661df31000
+        new_yaml_sha256: ffe601d82c97c49a3d64223139e955301c9a5ec99cfe9ddecb2b774f36b75b0c
+        target_ids:
+          - web.tanstack-keys.338
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.339
     stable_key: 'sha256:cde7446629843a87f099454aa2afcd0a97886b41d09d4d90a9daae71fbcf8fa8'
@@ -64851,17 +64899,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:17Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64880,6 +64928,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:18Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fa702d8f67fe544f829f1ccb500a996fff5887599768d2d20c3820de0eed013b
+        new_yaml_sha256: c23b4bc44214ef61339a4827e9fbbeba00f12001c37216a9cc83b5562a217da7
+        target_ids:
+          - web.tanstack-keys.339
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:20Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c23b4bc44214ef61339a4827e9fbbeba00f12001c37216a9cc83b5562a217da7
+        new_yaml_sha256: a3cc673eada2a5701c2237c38f7b4e6b27dce4d78916e030414ff16c25aceee0
+        target_ids:
+          - web.tanstack-keys.339
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:11Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ffe601d82c97c49a3d64223139e955301c9a5ec99cfe9ddecb2b774f36b75b0c
+        new_yaml_sha256: d0b241db915210f1a3dc91e16b5f2557fc12239d8eb464b27105dfca253a79ad
+        target_ids:
+          - web.tanstack-keys.339
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.340
     stable_key: 'sha256:8a8d84e85dd846b7cf6e0aa8e682c213dc96989333ac961abafdc0a4523dfcb5'
@@ -64897,17 +64993,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:22Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64926,6 +65022,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:23Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a3cc673eada2a5701c2237c38f7b4e6b27dce4d78916e030414ff16c25aceee0
+        new_yaml_sha256: 9c9f465e3ecd7a85606ef9f9e81ffeb1a90ba69fa3b87a0d3cda4ebbbaa88b64
+        target_ids:
+          - web.tanstack-keys.340
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:25Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9c9f465e3ecd7a85606ef9f9e81ffeb1a90ba69fa3b87a0d3cda4ebbbaa88b64
+        new_yaml_sha256: d0fd0fab9911ba11315d762842ba4b2a286a82da84ac7313f3d5d504108ece75
+        target_ids:
+          - web.tanstack-keys.340
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:13Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d0b241db915210f1a3dc91e16b5f2557fc12239d8eb464b27105dfca253a79ad
+        new_yaml_sha256: 9fd26918acb3011f717948d558d56a185e44039faec52f042896bd3cf2224e6e
+        target_ids:
+          - web.tanstack-keys.340
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.341
     stable_key: 'sha256:cdb203ed6cc7bc9e0aa553ca73abbb44389fe74155e5aaf1321c1b2a038a347a'
@@ -64943,17 +65087,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:27Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -64972,6 +65116,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:27Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: d0fd0fab9911ba11315d762842ba4b2a286a82da84ac7313f3d5d504108ece75
+        new_yaml_sha256: a2efe2acdb16d853a10d49c932dc4bbd086de3550de814a81274ce368523328c
+        target_ids:
+          - web.tanstack-keys.341
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:29Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a2efe2acdb16d853a10d49c932dc4bbd086de3550de814a81274ce368523328c
+        new_yaml_sha256: f4610934af0ea374d3403095c28908d57905d087d1d3f46b015a27b5093c78c6
+        target_ids:
+          - web.tanstack-keys.341
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:15Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9fd26918acb3011f717948d558d56a185e44039faec52f042896bd3cf2224e6e
+        new_yaml_sha256: 467287886e33481e359bfc8a8dc3af48b96a981255021b5dd7cfc029ff9b3563
+        target_ids:
+          - web.tanstack-keys.341
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.342
     stable_key: 'sha256:b6c638d71eff82bfe185d9923cd1262001ecba433c51d296635f550ea87cb27d'
@@ -64989,17 +65181,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:31Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -65018,6 +65210,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:32Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f4610934af0ea374d3403095c28908d57905d087d1d3f46b015a27b5093c78c6
+        new_yaml_sha256: d2f6709d4f5c6d11226fa0360476a3d29e6e7b034863b0c84ed6b22ce6500cbd
+        target_ids:
+          - web.tanstack-keys.342
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:34Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d2f6709d4f5c6d11226fa0360476a3d29e6e7b034863b0c84ed6b22ce6500cbd
+        new_yaml_sha256: 4c47fcc13705ffb7410403642d76b6b2f93d517003cde9a0487e90d250b12dd5
+        target_ids:
+          - web.tanstack-keys.342
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 467287886e33481e359bfc8a8dc3af48b96a981255021b5dd7cfc029ff9b3563
+        new_yaml_sha256: 523cd1bca67d31aeadffe2e9ee96d277134737294ebb00898a9cb9969a15ddab
+        target_ids:
+          - web.tanstack-keys.342
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.343
     stable_key: 'sha256:9becb8c57f019bd4babdaf1dcc377b1703c1b4c23ba6af5f682ec64105a7f359'
@@ -65035,17 +65275,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-10T21:52:35Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: ef4d99a4
+    regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
     blocked_reason: null
     history:
       -
@@ -65064,6 +65304,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T21:52:36Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 4c47fcc13705ffb7410403642d76b6b2f93d517003cde9a0487e90d250b12dd5
+        new_yaml_sha256: bfaf71473f6bcb689627febd5a0ad72f845fa442beb39a99e6c3f11f49c430e7
+        target_ids:
+          - web.tanstack-keys.343
+        from_status: pending
+        to_status: claimed
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T21:52:38Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: bfaf71473f6bcb689627febd5a0ad72f845fa442beb39a99e6c3f11f49c430e7
+        new_yaml_sha256: f17bdcf052ac4b94ad8e861b1062502716cf5b049a798ee7abef23661df31000
+        target_ids:
+          - web.tanstack-keys.343
+        from_status: claimed
+        to_status: in_progress
+        commit: 8670572178b513e77c4ea3daef4a57731a3b3652
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-10T21:55:20Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 523cd1bca67d31aeadffe2e9ee96d277134737294ebb00898a9cb9969a15ddab
+        new_yaml_sha256: 677ef0797c245126d3cca804d3c7ef648cff944df5d70061dcb26eb07b98a0d2
+        target_ids:
+          - web.tanstack-keys.343
+        from_status: in_progress
+        to_status: under_review
+        commit: ef4d99a4
+        test: 'apps/web/src/features/loyalty/hooks/__tests__/useEarningRules.tenantScope.test.tsx::tenant-A earning-rules data does not contain tenant-B entries (L18)'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.344
     stable_key: 'sha256:254fa1e6a27d0ba254aebb516f288e044f62b332272890c634eec854b4d4c616'
