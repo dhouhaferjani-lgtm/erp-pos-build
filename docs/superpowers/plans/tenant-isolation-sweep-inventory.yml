@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 57ee5406f673b6f064ad9485e8f1dcfb12e44a856f9e421c893f0c6721ff0e4e
+  yaml_sha256: 9e3ff2f9db0ceeafec9af051691531d5886b6a387e47f8361e72180ecfb6bfe6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -50090,7 +50090,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:15Z'
     review:
@@ -50099,8 +50099,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50151,6 +50151,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:10Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 57ee5406f673b6f064ad9485e8f1dcfb12e44a856f9e421c893f0c6721ff0e4e
+        new_yaml_sha256: 19481faf01c1041fed0cbf0af5ad8b039eb8e46cf6e8dbf76cf5ff0bffb28cc3
+        target_ids:
+          - web.tanstack-keys.127
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.128
     stable_key: 'sha256:4e62c57dd498e4ead682b67b8cd873ee15fb0668d12dc6f4560cf9ed0e5e0262'
@@ -50168,7 +50184,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:18Z'
     review:
@@ -50177,8 +50193,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50229,6 +50245,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:12Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 19481faf01c1041fed0cbf0af5ad8b039eb8e46cf6e8dbf76cf5ff0bffb28cc3
+        new_yaml_sha256: 0dd5ce64d6d04d58f846ab963940f53ed3a14aa26f92981cc75d067092e868cf
+        target_ids:
+          - web.tanstack-keys.128
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.129
     stable_key: 'sha256:613d9c6bf19655a9853e3f59c591d80b040ba8c892b9e2b879e209fa358daa8d'
@@ -50246,7 +50278,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:20Z'
     review:
@@ -50255,8 +50287,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50307,6 +50339,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:14Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 0dd5ce64d6d04d58f846ab963940f53ed3a14aa26f92981cc75d067092e868cf
+        new_yaml_sha256: 44d555c1776bba7b798872242c9d44c5a0c8a6939d36052d05a445054f3ceb5d
+        target_ids:
+          - web.tanstack-keys.129
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.130
     stable_key: 'sha256:cc9f212de5ab516393827684076aa757710b52321601a9872bfb0cf6e17d8ae1'
@@ -50324,7 +50372,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:22Z'
     review:
@@ -50333,8 +50381,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50385,6 +50433,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:16Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 44d555c1776bba7b798872242c9d44c5a0c8a6939d36052d05a445054f3ceb5d
+        new_yaml_sha256: fa44683470f39ecebe33d1fd463dfc66d1d86e615f5e4fab73000f0ca0caadb0
+        target_ids:
+          - web.tanstack-keys.130
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.131
     stable_key: 'sha256:778ed15d4285c7b9d902bf4f8dba9f7ee0b5dfd825610dc5660c80682e9852f5'
@@ -50402,7 +50466,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:24Z'
     review:
@@ -50411,8 +50475,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50463,6 +50527,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:18Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fa44683470f39ecebe33d1fd463dfc66d1d86e615f5e4fab73000f0ca0caadb0
+        new_yaml_sha256: 567738f99bea574b3720f90aca2a53dfb613462dac21d6df1da1289f14d1e819
+        target_ids:
+          - web.tanstack-keys.131
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.132
     stable_key: 'sha256:2be97d979b9d6c5d06ceaf88187a5f89c8e2db497019538f593d099585045db9'
@@ -50480,7 +50560,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:26Z'
     review:
@@ -50489,8 +50569,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50541,6 +50621,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:20Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 567738f99bea574b3720f90aca2a53dfb613462dac21d6df1da1289f14d1e819
+        new_yaml_sha256: 4808dd366afd708d977867c5506734c54d6f046c5967679f73aa77f58b3d344e
+        target_ids:
+          - web.tanstack-keys.132
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.133
     stable_key: 'sha256:b3c274313a48176e717eb167346e791656a42eefdce83e7a7114556ac6f3e871'
@@ -50558,7 +50654,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:28Z'
     review:
@@ -50567,8 +50663,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50619,6 +50715,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:22Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4808dd366afd708d977867c5506734c54d6f046c5967679f73aa77f58b3d344e
+        new_yaml_sha256: dcb8edb6580b7fda533e56476ca943bc84a052813373e3034ab00cc3657039d9
+        target_ids:
+          - web.tanstack-keys.133
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.134
     stable_key: 'sha256:282b2f75b431fb6a6a836cdb4c2e47fcf7b9b1cc69d1d35f94414334d064d957'
@@ -50636,7 +50748,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:30Z'
     review:
@@ -50645,8 +50757,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50697,6 +50809,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:24Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dcb8edb6580b7fda533e56476ca943bc84a052813373e3034ab00cc3657039d9
+        new_yaml_sha256: 21792d57e61614f3ff4f3917d86cf3142aed900d0fa06bb67489ca5ecaffe0f1
+        target_ids:
+          - web.tanstack-keys.134
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.135
     stable_key: 'sha256:5dea99120cd65f169a8597a70572db583fc071bc3260d75a64f0ec4caf3ebc1f'
@@ -50714,7 +50842,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:41:32Z'
     review:
@@ -50723,8 +50851,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 6f9d8687
+    regression_test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
     blocked_reason: null
     history:
       -
@@ -50775,6 +50903,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:49:26Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 21792d57e61614f3ff4f3917d86cf3142aed900d0fa06bb67489ca5ecaffe0f1
+        new_yaml_sha256: 9e3ff2f9db0ceeafec9af051691531d5886b6a387e47f8361e72180ecfb6bfe6
+        target_ids:
+          - web.tanstack-keys.135
+        from_status: in_progress
+        to_status: under_review
+        commit: 6f9d8687
+        test: 'apps/web/src/features/crm/__tests__/tenantScope.test.tsx::predicate-based invalidate rejects tenant-B contacts cache entries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.136
     stable_key: 'sha256:beb0c12aa44c3c302cb7cd189a69c65c312d633b1ddaa578aa6a530017785fc6'
