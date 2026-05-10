@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ff2171cc66a45e0e2aafbe2ad0c33c9864c0195f4751990c98dae2c759d3a4aa
+  yaml_sha256: b6849d0271a71957c5b435607442add95d18fad8b56051610732e3ec0c5b41c3
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -49313,7 +49313,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:44Z'
     review:
@@ -49322,8 +49322,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49374,6 +49374,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:27Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ff2171cc66a45e0e2aafbe2ad0c33c9864c0195f4751990c98dae2c759d3a4aa
+        new_yaml_sha256: fa28b432c1e15affc6eba6b7c491298747d33a0b4f2f7ed3ae5c3faa05ec32f0
+        target_ids:
+          - web.tanstack-keys.120
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.121
     stable_key: 'sha256:a940df1e5435686e67cbbb1c64127a2299b5f3f38d99068bae59007fd17a13b8'
@@ -49391,7 +49407,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:46Z'
     review:
@@ -49400,8 +49416,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49452,6 +49468,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:29Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fa28b432c1e15affc6eba6b7c491298747d33a0b4f2f7ed3ae5c3faa05ec32f0
+        new_yaml_sha256: 840f3e7cdeb504c737bd2474d5d7cf220feefddf55483d10c9ca366e99423db9
+        target_ids:
+          - web.tanstack-keys.121
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.122
     stable_key: 'sha256:dcc9087f871297eb2c9f0c5409984c6a4b418f0f54d6df3be5f434eabd9cacd2'
@@ -49469,7 +49501,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:48Z'
     review:
@@ -49478,8 +49510,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49530,6 +49562,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:31Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 840f3e7cdeb504c737bd2474d5d7cf220feefddf55483d10c9ca366e99423db9
+        new_yaml_sha256: 50b41fb397dd48bdb1f72ca13586aa8a0353fa1d9e4547416c52213a5e0cfb3f
+        target_ids:
+          - web.tanstack-keys.122
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.123
     stable_key: 'sha256:8487b0cd11b506b975f4715b642dc440dd976487b35059bb71c8407ad7340e06'
@@ -49547,7 +49595,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:50Z'
     review:
@@ -49556,8 +49604,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49608,6 +49656,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:33Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 50b41fb397dd48bdb1f72ca13586aa8a0353fa1d9e4547416c52213a5e0cfb3f
+        new_yaml_sha256: 197f1d773b2ca2a503d052a32f25cca732fb5533b52f259eff17eecc92ad7590
+        target_ids:
+          - web.tanstack-keys.123
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.124
     stable_key: 'sha256:52a7c75cd10e1f3b6c8a49971670a4dfd08a245e8f92e7bd7fe38cae950302e3'
@@ -49625,7 +49689,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:52Z'
     review:
@@ -49634,8 +49698,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49686,6 +49750,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:35Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 197f1d773b2ca2a503d052a32f25cca732fb5533b52f259eff17eecc92ad7590
+        new_yaml_sha256: 7c39031752376b028ca1836fe09f3157251872ad6e46affc5eaa2391d5540d66
+        target_ids:
+          - web.tanstack-keys.124
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.125
     stable_key: 'sha256:8dc010b64aa8ddb66ce2fd20abd0b3c6f895c431e5647db459a352e78dbbb6ac'
@@ -49703,7 +49783,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:54Z'
     review:
@@ -49712,8 +49792,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49764,6 +49844,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:37Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7c39031752376b028ca1836fe09f3157251872ad6e46affc5eaa2391d5540d66
+        new_yaml_sha256: 5c05a9f3af688a0f37c4555a451deb1d33b48d24a5f037f53cccb09cfb92b407
+        target_ids:
+          - web.tanstack-keys.125
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.126
     stable_key: 'sha256:90da7ff4b85b5711fd0d4fef80d3ba7ea78d142edd6da01430d0db4672cac272'
@@ -49781,7 +49877,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:00:56Z'
     review:
@@ -49790,8 +49886,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: e284c4e5
+    regression_test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
     blocked_reason: null
     history:
       -
@@ -49842,6 +49938,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:03:39Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5c05a9f3af688a0f37c4555a451deb1d33b48d24a5f037f53cccb09cfb92b407
+        new_yaml_sha256: b6849d0271a71957c5b435607442add95d18fad8b56051610732e3ec0c5b41c3
+        target_ids:
+          - web.tanstack-keys.126
+        from_status: in_progress
+        to_status: under_review
+        commit: e284c4e5
+        test: 'apps/web/src/features/coupons/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A mutation does not refetch tenant-B coupons queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.127
     stable_key: 'sha256:36583555b8e13b1fdcd6ef71544435d3541a29790d8f634ce385ab65269c54e8'
