@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 4969cf24c4e8104c2b615bb4a82cef98877266796f737e893870bf205a85e974
+  yaml_sha256: dd057e2f91159c7bbd8cac51c2ef604eecd5cdb6fa8760e4879155d9566b920a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -71699,9 +71699,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:44Z'
     review:
       reviewer: null
       verdict: null
@@ -71728,6 +71728,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:44Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 4969cf24c4e8104c2b615bb4a82cef98877266796f737e893870bf205a85e974
+        new_yaml_sha256: 31911ff53052012feef517cc0ce03d4096d74f653e6a1061455f35c55224a9ce
+        target_ids:
+          - web.tanstack-keys.573
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:24Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: be843dab5b44978edbb02e5f514d867d8d5706e29af9546223baf72c28941d45
+        new_yaml_sha256: cd2d6b540966e30352681650c6d21fed009c31a21b9b95c890830f26c0e234cc
+        target_ids:
+          - web.tanstack-keys.573
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.574
     stable_key: 'sha256:126bb7841f41616eb675477158ecbc19d9b307f8952e99368995db8e7cd0b6a4'
@@ -71745,9 +71777,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:46Z'
     review:
       reviewer: null
       verdict: null
@@ -71774,6 +71806,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:46Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 31911ff53052012feef517cc0ce03d4096d74f653e6a1061455f35c55224a9ce
+        new_yaml_sha256: 034a6df216346259fbd9d9e4d7e349b1083c80fbb2ed3d62a8e923f3a24ee580
+        target_ids:
+          - web.tanstack-keys.574
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:26Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: cd2d6b540966e30352681650c6d21fed009c31a21b9b95c890830f26c0e234cc
+        new_yaml_sha256: 17b37bea605a2695f9b4cb07787c38f8a0bee5b656a07ece6e6c4e573c85d6e6
+        target_ids:
+          - web.tanstack-keys.574
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.575
     stable_key: 'sha256:9b1e3e168bf1f4dad87fcfd080e7d233ad32a1e7ab72f0d5121d57485deed1c9'
@@ -71791,9 +71855,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:48Z'
     review:
       reviewer: null
       verdict: null
@@ -71820,6 +71884,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:48Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 034a6df216346259fbd9d9e4d7e349b1083c80fbb2ed3d62a8e923f3a24ee580
+        new_yaml_sha256: ff99a3e6925e2fcd9a8d8e8b1eb84882e15bdc0c13b1550a61049fb1c3513caa
+        target_ids:
+          - web.tanstack-keys.575
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:28Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 17b37bea605a2695f9b4cb07787c38f8a0bee5b656a07ece6e6c4e573c85d6e6
+        new_yaml_sha256: 2c57364948c6b421169ca8245a2c1bc6bbffc7c92f665135ab1749fa82fa0115
+        target_ids:
+          - web.tanstack-keys.575
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.576
     stable_key: 'sha256:685b1997cea94a952b1adab93bc706d18bbf66f5cfc2ad73a27b19324250f448'
@@ -71837,9 +71933,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:50Z'
     review:
       reviewer: null
       verdict: null
@@ -71866,6 +71962,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:51Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ff99a3e6925e2fcd9a8d8e8b1eb84882e15bdc0c13b1550a61049fb1c3513caa
+        new_yaml_sha256: 3ac1c1a6ad89c14aab55360031d5dafbd3e4d1ab8f49cff8365dc714f5e0d1f9
+        target_ids:
+          - web.tanstack-keys.576
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:30Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2c57364948c6b421169ca8245a2c1bc6bbffc7c92f665135ab1749fa82fa0115
+        new_yaml_sha256: 74b1761a5a6f6618f5c292393f01ee3b7ff1bd3292bc73349fb2db3edb7c3e48
+        target_ids:
+          - web.tanstack-keys.576
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.577
     stable_key: 'sha256:decd8ea1214a9d66d636d831a31421ffd6ec29e766cc30c6cc0033f2b1bd6181'
@@ -71883,9 +72011,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:52Z'
     review:
       reviewer: null
       verdict: null
@@ -71912,6 +72040,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:52Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3ac1c1a6ad89c14aab55360031d5dafbd3e4d1ab8f49cff8365dc714f5e0d1f9
+        new_yaml_sha256: 1c2ae6c73c6586afdf500d346b7d98d954292df634a882a46a20583022f612eb
+        target_ids:
+          - web.tanstack-keys.577
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:32Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 74b1761a5a6f6618f5c292393f01ee3b7ff1bd3292bc73349fb2db3edb7c3e48
+        new_yaml_sha256: 95a653995a3e21b8d014d9f0b9fd650e7fa6d9c2438a875eb7306fa71fbf99c6
+        target_ids:
+          - web.tanstack-keys.577
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.578
     stable_key: 'sha256:974829be531774c9fafc2b4326fb28c610c89083c80f850b20ceb687a744e201'
@@ -71929,9 +72089,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:54Z'
     review:
       reviewer: null
       verdict: null
@@ -71958,6 +72118,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:54Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1c2ae6c73c6586afdf500d346b7d98d954292df634a882a46a20583022f612eb
+        new_yaml_sha256: aca354fd61ecd707f4ab9cd8e56da5690b3446b72ce31e3606fa44dca31ac2ba
+        target_ids:
+          - web.tanstack-keys.578
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:34Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 95a653995a3e21b8d014d9f0b9fd650e7fa6d9c2438a875eb7306fa71fbf99c6
+        new_yaml_sha256: ce23b00ea6cce939d8e3107c4689461f4d1e2b7672b299dea82e0845a3d62e36
+        target_ids:
+          - web.tanstack-keys.578
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.579
     stable_key: 'sha256:3463189d1556f657be8819921d7cf2480e1669ff2a113c6d3c19846faad2a5d6'
@@ -71975,9 +72167,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:56Z'
     review:
       reviewer: null
       verdict: null
@@ -72004,6 +72196,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:56Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: aca354fd61ecd707f4ab9cd8e56da5690b3446b72ce31e3606fa44dca31ac2ba
+        new_yaml_sha256: 85adbc9fe50320ac5bc9ee6b99bac15b23aebaf930028d3c2f2c215e669465db
+        target_ids:
+          - web.tanstack-keys.579
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:36Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ce23b00ea6cce939d8e3107c4689461f4d1e2b7672b299dea82e0845a3d62e36
+        new_yaml_sha256: 2b729499788b5b615aa7ac7c5c6a2c226a49eb77d70bace8f0e36b90215c70a7
+        target_ids:
+          - web.tanstack-keys.579
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.580
     stable_key: 'sha256:27070644ef62b65d19722f0250d1494817f9574aa03af44a458dc556ae7b6c82'
@@ -72021,9 +72245,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: claude
+    claimed_at: '2026-05-10T12:49:57Z'
     review:
       reviewer: null
       verdict: null
@@ -72050,6 +72274,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T12:49:58Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 85adbc9fe50320ac5bc9ee6b99bac15b23aebaf930028d3c2f2c215e669465db
+        new_yaml_sha256: be843dab5b44978edbb02e5f514d867d8d5706e29af9546223baf72c28941d45
+        target_ids:
+          - web.tanstack-keys.580
+        from_status: pending
+        to_status: claimed
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'force-claim by actor=claude; approved-by=admin@otospex.com; reason=ownership reassigned 2026-05-09 per architectural-surface-closed recalibration; codex remains reviewer-only'
+      -
+        at: '2026-05-10T12:50:38Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2b729499788b5b615aa7ac7c5c6a2c226a49eb77d70bace8f0e36b90215c70a7
+        new_yaml_sha256: dd057e2f91159c7bbd8cac51c2ef604eecd5cdb6fa8760e4879155d9566b920a
+        target_ids:
+          - web.tanstack-keys.580
+        from_status: claimed
+        to_status: in_progress
+        commit: abd13eb9184c79911921ddcb84dc59cb72d6695a
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
   -
     id: web.tanstack-keys.581
     stable_key: 'sha256:371dab912964a7c4dc1996d0f6a24aad1e47ba6e66d0bf4078d4577aea35c3a8'
