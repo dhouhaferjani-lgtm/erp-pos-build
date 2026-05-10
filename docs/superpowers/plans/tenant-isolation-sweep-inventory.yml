@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ba222b1ed8dd307bb8959e4a28c0988b92d413238ea9920cf47d0a29936a1b57
+  yaml_sha256: 392c3aed018d0802bf56888a984688fa15af87fe7208a0022fabcd724d76a064
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -71786,7 +71786,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:03Z'
     review:
@@ -71795,8 +71795,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -71847,6 +71847,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:04Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ba222b1ed8dd307bb8959e4a28c0988b92d413238ea9920cf47d0a29936a1b57
+        new_yaml_sha256: f039b6902ffdf9aed0c2216ca1a316e2e7a5bf3eb34a34d9b0c3420decc06700
+        target_ids:
+          - web.tanstack-keys.565
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.566
     stable_key: 'sha256:b49e3d50960116df9cc4ab7ce6f2e35430d29846e271b451411e8ed3720378f9'
@@ -71864,7 +71880,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:05Z'
     review:
@@ -71873,8 +71889,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -71925,6 +71941,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:06Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f039b6902ffdf9aed0c2216ca1a316e2e7a5bf3eb34a34d9b0c3420decc06700
+        new_yaml_sha256: da17b4e90aa0a7b69902ef4ffbdda1fe4d4af21ceeeaa368a2855f263f565760
+        target_ids:
+          - web.tanstack-keys.566
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.567
     stable_key: 'sha256:59a2b0d5c559c05ff7e0772e311cd432220177b093709d180cd23dc76bf0ddf0'
@@ -71942,7 +71974,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:07Z'
     review:
@@ -71951,8 +71983,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72003,6 +72035,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:08Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: da17b4e90aa0a7b69902ef4ffbdda1fe4d4af21ceeeaa368a2855f263f565760
+        new_yaml_sha256: 3b9a2f18d8ab934ac9c25efca9de9b1f4f5b07691490d41c143bbecd096e1c07
+        target_ids:
+          - web.tanstack-keys.567
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.568
     stable_key: 'sha256:0a34e3b20c8926d3417ac14b0a014793b87257e5e6d602c0d9b88b49fbb96df1'
@@ -72020,7 +72068,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:09Z'
     review:
@@ -72029,8 +72077,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72081,6 +72129,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:09Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3b9a2f18d8ab934ac9c25efca9de9b1f4f5b07691490d41c143bbecd096e1c07
+        new_yaml_sha256: dff30d54572010561d2cc575e77d1fd8e9e464230cdd27b9baa3073b59cc2b68
+        target_ids:
+          - web.tanstack-keys.568
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.569
     stable_key: 'sha256:25f108c0e65b48c212ace4089d2c6c883fff254d87686983e0bb43382e84226d'
@@ -72098,7 +72162,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:11Z'
     review:
@@ -72107,8 +72171,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72159,6 +72223,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:11Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dff30d54572010561d2cc575e77d1fd8e9e464230cdd27b9baa3073b59cc2b68
+        new_yaml_sha256: 61dd894db21e141a9b9ca7ce05338aa6d90990cbfed4b806a640569f146c855f
+        target_ids:
+          - web.tanstack-keys.569
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.570
     stable_key: 'sha256:5ff2a8f9614426676cd4f1a2b784b6e4d1d83c287ad9a3b7787b0298eecdc80f'
@@ -72176,7 +72256,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:13Z'
     review:
@@ -72185,8 +72265,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72237,6 +72317,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 61dd894db21e141a9b9ca7ce05338aa6d90990cbfed4b806a640569f146c855f
+        new_yaml_sha256: d4b68ca76e278dd5b8a8b4cd0fd97813f38f1b001b0fbf0e4fa41a7392b5bc3d
+        target_ids:
+          - web.tanstack-keys.570
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.571
     stable_key: 'sha256:7e6b176d6f6765a15c1f883793b3f6c451276aee1fc72987bdef8e4fac4937c8'
@@ -72254,7 +72350,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:15Z'
     review:
@@ -72263,8 +72359,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72315,6 +72411,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:15Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d4b68ca76e278dd5b8a8b4cd0fd97813f38f1b001b0fbf0e4fa41a7392b5bc3d
+        new_yaml_sha256: b3bd3831f681ca203aa4066721d4ea8be97b48587be9172733a783cda6852b14
+        target_ids:
+          - web.tanstack-keys.571
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.572
     stable_key: 'sha256:01cbc34e45202aa7e27b06e5eafc2826ab3a69da3a83809b6ff5c7c7a99cefb0'
@@ -72332,7 +72444,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: claude
     claimed_at: '2026-05-10T13:19:17Z'
     review:
@@ -72341,8 +72453,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fc767fd3
+    regression_test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
     blocked_reason: null
     history:
       -
@@ -72393,6 +72505,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-10T13:23:17Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b3bd3831f681ca203aa4066721d4ea8be97b48587be9172733a783cda6852b14
+        new_yaml_sha256: 392c3aed018d0802bf56888a984688fa15af87fe7208a0022fabcd724d76a064
+        target_ids:
+          - web.tanstack-keys.572
+        from_status: in_progress
+        to_status: under_review
+        commit: fc767fd3
+        test: 'apps/web/src/features/progression/__tests__/tenantScope.test.tsx::cross-tenant isolation: tenant-A activate does not refetch tenant-B progression queries'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: web.tanstack-keys.573
     stable_key: 'sha256:e34b105a38c0a854172165bb0baeb7f181717ae50750ff924e2883fa787e8ad7'
