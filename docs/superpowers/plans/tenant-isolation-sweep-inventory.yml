@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 86f3457910d79f73e079785a0a2fc00abd1f4af14dd763d43aff63443c825daf
+  yaml_sha256: 909263195614c666799d6f41f836e643d28632fd87431239155a4087a53505e3
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -60995,9 +60995,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:01:52Z'
     review:
       reviewer: null
       verdict: null
@@ -61024,6 +61024,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:01:53Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 86f3457910d79f73e079785a0a2fc00abd1f4af14dd763d43aff63443c825daf
+        new_yaml_sha256: 518d3a1b624e4b5248d9cf3193ee4e2d859177184f5e3c5ed7a4529c4b28326f
+        target_ids:
+          - web.tanstack-keys.300
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:02:54Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8f713d3ec77b16f53ee4543e573965ece53350be7cbff5ddae6c529fc6bd37e0
+        new_yaml_sha256: 4799bc6979cec7e93f46b99d35937025e07807773e5656e586ceeb914471a232
+        target_ids:
+          - web.tanstack-keys.300
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.301
     stable_key: 'sha256:07d7642e5fe65b67e9baf37ceef034b08571dcbc9f962ad996ae68dc34a21a6d'
@@ -61041,9 +61073,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:01:55Z'
     review:
       reviewer: null
       verdict: null
@@ -61070,6 +61102,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:01:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 518d3a1b624e4b5248d9cf3193ee4e2d859177184f5e3c5ed7a4529c4b28326f
+        new_yaml_sha256: 4066e566df4f1eef6d437c6290290a10a715905b9cc4a22078af6b5ff6a8eb85
+        target_ids:
+          - web.tanstack-keys.301
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:02:58Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4799bc6979cec7e93f46b99d35937025e07807773e5656e586ceeb914471a232
+        new_yaml_sha256: 6613a83246d73ab6e59e4416645d479d9698063103affa7731d3ecd3ba463bd4
+        target_ids:
+          - web.tanstack-keys.301
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.302
     stable_key: 'sha256:a96a3f12435e3a26a182a05c0a0dd4d4b3081f7922f0b0e7badbc1c06a010dff'
@@ -61087,9 +61151,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:01:58Z'
     review:
       reviewer: null
       verdict: null
@@ -61116,6 +61180,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:01:59Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 4066e566df4f1eef6d437c6290290a10a715905b9cc4a22078af6b5ff6a8eb85
+        new_yaml_sha256: 9652b3d07044ce1fc2a251554f3dd08b749a8d2e2953e0a542945d1b1c876125
+        target_ids:
+          - web.tanstack-keys.302
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:00Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 6613a83246d73ab6e59e4416645d479d9698063103affa7731d3ecd3ba463bd4
+        new_yaml_sha256: 259d5856972d672fb4b1a21cb12135fbd6bc4cd5815a703dd441c5e36f33211a
+        target_ids:
+          - web.tanstack-keys.302
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.303
     stable_key: 'sha256:ec98dc1e2ad7a3645a72241303e0be96d4ef172d593d51170f43c5da8df2f52f'
@@ -61133,9 +61229,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:01Z'
     review:
       reviewer: null
       verdict: null
@@ -61162,6 +61258,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:01Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 9652b3d07044ce1fc2a251554f3dd08b749a8d2e2953e0a542945d1b1c876125
+        new_yaml_sha256: b284c8f4f9781b3d6b749a195fb4a7c20844d911de04c7455be4b7562340d675
+        target_ids:
+          - web.tanstack-keys.303
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:03Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 259d5856972d672fb4b1a21cb12135fbd6bc4cd5815a703dd441c5e36f33211a
+        new_yaml_sha256: 64c1a280d29818d628c2515918ec5469a0831d1d894db706daef3dcd1360bf0f
+        target_ids:
+          - web.tanstack-keys.303
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.304
     stable_key: 'sha256:dae8c928e99358dbbd72b00a97ac9c9e52eb57af8bbcf0a7635dc90011e8f050'
@@ -61179,9 +61307,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:03Z'
     review:
       reviewer: null
       verdict: null
@@ -61208,6 +61336,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:04Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b284c8f4f9781b3d6b749a195fb4a7c20844d911de04c7455be4b7562340d675
+        new_yaml_sha256: 6e11d3669688d52c7353bf45f456e4b2d59b1371028cb5a1a71778a30706bda6
+        target_ids:
+          - web.tanstack-keys.304
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:05Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 64c1a280d29818d628c2515918ec5469a0831d1d894db706daef3dcd1360bf0f
+        new_yaml_sha256: 8b9638f0d15c1abc45b88c08647d703c4270059a8880389a0237c9439bf258c4
+        target_ids:
+          - web.tanstack-keys.304
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.305
     stable_key: 'sha256:881856a770c06ae8d829f42b4147af29333728b3bd00360d1020bbec53e034d0'
@@ -61225,9 +61385,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:07Z'
     review:
       reviewer: null
       verdict: null
@@ -61254,6 +61414,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:07Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6e11d3669688d52c7353bf45f456e4b2d59b1371028cb5a1a71778a30706bda6
+        new_yaml_sha256: 3f6d30b0f5d1e201cf127bc33019b35472432f392e8d6b4976d7c7d9e5f72af0
+        target_ids:
+          - web.tanstack-keys.305
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:08Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b9638f0d15c1abc45b88c08647d703c4270059a8880389a0237c9439bf258c4
+        new_yaml_sha256: 030b47ab72ba865d76c68e1f65390cd7fcd97d0dc1f4e3db0c94a16482bf4992
+        target_ids:
+          - web.tanstack-keys.305
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.306
     stable_key: 'sha256:40215cebe61b3796c959afd602d98f1b32c69781789f220bb8939e33b01fca76'
@@ -61271,9 +61463,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:09Z'
     review:
       reviewer: null
       verdict: null
@@ -61300,6 +61492,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3f6d30b0f5d1e201cf127bc33019b35472432f392e8d6b4976d7c7d9e5f72af0
+        new_yaml_sha256: 0ada8ece615737a9355d8adeac9ff31f5de21e4be32e8d02bf67ff50bcf6878d
+        target_ids:
+          - web.tanstack-keys.306
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:10Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 030b47ab72ba865d76c68e1f65390cd7fcd97d0dc1f4e3db0c94a16482bf4992
+        new_yaml_sha256: 2d138cb9ac976e5ba2353b0d52ab98fdf2e910f09f650f566a40e2c3fc0db435
+        target_ids:
+          - web.tanstack-keys.306
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.307
     stable_key: 'sha256:3137618c74044a686e5f63c3065b204e600b2be6f969929a1976e24b5da222c2'
@@ -61317,9 +61541,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:13Z'
     review:
       reviewer: null
       verdict: null
@@ -61346,6 +61570,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:13Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0ada8ece615737a9355d8adeac9ff31f5de21e4be32e8d02bf67ff50bcf6878d
+        new_yaml_sha256: 92bd7f0e1b34443381a166678e1c9bb3811307fa7baf0c6bc1460c9905dff759
+        target_ids:
+          - web.tanstack-keys.307
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:12Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2d138cb9ac976e5ba2353b0d52ab98fdf2e910f09f650f566a40e2c3fc0db435
+        new_yaml_sha256: 11f66ec069e41d742b56cc6c1cac7c07acc5dd07311a1b30beaf395313f0cef9
+        target_ids:
+          - web.tanstack-keys.307
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.308
     stable_key: 'sha256:9176f2285c5d73cb743b61ad215c0ccb7655417f7a5993c5437d014957df078e'
@@ -61363,9 +61619,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:15Z'
     review:
       reviewer: null
       verdict: null
@@ -61392,6 +61648,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:16Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 92bd7f0e1b34443381a166678e1c9bb3811307fa7baf0c6bc1460c9905dff759
+        new_yaml_sha256: 28e958a52668db8da047022cf69d1b89952c0f09239be8a9ed8501e5f097ae43
+        target_ids:
+          - web.tanstack-keys.308
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:14Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 11f66ec069e41d742b56cc6c1cac7c07acc5dd07311a1b30beaf395313f0cef9
+        new_yaml_sha256: dea6b2592e45d5a3fbc55b07bb9ef0171a95a7c1d86ceef3d0da2dd54e2da65b
+        target_ids:
+          - web.tanstack-keys.308
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.309
     stable_key: 'sha256:8197ff8cd9c880ce61afd5dffe7d85598e5cdcd753fc942370e5da52513f8d77'
@@ -61409,9 +61697,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:18Z'
     review:
       reviewer: null
       verdict: null
@@ -61438,6 +61726,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:19Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 28e958a52668db8da047022cf69d1b89952c0f09239be8a9ed8501e5f097ae43
+        new_yaml_sha256: e1a17b018da2116b127c1805402616425402535c4a3aaf009ab1ea726fa8e497
+        target_ids:
+          - web.tanstack-keys.309
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dea6b2592e45d5a3fbc55b07bb9ef0171a95a7c1d86ceef3d0da2dd54e2da65b
+        new_yaml_sha256: a6fb106163dd2dc145d68eb39a72daa0e6874782b3747aedcaa40c55ecca7dbe
+        target_ids:
+          - web.tanstack-keys.309
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.310
     stable_key: 'sha256:879cbb6babcfe11dfc4de07d599a011c36d2d8407f093ebb9953e7f16195d891'
@@ -61455,9 +61775,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:22Z'
     review:
       reviewer: null
       verdict: null
@@ -61484,6 +61804,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:23Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e1a17b018da2116b127c1805402616425402535c4a3aaf009ab1ea726fa8e497
+        new_yaml_sha256: dd899ab85f82f4e529e1e70b8d9e7d30f7a595c5e301eba9e04de3900d29aaad
+        target_ids:
+          - web.tanstack-keys.310
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:18Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a6fb106163dd2dc145d68eb39a72daa0e6874782b3747aedcaa40c55ecca7dbe
+        new_yaml_sha256: 60dd256c0c6c4b75d70357a14907fa8217d39adff54fd3aa864069558b0e697b
+        target_ids:
+          - web.tanstack-keys.310
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.311
     stable_key: 'sha256:7d10e6efbedd48ae4930ceb74ac92387417e437d6879db16541b1ddc0eaa2dfc'
@@ -61501,9 +61853,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:25Z'
     review:
       reviewer: null
       verdict: null
@@ -61530,6 +61882,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:26Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: dd899ab85f82f4e529e1e70b8d9e7d30f7a595c5e301eba9e04de3900d29aaad
+        new_yaml_sha256: c10c36b8bfc2faccf92e7f9ad8a23518f8d9115b94da6e815806c4b171dee361
+        target_ids:
+          - web.tanstack-keys.311
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:20Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 60dd256c0c6c4b75d70357a14907fa8217d39adff54fd3aa864069558b0e697b
+        new_yaml_sha256: d4abdaeeb245b33c07807b9d0a79f7caa9fde98f06234e87836cc30fe87b9646
+        target_ids:
+          - web.tanstack-keys.311
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.312
     stable_key: 'sha256:a6a808f4d8930fc23bdf67b394661e581f246e4d4fd9ec14b730a31e1996399b'
@@ -61547,9 +61931,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:28Z'
     review:
       reviewer: null
       verdict: null
@@ -61576,6 +61960,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:29Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c10c36b8bfc2faccf92e7f9ad8a23518f8d9115b94da6e815806c4b171dee361
+        new_yaml_sha256: c7292835c059cdca8646e5ae2c3c6987139f447e87faef4bf5e749106421d7ff
+        target_ids:
+          - web.tanstack-keys.312
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:22Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d4abdaeeb245b33c07807b9d0a79f7caa9fde98f06234e87836cc30fe87b9646
+        new_yaml_sha256: 2132af4e892a629c597d3f586bf5355ce1546b204f9109a9e036210518bab8c7
+        target_ids:
+          - web.tanstack-keys.312
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.313
     stable_key: 'sha256:617ae1dcf0e525b9d766fe5a90498c109ad130a5118b455ffb2f54e9855c79f5'
@@ -61593,9 +62009,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:30Z'
     review:
       reviewer: null
       verdict: null
@@ -61622,6 +62038,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:31Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c7292835c059cdca8646e5ae2c3c6987139f447e87faef4bf5e749106421d7ff
+        new_yaml_sha256: da65a215bf213f50ce32cd6a7c4feae261e52915e662381474603a4e9a54d034
+        target_ids:
+          - web.tanstack-keys.313
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:25Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2132af4e892a629c597d3f586bf5355ce1546b204f9109a9e036210518bab8c7
+        new_yaml_sha256: 29eb5ef1f1708b4b719704250c3e0eb3d9d5c5e8a8965d1a172ff936941ddfd7
+        target_ids:
+          - web.tanstack-keys.313
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.314
     stable_key: 'sha256:16f8216ebdc6ddef8c4b42cee0cac63e55c985d3e2f882e55fa86b50ec855e18'
@@ -61639,9 +62087,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:34Z'
     review:
       reviewer: null
       verdict: null
@@ -61668,6 +62116,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:35Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: da65a215bf213f50ce32cd6a7c4feae261e52915e662381474603a4e9a54d034
+        new_yaml_sha256: cb278f8717c8eb34aa39f22a9c38459b2a6a1288785ba9130b8e233968b52123
+        target_ids:
+          - web.tanstack-keys.314
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:27Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 29eb5ef1f1708b4b719704250c3e0eb3d9d5c5e8a8965d1a172ff936941ddfd7
+        new_yaml_sha256: 5990bf67d613f16fb1dd41509049450e74fbb624e9a993e254fb7c1244dad709
+        target_ids:
+          - web.tanstack-keys.314
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.315
     stable_key: 'sha256:95b776cf955f62d341cf871ecbca9c8b23ecfc2359fb3367bc9e3d47224df496'
@@ -61685,9 +62165,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:37Z'
     review:
       reviewer: null
       verdict: null
@@ -61714,6 +62194,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:38Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: cb278f8717c8eb34aa39f22a9c38459b2a6a1288785ba9130b8e233968b52123
+        new_yaml_sha256: bbbdfd03ae3aaf59001d90ecbfaa1fa3ca2b9abb23b8510b2af2e0d319a93646
+        target_ids:
+          - web.tanstack-keys.315
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:29Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 5990bf67d613f16fb1dd41509049450e74fbb624e9a993e254fb7c1244dad709
+        new_yaml_sha256: b9c6d66e2d921225a31b5ab0d83d8b265bfbdfa40b517a623e0fbbe47b030f1f
+        target_ids:
+          - web.tanstack-keys.315
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.316
     stable_key: 'sha256:13aebef54551d3f3ee1926f07ed7dddecba828b73f4fad47c6acf60a121bbf93'
@@ -61731,9 +62243,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:41Z'
     review:
       reviewer: null
       verdict: null
@@ -61760,6 +62272,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:42Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: bbbdfd03ae3aaf59001d90ecbfaa1fa3ca2b9abb23b8510b2af2e0d319a93646
+        new_yaml_sha256: 577c25eecc496225fb804b2f6c1e9d8f61d11775dc6fb7022e4ef7782dbb50ea
+        target_ids:
+          - web.tanstack-keys.316
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:31Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b9c6d66e2d921225a31b5ab0d83d8b265bfbdfa40b517a623e0fbbe47b030f1f
+        new_yaml_sha256: 28ba4d902b734e9c8d4c65691648b310bf260a30b86a7c1609b2779d40a82c66
+        target_ids:
+          - web.tanstack-keys.316
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.317
     stable_key: 'sha256:00fc461a17905b41ac0ed1a5e4c98e04be4dc1a846fdd0215fe5d52384c71adf'
@@ -61777,9 +62321,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:45Z'
     review:
       reviewer: null
       verdict: null
@@ -61806,6 +62350,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:46Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 577c25eecc496225fb804b2f6c1e9d8f61d11775dc6fb7022e4ef7782dbb50ea
+        new_yaml_sha256: 8ee7ae151a1f239e0b7b71df18fbe784bb7cceb27505fb7f71ed942cce64cda8
+        target_ids:
+          - web.tanstack-keys.317
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:34Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 28ba4d902b734e9c8d4c65691648b310bf260a30b86a7c1609b2779d40a82c66
+        new_yaml_sha256: fdd9fa975f29ab514ba49168ca0650e6b391da9106de6a973ab047fa5bc813ac
+        target_ids:
+          - web.tanstack-keys.317
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.318
     stable_key: 'sha256:80fdccf0571c8525ebbc8b540308bd21726c9a0f802f34bef9d1e3a1b7311afe'
@@ -61823,9 +62399,9 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: in_progress
+    owner: codex
+    claimed_at: '2026-05-10T19:02:49Z'
     review:
       reviewer: null
       verdict: null
@@ -61852,6 +62428,38 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-10T19:02:50Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8ee7ae151a1f239e0b7b71df18fbe784bb7cceb27505fb7f71ed942cce64cda8
+        new_yaml_sha256: 8f713d3ec77b16f53ee4543e573965ece53350be7cbff5ddae6c529fc6bd37e0
+        target_ids:
+          - web.tanstack-keys.318
+        from_status: pending
+        to_status: claimed
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-10T19:03:36Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: fdd9fa975f29ab514ba49168ca0650e6b391da9106de6a973ab047fa5bc813ac
+        new_yaml_sha256: 909263195614c666799d6f41f836e643d28632fd87431239155a4087a53505e3
+        target_ids:
+          - web.tanstack-keys.318
+        from_status: claimed
+        to_status: in_progress
+        commit: 9e960caca94b324dba232957e405b21dbd912a6e
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
   -
     id: web.tanstack-keys.319
     stable_key: 'sha256:1c5f87e113d504db0cd214ece0aedce1a4938418e8535e27b54936ac45d259bb'
