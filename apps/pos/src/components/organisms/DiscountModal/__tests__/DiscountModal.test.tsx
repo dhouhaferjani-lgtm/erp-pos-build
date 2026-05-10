@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DiscountModal } from '../DiscountModal';
@@ -75,5 +76,63 @@ describe('DiscountModal', () => {
     fireEvent.click(screen.getByText('0'));
     fireEvent.click(screen.getByText('discount.apply'));
     expect(onApply).toHaveBeenCalledWith({ type: 'percentage', value: '20', reason: '' });
+  });
+});
+
+describe('DiscountModal — focus management (PR #97 follow-up)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('renders with role="dialog", aria-modal, and aria-labelledby pointing at the title', () => {
+    renderModal();
+    const dialog = screen.getByTestId('discount-modal-dialog');
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('discount-modal-title');
+    // The labelled element exists.
+    expect(document.getElementById('discount-modal-title')).not.toBeNull();
+  });
+
+  it('restores focus to the opener when the modal closes', () => {
+    function Harness() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <>
+          <button
+            data-testid="opener"
+            onClick={() => setIsOpen(true)}
+          >
+            open
+          </button>
+          <DiscountModal
+            isOpen={isOpen}
+            onClose={() => setIsOpen(false)}
+            onApplyTransactionDiscount={vi.fn()}
+            canDiscount
+            maxDiscountPercent={100}
+            requiresReason={false}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const opener = screen.getByTestId('opener');
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+
+    // Open the modal — useFocusTrap's render-phase capture pins the opener.
+    fireEvent.click(opener);
+    const dialog = screen.getByTestId('discount-modal-dialog');
+    expect(dialog).toBeInTheDocument();
+    // Focus has moved off the opener (into the dialog's first focusable).
+    expect(document.activeElement).not.toBe(opener);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    // Close via the cancel button (header).
+    fireEvent.click(screen.getByRole('button', { name: 'discount.cancel' }));
+
+    // Dialog gone, focus restored.
+    expect(screen.queryByTestId('discount-modal-dialog')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(opener);
   });
 });

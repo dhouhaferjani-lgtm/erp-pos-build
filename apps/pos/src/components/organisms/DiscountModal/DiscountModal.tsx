@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Operator } from '@/stores/operatorStore';
 
 type DiscountType = 'percentage' | 'fixed';
@@ -32,6 +33,9 @@ export function DiscountModal({
   requiresReason,
 }: DiscountModalProps) {
   const { t } = useTranslation('pos');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap({ isActive: isOpen, containerRef: dialogRef });
+
   const [discountType, setDiscountType] = useState<DiscountType>('percentage');
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('');
@@ -156,7 +160,14 @@ export function DiscountModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="discount-modal-title"
+      data-testid="discount-modal-dialog"
+      className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900"
+    >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
         <button
@@ -166,7 +177,7 @@ export function DiscountModal({
           <ArrowLeft className="h-4 w-4" />
           {t('discount.cancel')}
         </button>
-        <span className="text-lg font-bold text-gray-900">
+        <span id="discount-modal-title" className="text-lg font-bold text-gray-900">
           {t('discount.transactionDiscount')}
         </span>
         <div className="w-20" />

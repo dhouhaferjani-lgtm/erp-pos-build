@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type Database from '@tauri-apps/plugin-sql';
 import {
@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { NumPad } from '@/components/molecules/NumPad';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
 import { VoucherTenderModal } from '@/components/pos/VoucherTenderModal';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
@@ -101,6 +102,9 @@ export function AdvancedPaymentsModal({
 }: AdvancedPaymentsModalProps) {
   const { t } = useTranslation('pos');
   const { format, decimals, currency } = useCurrency();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap({ isActive: isOpen, containerRef: dialogRef });
+
   // Codex review B5 (2026-05-01): tracks whether the dedicated
   // VoucherTenderModal scan/lookup overlay is open. Open only when the
   // cashier taps an instrument-bearing tile (store_voucher, etc.) AND the
@@ -433,7 +437,14 @@ export function AdvancedPaymentsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="advanced-payments-title"
+      data-testid="advanced-payments-dialog"
+      className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900"
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
         <button
@@ -443,7 +454,7 @@ export function AdvancedPaymentsModal({
           <ArrowLeft className="h-4 w-4" />
           {t('advancedPayments.back')}
         </button>
-        <div className="flex items-center gap-2 text-lg font-bold">
+        <div id="advanced-payments-title" className="flex items-center gap-2 text-lg font-bold">
           <Wallet className="h-5 w-5" />
           {t('advancedPayments.title')}
         </div>
