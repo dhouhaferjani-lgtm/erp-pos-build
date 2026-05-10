@@ -234,25 +234,40 @@ describe('POS shift invalidation cascade through predicate', () => {
       },
     })
 
+    // Counters that increment on every queryFn invocation. The cascade
+    // assertion checks `> initial` after invalidate — proving the
+    // predicate actually triggered refetch. If the predicate returned
+    // false (always-false impl), counters wouldn't advance.
+    let term1Calls = 0
+    let term2Calls = 0
+    let pmCalls = 0
+
     function CascadeProbe() {
       const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
       const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
-      // Two distinct shift queries for two terminal codes — both should
-      // invalidate together via the predicate.
       useQuery({
         queryKey: tenantScopedKey(['pos', 'shift', 'TERM-1']),
-        queryFn: async () => 'shift-1',
+        queryFn: async () => {
+          term1Calls += 1
+          return `shift-1-call-${term1Calls}`
+        },
         enabled: !!tenantId && !!companyId,
       })
       useQuery({
         queryKey: tenantScopedKey(['pos', 'shift', 'TERM-2']),
-        queryFn: async () => 'shift-2',
+        queryFn: async () => {
+          term2Calls += 1
+          return `shift-2-call-${term2Calls}`
+        },
         enabled: !!tenantId && !!companyId,
       })
-      // A non-shift query that must NOT be invalidated.
+      // A non-shift query that must NOT be invalidated by the predicate.
       useQuery({
         queryKey: tenantScopedKey(['pos', 'payment-methods']),
-        queryFn: async () => [],
+        queryFn: async () => {
+          pmCalls += 1
+          return [`pm-call-${pmCalls}`]
+        },
         enabled: !!tenantId && !!companyId,
       })
       const queryClientFromProvider = useQueryClient()
@@ -261,10 +276,11 @@ describe('POS shift invalidation cascade through predicate', () => {
     }
 
     renderWithProviders(<CascadeProbe />, { queryClient })
-    // Wait for the 3 initial fetches to register.
+    // Wait for the 3 initial fetches to settle (each queryFn called once).
     await waitFor(() => {
-      const all = queryClient.getQueryCache().getAll()
-      expect(all.filter((q) => q.queryKey[0] === 'pos').length).toBeGreaterThanOrEqual(3)
+      expect(term1Calls).toBe(1)
+      expect(term2Calls).toBe(1)
+      expect(pmCalls).toBe(1)
     })
 
     // Seed a tenant-B shift entry to verify cross-tenant isolation.
@@ -276,10 +292,16 @@ describe('POS shift invalidation cascade through predicate', () => {
       predicate: posShiftInvalidationPredicate('tenant-A', 'company-1'),
     })
 
-    const cache = queryClient.getQueryCache()
+    // Both tenant-A shift entries refetched. The fetch-count check proves
+    // the predicate matched + triggered cascade — an always-false predicate
+    // would leave both counters at 1.
+    expect(term1Calls).toBe(2)
+    expect(term2Calls).toBe(2)
+    // payment-methods must NOT have refetched (predicate rejects k[1] !== 'shift').
+    expect(pmCalls).toBe(1)
 
-    // Both tenant-A shift entries are invalidated (they had observers, so
-    // refetch fired and isInvalidated reset; data should refresh).
+    // Verify the leaf data also reflects the new fetch (sanity).
+    const cache = queryClient.getQueryCache()
     const t1 = cache.find({
       queryKey: ['pos', 'shift', 'TERM-1', 'tenant-A', 'company-1'],
       exact: true,
@@ -288,20 +310,12 @@ describe('POS shift invalidation cascade through predicate', () => {
       queryKey: ['pos', 'shift', 'TERM-2', 'tenant-A', 'company-1'],
       exact: true,
     })
-    expect(t1?.state.data).toBe('shift-1')
-    expect(t2?.state.data).toBe('shift-2')
+    expect(t1?.state.data).toBe('shift-1-call-2')
+    expect(t2?.state.data).toBe('shift-2-call-2')
 
-    // Tenant-B shift entry must remain UNTOUCHED (no observer, no refetch
-    // would fire even if it matched, but the predicate must reject it).
+    // Tenant-B shift entry must remain UNTOUCHED.
     const tBKeyEntry = cache.find({ queryKey: tenantBKey, exact: true })
     expect(tBKeyEntry?.state.data).toBe('shift-other-tenant')
     expect(tBKeyEntry?.state.isInvalidated).toBe(false)
-
-    // payment-methods is NOT a shift query — must be untouched.
-    const pm = cache.find({
-      queryKey: ['pos', 'payment-methods', 'tenant-A', 'company-1'],
-      exact: true,
-    })
-    expect(pm?.state.isInvalidated).toBe(false)
   })
 })
