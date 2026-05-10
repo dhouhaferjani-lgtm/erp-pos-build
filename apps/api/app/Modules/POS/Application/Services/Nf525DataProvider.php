@@ -267,7 +267,16 @@ final class Nf525DataProvider implements Nf525DataProviderContract
 
     public function verifyReceiptChain(string $terminalId): Nf525ChainVerificationResult
     {
+        // T2.7 / Codex round-2 P1 (2026-05-10): training receipts (is_training=true)
+        // are not part of the production fiscal chain. They persist with
+        // chain_sequence=NULL and a deterministic sha256('TRAINING-' || receipt_id)
+        // sentinel hash that is NOT what `receiptHashService->calculateHash`
+        // produces for a production receipt. Including them in the verification
+        // pass would falsely report the chain as broken on every terminal that
+        // has synced any training receipt. Mirrors the filter already applied at
+        // VerifyPosChainCommand.php:166 + ReceiptHashService::verifyTerminalChain.
         $receipts = Receipt::where('terminal_id', $terminalId)
+            ->where('is_training', false)
             ->orderBy('chain_sequence')
             ->get();
 

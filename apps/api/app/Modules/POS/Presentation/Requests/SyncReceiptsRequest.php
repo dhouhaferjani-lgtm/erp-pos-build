@@ -116,6 +116,15 @@ final class SyncReceiptsRequest extends FormRequest
             // missing field surfaces as 422 here rather than silently downgrading
             // a v3 payload (which the server would later reject as a chain break).
             'receipts.*.fiscal_schema_version' => ['required', 'integer', 'in:2,3'],
+            // T2.7 — training-mode flag. Optional + defaults false on the wire so
+            // pre-T2.7 clients (which don't send the field) continue to behave as
+            // production. When true, the server skips hash chain validation, the
+            // finalize call, the offline-fiscal-hash mismatch check, and voucher
+            // redemption — matching the online `ReceiptCreationService`'s training
+            // path. The terminal's runtime `is_training_mode` flag is informational
+            // here; receipt-time mode is the source of truth (the cashier may have
+            // toggled the terminal before sync).
+            'receipts.*.is_training' => ['nullable', 'boolean'],
         ];
     }
 

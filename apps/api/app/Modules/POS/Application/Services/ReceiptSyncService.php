@@ -85,7 +85,18 @@ final class ReceiptSyncService
         $chainBroken = false;
 
         foreach ($payloads as $payload) {
-            if ($chainBroken) {
+            // Codex round-2 P2 (2026-05-10): training receipts are independent
+            // of the production fiscal chain. A `$chainBroken` flag set by an
+            // earlier production failure must NOT short-circuit a subsequent
+            // training receipt — training receipts don't depend on the chain
+            // state and are still safe to attempt. Combined with the round-1
+            // P2 fix below (gate the flag SET on `! isTraining`), the chain-
+            // broken propagation is fully scoped to production-only receipts:
+            //   - production-fail → next production: chain_broken (correct).
+            //   - production-fail → next training: attempted (this gate).
+            //   - training-fail → next production: attempted (round-1 fix).
+            //   - training-fail → next training: attempted (both gates).
+            if ($chainBroken && ! $payload->isTraining) {
                 $results[] = SyncReceiptResult::chainBroken($payload->idempotencyKey);
 
                 continue;
@@ -95,8 +106,13 @@ final class ReceiptSyncService
                 $result = $this->syncSingleReceipt($payload);
                 $results[] = $result;
 
-                // If sync failed (not duplicate), break the chain for subsequent receipts
-                if ($result->status === SyncStatus::Failed) {
+                // If sync failed (not duplicate), break the chain for subsequent receipts.
+                // Codex round-1 P2 (2026-05-10): training receipts are independent
+                // of the fiscal chain, so a failed training receipt must NOT poison
+                // subsequent production receipts in the same batch. Only failures
+                // from receipts that participate in the production chain
+                // (i.e. non-training) propagate as `chain_broken` to the rest.
+                if ($result->status === SyncStatus::Failed && ! $payload->isTraining) {
                     $chainBroken = true;
                 }
             } catch (\Throwable $e) {
@@ -108,7 +124,12 @@ final class ReceiptSyncService
                     $payload->idempotencyKey,
                     $e->getMessage(),
                 );
-                $chainBroken = true;
+                // Codex round-1 P2 (2026-05-10): same gate as the syncStatus
+                // path above — a thrown exception during a training receipt
+                // sync must not poison subsequent production receipts.
+                if (! $payload->isTraining) {
+                    $chainBroken = true;
+                }
             }
         }
 
@@ -176,16 +197,21 @@ final class ReceiptSyncService
                 );
             }
 
-            // 4. Validate hash chain continuity
-            // The client's previous_hash must match the terminal's current last_hash
-            // Both can be null/empty for the first receipt in chain
-            $clientPreviousHash = $payload->previousHash ?? '';
-            $terminalLastHash = $terminal->last_hash ?? '';
-            if ($clientPreviousHash !== $terminalLastHash) {
-                return SyncReceiptResult::failed(
-                    $payload->idempotencyKey,
-                    'Hash chain break: client previous_hash does not match terminal last_hash',
-                );
+            // 4. Validate hash chain continuity (production receipts only).
+            // Training receipts (T2.7) never enter the fiscal chain, so the
+            // chain-continuity check is skipped — the terminal's last_hash and
+            // current_sequence are unchanged by training-mode sync. Mirrors the
+            // online `ReceiptCreationService` skip-chain-advance branch at
+            // ReceiptCreationService.php:605.
+            if (! $payload->isTraining) {
+                $clientPreviousHash = $payload->previousHash ?? '';
+                $terminalLastHash = $terminal->last_hash ?? '';
+                if ($clientPreviousHash !== $terminalLastHash) {
+                    return SyncReceiptResult::failed(
+                        $payload->idempotencyKey,
+                        'Hash chain break: client previous_hash does not match terminal last_hash',
+                    );
+                }
             }
 
             // 5. Find active shift (or any shift for this terminal if created offline)
@@ -349,16 +375,45 @@ final class ReceiptSyncService
             //    If the receipt was created in a new year (offline year-boundary scenario),
             //    reset the terminal's sequence counter and persist immediately so that
             //    ReceiptFinalizationService reads the correct chain state.
+            //
+            //    T2.7 — training receipts do NOT advance the chain and MUST NOT reset
+            //    the production sequence counter. The receipt_year column is still
+            //    populated from $postedAt for reporting consistency, but
+            //    `terminal.current_year` and `terminal.current_sequence` are owned by
+            //    the production path only.
             $currentYear = (int) $postedAt->format('Y');
-            if ($terminal->current_year !== $currentYear) {
+            if (! $payload->isTraining && $terminal->current_year !== $currentYear) {
                 $terminal->current_year = $currentYear;
                 $terminal->current_sequence = 1;
                 $terminal->save();
             }
 
-            // 8. Create receipt as pending_seal — no inline hash, no terminal advance yet.
+            // 8. Create receipt.
+            //    Production: pending_seal — no inline hash, no terminal advance yet.
             //    ReceiptFinalizationService will compute the hash and advance the chain.
+            //    Training (T2.7): inline `Fiscalized` status with a deterministic
+            //    `sha256('TRAINING-' || receipt_id)` sentinel hash and
+            //    `chain_sequence=null`.
+            //
+            //    Codex round-1 P1 (2026-05-10): the PostgreSQL CHECK constraint
+            //    `chain_sequence IS NULL OR chain_sequence > 0` (migration
+            //    `2026_05_01_000001_prepare_pos_receipts_for_pending_seal.php`)
+            //    rejects any row with `chain_sequence = 0`. The unique key on
+            //    `(terminal_id, receipt_year, chain_sequence)` would also block
+            //    a second training receipt for the same terminal/year if both
+            //    used a literal `0`. NULL satisfies both — PG treats NULLs as
+            //    not-equal in unique constraints, so multiple training rows
+            //    coexist; the CHECK exempts NULL.
+            //
+            //    Note: the online `ReceiptCreationService.php:540` still writes
+            //    `chain_sequence = 0` for training receipts. That path also
+            //    fails this constraint and needs a follow-up fix to NULL —
+            //    OUT OF SCOPE for this PR (T2.7 backend offline-sync slice).
+            //    Tracked in the kickoff doc + this PR's body.
             $receiptId = Str::uuid()->toString();
+            $isTraining = $payload->isTraining;
+            $trainingFiscalHash = $isTraining ? hash('sha256', 'TRAINING-'.$receiptId) : null;
+
             $receipt = new Receipt([
                 'tenant_id' => $terminal->tenant_id,
                 'company_id' => $companyId,
@@ -366,9 +421,15 @@ final class ReceiptSyncService
                 'terminal_id' => $terminal->id,
                 'receipt_number' => $payload->receiptNumber,
                 'receipt_type' => ReceiptType::Sale,
-                'chain_sequence' => null,   // set by finalizationService
+                // Training: NULL (CHECK constraint forbids 0; NULL keeps rows
+                // outside the chain in a way that's both valid against the
+                // CHECK and accepted by the unique constraint on (terminal_id,
+                // receipt_year, chain_sequence)). Production: null until
+                // finalizationService sets the production sequence.
+                'chain_sequence' => null,
                 'receipt_year' => $currentYear,
-                'previous_hash' => null,    // set by finalizationService
+                // Training receipts are never part of any chain — no previous_hash.
+                'previous_hash' => null,
                 'posted_at' => $postedAt,
                 'cashier_id' => $cashierId,
                 'cashier_name' => $cashierName,
@@ -382,7 +443,11 @@ final class ReceiptSyncService
                     ? ConsumptionMode::from($payload->consumptionMode)
                     : null,
                 'table_id' => $payload->tableId,
-                'fiscal_status' => FiscalStatus::PendingSeal,
+                // Training: Fiscalized inline (no pending_seal → finalize transition).
+                'fiscal_status' => $isTraining ? FiscalStatus::Fiscalized : FiscalStatus::PendingSeal,
+                // Training: inline sentinel hash; production: null until finalize.
+                'fiscal_hash' => $trainingFiscalHash,
+                'is_training' => $isTraining,
                 'is_voided' => false,
                 'vat_breakdown_hash' => $vatHash,
                 'payment_methods_hash' => $paymentHash,
@@ -481,17 +546,32 @@ final class ReceiptSyncService
             //     the terminal's chain counters under the existing FOR UPDATE lock.
             //     The service runs its own DB::transaction() which is nested inside
             //     ours — it will reuse this transaction (Laravel savepoints).
-            $receipt = $this->finalizationService->finalize($receipt);
-            $fiscalHash = $receipt->fiscal_hash;
+            //
+            //     T2.7 — training receipts skip finalize entirely. The fiscal_hash
+            //     sentinel was set inline at step 8 (sha256('TRAINING-' || receipt_id))
+            //     and the chain is not advanced. Mirrors the online training path's
+            //     skip-chain-advance branch at ReceiptCreationService.php:605-608.
+            if (! $isTraining) {
+                $receipt = $this->finalizationService->finalize($receipt);
+                $fiscalHash = $receipt->fiscal_hash;
 
-            // 13. Verify server-computed hash against the offline hash from the payload.
-            //     Mismatch = tamper / version drift → throw to roll back the transaction.
-            if ($fiscalHash !== $payload->offlineFiscalHash) {
-                throw OfflineFiscalHashMismatchException::create(
-                    $payload->receiptNumber,
-                    $payload->offlineFiscalHash,
-                    (string) $fiscalHash,
-                );
+                // 13. Verify server-computed hash against the offline hash from the payload.
+                //     Mismatch = tamper / version drift → throw to roll back the transaction.
+                if ($fiscalHash !== $payload->offlineFiscalHash) {
+                    throw OfflineFiscalHashMismatchException::create(
+                        $payload->receiptNumber,
+                        $payload->offlineFiscalHash,
+                        (string) $fiscalHash,
+                    );
+                }
+            } else {
+                // Training: the inline sentinel hash IS the receipt's fiscal_hash.
+                // No comparison against `payload->offlineFiscalHash` — training
+                // receipts don't carry a meaningful client hash (the offline POS
+                // either sends a sentinel of its own or whatever value the v3 hash
+                // computer would have produced for the no-chain case; the server
+                // is the source of truth via the deterministic sha256 above).
+                $fiscalHash = $trainingFiscalHash;
             }
 
             // 13b. B5-fix audit blocker (2026-05-01): for every store_voucher
@@ -523,32 +603,43 @@ final class ReceiptSyncService
             //      back the receipt + lines + VAT + payments + chain
             //      advance + redemption atomically, so no partial state
             //      lands on disk and the chain does NOT advance.
-            foreach ($payload->payments as $entry) {
-                $instrumentTypeValue = $entry['instrument_type'] ?? null;
-                if ($instrumentTypeValue !== 'store_voucher') {
-                    continue;
-                }
+            //
+            //      T2.7 — training receipts NEVER redeem real vouchers. A
+            //      training-mode cashier practising voucher tendering must
+            //      not decrement a real voucher's balance. The receipt_payments
+            //      row still persists with its `instrument_serial` (preserves
+            //      the receipt-line shape for reporting), but no
+            //      voucher_ledger Redeemed entry is written. The frontend
+            //      should gate voucher tenders during training mode; this
+            //      backend skip is defense-in-depth.
+            if (! $isTraining) {
+                foreach ($payload->payments as $entry) {
+                    $instrumentTypeValue = $entry['instrument_type'] ?? null;
+                    if ($instrumentTypeValue !== 'store_voucher') {
+                        continue;
+                    }
 
-                $instrumentSerial = $entry['instrument_serial'] ?? null;
-                if (! is_string($instrumentSerial) || $instrumentSerial === '') {
-                    // Defense-in-depth: the B4 guard above already enforces
-                    // a non-empty serial when method_code requires it.
-                    // This branch is unreachable when the guard ran.
-                    throw InstrumentRequiredException::forMethodCode((string) $entry['method_code']);
-                }
+                    $instrumentSerial = $entry['instrument_serial'] ?? null;
+                    if (! is_string($instrumentSerial) || $instrumentSerial === '') {
+                        // Defense-in-depth: the B4 guard above already enforces
+                        // a non-empty serial when method_code requires it.
+                        // This branch is unreachable when the guard ran.
+                        throw InstrumentRequiredException::forMethodCode((string) $entry['method_code']);
+                    }
 
-                /** @var numeric-string $appliedAmount */
-                $appliedAmount = (string) $entry['amount'];
-                $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
-                    voucherCode: $instrumentSerial,
-                    appliedAmount: $appliedAmount,
-                    currency: (string) $receipt->currency,
-                    receiptId: $receipt->id,
-                    cashierId: (string) $receipt->cashier_id,
-                    terminalId: (string) $receipt->terminal_id,
-                    partnerId: null,
-                    instrumentKind: PaymentInstrumentKind::StoreVoucher,
-                ));
+                    /** @var numeric-string $appliedAmount */
+                    $appliedAmount = (string) $entry['amount'];
+                    $this->voucherRedemptionService->redeem(new VoucherRedemptionRequest(
+                        voucherCode: $instrumentSerial,
+                        appliedAmount: $appliedAmount,
+                        currency: (string) $receipt->currency,
+                        receiptId: $receipt->id,
+                        cashierId: (string) $receipt->cashier_id,
+                        terminalId: (string) $receipt->terminal_id,
+                        partnerId: null,
+                        instrumentKind: PaymentInstrumentKind::StoreVoucher,
+                    ));
+                }
             }
 
             // 14. Decrement stock for product lines
