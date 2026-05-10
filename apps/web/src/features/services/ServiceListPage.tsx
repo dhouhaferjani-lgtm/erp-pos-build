@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Wrench, Grid, List, Clock, DollarSign, Percent } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useCompany } from '../../hooks/useCompany'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
@@ -28,6 +31,8 @@ type ViewMode = 'list' | 'grid'
 export function ServiceListPage() {
   const { t } = useTranslation()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [pricingFilter, setPricingFilter] = useState<PricingFilter>('all')
@@ -35,15 +40,16 @@ export function ServiceListPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['service-categories'],
+    queryKey: tenantScopedKey(['service-categories']),
     queryFn: async () => {
       const response = await api.get<CategoriesResponse>('/services/categories')
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['services', searchQuery, statusFilter, pricingFilter, categoryFilter],
+    queryKey: tenantScopedKey(['services', searchQuery, statusFilter, pricingFilter, categoryFilter]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -54,6 +60,7 @@ export function ServiceListPage() {
       const response = await api.get<ServicesResponse>(`/services${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const services = data?.data ?? []

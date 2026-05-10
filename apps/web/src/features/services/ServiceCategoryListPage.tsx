@@ -13,6 +13,10 @@ import {
   Check,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { serviceCategoriesInvalidationPredicate } from './_invalidation'
 import type { ServiceCategory, CategoriesResponse, CreateCategoryData } from './types'
 
 interface CategoryFormData {
@@ -26,6 +30,8 @@ interface CategoryFormData {
 export function ServiceCategoryListPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [showModal, setShowModal] = useState(false)
   const [editingCategory, setEditingCategory] = useState<ServiceCategory | null>(null)
 
@@ -45,11 +51,12 @@ export function ServiceCategoryListPage() {
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['service-categories'],
+    queryKey: tenantScopedKey(['service-categories']),
     queryFn: async () => {
       const response = await api.get<CategoriesResponse>('/services/categories')
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const createMutation = useMutation({
@@ -57,8 +64,10 @@ export function ServiceCategoryListPage() {
       const response = await api.post('/services/categories', data)
       return response.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['service-categories'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: serviceCategoriesInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })
@@ -68,8 +77,10 @@ export function ServiceCategoryListPage() {
       const response = await api.put(`/services/categories/${id}`, data)
       return response.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['service-categories'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: serviceCategoriesInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })
@@ -78,8 +89,10 @@ export function ServiceCategoryListPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/services/categories/${id}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['service-categories'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: serviceCategoriesInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 
