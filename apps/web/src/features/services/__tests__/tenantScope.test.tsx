@@ -303,6 +303,68 @@ describe('cross-tenant isolation', () => {
     expect(tBQuery?.state.isInvalidated).toBe(false)
   })
 
+  it('per-call counter cascade: ServiceCategory delete refetches service-categories from API (.615)', async () => {
+    // Per-call counter cascade test (B12 round-1 axis-4 lesson re-applied):
+    // drive a production mutation through useMutation.mutateAsync, count
+    // mockApiGet('/services/categories') invocations, assert refetch fires.
+    // An always-false predicate would leave the counter at 1 and fail.
+    setTenant('tenant-A', 'company-1')
+    const queryClient = createTestQueryClient()
+
+    let categoriesCalls = 0
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/services/categories') {
+        categoriesCalls += 1
+        return { data: { data: [{ id: `cat-${categoriesCalls}` }] } }
+      }
+      return { data: { data: [], meta: { total: 0 } } }
+    })
+
+    const { useMutation } = await import('@tanstack/react-query')
+    const { useQuery, useQueryClient } = await import('@tanstack/react-query')
+    const { tenantScopedKey } = await import('@/lib/tenantScopedKey')
+    const { api } = await import('@/lib/api')
+
+    function CascadeProbe() {
+      const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+      const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+      const qc = useQueryClient()
+      useQuery({
+        queryKey: tenantScopedKey(['service-categories']),
+        queryFn: async () => {
+          const r = await api.get<{ data: Array<{ id: string }> }>('/services/categories')
+          return r.data
+        },
+        enabled: !!tenantId && !!companyId,
+      })
+      const del = useMutation({
+        mutationFn: async (catId: string) => {
+          await api.delete(`/services/categories/${catId}`)
+        },
+        onSuccess: async () => {
+          await qc.invalidateQueries({
+            predicate: serviceCategoriesInvalidationPredicate(tenantId, companyId),
+          })
+        },
+      })
+      ;(globalThis as Record<string, unknown>)['__b13DelMutation'] = del
+      return null
+    }
+
+    renderWithProviders(<CascadeProbe />, { queryClient })
+
+    await waitFor(() => {
+      expect(categoriesCalls).toBe(1)
+    })
+
+    const del = (globalThis as Record<string, unknown>)['__b13DelMutation'] as {
+      mutateAsync: (id: string) => Promise<unknown>
+    }
+    await del.mutateAsync('cat-1')
+
+    expect(categoriesCalls).toBe(2)
+  })
+
   it('cross-tenant data isolation: tenant-A ServiceListPage results do not contain tenant-B entries', async () => {
     // B12 round-1 BLOCK lesson restated for B13: prove tenant-A's QUERY
     // RESULTS are free of tenant-B data, not just that the tenant-B cache
