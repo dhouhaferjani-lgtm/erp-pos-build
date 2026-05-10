@@ -9,26 +9,26 @@ import {
   serviceCategoriesInvalidationPredicate,
   servicesInvalidationPredicate,
 } from '../_invalidation'
+import { ServiceCategoryListPage } from '../ServiceCategoryListPage'
+import { ServiceDetailPage } from '../ServiceDetailPage'
+import { ServiceForm } from '../ServiceForm'
+import { ServiceListPage } from '../ServiceListPage'
 
-// ─── api mock ───────────────────────────────────────────────────────────────
+// ─── api mock — module-level boundary ────────────────────────────────────────
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiPut = vi.hoisted(() => vi.fn())
 const mockApiDelete = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../lib/api', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('../../../lib/api')
-  return {
-    ...actual,
-    api: {
-      get: (...args: unknown[]) => mockApiGet(...args),
-      post: (...args: unknown[]) => mockApiPost(...args),
-      put: (...args: unknown[]) => mockApiPut(...args),
-      delete: (...args: unknown[]) => mockApiDelete(...args),
-    },
-  }
-})
+vi.mock('../../../lib/api', () => ({
+  api: {
+    get: mockApiGet,
+    post: mockApiPost,
+    put: mockApiPut,
+    delete: mockApiDelete,
+  },
+}))
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -44,15 +44,22 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, fallback?: string) => fallback ?? k }),
 }))
 
+// useCompany + useTaxConfigName pull data ServiceDetailPage doesn't need for
+// this test scope; stub them to avoid extra API plumbing.
 vi.mock('../../../hooks/useCompany', () => ({
-  useCompany: () => ({ currentCompany: { id: 'company-1', name: 'Test', currency: 'TND' } }),
+  useCompany: () => ({ currentCompany: { currency: 'TND' } }),
 }))
 
 vi.mock('../../../hooks/useTaxConfigName', () => ({
-  useTaxConfigName: () => ({ data: null }),
+  useTaxConfigName: () => null,
 }))
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// TaxConfigurationField pulls its own queries; render a stub.
+vi.mock('../../../components/molecules/TaxConfigurationField', () => ({
+  TaxConfigurationField: () => null,
+}))
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
@@ -75,15 +82,57 @@ function setTenant(tenantId: string, companyId: string) {
   })
 }
 
+function servicesKeysFromCache(client: ReturnType<typeof createTestQueryClient>): unknown[][] {
+  return client
+    .getQueryCache()
+    .getAll()
+    .map((q) => q.queryKey as unknown[])
+    .filter(
+      (k) =>
+        Array.isArray(k) &&
+        (k[0] === 'service-categories' || k[0] === 'services' || k[0] === 'service'),
+    )
+}
+
 beforeEach(() => {
   mockApiGet.mockReset()
-  mockApiGet.mockResolvedValue({ data: { data: [], meta: {} } })
+  mockApiGet.mockImplementation(async (url: string) => {
+    if (url === '/services/categories') {
+      return { data: { data: [] } }
+    }
+    if (url.startsWith('/services/') && url !== '/services') {
+      return {
+        data: {
+          data: {
+            id: 's-123',
+            code: 'SVC-1',
+            name: 'Service',
+            description: null,
+            pricing_type: 'flat_rate',
+            base_price: '0',
+            currency: 'TND',
+            is_active: true,
+            tax_rate: null,
+            default_tax_configuration_id: null,
+            category_id: null,
+            category: null,
+            default_duration_minutes: null,
+            hourly_rate: null,
+            created_at: null,
+            updated_at: null,
+          },
+        },
+      }
+    }
+    // /services list
+    return { data: { data: [], meta: { total: 0 } } }
+  })
   mockApiPost.mockReset()
-  mockApiPost.mockResolvedValue({ data: { data: { id: 's-1' } } })
+  mockApiPost.mockResolvedValue({ data: { data: { id: 's-new' } } })
   mockApiPut.mockReset()
-  mockApiPut.mockResolvedValue({ data: { data: { id: 's-1' } } })
+  mockApiPut.mockResolvedValue({ data: { data: { id: 's-123' } } })
   mockApiDelete.mockReset()
-  mockApiDelete.mockResolvedValue({ data: {} })
+  mockApiDelete.mockResolvedValue({ data: undefined })
 })
 
 afterEach(() => {
@@ -93,168 +142,164 @@ afterEach(() => {
 
 // ─── Predicate unit tests ────────────────────────────────────────────────────
 
+describe('serviceCategoriesInvalidationPredicate', () => {
+  it('matches service-categories list keys for the given t/c', () => {
+    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
+    expect(pred({ queryKey: ['service-categories', 'tenant-A', 'company-1'] })).toBe(true)
+  })
+
+  it('rejects sibling namespaces (services, service)', () => {
+    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
+    expect(pred({ queryKey: ['services', 'all', 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['service', 's-1', 'tenant-A', 'company-1'] })).toBe(false)
+  })
+
+  it('rejects wrong tenant/company', () => {
+    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
+    expect(pred({ queryKey: ['service-categories', 'tenant-B', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['service-categories', 'tenant-A', 'company-2'] })).toBe(false)
+  })
+})
+
 describe('servicesInvalidationPredicate', () => {
-  it('matches services list/detail leaf keys for the given t/c', () => {
+  it('matches services list keys (with arbitrary filter args) for the given t/c', () => {
     const pred = servicesInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1'] })).toBe(true)
     expect(pred({ queryKey: ['services', 'tenant-A', 'company-1'] })).toBe(true)
   })
 
-  it('rejects sibling namespaces and wrong t/c', () => {
+  it('rejects singular service namespace', () => {
     const pred = servicesInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['service', 's-1', 'tenant-A', 'company-1'] })).toBe(false)
+  })
+
+  it('rejects sibling service-categories namespace', () => {
+    const pred = servicesInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['service-categories', 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['services', '', 'all', 'all', 'all', 'tenant-B', 'company-1'] })).toBe(false)
   })
 
-  it('rejects degenerate keys with fewer than 3 elements', () => {
+  it('rejects wrong tenant/company', () => {
     const pred = servicesInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['services'] })).toBe(false)
-    expect(pred({ queryKey: ['services', 'tenant-A'] })).toBe(false)
+    expect(pred({ queryKey: ['services', 'all', 'tenant-B', 'company-1'] })).toBe(false)
   })
 })
 
-describe('serviceCategoriesInvalidationPredicate', () => {
-  it('matches service-categories keys for the given t/c', () => {
-    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['service-categories', 'tenant-A', 'company-1'] })).toBe(true)
-  })
+// ─── useQuery shape probes ───────────────────────────────────────────────────
 
-  it('rejects sibling namespaces (services + singular service)', () => {
-    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['service', 's-1', 'tenant-A', 'company-1'] })).toBe(false)
-  })
-})
-
-// ─── Cross-tenant cache isolation ────────────────────────────────────────────
-// Stronger assertion (B12 round-1 lesson): proves tenant-A predicate-based
-// invalidate does NOT touch tenant-B cache entries — tenant-B data + state
-// remain intact.
-
-describe('cross-tenant cache isolation (predicate-based services cascade)', () => {
-  it('predicate-based invalidate rejects tenant-B services + service-categories cache entries', async () => {
+describe('services page queryKey shapes', () => {
+  it('ServiceCategoryListPage useQuery carries tenant + company at the suffix (.612)', async () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
-
-    const tenantBServicesKey = ['services', '', 'all', 'all', 'all', 'tenant-B', 'company-1']
-    const tenantBCategoriesKey = ['service-categories', 'tenant-B', 'company-1']
-    const tenantBDetailKey = ['service', 's-other', 'tenant-B', 'company-1']
-    queryClient.setQueryData(tenantBServicesKey, { data: [{ id: 's-tenant-b' }] })
-    queryClient.setQueryData(tenantBCategoriesKey, { data: [{ id: 'cat-tenant-b' }] })
-    queryClient.setQueryData(tenantBDetailKey, { data: { id: 's-tenant-b-detail' } })
-
-    await Promise.all([
-      queryClient.invalidateQueries({
-        predicate: servicesInvalidationPredicate('tenant-A', 'company-1'),
-      }),
-      queryClient.invalidateQueries({
-        predicate: serviceCategoriesInvalidationPredicate('tenant-A', 'company-1'),
-      }),
-    ])
-
-    // tenant-B services intact.
-    const tBServices = queryClient.getQueryCache().find({ queryKey: tenantBServicesKey, exact: true })
-    expect(tBServices?.state.isInvalidated).toBe(false)
-    // tenant-B service-categories intact.
-    const tBCategories = queryClient.getQueryCache().find({ queryKey: tenantBCategoriesKey, exact: true })
-    expect(tBCategories?.state.isInvalidated).toBe(false)
-    // tenant-B singular detail (different namespace) — both predicates miss it.
-    const tBDetail = queryClient.getQueryCache().find({ queryKey: tenantBDetailKey, exact: true })
-    expect(tBDetail?.state.isInvalidated).toBe(false)
-  })
-
-  it('cross-tenant data isolation: tenant-A query result does not contain tenant-B services entries', async () => {
-    // B12 round-1 stricter assertion shape applied from the start:
-    // pre-seed tenant-B services data, render a tenant-A useQuery against
-    // the same namespace, prove the tenant-A query returns the (empty)
-    // tenant-A mock response — NOT the seeded tenant-B payload.
-    const queryClient = createTestQueryClient()
-
-    const tenantBServicesKey = ['services', '', 'all', 'all', 'all', 'tenant-B', 'company-1']
-    queryClient.setQueryData(tenantBServicesKey, {
-      data: [{ id: 'leaked-tenant-b-service' }],
+    renderWithProviders(<ServiceCategoryListPage />, { queryClient })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/services/categories')
     })
+    const keys = servicesKeysFromCache(queryClient)
+    const cats = keys.find((k) => k[0] === 'service-categories')
+    expect(cats).toEqual(['service-categories', 'tenant-A', 'company-1'])
+  })
 
+  it('ServiceDetailPage useQuery carries tenant + company at the suffix (.616)', async () => {
     setTenant('tenant-A', 'company-1')
-    mockApiGet.mockResolvedValue({ data: { data: [] } })
+    const queryClient = createTestQueryClient()
+    renderWithProviders(<ServiceDetailPage />, { queryClient })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/services/s-123')
+    })
+    const keys = servicesKeysFromCache(queryClient)
+    const detail = keys.find((k) => k[0] === 'service')
+    expect(detail).toEqual(['service', 's-123', 'tenant-A', 'company-1'])
+  })
 
-    // Use the actual hook shape via a lightweight probe that mirrors
-    // ServiceListPage's services useQuery.
-    const { useQuery } = await import('@tanstack/react-query')
-    const { tenantScopedKey } = await import('@/lib/tenantScopedKey')
+  it('ServiceForm (edit mode) carries tenant + company on both useQuery (.618, .619)', async () => {
+    setTenant('tenant-A', 'company-1')
+    const queryClient = createTestQueryClient()
+    renderWithProviders(<ServiceForm />, { queryClient })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/services/categories')
+      expect(mockApiGet).toHaveBeenCalledWith('/services/s-123')
+    })
+    const keys = servicesKeysFromCache(queryClient)
+    const cats = keys.find((k) => k[0] === 'service-categories')
+    const detail = keys.find((k) => k[0] === 'service')
+    expect(cats).toEqual(['service-categories', 'tenant-A', 'company-1'])
+    expect(detail).toEqual(['service', 's-123', 'tenant-A', 'company-1'])
+  })
 
-    function ServicesProbe() {
-      const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
-      const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
-      useQuery({
-        queryKey: tenantScopedKey(['services', '', 'all', 'all', 'all']),
-        queryFn: async () => {
-          const r = await mockApiGet('/services')
-          return r.data
-        },
-        enabled: !!tenantId && !!companyId,
-      })
-      return null
-    }
+  it('ServiceListPage carries tenant + company on both useQuery (.623, .624)', async () => {
+    setTenant('tenant-A', 'company-1')
+    const queryClient = createTestQueryClient()
+    renderWithProviders(<ServiceListPage />, { queryClient })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/services/categories')
+      expect(mockApiGet).toHaveBeenCalledWith('/services')
+    })
+    const keys = servicesKeysFromCache(queryClient)
+    const cats = keys.find((k) => k[0] === 'service-categories')
+    const list = keys.find((k) => k[0] === 'services')
+    expect(cats).toEqual(['service-categories', 'tenant-A', 'company-1'])
+    // services list carries 4 filter args (search, status, pricing, category)
+    // followed by tenant + company.
+    expect(list?.[0]).toBe('services')
+    expect(list?.[list.length - 2]).toBe('tenant-A')
+    expect(list?.[list.length - 1]).toBe('company-1')
+    expect(list?.length).toBe(7)
+  })
 
-    renderWithProviders(<ServicesProbe />, { queryClient })
-
+  it('queryKeys differ across tenants (ServiceListPage)', async () => {
+    setTenant('tenant-A', 'company-1')
+    const cA = createTestQueryClient()
+    renderWithProviders(<ServiceListPage />, { queryClient: cA })
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalled()
     })
+    const kA = JSON.stringify(servicesKeysFromCache(cA))
 
-    const tenantAKey = ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1']
-    const tAQuery = queryClient.getQueryCache().find({ queryKey: tenantAKey, exact: true })
-    expect(tAQuery).toBeDefined()
-    const tAData = tAQuery?.state.data as { data?: Array<{ id: string }> } | undefined
-    expect(tAData?.data ?? []).toEqual([])
-    const tAIds = (tAData?.data ?? []).map((entry) => entry.id)
-    expect(tAIds).not.toContain('leaked-tenant-b-service')
+    mockApiGet.mockClear()
+    setTenant('tenant-B', 'company-1')
+    const cB = createTestQueryClient()
+    renderWithProviders(<ServiceListPage />, { queryClient: cB })
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalled()
+    })
+    const kB = JSON.stringify(servicesKeysFromCache(cB))
+
+    expect(kA).toContain('tenant-A')
+    expect(kB).toContain('tenant-B')
+    expect(kA).not.toEqual(kB)
   })
 })
 
-// ─── Cascade tests via predicate-direct invalidate ───────────────────────────
-// A lighter cascade form for B13: each mutation in the production code uses
-// servicesInvalidationPredicate / serviceCategoriesInvalidationPredicate /
-// exact-match wrap on `service`. The predicate unit tests above prove the
-// gate logic; here we assert that running each predicate against a seeded
-// cache invalidates the matching slot.
+// ─── Cross-tenant isolation (predicate-based plural cascade) ─────────────────
 
-describe('cascade: predicate fires invalidation on the matching namespace slot', () => {
-  it('servicesInvalidationPredicate invalidates [services, ...] slot only', async () => {
+describe('cross-tenant isolation', () => {
+  it('serviceCategoriesInvalidationPredicate rejects tenant-B service-categories cache entry', async () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
-    const servicesKey = ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1']
-    const categoriesKey = ['service-categories', 'tenant-A', 'company-1']
-    queryClient.setQueryData(servicesKey, { data: [{ id: 's-1' }] })
-    queryClient.setQueryData(categoriesKey, { data: [{ id: 'cat-1' }] })
 
-    await queryClient.invalidateQueries({
-      predicate: servicesInvalidationPredicate('tenant-A', 'company-1'),
-    })
+    const tenantBKey = ['service-categories', 'tenant-B', 'company-1']
+    queryClient.setQueryData(tenantBKey, { data: [{ id: 'cat-tenant-b' }] })
 
-    const servicesQ = queryClient.getQueryCache().find({ queryKey: servicesKey, exact: true })
-    expect(servicesQ?.state.isInvalidated).toBe(true)
-    const categoriesQ = queryClient.getQueryCache().find({ queryKey: categoriesKey, exact: true })
-    expect(categoriesQ?.state.isInvalidated).toBe(false)
+    const pred = serviceCategoriesInvalidationPredicate('tenant-A', 'company-1')
+    await queryClient.invalidateQueries({ predicate: pred })
+
+    const tBQuery = queryClient.getQueryCache().find({ queryKey: tenantBKey, exact: true })
+    expect(tBQuery?.state.data).toEqual({ data: [{ id: 'cat-tenant-b' }] })
+    expect(tBQuery?.state.isInvalidated).toBe(false)
   })
 
-  it('serviceCategoriesInvalidationPredicate invalidates [service-categories, ...] slot only', async () => {
+  it('servicesInvalidationPredicate rejects tenant-B services list cache entry', async () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
-    const servicesKey = ['services', '', 'all', 'all', 'all', 'tenant-A', 'company-1']
-    const categoriesKey = ['service-categories', 'tenant-A', 'company-1']
-    queryClient.setQueryData(servicesKey, { data: [{ id: 's-1' }] })
-    queryClient.setQueryData(categoriesKey, { data: [{ id: 'cat-1' }] })
 
-    await queryClient.invalidateQueries({
-      predicate: serviceCategoriesInvalidationPredicate('tenant-A', 'company-1'),
-    })
+    const tenantBKey = ['services', '', 'all', 'all', 'all', 'tenant-B', 'company-1']
+    queryClient.setQueryData(tenantBKey, { data: [{ id: 's-tenant-b' }] })
 
-    const categoriesQ = queryClient.getQueryCache().find({ queryKey: categoriesKey, exact: true })
-    expect(categoriesQ?.state.isInvalidated).toBe(true)
-    const servicesQ = queryClient.getQueryCache().find({ queryKey: servicesKey, exact: true })
-    expect(servicesQ?.state.isInvalidated).toBe(false)
+    const pred = servicesInvalidationPredicate('tenant-A', 'company-1')
+    await queryClient.invalidateQueries({ predicate: pred })
+
+    const tBQuery = queryClient.getQueryCache().find({ queryKey: tenantBKey, exact: true })
+    expect(tBQuery?.state.data).toEqual({ data: [{ id: 's-tenant-b' }] })
+    expect(tBQuery?.state.isInvalidated).toBe(false)
   })
 })
