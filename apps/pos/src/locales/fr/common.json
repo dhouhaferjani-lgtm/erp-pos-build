@@ -28,5 +28,9 @@
       "retry": "Réessayer",
       "signOut": "Se déconnecter"
     }
+  },
+  "trainingMode": {
+    "banner": "Mode formation",
+    "subtitle": "Terminal de test — vérifiez le mode avant chaque transaction."
   }
 }

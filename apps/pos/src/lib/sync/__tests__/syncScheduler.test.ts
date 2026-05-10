@@ -81,6 +81,7 @@ vi.mock('@/stores/terminalStore', () => ({
   useTerminalStore: {
     getState: vi.fn().mockReturnValue({
       refreshHashChainReady: vi.fn().mockResolvedValue(undefined),
+      refreshTerminalRecord: vi.fn().mockResolvedValue(undefined),
     }),
   },
 }));

@@ -28,5 +28,9 @@
       "retry": "Retry",
       "signOut": "Sign out"
     }
+  },
+  "trainingMode": {
+    "banner": "Training mode",
+    "subtitle": "Test terminal — verify mode before each transaction."
   }
 }

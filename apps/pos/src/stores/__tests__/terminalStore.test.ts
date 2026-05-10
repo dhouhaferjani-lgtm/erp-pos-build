@@ -36,6 +36,7 @@ const mockTerminal: Terminal = {
   name: 'Register 1',
   type: 'pos',
   is_active: true,
+  is_training_mode: false,
   hardware_identifier: 'device-abc',
   location: { id: 'loc-1', name: 'Main Store', code: 'LOC-001' },
 };

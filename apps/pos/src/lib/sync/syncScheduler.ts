@@ -93,6 +93,20 @@ export class SyncScheduler {
         });
       });
 
+      // T2.5 / Codex round-7 P2 (PR #99) — refresh the in-memory
+      // terminal record so back-office training-mode toggles take
+      // effect mid-session (when allowed: no-open-shift). The
+      // refresh has its own internal race guard + diff-gate, so it
+      // only writes localStorage / triggers a re-render when the
+      // server actually changed something. Fire-and-forget alongside
+      // the product/payment store refreshes; independent failure
+      // modes.
+      useTerminalStore.getState().refreshTerminalRecord().catch((err: unknown) => {
+        console.error('[SyncScheduler] terminalStore refreshTerminalRecord failed', {
+          ...serializeErrorForLog(err),
+        });
+      });
+
       if (result.chainBreak) {
         // Try to identify the last successfully synced receipt for operator context
         const { getLastSyncedReceiptNumber } = await import('@/lib/db/repositories/offlineReceiptRepository');

@@ -247,6 +247,37 @@ async function resolveLocalVouchers(
   return out;
 }
 
+// TODO(go-live-followup): T2.7 — make the local-first path training-aware.
+// The cashier's TrainingModeBanner (T2.5) makes training terminals
+// visible in the POS UI, but createOfflineReceipt + ReceiptSyncService
+// do NOT consult terminal.is_training_mode. Sales completed on a
+// training terminal still:
+//   - advance the local fiscal hash chain in SQLite,
+//   - sync as production receipts via ReceiptSyncService,
+//   - finalize through ReceiptFinalizationService, advancing the
+//     server-side production chain and entering Z reports.
+//
+// Compare to the online ReceiptCreationService.php:466-485 which
+// branches on is_training_mode and uses generateTrainingReceiptNumber +
+// skips the chain. The offline path needs the same branching to honor
+// the banner's compliance promise (currently softened to "verify mode
+// before each transaction" as a stopgap).
+//
+// Required scope (separate workstream T2.7):
+//   1. Add is_training to offline_receipts SQLite schema.
+//   2. createOfflineReceipt reads terminal.is_training_mode → if true,
+//      use training receipt-number prefix + skip advanceHashChain.
+//   3. SyncReceiptPayload DTO accepts is_training (default false for
+//      backwards compat).
+//   4. ReceiptSyncService branches on is_training: skip
+//      finalizationService->finalize(), skip offlineFiscalHashMismatch
+//      check, set is_training=true on the Receipt.
+//   5. End-to-end tests covering both training-online and training-
+//      offline paths.
+//
+// Tracked: PR #99 (T2.5 banner) round-8 P1 finding; orchestrator
+// chose to land the banner with conservative copy and queue the
+// architectural fix as a dedicated workstream (estimated 2-3 days).
 export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,

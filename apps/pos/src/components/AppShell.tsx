@@ -1,6 +1,7 @@
 import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { Header } from './Header';
+import { TrainingModeBanner } from './TrainingModeBanner';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -82,6 +83,11 @@ export function AppShell() {
   return (
     <div className="flex h-screen flex-col bg-gray-50">
       <Header />
+      {/* T2.5 — sticky training-mode banner. Renders only when the
+          active terminal has is_training_mode=true; otherwise null
+          (no DOM, no layout impact). Sits BETWEEN Header and main so
+          the cashier sees it on every screen, not just HomePage. */}
+      <TrainingModeBanner />
       <main className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <Routes>

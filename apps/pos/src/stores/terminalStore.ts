@@ -25,6 +25,17 @@ export interface Terminal {
   name: string;
   type: string;
   is_active: boolean;
+  /**
+   * T2.5 — when true, the cashier is using a "training" terminal:
+   * receipts persist as normal DB rows but skip the fiscal hash chain
+   * (no fiscal_hash / previous_hash / chain_sequence written), and
+   * are excluded from Z reports / NF525 exports / production-scoped
+   * queries via Terminal::scopeProduction(). Backend already wires
+   * this end-to-end via TerminalResource → /pos/terminals/{id}/
+   * toggle-training. The POS surfaces it via TrainingModeBanner so
+   * the cashier never confuses training and production at a glance.
+   */
+  is_training_mode: boolean;
   hardware_identifier: string | null;
   location: {
     id: string;
@@ -65,9 +76,18 @@ interface TerminalActions {
   closeShift: (actualCash: string) => Promise<void>;
   reset: () => void;
   refreshHashChainReady: () => Promise<void>;
+  refreshTerminalRecord: () => Promise<void>;
 }
 
 type TerminalStore = TerminalState & TerminalActions;
+
+/**
+ * T2.5 / Codex round-3 P2 — ceiling on the boot-time terminal refresh.
+ * 2s is generous for a healthy network (typical /pos/terminals/{id}
+ * roundtrip is ~100-300ms) and bounded so an offline boot doesn't
+ * stall the activation path.
+ */
+const TERMINAL_REFRESH_TIMEOUT_MS = 2_000;
 
 const initialState: TerminalState = {
   terminal: null,
@@ -262,12 +282,59 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     set({ isLoading: true });
     try {
       // 1. Check localStorage for a fully-activated terminal
-      const terminal = await getStoredValue<Terminal>(StorageKeys.TERMINAL);
-      if (terminal) {
-        set({ terminal });
+      const cachedTerminal = await getStoredValue<Terminal>(StorageKeys.TERMINAL);
+      if (cachedTerminal) {
+        // Codex round-5 P2 (PR #99) — refresh the terminal record from
+        // the server BEFORE publishing it into in-memory state. Doing
+        // this AFTER set({ terminal: cached }) opens a window where
+        // AppRouter (which unblocks on `terminal !== null`) can render
+        // cashier routes with the cached is_training_mode flag — the
+        // exact stale-mode the banner is meant to prevent.
+        //
+        // Round-3 P2 trade-off preserved: 2s ceiling so an offline
+        // boot falls back to cache rather than stalling activation.
+        const expectedTerminalId = cachedTerminal.id;
+        let resolvedTerminal: Terminal = cachedTerminal;
+        try {
+          const fresh = await Promise.race([
+            apiGet<Terminal>(`/pos/terminals/${expectedTerminalId}`),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('terminal-refresh-timeout')), TERMINAL_REFRESH_TIMEOUT_MS),
+            ),
+          ]);
+          resolvedTerminal = fresh;
+        } catch {
+          // Offline / server transient / 2s-timeout — fall back to
+          // cached terminal. The cashier sees the cached banner state
+          // until the next sync cycle refreshes the catalog. Logging
+          // is intentionally omitted: every offline boot would log,
+          // and the offline banner state is the documented fallback.
+        }
+
+        // Codex round-6/8 P2 — race guard against logout / change-terminal
+        // during the refresh await. The previous round-6 guard read
+        // StorageKeys.TERMINAL post-await, but reset() schedules
+        // `removeStoredValue` async-without-await, so the removal can
+        // race with our re-read. Round-8: switch to a synchronous
+        // in-memory signal — `useAuthStore.getState().token`. Logout
+        // calls authStore.logout() which immediately set()s
+        // initialState (token=null) BEFORE any localStorage scheduling,
+        // so this check is race-free against the JS event loop.
+        const authToken = useAuthStore.getState().token;
+        if (authToken === null) {
+          // Session ended mid-await — must NOT rehydrate.
+          return;
+        }
+
+        // Persist + publish only after the guard. The fresh write to
+        // localStorage gets the next boot the up-to-date state even
+        // if the server is unreachable then.
+        await setStoredValue(StorageKeys.TERMINAL, resolvedTerminal);
+        set({ terminal: resolvedTerminal });
         // Ensure offline hash chain is seeded (may be missing after DB reset/reinstall)
-        await seedOfflineHashChain(terminal.id);
+        await seedOfflineHashChain(resolvedTerminal.id);
         await get().fetchCurrentShift();
+
         return;
       }
 
@@ -474,6 +541,52 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     } catch (error) {
       console.error('[Terminal] refreshHashChainReady failed:', error);
       set({ hashChainReady: false });
+    }
+  },
+
+  /**
+   * T2.5 / Codex round-7 P2 (PR #99) — refresh the terminal record
+   * from the server during an active POS session. The boot-time
+   * refresh in `initialize()` covers the cold-start path; this hook
+   * covers in-session changes (a manager toggles
+   * `/pos/terminals/{id}/toggle-training` while the POS stays open,
+   * which is allowed when no shift is open).
+   *
+   * Called from `SyncScheduler.tick()` so it piggy-backs on the
+   * existing 60s polling cadence — no separate timer.
+   *
+   * Race-guarded same as `initialize()`'s refresh:
+   *   - capture expectedTerminalId pre-await
+   *   - skip the write if the in-memory terminal changed during the
+   *     await (logout / change-terminal flow)
+   *   - keep the cached value on offline / server transient
+   *
+   * Errors are intentionally swallowed: a flaky sync tick should not
+   * crash the cashier, and the next tick will retry.
+   */
+  refreshTerminalRecord: async () => {
+    const current = get().terminal;
+    if (!current) return;
+
+    const expectedTerminalId = current.id;
+    try {
+      const fresh = await apiGet<Terminal>(`/pos/terminals/${expectedTerminalId}`);
+      const stillCurrent = get().terminal;
+      if (stillCurrent?.id !== expectedTerminalId) return;
+      // Avoid spurious re-renders / localStorage writes on no-diff
+      // ticks: only persist when something actually changed.
+      if (
+        stillCurrent.is_training_mode === fresh.is_training_mode
+        && stillCurrent.is_active === fresh.is_active
+        && stillCurrent.name === fresh.name
+        && stillCurrent.code === fresh.code
+      ) {
+        return;
+      }
+      await setStoredValue(StorageKeys.TERMINAL, fresh);
+      set({ terminal: fresh });
+    } catch (error) {
+      console.error('[Terminal] refreshTerminalRecord failed (non-fatal)', serializeErrorForLog(error));
     }
   },
 }));
