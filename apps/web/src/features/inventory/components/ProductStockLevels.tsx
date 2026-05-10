@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { getProductStock } from '@/features/products/api/productStock'
 import { formatCurrency } from '@/lib/format'
 import { useCurrency } from '@/hooks/useCurrency'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -19,6 +22,8 @@ export function ProductStockLevels({
 }: ProductStockLevelsProps) {
   const { t } = useTranslation('inventory')
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Helper to format currency
   const formatAmount = (value: string | null) => {
@@ -27,8 +32,9 @@ export function ProductStockLevels({
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['product-stock', productId],
+    queryKey: tenantScopedKey(['product-stock', productId]),
     queryFn: () => getProductStock(productId),
+    enabled: !!productId && !!tenantId && !!companyId,
   })
 
   if (isLoading) {

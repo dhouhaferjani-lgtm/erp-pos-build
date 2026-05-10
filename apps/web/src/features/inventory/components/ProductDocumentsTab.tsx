@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { useAuthStore } from '../../../stores/authStore'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { useCurrency } from '@/hooks/useCurrency'
 
@@ -102,21 +104,25 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const { decimals } = useCurrency()
-  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const currentCompany = useCompanyStore((state) =>
+    state.companies.find((company) => company.id === state.currentCompanyId) ?? null
+  )
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['product-documents', productId],
+    queryKey: tenantScopedKey(['product-documents', productId]),
     queryFn: async () => {
       const response = await api.get<DocumentsResponse>(
         `/documents?product_id=${productId}`
       )
       return response.data
     },
-    enabled: !!productId,
+    enabled: !!productId && !!tenantId && !!companyId,
   })
 
   // Calculate product-specific totals for each document

@@ -6,6 +6,9 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, X, Image } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { colors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
@@ -18,6 +21,7 @@ import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
+import { inventoryProductsInvalidationPredicate } from './_invalidation'
 
 interface Product {
   id: string
@@ -81,6 +85,8 @@ export function ProductForm() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isEditing = id.length > 0
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const { config } = useCompanyConfig()
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const { isOtospex } = useProductConfig()
@@ -168,12 +174,12 @@ export function ProductForm() {
 
   // Fetch product data when editing
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', id],
+    queryKey: tenantScopedKey(['product', id]),
     queryFn: async () => {
       const response = await api.get<ProductResponse>(`/products/${id}`)
       return response.data.data
     },
-    enabled: isEditing,
+    enabled: isEditing && !!tenantId && !!companyId,
   })
 
   const hasPopulatedRef = useRef(false)
@@ -215,16 +221,22 @@ export function ProductForm() {
 
   const createMutation = useMutation({
     mutationFn: (data: ProductFormData) => apiPost<Product>('/products', data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: (data: ProductFormData) => apiPatch<Product>(`/products/${id}`, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products'] })
-      void queryClient.invalidateQueries({ queryKey: ['product', id] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) }),
+      ])
       void navigate(`/inventory/products/${id}`)
     },
   })

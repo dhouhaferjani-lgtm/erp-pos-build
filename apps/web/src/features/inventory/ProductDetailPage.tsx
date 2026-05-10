@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Tag } from 'lucide-react'
 import { api, apiDelete } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useAuthStore } from '../../stores/authStore'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { formatCurrency } from '../../lib/format'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
@@ -20,6 +22,7 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductPrimaryImageDisplay } from '../products/components'
 import { ProductStockLevels } from './components'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
+import { inventoryProductsInvalidationPredicate } from './_invalidation'
 
 interface Product {
   id: string
@@ -47,7 +50,11 @@ interface ProductResponse {
 
 export function ProductDetailPage() {
   const { t } = useTranslation(['inventory', 'common', 'products'])
-  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const currentCompany = useCompanyStore((state) =>
+    state.companies.find((company) => company.id === state.currentCompanyId) ?? null
+  )
   const { isOtospex } = useProductConfig()
 
   // Get company currency with fallback
@@ -60,13 +67,13 @@ export function ProductDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['product', id],
+    queryKey: tenantScopedKey(['product', id]),
     queryFn: async () => {
       if (!id) throw new Error('Product ID is required')
       const response = await api.get<ProductResponse>(`/products/${id}`)
       return response.data.data
     },
-    enabled: !!id,
+    enabled: !!id && !!tenantId && !!companyId,
   })
 
   // Subscribe to real-time product cost/price updates
@@ -80,8 +87,10 @@ export function ProductDetailPage() {
       if (!id) throw new Error('Product ID is required')
       return apiDelete(`/products/${id}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['products'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
+      })
       void navigate('/inventory/products')
     },
   })
