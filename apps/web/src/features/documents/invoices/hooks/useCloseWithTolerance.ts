@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   closeInvoiceWithTolerance,
   type CloseWithToleranceResponse,
@@ -18,13 +21,27 @@ export function useCloseWithTolerance({
   onError,
 }: UseCloseWithToleranceOptions) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: () => closeInvoiceWithTolerance(invoiceId),
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', invoiceId] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    onSuccess: async (response) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', invoiceId]) }),
+        queryClient.invalidateQueries({
+          predicate: (q) => {
+            const k = q.queryKey
+            return Array.isArray(k) && k[0] === 'documents' && k[k.length - 2] === tenantId && k[k.length - 1] === companyId
+          },
+        }),
+        queryClient.invalidateQueries({
+          predicate: (q) => {
+            const k = q.queryKey
+            return Array.isArray(k) && k[0] === 'payments' && k[k.length - 2] === tenantId && k[k.length - 1] === companyId
+          },
+        }),
+      ])
       onSuccess?.(response)
     },
     onError: (error: AxiosError<CloseWithToleranceErrorBody>) => {
