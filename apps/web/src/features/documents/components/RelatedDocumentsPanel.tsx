@@ -19,6 +19,9 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface RelatedDocument {
   id: string
@@ -62,15 +65,17 @@ export function RelatedDocumentsPanel({
 }: RelatedDocumentsPanelProps) {
   const { t } = useTranslation(['sales', 'common'])
   const [isExpanded, setIsExpanded] = useState(true)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch related documents
   const { data: relatedData, isLoading } = useQuery({
-    queryKey: ['related-documents', documentId],
+    queryKey: tenantScopedKey(['related-documents', documentId]),
     queryFn: async () => {
       const response = await api.get<{ data: RelatedDocumentsData }>(`/documents/${documentId}/related`)
       return response.data.data
     },
-    enabled: !!documentId,
+    enabled: tenantId !== null && companyId !== null && !!documentId,
   })
 
   const getDocumentIcon = (type: string) => {

@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Calendar, CreditCard, Hash, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPaymentHistory, type PaymentHistory } from '../api/paymentHistory'
 import { formatCurrency } from '../../../lib/format'
 import { format } from 'date-fns'
@@ -30,11 +33,13 @@ export function PaymentHistorySection({
   className,
 }: PaymentHistorySectionProps) {
   const { t } = useTranslation(['sales', 'common'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data: paymentHistory, isLoading, error } = useQuery<PaymentHistory>({
-    queryKey: ['payment-history', documentId],
+    queryKey: tenantScopedKey(['payment-history', documentId]),
     queryFn: () => fetchPaymentHistory(documentId),
-    enabled: !!documentId,
+    enabled: tenantId !== null && companyId !== null && !!documentId,
   })
 
   if (isLoading) {

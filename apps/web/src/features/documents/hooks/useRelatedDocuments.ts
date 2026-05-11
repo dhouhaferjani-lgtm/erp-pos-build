@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 export interface RelatedDocument {
   id: string
@@ -25,14 +28,17 @@ interface RelatedDocumentsResponse {
 }
 
 export function useRelatedDocuments(documentId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['documents', documentId, 'related'],
+    queryKey: tenantScopedKey(['documents', documentId, 'related']),
     queryFn: async () => {
       const response = await api.get<RelatedDocumentsResponse>(
         `/documents/${documentId}/related`
       )
       return response.data.data
     },
-    enabled: !!documentId,
+    enabled: tenantId !== null && companyId !== null && !!documentId,
   })
 }

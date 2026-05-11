@@ -2,6 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 
 export interface DocumentTotalsProps {
@@ -34,11 +37,13 @@ export function DocumentTotals({
   className,
 }: DocumentTotalsProps) {
   const { t } = useTranslation('sales')
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data: taxBreakdown, isLoading, error } = useQuery<TaxBreakdown>({
-    queryKey: ['tax-breakdown', documentId],
+    queryKey: tenantScopedKey(['tax-breakdown', documentId]),
     queryFn: () => fetchTaxBreakdown(documentId),
-    enabled: !!documentId,
+    enabled: tenantId !== null && companyId !== null && !!documentId,
   })
 
   // Determine decimal places based on currency
