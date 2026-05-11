@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   getBatches,
   getBatch,
@@ -41,13 +44,33 @@ export const batchKeys = {
   productBatches: (productId: string) => [...batchKeys.all, 'product', productId] as const,
 }
 
+function scopedBatchCollectionsPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === 'batches' &&
+      k[1] !== 'detail' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 /**
  * Hook to fetch paginated list of batches
  */
 export function useBatches(params?: GetBatchesParams): UseQueryResult<PaginatedBatchesResponse> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.list(params),
+    queryKey: tenantScopedKey(batchKeys.list(params)),
     queryFn: () => getBatches(params),
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 30000, // Consider data fresh for 30 seconds (batches change frequently)
   })
 }
@@ -56,10 +79,13 @@ export function useBatches(params?: GetBatchesParams): UseQueryResult<PaginatedB
  * Hook to fetch a single batch by UUID
  */
 export function useBatch(uuid: string): UseQueryResult<Batch> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.detail(uuid),
+    queryKey: tenantScopedKey(batchKeys.detail(uuid)),
     queryFn: () => getBatch(uuid),
-    enabled: Boolean(uuid),
+    enabled: Boolean(uuid) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -67,9 +93,13 @@ export function useBatch(uuid: string): UseQueryResult<Batch> {
  * Hook to fetch products expiring soon
  */
 export function useExpiringProducts(daysThreshold: number = 30): UseQueryResult<ExpiringProduct[]> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.expiring(daysThreshold),
+    queryKey: tenantScopedKey(batchKeys.expiring(daysThreshold)),
     queryFn: () => getExpiringProducts(daysThreshold),
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 60000, // 1 minute stale time for dashboard widgets
   })
 }
@@ -78,10 +108,13 @@ export function useExpiringProducts(daysThreshold: number = 30): UseQueryResult<
  * Hook to fetch batch stock levels
  */
 export function useBatchStock(uuid: string): UseQueryResult<BatchStockByLocation[]> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.stock(uuid),
+    queryKey: tenantScopedKey(batchKeys.stock(uuid)),
     queryFn: () => getBatchStock(uuid),
-    enabled: Boolean(uuid),
+    enabled: Boolean(uuid) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -94,10 +127,13 @@ export function useFEFOSuggestions(
   quantity: number,
   enabled: boolean = true
 ): UseQueryResult<FEFOResult> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.fefo(productId, locationId, quantity),
+    queryKey: tenantScopedKey(batchKeys.fefo(productId, locationId, quantity)),
     queryFn: () => getFEFOSuggestions(productId, locationId, quantity),
-    enabled: enabled && Boolean(productId) && Boolean(locationId) && quantity > 0,
+    enabled: enabled && Boolean(productId) && Boolean(locationId) && quantity > 0 && tenantId !== null && companyId !== null,
     staleTime: 10000, // 10 seconds for POS suggestions
   })
 }
@@ -106,10 +142,13 @@ export function useFEFOSuggestions(
  * Hook to fetch all batches for a product
  */
 export function useProductBatches(productId: string): UseQueryResult<Batch[]> {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: batchKeys.productBatches(productId),
+    queryKey: tenantScopedKey(batchKeys.productBatches(productId)),
     queryFn: () => getProductBatches(productId),
-    enabled: Boolean(productId),
+    enabled: Boolean(productId) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -118,12 +157,20 @@ export function useProductBatches(productId: string): UseQueryResult<Batch[]> {
  */
 export function useCreateBatch() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (input: CreateBatchInput) => createBatch(input),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: batchKeys.all })
-      void queryClient.invalidateQueries({ queryKey: ['products', 'detail', data.product_id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+        }),
+      ])
       toast.success('Batch created successfully')
     },
     onError: (error) => {
@@ -137,14 +184,22 @@ export function useCreateBatch() {
  */
 export function useUpdateBatch() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({ uuid, input }: { uuid: string; input: UpdateBatchInput }) =>
       updateBatch(uuid, input),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: batchKeys.all })
-      void queryClient.invalidateQueries({ queryKey: batchKeys.detail(data.uuid) })
-      void queryClient.invalidateQueries({ queryKey: ['products', 'detail', data.product_id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(data.uuid)) }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+        }),
+      ])
       toast.success('Batch updated successfully')
     },
     onError: (error) => {
@@ -158,11 +213,18 @@ export function useUpdateBatch() {
  */
 export function useDeleteBatch() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (uuid: string) => deleteBatch(uuid),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: batchKeys.all })
+    onSuccess: async (_data, uuid) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(uuid)) }),
+      ])
       toast.success('Batch deactivated successfully')
     },
     onError: (error) => {
@@ -176,14 +238,22 @@ export function useDeleteBatch() {
  */
 export function useRecallBatch() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({ uuid, input }: { uuid: string; input: RecallBatchInput }) =>
       recallBatch(uuid, input),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: batchKeys.all })
-      void queryClient.invalidateQueries({ queryKey: batchKeys.detail(data.uuid) })
-      void queryClient.invalidateQueries({ queryKey: ['products', 'detail', data.product_id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedBatchCollectionsPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(batchKeys.detail(data.uuid)) }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['products', 'detail', data.product_id]),
+        }),
+      ])
       toast.warning('Batch recall initiated')
     },
     onError: (error) => {
