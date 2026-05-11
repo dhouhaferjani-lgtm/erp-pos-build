@@ -1,4 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   fetchSalesSummary,
   fetchSalesByCategory,
@@ -26,66 +29,89 @@ export const analyticsKeys = {
   fnb: (filters: AnalyticsFilters) => [...analyticsKeys.all, 'fnb', filters] as const,
 }
 
+function usePosAnalyticsTenantScope(): boolean {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  return tenantId !== null && companyId !== null
+}
+
 export function useSalesSummary(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.summary(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.summary(filters)]),
     queryFn: () => fetchSalesSummary(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useSalesByCategory(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.salesByCategory(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.salesByCategory(filters)]),
     queryFn: () => fetchSalesByCategory(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useSalesByProduct(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.salesByProduct(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.salesByProduct(filters)]),
     queryFn: () => fetchSalesByProduct(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useSalesByPeriod(filters: AnalyticsFilters, granularity = 'day') {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.salesByPeriod(filters, granularity),
+    queryKey: tenantScopedKey([...analyticsKeys.salesByPeriod(filters, granularity)]),
     queryFn: () => fetchSalesByPeriod(filters, granularity),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useCashierPerformance(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.cashiers(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.cashiers(filters)]),
     queryFn: () => fetchCashierPerformance(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useDiscountAnalysis(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.discounts(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.discounts(filters)]),
     queryFn: () => fetchDiscountAnalysis(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useCustomerAnalytics(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.customers(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.customers(filters)]),
     queryFn: () => fetchCustomerAnalytics(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
 
 export function useFnbMetrics(filters: AnalyticsFilters) {
+  const hasTenantScope = usePosAnalyticsTenantScope()
+
   return useQuery({
-    queryKey: analyticsKeys.fnb(filters),
+    queryKey: tenantScopedKey([...analyticsKeys.fnb(filters)]),
     queryFn: () => fetchFnbMetrics(filters),
-    enabled: !!filters.from && !!filters.to,
+    enabled: !!filters.from && !!filters.to && hasTenantScope,
   })
 }
