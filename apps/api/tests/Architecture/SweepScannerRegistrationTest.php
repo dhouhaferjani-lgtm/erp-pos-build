@@ -61,7 +61,7 @@ class SweepScannerRegistrationTest extends TestCase
                 'new '.$shortName.'(',
                 $commandSource,
                 sprintf(
-                    "%s is not instantiated in SweepInventoryGenerateCommand::handle(). Add `new %s(...)` to the \$allScanners array so the inventory generator picks up its callsites; otherwise the cluster stays at zero callsites and per-batch claim/start cycles cannot fire.",
+                    '%s is not instantiated in SweepInventoryGenerateCommand::handle(). Add `new %s(...)` to the $allScanners array so the inventory generator picks up its callsites; otherwise the cluster stays at zero callsites and per-batch claim/start cycles cannot fire.',
                     $shortName,
                     $shortName,
                 ),
