@@ -239,6 +239,61 @@ class ReceiptVoidServiceTest extends TestCase
         $this->assertEquals('10.000', $refundOp->amount);
     }
 
+    public function test_voiding_tolerance_short_pay_refunds_tendered_cash_not_full_total(): void
+    {
+        // Codex r2 P2 closure — when the cashier pays short within the
+        // configured cash tolerance, `cash.amount = tendered` (less than
+        // `receipt.total`), `change_due = 0`, and the gap is recorded in
+        // `tolerance_writeoff` and posted to GL 658. Voiding must refund
+        // ONLY the cash actually tendered (which physically entered the
+        // drawer), not the full receipt.total — otherwise the drawer
+        // goes short by the tolerance amount.
+        $receipt = $this->createReceipt([
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'change_due' => '0.000',
+            'tolerance_writeoff' => '0.300',
+        ]);
+        $shift = $this->createOpenShift();
+
+        $paymentMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'requires_third_party' => false,
+            'is_push' => false,
+            'has_deducted_fees' => false,
+            'is_restricted' => false,
+            'fee_fixed' => '0.00',
+            'fee_percent' => '0.00',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_type' => 'CASH',
+            'amount' => '99.700',
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'Tolerance short-pay void');
+
+        $refundOp = CashDrawerOperation::where('shift_id', $shift->id)
+            ->where('operation_type', 'REFUND')
+            ->where('receipt_id', $receipt->id)
+            ->first();
+
+        $this->assertNotNull($refundOp);
+        // Tendered: 99.700 (the cash that physically entered the drawer).
+        // Tolerance write-off (0.300) was posted to GL, NOT to the drawer.
+        $this->assertEquals('99.700', $refundOp->amount);
+    }
+
     public function test_voiding_pre_fix_legacy_over_tender_refunds_net_drawer_cash(): void
     {
         // Codex r1 P2 closure — pre-fix POS clients persisted

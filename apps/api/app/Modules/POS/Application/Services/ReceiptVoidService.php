@@ -204,32 +204,54 @@ final class ReceiptVoidService
         }
 
         // Bug 2 follow-up — refund the net cash that physically entered the
-        // drawer at sale time. This equals `receipt.total − Σ(non_cash
-        // payments)` regardless of payment.amount shape:
-        //   - Post-Bug-2 receipts have cash payment.amount = tendered.
-        //   - Pre-Bug-2 receipts have cash payment.amount = cart total.
-        //   - Split payments have correct per-tender amounts in either era.
-        // Computing from `total − non_cash_sum` is universal because the
-        // change_due is the difference between tendered and the cash
-        // portion of the total; subtracting non-cash payments from total
-        // yields the cash portion the drawer actually received, without
-        // depending on whether `payment.amount` was tendered or total.
+        // drawer at sale time:
         //
-        // max(0, …) is defensive: legacy data where total < non_cash_sum
-        // (impossible under valid invariants) must not produce a negative
-        // refund.
+        //     refund = max(0, min(Σ(cash.amount), total − Σ(non_cash) − tolerance))
+        //
+        // The `min(...)` covers every payment.amount shape and every cash
+        // edge case:
+        //
+        //   Post-Bug-2 over-tender: cash=tendered (>cash_owed), change>0.
+        //     Σ(cash.amount) > total − non_cash → bound to total − non_cash.
+        //   Pre-Bug-2 over-tender: cash=total (Bug 2 stored cart total
+        //     instead of tendered), change>0.
+        //     Σ(cash.amount) = total − non_cash → either branch returns
+        //     the same correct net cash.
+        //   Tolerance short-pay: cash=tendered (<cash_owed), change=0,
+        //     tolerance_writeoff>0. The tendered cash IS what hit the
+        //     drawer; the tolerance was posted to GL 658, not the drawer.
+        //     Σ(cash.amount) < total − non_cash → bound to Σ(cash.amount).
+        //   Exact tender (either era): Σ(cash.amount) = total − non_cash
+        //     − 0 → both branches agree.
+        //   Split with mixed tenders: per-row amount semantics already
+        //     correct; `total − non_cash` is the cash portion of the sale.
+        //
+        // Codex r1 (P2) closed the pre-fix over-tender case; Codex r2 (P2)
+        // closed the tolerance short-pay case. Together they prove the
+        // formula is the right invariant.
         $receipt->loadMissing('payments');
         $hasCashPayment = false;
+        $cashSum = '0';
         $nonCashSum = '0';
         foreach ($receipt->payments as $payment) {
             if ($payment->payment_type === 'CASH') {
                 $hasCashPayment = true;
+                $cashSum = bcadd($cashSum, (string) $payment->amount, $this->scale());
             } else {
                 $nonCashSum = bcadd($nonCashSum, (string) $payment->amount, $this->scale());
             }
         }
 
-        $netDrawerCash = bcsub((string) $receipt->total, $nonCashSum, $this->scale());
+        $tolerance = $receipt->tolerance_writeoff !== null
+            ? (string) $receipt->tolerance_writeoff
+            : '0';
+        $cashOwed = bcsub((string) $receipt->total, $nonCashSum, $this->scale());
+        $cashOwed = bcsub($cashOwed, $tolerance, $this->scale());
+
+        // refund = min(cashSum, cashOwed), clamped at 0.
+        $netDrawerCash = (bccomp($cashSum, $cashOwed, $this->scale()) < 0)
+            ? $cashSum
+            : $cashOwed;
         if (bccomp($netDrawerCash, '0', $this->scale()) < 0) {
             $netDrawerCash = '0';
         }
