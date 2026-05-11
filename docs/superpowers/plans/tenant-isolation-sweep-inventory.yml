@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: e1b52fc413d408a0fb090939ab04740abd7f32e3d49cb712208af099081479fc
+  yaml_sha256: deefa1c2af875a86566e01e310c3a15304b7b8aacdeee18990da0e7d65c83bdc
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -104238,17 +104238,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:34:54Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104267,6 +104267,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:34:55Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e1b52fc413d408a0fb090939ab04740abd7f32e3d49cb712208af099081479fc
+        new_yaml_sha256: eebb6d81da6ff3b88dbfd6868a2db386a94775b47ee058787c373a7325353f8e
+        target_ids:
+          - web.tanstack-keys.762
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:34:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: eebb6d81da6ff3b88dbfd6868a2db386a94775b47ee058787c373a7325353f8e
+        new_yaml_sha256: 53ef47356fd774b26d606d18eaa1475eeb04b11ee66ce1e1e48d1995a25f7831
+        target_ids:
+          - web.tanstack-keys.762
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:29Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a3a7a84bfecd18413cc9a60aff58559762388210a69d617c504be52b7d2ff84e
+        new_yaml_sha256: 3de81529a60abe12b973767e8e917478c607351588cb954e42af5511a0cd75c8
+        target_ids:
+          - web.tanstack-keys.762
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.763
     stable_key: 'sha256:7a89f53cde03e732a4341d874892b9fe55caaac68d49df9053496e0819a64f31'
@@ -104284,17 +104332,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:34:59Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104313,6 +104361,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:34:59Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 53ef47356fd774b26d606d18eaa1475eeb04b11ee66ce1e1e48d1995a25f7831
+        new_yaml_sha256: cf7d139b3bb77acc5115aa7ec044897e466f529befb6e56b723d8db66bf74b28
+        target_ids:
+          - web.tanstack-keys.763
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:02Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: cf7d139b3bb77acc5115aa7ec044897e466f529befb6e56b723d8db66bf74b28
+        new_yaml_sha256: 6720bfce69be665dd4dc4dff11951bed5b66bb6a931ccf874a5ebc773b8c19cc
+        target_ids:
+          - web.tanstack-keys.763
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:31Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3de81529a60abe12b973767e8e917478c607351588cb954e42af5511a0cd75c8
+        new_yaml_sha256: 22a2b5aaf296d47e5580f170ba12ae4d407e558567acb8982f547f1ace71be54
+        target_ids:
+          - web.tanstack-keys.763
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.764
     stable_key: 'sha256:26c7189fb8f3a58ed62aa383d082e401ae564f7a2deeec7f9d877751cfbf0d1e'
@@ -104330,17 +104426,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:04Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104359,6 +104455,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:04Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6720bfce69be665dd4dc4dff11951bed5b66bb6a931ccf874a5ebc773b8c19cc
+        new_yaml_sha256: 4f105ce31ad7344d6c80cc2a0da4e84da90f17c160038c7d2c274d62e931e669
+        target_ids:
+          - web.tanstack-keys.764
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:07Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4f105ce31ad7344d6c80cc2a0da4e84da90f17c160038c7d2c274d62e931e669
+        new_yaml_sha256: dd9e400bd720e355647a9a3c6fe8b17f758f86c9e667582ff7be3926ffd761be
+        target_ids:
+          - web.tanstack-keys.764
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 22a2b5aaf296d47e5580f170ba12ae4d407e558567acb8982f547f1ace71be54
+        new_yaml_sha256: 76db38713b114e26611da90ed641681581d87b0574c9ac6e3976b57b2fdd5814
+        target_ids:
+          - web.tanstack-keys.764
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.765
     stable_key: 'sha256:a11788ce3d6abba124843c488db10ed3f6d59c866ba385692aa400d0783a53ff'
@@ -104376,17 +104520,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:08Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104405,6 +104549,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:09Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: dd9e400bd720e355647a9a3c6fe8b17f758f86c9e667582ff7be3926ffd761be
+        new_yaml_sha256: 9e32e69f64d3c5e30554dd9f78c012d5a12b5cfbf26203f6711024a7bea80788
+        target_ids:
+          - web.tanstack-keys.765
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9e32e69f64d3c5e30554dd9f78c012d5a12b5cfbf26203f6711024a7bea80788
+        new_yaml_sha256: 24de3bf1671b912644e667dfe96c557fcfe9ff05f33799ddf198914c9557e1a6
+        target_ids:
+          - web.tanstack-keys.765
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 76db38713b114e26611da90ed641681581d87b0574c9ac6e3976b57b2fdd5814
+        new_yaml_sha256: cf33db24869050d1e73f94307ce1b6d6031f1874dea4fcfdc98aa2c9f6f9cf32
+        target_ids:
+          - web.tanstack-keys.765
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.766
     stable_key: 'sha256:9db771cfb238a890d65d6251acd18e1537a36ae2ed3b9c8e9b427dbd0acf3768'
@@ -104422,17 +104614,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:13Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104451,6 +104643,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:14Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 24de3bf1671b912644e667dfe96c557fcfe9ff05f33799ddf198914c9557e1a6
+        new_yaml_sha256: 4297df95bb3c98e749dfbe372a3b7f5951bbf89e0bca35ecc0d09862678fbe7e
+        target_ids:
+          - web.tanstack-keys.766
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4297df95bb3c98e749dfbe372a3b7f5951bbf89e0bca35ecc0d09862678fbe7e
+        new_yaml_sha256: 72731fc1160eca99da3b2fb8cc083bf85d78298355e796c38c524e049242e598
+        target_ids:
+          - web.tanstack-keys.766
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: cf33db24869050d1e73f94307ce1b6d6031f1874dea4fcfdc98aa2c9f6f9cf32
+        new_yaml_sha256: b9aea910670bd6fd3fa0ec94c1fd846a7db9c45f35cab6bdd82fadf516a9035f
+        target_ids:
+          - web.tanstack-keys.766
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.767
     stable_key: 'sha256:82fff28441ebcdbe5acac63c5eadafb64be5880cce14baae698c602e9dc1af9d'
@@ -104468,17 +104708,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:18Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104497,6 +104737,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:18Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 72731fc1160eca99da3b2fb8cc083bf85d78298355e796c38c524e049242e598
+        new_yaml_sha256: d7ff60e13c59e6c843312687b0aedbc8db69a0f64d448407b2636e9480d804bb
+        target_ids:
+          - web.tanstack-keys.767
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:21Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d7ff60e13c59e6c843312687b0aedbc8db69a0f64d448407b2636e9480d804bb
+        new_yaml_sha256: a8d64ca97cc890f1e56a6280a6f8d87c0e887665569f0e796a91a01095e35986
+        target_ids:
+          - web.tanstack-keys.767
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:41Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b9aea910670bd6fd3fa0ec94c1fd846a7db9c45f35cab6bdd82fadf516a9035f
+        new_yaml_sha256: 72dbd21cfbefec13c0901c2869a782463e6f11e2d121c9f0c51017ab095dc92c
+        target_ids:
+          - web.tanstack-keys.767
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.768
     stable_key: 'sha256:7f86248a27546ffb347f0e3667a06802380c0f1febe851368134fcf88bbc74cd'
@@ -104514,17 +104802,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:22Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104543,6 +104831,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:23Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a8d64ca97cc890f1e56a6280a6f8d87c0e887665569f0e796a91a01095e35986
+        new_yaml_sha256: 6216c81e11dc914cdd8183cb33805a948304c68cf3db300fc4d704b6ec4e9ea9
+        target_ids:
+          - web.tanstack-keys.768
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:25Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 6216c81e11dc914cdd8183cb33805a948304c68cf3db300fc4d704b6ec4e9ea9
+        new_yaml_sha256: 564f82d9f94c7b1ebf0bb6e67c6428ded4bea2a65ff9b4a25be7f25693eb0581
+        target_ids:
+          - web.tanstack-keys.768
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 72dbd21cfbefec13c0901c2869a782463e6f11e2d121c9f0c51017ab095dc92c
+        new_yaml_sha256: 6fd96e46724234ffa5b9cc2737567d3bdf54ebb660ec246ccaab79f8aa4e5163
+        target_ids:
+          - web.tanstack-keys.768
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.769
     stable_key: 'sha256:cc4400d950beb1a6932b29a4077088c8f02481ae255856991af8172d23ff274e'
@@ -104560,17 +104896,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:27Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104589,6 +104925,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:28Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 564f82d9f94c7b1ebf0bb6e67c6428ded4bea2a65ff9b4a25be7f25693eb0581
+        new_yaml_sha256: 427a99159a2190a66d7e0608f2b696a4f3492385bd54d61d946dfd4e02399790
+        target_ids:
+          - web.tanstack-keys.769
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:30Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 427a99159a2190a66d7e0608f2b696a4f3492385bd54d61d946dfd4e02399790
+        new_yaml_sha256: 657d04b7f5c877690fda0d8ec378d63ccb2634404ef4a4adb90f9d3a1254d623
+        target_ids:
+          - web.tanstack-keys.769
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6fd96e46724234ffa5b9cc2737567d3bdf54ebb660ec246ccaab79f8aa4e5163
+        new_yaml_sha256: 24a2f9d1c5b4111966ae1d430da90fde23bceded21b0c65b407ec6153c0679fc
+        target_ids:
+          - web.tanstack-keys.769
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.770
     stable_key: 'sha256:f9d1c16abec76733917e95617ddb1d76ae3cc43a67c8b8ba1d50bb3537279ab9'
@@ -104606,17 +104990,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T08:35:32Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 94fe0000
+    regression_test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104635,6 +105019,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T08:35:32Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 657d04b7f5c877690fda0d8ec378d63ccb2634404ef4a4adb90f9d3a1254d623
+        new_yaml_sha256: 370c655f70d5e14b5971f5a92ae8b5e4d7c6654a162defc8eb0e5db08c69d0ee
+        target_ids:
+          - web.tanstack-keys.770
+        from_status: pending
+        to_status: claimed
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T08:35:35Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 370c655f70d5e14b5971f5a92ae8b5e4d7c6654a162defc8eb0e5db08c69d0ee
+        new_yaml_sha256: a3a7a84bfecd18413cc9a60aff58559762388210a69d617c504be52b7d2ff84e
+        target_ids:
+          - web.tanstack-keys.770
+        from_status: claimed
+        to_status: in_progress
+        commit: 11bb59b82a7123913b180cf602300ee3b0a8b9d2
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T08:40:48Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 24a2f9d1c5b4111966ae1d430da90fde23bceded21b0c65b407ec6153c0679fc
+        new_yaml_sha256: deefa1c2af875a86566e01e310c3a15304b7b8aacdeee18990da0e7d65c83bdc
+        target_ids:
+          - web.tanstack-keys.770
+        from_status: in_progress
+        to_status: under_review
+        commit: 94fe0000
+        test: 'apps/web/src/features/vehicles/hooks/__tests__/tenantScope.test.tsx::vehicle hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.771
     stable_key: 'sha256:16bd69ed4c516175265df340114d0d0a2ce915eddb5956a362cb2ba47f65e644'
