@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchZReport, verifyZReportChain, downloadZReportPdf, type ZReportItem } from '../../api/reportApi'
 import {
   ArrowLeft,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
+import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
 export function ZReportDetailPage() {
   const { t } = useTranslation(['pos', 'common'])
@@ -22,11 +24,12 @@ export function ZReportDetailPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const terminalId = searchParams.get('terminal_id') ?? ''
+  const { hasTenantScope } = usePosTenantScope()
 
   const { data: report, isLoading, error } = useQuery({
-    queryKey: ['pos', 'z-report', zNumber, terminalId],
+    queryKey: tenantScopedKey(['pos', 'z-report', zNumber, terminalId]),
     queryFn: () => fetchZReport(zNumber!, terminalId),
-    enabled: !!zNumber && !!terminalId,
+    enabled: !!zNumber && !!terminalId && hasTenantScope,
   })
 
   const downloadPdfMutation = useMutation({
