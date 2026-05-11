@@ -42,6 +42,8 @@
 | #89 | T1.0 | Large-catalog fixture — `PARAPHARMACY_SEEDER_SCALE` (Phase 0) | ✅ Merged to dev |
 | #90 | T1.3 | Sync indicator truthfulness — pendingCount/lastSyncAt persistence + degraded amber dot (Phase 4) | ✅ Merged to dev |
 | #91 | T2.2 | Crash safety + small wins — sync trigger past COMMIT + regression-lock audit + TODO sweep (Phase 5) | ✅ Merged to dev |
+| #106 + #108 | T2.4 | Bootstrap error handling state machine (Day 1 primitives + Day 2 AppRouter wiring) | ✅ Merged to dev |
+| #107 + #109 + #110 | C2 | Menu-tenant catalog desync (composite IDs + canonicalization + server-side menu_category_id) | ✅ Merged to dev |
 
 **Pending dev → main promotion:** all of the above sit on dev awaiting the pre-launch audit (Graphify run + security review + doc realignment) before the dev→main merge. See [`project_prelaunch_audit_plan.md`](../../../) memory note.
 
@@ -61,7 +63,7 @@ All Tier 0 items are merged to dev (PRs #82–#86). Kept here for archival conti
 | T1.1 | Offline-first hardening Phase 1 (auth + connectivity foundation) | `pos-offline-first-hardening.md` §Phase 1 | ✅ Shipped (PR #87) | 4 steps + 5 Codex review rounds. |
 | T1.2 | Offline-first hardening Phase 2 (paymentStore.refreshFromSQLite + paymentConfigReady gate) | `pos-offline-first-hardening.md` §Phase 2 | ✅ Shipped (PR #88) | Subsumed T0.1's payment-config stale-state path. |
 | T1.3 | Offline-first hardening Phase 4 (sync indicator truthfulness) | `pos-offline-first-hardening.md` §Phase 4 | ✅ Shipped (PR #90) | **Numbering note:** the original roadmap planned T1.3 = paginated catalog warmup (Phase 3); the productStore conflict with the POS-performance session pushed Phase 3 down to T2.1 (deferred), and Phase 4 was promoted into the T1.3 slot. The kickoff doc (`2026-05-08-pos-t1.3-sync-indicator-truthfulness-kickoff-prompt.md`) reflects that. |
-| T1.4 | Activation hardening Phase 2 (token 30d → 12mo) | `pos-activation-hardening.md` §Phase 2 | 🟡 Pending | Orthogonal to the offline-first sequence; safe to slot in anytime post-go-live. ~1 day. Not on the critical path for the current parapharmacy launch. |
+| T1.4 | Activation hardening Phase 2 (token 30d → 12mo) | `pos-activation-hardening.md` §Phase 2 | ✅ Shipped (PR #96 + #102 defense-in-depth) | T1.4 long token gated on POS triple-check; PR #102 narrowed POS-issued token abilities to `['pos:*']`. |
 | T1.5 | Empty cart Pay block always-visible | `pos-empty-cart-pay-block-always-visible.md` | ✅ Shipped (pre-Tier-0 hotfix) | Landed alongside T0.1 per "ship today" decision; refund rebased trivially. |
 | T1.6 | TND smoke test (currency precision verify) | T0.1 plan §Currency precision | 🟡 Pending | One-shot manual + 1 unit test, ~30 min. Defer to the Phase 6 (T2.3) preflight battery. |
 
@@ -72,7 +74,7 @@ All Tier 0 items are merged to dev (PRs #82–#86). Kept here for archival conti
 | T2.1 | Offline-first hardening Phase 3 (paginated catalog warmup for 5000 SKUs) | `pos-offline-first-hardening.md` §Phase 3 | 🟡 Deferred | Originally planned as T1.3 but the `productStore.ts` conflict with the POS-performance session pushed it to Tier 2. Owner / coordination still needed before kickoff. ~1.5 h, 3 Codex review gates. |
 | T2.2 | Offline-first hardening Phase 5 (crash safety + small wins) | `pos-offline-first-hardening.md` §Phase 5 | ✅ Shipped (PR #91) | Step 5.1 (sync trigger past COMMIT) + Step 5.2 (regression-lock audit — all four guards already covered) + Step 5.3 (10-deferral TODO sweep). |
 | T2.3 | Offline-first hardening Phase 6 (preflight, Slow-3G scripted smoke test, full-branch Codex review, dev→main PR, tagged release) | `pos-offline-first-hardening.md` §Phase 6 | 🟡 Active prep — gated on pre-launch audit | **Final go-live gate.** Phase 6 PREP underway in this session: dev→main DRAFT PR opens BEFORE the audit runs; merge trigger held until Graphify + security + doc realignment sign off. Then preflight + Slow-3G smoke + tag. |
-| T2.4 | Activation hardening Phase 3 (bootstrap error handling state machine) | `pos-activation-hardening.md` §Phase 3 | 🟡 Pending | Touches `AppShell.tsx` — minor conflict with refund flow if refund adds routes. ~3 days. |
+| T2.4 | Activation hardening Phase 3 (bootstrap error handling state machine) | `pos-activation-hardening.md` §Phase 3 | ✅ Shipped (PR #106 + #108) | Day 1 primitives plus Day 2 AppRouter wiring are merged; follow-up cleanup items are tracked separately in the production-readiness handoff. |
 | T2.5 | Activation hardening Phase 1 (surface existing Training Mode in POS UI) | `pos-activation-hardening.md` §Phase 1 (revised) | 🟡 Pending | Backend already wired; only banner + visual tint needed. ~4 h. |
 
 ### Tier 3 — Post-go-live (after first parapharmacy launch)
@@ -91,16 +93,16 @@ All Tier 0 items are merged to dev (PRs #82–#86). Kept here for archival conti
 | File / area | Hotfix session | Refund flow | POS performance | Offline hardening (status) |
 |---|---|---|---|---|
 | `TransactionCart.tsx` | Empty cart fix (T1.5 ✅) | Adds return UI | — | — |
-| `HomePage.tsx` | Activation Phase 3 (T2.4 pending) | Adds /refund route | — | Phase 1 connectivity (T1.1 ✅) |
+| `HomePage.tsx` | Activation Phase 3 (T2.4 ✅ via PR #106 + #108) | Adds /refund route | — | Phase 1 connectivity (T1.1 ✅) |
 | `paymentStore.ts` | T0.1 ✅ | Adds refund/credit-note flows | — | Phase 2 refreshFromSQLite (T1.2 ✅) |
-| `productStore.ts` | — | — | Cache + virtualizer | Phase 3 paginated warmup (T2.1 deferred) — **DIRECT CONFLICT remains** |
-| `authStore.ts` / `LoginPage.tsx` | Activation Phase 2 (T1.4 pending) | — | — | Phase 1 connectivity (T1.1 ✅) |
+| `productStore.ts` | — | — | Cache + virtualizer | C2 Day 1-3 (PR #107/#109/#110) — composite IDs + canonicalize-before-diff invariant. Performance work is a SEQUENTIAL follow-up, not a parallel session. |
+| `authStore.ts` / `LoginPage.tsx` | Activation Phase 2 (T1.4 ✅ via PR #96 + #102) | — | — | Phase 1 connectivity (T1.1 ✅) |
 | `connectivityStore.ts` | — | — | — | Phase 1 (T1.1 ✅) |
 | `terminalStore.ts` | T0.1 (lazy seed if missing) ✅ | — | — | Phase 1 (T1.1 ✅) + Phase 4 hydrations (T1.3 ✅) |
 | `syncStore.ts` / `lib/sync/*` | — | — | — | Phase 4 sync-indicator truthfulness (T1.3 ✅) + Phase 5 trigger past COMMIT (T2.2 ✅) |
 | `offlineReceiptRepository.ts` / `receiptService.ts` | — | — | — | Phase 5 sync-trigger move (T2.2 ✅) |
 
-**Hotspot (still active):** `productStore.ts` — POS performance session and T2.1 (deferred Phase 3) will collide. **Action:** before T2.1 starts, sync with the POS performance owner. They may have already implemented paginated pulls — check first.
+**Hotspot (resolved):** `productStore.ts` — the C2 cluster reshaped this file (composite IDs, canonicalize-before-diff). The deferred paginated catalog warmup (T2.1) will build on the current state when the performance workstream begins. No active parallel sessions; the previous "DIRECT CONFLICT remains" caveat no longer applies.
 
 **Hotspot (resolved):** `paymentStore.ts` — T0.1 + T1.2 overlap was resolved by folding both into the same hotfix branch as planned; no further conflict here.
 
@@ -124,13 +126,11 @@ Items explicitly out of scope and captured as deferred TODOs (do **not** scope-c
 ## Recommended execution order (now)
 
 **Pending Tier 1:**
-- **T1.4** — token lifetime 30d → 12mo. Orthogonal; can land anytime post-go-live or before, owner's call.
 - **T1.6** — TND smoke test. Fold into Phase 6 (T2.3) preflight battery.
 
 **Pending Tier 2:**
 - **T2.3 (Phase 6)** — preflight + Slow-3G smoke + dev→main PR + tagged release. **Currently in PREP in this session; merge gated on pre-launch audit.**
 - **T2.1 (Phase 3 paginated catalog)** — deferred behind go-live; needs POS-performance-session coordination before kickoff. Post-launch unless field signal demands it sooner.
-- **T2.4** — bootstrap error handling state machine. Post-go-live unless an audit finding makes it pre-go-live.
 - **T2.5** — Training Mode UI surface. Post-go-live polish.
 
 **Tier 3:** post-go-live, when field data warrants.
@@ -141,8 +141,7 @@ Items explicitly out of scope and captured as deferred TODOs (do **not** scope-c
 
 (Most original questions resolved — only the still-active items remain.)
 
-1. **T2.1 (Phase 3 paginated catalog) ↔ POS performance session:** still pending. Coordinate before T2.1 kickoff to avoid the `productStore.ts` collision. Owner unknown.
-2. **T1.4 timing:** token-lifetime bump can land anytime; pre-go-live (one extra PR) or post-go-live (lower risk) are both viable.
-3. **Pre-launch audit scope and trigger:** Phase 6 (T2.3) merge is gated on Graphify + security review + doc realignment sign-off. Owner/timeline for the audit?
+1. **T2.1 (Phase 3 paginated catalog) ↔ POS performance workstream:** still pending as a sequential follow-up. Start from the current C2-shaped `productStore.ts` state rather than an old parallel-conflict branch. Owner unknown.
+2. **Pre-launch audit scope and trigger:** Phase 6 (T2.3) merge is gated on Graphify + security review + doc realignment sign-off. Owner/timeline for the audit?
 
-(Resolved: T1.5 shipped; T0.2 collapsed into T0.1 as suspected; offline-first worktree pattern adopted across all Tier 0 / Tier 1 / T2.2 sessions; T1.3 = sync indicator (not paginated catalog) per the realignment note above.)
+(Resolved: T1.4 shipped; T1.5 shipped; T0.2 collapsed into T0.1 as suspected; offline-first worktree pattern adopted across all Tier 0 / Tier 1 / T2.2 sessions; T1.3 = sync indicator (not paginated catalog) per the realignment note above.)
