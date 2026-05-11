@@ -4,8 +4,11 @@ import { Save, Info, Clock, AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { Button } from '../../../components/atoms/Button/Button'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 interface Company {
   id: string
@@ -37,19 +40,22 @@ export function InventorySettings() {
   const { t } = useTranslation(['common', 'inventory'])
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch current company settings
   const { data: companyData, isLoading } = useQuery({
-    queryKey: ['company-settings'],
+    queryKey: tenantScopedKey(['company-settings']),
     queryFn: async () => {
       const response = await api.get<CompanyResponse>('/company')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   // Fetch reservation settings
   const { data: reservationData, isLoading: isLoadingReservation } = useQuery({
-    queryKey: ['reservation-settings', currentCompany?.id],
+    queryKey: tenantScopedKey(['reservation-settings', currentCompany?.id]),
     queryFn: async () => {
       if (!currentCompany?.id) return null
       const response = await api.get<ReservationSettingsResponse>(
@@ -57,7 +63,7 @@ export function InventorySettings() {
       )
       return response.data.data
     },
-    enabled: !!currentCompany?.id,
+    enabled: !!currentCompany?.id && tenantId !== null && companyId !== null,
   })
 
   const company = companyData?.data
@@ -101,8 +107,8 @@ export function InventorySettings() {
     mutationFn: async () => {
       await api.patch('/company', settings)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
     },
     onError: () => {
       toast.error(t('inventory:settings.messages.inventorySaveFailed'))
@@ -115,8 +121,8 @@ export function InventorySettings() {
       if (!currentCompany?.id) throw new Error('No company selected')
       await api.put(`/companies/${currentCompany.id}/reservation-settings`, reservationSettings)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reservation-settings', currentCompany?.id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reservation-settings', currentCompany?.id]) })
     },
     onError: () => {
       toast.error(t('inventory:settings.messages.reservationSaveFailed'))
