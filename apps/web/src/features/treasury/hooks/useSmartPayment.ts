@@ -5,6 +5,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   getToleranceSettings,
   previewPaymentAllocation,
@@ -15,6 +18,22 @@ import type {
   PaymentAllocationPreviewRequest,
   ApplyAllocationRequest,
 } from '@/types/treasury'
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 /**
  * Query hook: Get tolerance settings for current company.
@@ -29,9 +48,13 @@ import type {
  * }
  */
 export function useToleranceSettings() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['smart-payment', 'tolerance-settings'],
+    queryKey: tenantScopedKey(['smart-payment', 'tolerance-settings']),
     queryFn: () => getToleranceSettings(),
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 5 * 60 * 1000, // 5 minutes (rarely changes)
   })
 }
@@ -92,21 +115,29 @@ export function usePaymentAllocationPreview() {
  */
 export function useApplyAllocation() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (request: ApplyAllocationRequest) => applyPaymentAllocation(request),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       // Invalidate payment queries
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
-      void queryClient.invalidateQueries({ queryKey: ['payment', result.payment_id] })
-
-      // Invalidate invoice queries for all allocated invoices
-      result.allocations.forEach((allocation) => {
-        void queryClient.invalidateQueries({ queryKey: ['invoice', allocation.document_id] })
-      })
-
-      // Invalidate partner balance queries
-      void queryClient.invalidateQueries({ queryKey: ['partner-balance'] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['payment', result.payment_id]),
+        }),
+        ...result.allocations.map((allocation) =>
+          queryClient.invalidateQueries({
+            queryKey: tenantScopedKey(['invoice', allocation.document_id]),
+          }),
+        ),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('partner-balance', tenantId, companyId),
+        }),
+      ])
       toast.success('Payment allocated successfully')
     },
     onError: (error) => {
