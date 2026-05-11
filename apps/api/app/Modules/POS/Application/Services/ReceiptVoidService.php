@@ -203,19 +203,63 @@ final class ReceiptVoidService
             return;
         }
 
-        // Calculate total cash amount from receipt payments
+        // Bug 2 follow-up — refund the net cash that physically entered the
+        // drawer at sale time:
+        //
+        //     refund = max(0, min(Σ(cash.amount), total − Σ(non_cash) − tolerance))
+        //
+        // The `min(...)` covers every payment.amount shape and every cash
+        // edge case:
+        //
+        //   Post-Bug-2 over-tender: cash=tendered (>cash_owed), change>0.
+        //     Σ(cash.amount) > total − non_cash → bound to total − non_cash.
+        //   Pre-Bug-2 over-tender: cash=total (Bug 2 stored cart total
+        //     instead of tendered), change>0.
+        //     Σ(cash.amount) = total − non_cash → either branch returns
+        //     the same correct net cash.
+        //   Tolerance short-pay: cash=tendered (<cash_owed), change=0,
+        //     tolerance_writeoff>0. The tendered cash IS what hit the
+        //     drawer; the tolerance was posted to GL 658, not the drawer.
+        //     Σ(cash.amount) < total − non_cash → bound to Σ(cash.amount).
+        //   Exact tender (either era): Σ(cash.amount) = total − non_cash
+        //     − 0 → both branches agree.
+        //   Split with mixed tenders: per-row amount semantics already
+        //     correct; `total − non_cash` is the cash portion of the sale.
+        //
+        // Codex r1 (P2) closed the pre-fix over-tender case; Codex r2 (P2)
+        // closed the tolerance short-pay case. Together they prove the
+        // formula is the right invariant.
         $receipt->loadMissing('payments');
-        $cashAmount = '0.00';
+        $hasCashPayment = false;
+        $cashSum = '0';
+        $nonCashSum = '0';
         foreach ($receipt->payments as $payment) {
             if ($payment->payment_type === 'CASH') {
-                $cashAmount = bcadd($cashAmount, (string) $payment->amount, $this->scale());
+                $hasCashPayment = true;
+                $cashSum = bcadd($cashSum, (string) $payment->amount, $this->scale());
+            } else {
+                $nonCashSum = bcadd($nonCashSum, (string) $payment->amount, $this->scale());
             }
         }
 
-        if (bccomp($cashAmount, '0.00', $this->scale()) > 0) {
+        $tolerance = $receipt->tolerance_writeoff !== null
+            ? (string) $receipt->tolerance_writeoff
+            : '0';
+        $cashOwed = bcsub((string) $receipt->total, $nonCashSum, $this->scale());
+        $cashOwed = bcsub($cashOwed, $tolerance, $this->scale());
+
+        // refund = min(cashSum, cashOwed), clamped at 0.
+        $netDrawerCash = (bccomp($cashSum, $cashOwed, $this->scale()) < 0)
+            ? $cashSum
+            : $cashOwed;
+        if (bccomp($netDrawerCash, '0', $this->scale()) < 0) {
+            $netDrawerCash = '0';
+        }
+
+        if ($hasCashPayment && bccomp($netDrawerCash, '0', $this->scale()) > 0) {
             $this->cashDrawerService->recordRefund(
                 $shift,
-                $cashAmount,
+                $netDrawerCash,
                 $user,
                 $receipt->id,
             );
