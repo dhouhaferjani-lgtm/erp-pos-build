@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Vault, Building2, CreditCard, Wallet, Calendar, ExternalLink, BookOpen, Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPatch } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { textColors, borderColors } from '../../lib/designTokens'
@@ -101,6 +103,8 @@ const statusLabels: Record<string, string> = {
 function GlAccountField({ repository }: { repository: Repository }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [isEditing, setIsEditing] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState(repository.gl_account_id ?? '')
 
@@ -110,8 +114,12 @@ function GlAccountField({ repository }: { repository: Repository }) {
   const mutation = useMutation({
     mutationFn: (glAccountId: string | null) =>
       apiPatch(`/payment-repositories/${repository.id}`, { gl_account_id: glAccountId }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['payment-repository', repository.id] })
+    onSuccess: async () => {
+      if (tenantId !== null && companyId !== null) {
+        await queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['payment-repository', repository.id]),
+        })
+      }
       toast.success(t('treasury.glAccountUpdated', 'GL account updated'))
       setIsEditing(false)
     },
@@ -188,6 +196,8 @@ function GlAccountField({ repository }: { repository: Repository }) {
 export function RepositoryDetailPage() {
   const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get company currency with fallback
@@ -195,21 +205,21 @@ export function RepositoryDetailPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data: repositoryData, isLoading: isLoadingRepository, error: repositoryError } = useQuery({
-    queryKey: ['payment-repository', id],
+    queryKey: tenantScopedKey(['payment-repository', id]),
     queryFn: async () => {
       const response = await api.get<RepositoryResponse>(`/payment-repositories/${id}`)
       return response.data
     },
-    enabled: !!id,
+    enabled: tenantId !== null && companyId !== null && !!id,
   })
 
   const { data: transactionsData, isLoading: isLoadingTransactions } = useQuery({
-    queryKey: ['payment-repository-transactions', id],
+    queryKey: tenantScopedKey(['payment-repository-transactions', id]),
     queryFn: async () => {
       const response = await api.get<TransactionsResponse>(`/payment-repositories/${id}/transactions`)
       return response.data
     },
-    enabled: !!id,
+    enabled: tenantId !== null && companyId !== null && !!id,
   })
 
   const repository = repositoryData?.data

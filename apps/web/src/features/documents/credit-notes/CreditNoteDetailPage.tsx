@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, FileText, Lock, MinusCircle } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { Button } from '../../../components/atoms/Button/Button'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
@@ -14,6 +15,8 @@ import { DocumentTotals } from '../components/DocumentTotals'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'post' | null
@@ -23,6 +26,8 @@ export function CreditNoteDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -34,20 +39,20 @@ export function CreditNoteDetailPage() {
   })
 
   const { data: creditNote, isLoading, error } = useQuery<Document>({
-    queryKey: ['document', id],
+    queryKey: tenantScopedKey(['document', id]),
     queryFn: async () => {
       const response = await api.get(`/documents/${id}`)
       return response.data.data
     },
-    enabled: !!id,
+    enabled: tenantId !== null && companyId !== null && !!id,
   })
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
       return apiPost(`/documents/${id}/confirm`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
       toast.success(t('creditNotes.confirmed'))
       setConfirmAction(null)
     },
@@ -60,8 +65,8 @@ export function CreditNoteDetailPage() {
     mutationFn: async () => {
       return apiPost(`/documents/${id}/post`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
       toast.success(t('creditNotes.posted'))
       setConfirmAction(null)
     },
