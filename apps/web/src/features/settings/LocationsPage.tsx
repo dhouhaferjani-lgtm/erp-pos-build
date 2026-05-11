@@ -5,6 +5,9 @@ import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truc
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
 
@@ -48,9 +51,27 @@ const emptyForm: LocationFormData = {
   posEnabled: false,
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function LocationsPage() {
   const { t } = useTranslation('common')
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingLocation, setEditingLocation] = useState<LocationApiResponse | null>(null)
@@ -58,38 +79,47 @@ export function LocationsPage() {
   const [formData, setFormData] = useState<LocationFormData>(emptyForm)
 
   const { data: locations, isLoading } = useQuery({
-    queryKey: ['locations'],
+    queryKey: tenantScopedKey(['locations']),
     queryFn: fetchLocations,
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const createMutation = useMutation({
     mutationFn: (data: CreateLocationInput) => createLocation(data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['locations'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('locations', tenantId, companyId),
+      })
       closeModal()
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateLocationInput }) => updateLocation(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['locations'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('locations', tenantId, companyId),
+      })
       closeModal()
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteLocation(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['locations'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('locations', tenantId, companyId),
+      })
       setDeleteTarget(null)
     },
   })
 
   const setDefaultMutation = useMutation({
     mutationFn: (id: string) => setDefaultLocation(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['locations'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('locations', tenantId, companyId),
+      })
     },
   })
 
