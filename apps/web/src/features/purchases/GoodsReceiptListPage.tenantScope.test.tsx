@@ -1,0 +1,251 @@
+import { QueryClient, useQuery } from '@tanstack/react-query'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
+import { createTestQueryClient, renderWithProviders } from '../../test/renderWithProviders'
+
+import { GoodsReceiptListPage } from './GoodsReceiptListPage'
+
+const mockApiGet = vi.hoisted(() => vi.fn())
+const mockApiPost = vi.hoisted(() => vi.fn())
+
+vi.mock('../../lib/api', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      get: mockApiGet,
+    },
+    apiPost: mockApiPost,
+  }
+})
+
+vi.mock('../../hooks/useCompany', () => ({
+  useCompany: () => ({
+    currentCompany: {
+      id: 'company-1',
+      currency: 'TND',
+    },
+  }),
+}))
+
+vi.mock('../../components/ui/ConfirmDialog', () => ({
+  ConfirmDialog: ({
+    isOpen,
+    onConfirm,
+    confirmText,
+  }: {
+    isOpen: boolean
+    onConfirm: () => void
+    confirmText: string
+  }) => isOpen ? (
+    <button type="button" onClick={onConfirm}>
+      {confirmText}
+    </button>
+  ) : null,
+}))
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      tenant_id: tenantId,
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'test-token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({
+    currentCompanyId: companyId,
+    companies: [
+      {
+        id: companyId,
+        name: 'Test Company',
+        legalName: 'Test Company LLC',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'en_US',
+        timezone: 'Africa/Tunis',
+      },
+    ],
+    isLoading: false,
+  })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+}
+
+function createPersistentQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false },
+    },
+  })
+}
+
+function cacheKeys(client: ReturnType<typeof createTestQueryClient>): unknown[][] {
+  return client
+    .getQueryCache()
+    .getAll()
+    .map((q) => q.queryKey as unknown[])
+}
+
+const pendingPurchaseOrder = {
+  id: 'po-1',
+  document_number: 'PO-1',
+  partner_id: 'partner-1',
+  partner_name: 'Supplier',
+  status: 'confirmed',
+  issue_date: '2026-05-11',
+  total: 10,
+  currency: 'TND',
+  lines: [
+    {
+      id: 'line-1',
+      product_id: 'product-1',
+      product_name: 'Part',
+      description: 'Part',
+      quantity: 2,
+      quantity_received: 0,
+      unit_price: 5,
+    },
+  ],
+  payload: {
+    fully_received: false,
+  },
+}
+
+const fullyReceivedPurchaseOrder = {
+  ...pendingPurchaseOrder,
+  id: 'po-2',
+  document_number: 'PO-2',
+  payload: {
+    fully_received: true,
+  },
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  setTenant('tenant-A', 'company-1')
+  mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+    if (options?.params?.status === 'received') {
+      return { data: { data: [] } }
+    }
+    return { data: { data: [pendingPurchaseOrder, fullyReceivedPurchaseOrder] } }
+  })
+  mockApiPost.mockResolvedValue({ message: 'received' })
+})
+
+afterEach(() => {
+  resetTenant()
+})
+
+describe('GoodsReceiptListPage tenant scope', () => {
+  function StockLevelsProbe({ onFetch }: { onFetch: () => void }) {
+    useQuery({
+      queryKey: tenantScopedKey(['stock-levels']),
+      queryFn: async () => {
+        onFetch()
+        return []
+      },
+    })
+    return null
+  }
+
+  it('scopes goods-receipt purchase-order query keys (.581-.583)', () => {
+    const queryClient = createPersistentQueryClient()
+
+    renderWithProviders(<GoodsReceiptListPage />, { queryClient })
+
+    expect(cacheKeys(queryClient)).toEqual(expect.arrayContaining([
+      ['purchase-orders', 'pending-receipt', 'tenant-A', 'company-1'],
+      ['purchase-orders', 'received', 'tenant-A', 'company-1'],
+      ['purchase-orders', 'confirmed-fully-received', 'tenant-A', 'company-1'],
+    ]))
+  })
+
+  it('does not fetch without tenant/company state', () => {
+    resetTenant()
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    expect(mockApiGet).not.toHaveBeenCalled()
+  })
+
+  it('refetches current-tenant purchase and stock caches and preserves tenant-B cache (.584-.585)', async () => {
+    const queryClient = createPersistentQueryClient()
+    const counters = {
+      confirmed: 0,
+      received: 0,
+      stock: 0,
+    }
+    mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        counters.received += 1
+        return { data: { data: [] } }
+      }
+      counters.confirmed += 1
+      return { data: { data: [pendingPurchaseOrder, fullyReceivedPurchaseOrder] } }
+    })
+
+    renderWithProviders(
+      <>
+        <GoodsReceiptListPage />
+        <StockLevelsProbe onFetch={() => { counters.stock += 1 }} />
+      </>,
+      { queryClient },
+    )
+
+    await waitFor(() => {
+      expect(counters.confirmed).toBe(2)
+      expect(counters.received).toBe(1)
+      expect(counters.stock).toBe(1)
+    })
+    queryClient.setQueryData(['purchase-orders', 'pending-receipt', 'tenant-B', 'company-1'], {
+      marker: 'tenant-B-purchase-orders',
+    })
+    queryClient.setQueryData(['stock-levels', 'tenant-B', 'company-1'], {
+      marker: 'tenant-B-stock',
+    })
+
+    fireEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
+    fireEvent.click(screen.getByText('sales:purchaseOrders.receiveGoodsConfirm.button'))
+
+    await waitFor(() => {
+      expect(counters.confirmed).toBe(4)
+      expect(counters.received).toBe(2)
+      expect(counters.stock).toBe(2)
+    })
+    expect(queryClient.getQueryData(['purchase-orders', 'pending-receipt', 'tenant-B', 'company-1'])).toEqual({
+      marker: 'tenant-B-purchase-orders',
+    })
+    expect(queryClient.getQueryData(['stock-levels', 'tenant-B', 'company-1'])).toEqual({
+      marker: 'tenant-B-stock',
+    })
+  })
+})

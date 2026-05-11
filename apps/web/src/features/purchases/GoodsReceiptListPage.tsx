@@ -14,8 +14,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { useCompany } from '../../hooks/useCompany'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface PurchaseOrderLine {
   id: string
@@ -56,17 +59,37 @@ interface ApiResponse {
 
 type TabType = 'pending' | 'received'
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function GoodsReceiptListPage() {
   const { t } = useTranslation(['common', 'sales', 'inventory'])
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const hasTenantScope = tenantId !== null && companyId !== null
   const [activeTab, setActiveTab] = useState<TabType>('pending')
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [showReceiveModal, setShowReceiveModal] = useState(false)
 
   // Fetch confirmed purchase orders (pending receipt)
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
-    queryKey: ['purchase-orders', 'pending-receipt'],
+    queryKey: tenantScopedKey(['purchase-orders', 'pending-receipt']),
     queryFn: async () => {
       const response = await api.get<ApiResponse>('/purchase-orders', {
         params: { status: 'confirmed', per_page: 100 },
@@ -77,38 +100,47 @@ export function GoodsReceiptListPage() {
       )
       return orders
     },
+    enabled: hasTenantScope,
   })
 
   // Fetch received purchase orders
   const { data: receivedData, isLoading: receivedLoading } = useQuery({
-    queryKey: ['purchase-orders', 'received'],
+    queryKey: tenantScopedKey(['purchase-orders', 'received']),
     queryFn: async () => {
       const response = await api.get<ApiResponse>('/purchase-orders', {
         params: { status: 'received', per_page: 100 },
       })
       return response.data.data
     },
+    enabled: hasTenantScope,
   })
 
   // Also include confirmed POs that are fully received
   const { data: fullyReceivedConfirmed } = useQuery({
-    queryKey: ['purchase-orders', 'confirmed-fully-received'],
+    queryKey: tenantScopedKey(['purchase-orders', 'confirmed-fully-received']),
     queryFn: async () => {
       const response = await api.get<ApiResponse>('/purchase-orders', {
         params: { status: 'confirmed', per_page: 100 },
       })
       return response.data.data.filter((po) => po.payload?.fully_received)
     },
+    enabled: hasTenantScope,
   })
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
     mutationFn: (poId: string) =>
       apiPost<{ message: string }>(`/purchase-orders/${poId}/receive`, {}),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('inventory:goodsReceipt.successMessage'))
-      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('purchase-orders', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+        }),
+      ])
       setShowReceiveModal(false)
       setSelectedPO(null)
     },
