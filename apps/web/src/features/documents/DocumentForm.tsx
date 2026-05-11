@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { DocumentLineEditor, type DocumentLine } from '../../components/documents/DocumentLineEditor'
 import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAdditionalCosts'
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
@@ -13,6 +14,8 @@ import { AddPartnerModal } from '../../components/organisms'
 import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
 import { useCompany } from '../../hooks/useCompany'
 import { useDraftAutoSave } from '../../hooks/useDraftAutoSave'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import type { DocumentType } from './DocumentListPage'
 import type { Document } from '../../types/document'
 
@@ -85,6 +88,22 @@ interface DocumentFormProps {
   documentType?: DocumentType
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function DocumentForm({ documentType }: DocumentFormProps) {
   const { t } = useTranslation()
   const { id = '' } = useParams<{ id: string }>()
@@ -92,6 +111,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const isEditing = id.length > 0
 
   // Track if initial lines have been loaded
@@ -180,12 +201,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Fetch document data when editing
   const { data: document, isLoading } = useQuery({
-    queryKey: ['document', effectiveType, id],
+    queryKey: tenantScopedKey(['document', effectiveType, id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`${apiEndpoint}/${id}`)
       return response.data.data
     },
-    enabled: isEditing && apiEndpoint !== '/documents',
+    enabled: isEditing && apiEndpoint !== '/documents' && tenantId !== null && companyId !== null,
   })
 
   // Populate form when document data loads
@@ -233,10 +254,14 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: DocumentFormData) => apiPost<Document>(apiEndpoint, data),
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       toast.success(t('status.success'))
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: [effectiveType] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([effectiveType]) }),
+      ])
       const documentId = response?.id
       if (documentId) {
         // For purchase orders, redirect to edit mode so user can add additional costs
@@ -258,11 +283,15 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const updateMutation = useMutation({
     mutationFn: (data: DocumentFormData) =>
       apiPatch<Document>(`${apiEndpoint}/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('status.success'))
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: [effectiveType] })
-      void queryClient.invalidateQueries({ queryKey: ['document', effectiveType, id] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([effectiveType]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', effectiveType, id]) }),
+      ])
       void navigate(`${basePath}/${id}`)
     },
     onError: (error: Error & { response?: { data?: { message?: string; error?: { message?: string } } } }) => {
@@ -541,7 +570,9 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           // Set the form value immediately
           setValue('partner_id', partner.id)
           // Invalidate partners query to refresh the dropdown with new partner
-          void queryClient.invalidateQueries({ queryKey: ['partners'] })
+          void queryClient.invalidateQueries({
+            predicate: scopedNamespacePredicate('partners', tenantId, companyId),
+          })
         }}
       />
     </div>
