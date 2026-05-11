@@ -3,8 +3,10 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchAgedReceivables } from '../api/reportsApi'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { formatCurrency } from '@/lib/format'
 import { useCompanyStore } from '@/stores/companyStore'
+import { useAuthStore } from '@/stores/authStore'
 
 /**
  * Aged Receivables Report Page
@@ -20,11 +22,15 @@ export function AgedReceivablesPage() {
   const { t } = useTranslation(['reports', 'common'])
   usePageTitle('agedReceivables.title', 'reports')
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const hasTenantScope = tenantId !== null && companyId !== null
   const [asOfDate, setAsOfDate] = useState<string>(new Date().toISOString().split('T')[0])
 
   const { data: report, isLoading, error } = useQuery({
-    queryKey: ['aged-receivables', asOfDate],
+    queryKey: tenantScopedKey(['aged-receivables', asOfDate]),
     queryFn: () => fetchAgedReceivables({ as_of_date: asOfDate }),
+    enabled: hasTenantScope,
   })
 
   if (isLoading) {
