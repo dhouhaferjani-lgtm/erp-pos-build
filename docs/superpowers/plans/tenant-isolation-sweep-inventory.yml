@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 29c0963035a183bc768bdfe77033aec37c4c0667fe458c66857b0fe3e91e67d2
+  yaml_sha256: c0ee70574bd80333efe3b571f2ac6c35417b4bbd7522fb3d9aee59e9d99558b6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -118328,17 +118328,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:15:21Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: c9b204f0
+    regression_test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
     blocked_reason: null
     history:
       -
@@ -118357,6 +118357,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:15:22Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 29c0963035a183bc768bdfe77033aec37c4c0667fe458c66857b0fe3e91e67d2
+        new_yaml_sha256: b5a2c3d1f7fe6f1a5d4f10f680c0f1ae21fe32d60a1beaff301819f4f32c8dad
+        target_ids:
+          - web.tanstack-keys.756
+        from_status: pending
+        to_status: claimed
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:15:24Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b5a2c3d1f7fe6f1a5d4f10f680c0f1ae21fe32d60a1beaff301819f4f32c8dad
+        new_yaml_sha256: 15a7087d06748d79b58360078e526c50c3923bce7f179555d9acbde87139fabe
+        target_ids:
+          - web.tanstack-keys.756
+        from_status: claimed
+        to_status: in_progress
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:15:27Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 15a7087d06748d79b58360078e526c50c3923bce7f179555d9acbde87139fabe
+        new_yaml_sha256: 3935877bc0389512861343b931ee3f9901698958c6bf627020b3d377f4241f43
+        target_ids:
+          - web.tanstack-keys.756
+        from_status: in_progress
+        to_status: under_review
+        commit: c9b204f0
+        test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.757
     stable_key: 'sha256:67eaa497586d9be5459ac5eaaec960b71c5c117d59598a1ea5da9b517782575d'
@@ -118374,17 +118422,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:15:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: c9b204f0
+    regression_test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
     blocked_reason: null
     history:
       -
@@ -118403,6 +118451,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:15:30Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3935877bc0389512861343b931ee3f9901698958c6bf627020b3d377f4241f43
+        new_yaml_sha256: 52c69c10501dc2362b00c06e319311c2cf824342ecdfa932a4a05efc1332370d
+        target_ids:
+          - web.tanstack-keys.757
+        from_status: pending
+        to_status: claimed
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:15:33Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 52c69c10501dc2362b00c06e319311c2cf824342ecdfa932a4a05efc1332370d
+        new_yaml_sha256: 77644e5530de58ad3aef62462bb993c8d9d2ffce576723e864c44ba940cbc282
+        target_ids:
+          - web.tanstack-keys.757
+        from_status: claimed
+        to_status: in_progress
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:15:36Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 77644e5530de58ad3aef62462bb993c8d9d2ffce576723e864c44ba940cbc282
+        new_yaml_sha256: c350fbe673ac67bab20083827a4b7f93fb9f2ecd943d179c89189d28d3b80517
+        target_ids:
+          - web.tanstack-keys.757
+        from_status: in_progress
+        to_status: under_review
+        commit: c9b204f0
+        test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.758
     stable_key: 'sha256:6a9c7d3c559960387c6534dfb2ea543a4adccd6cdcac094fee42913b5e6b28ae'
@@ -118420,17 +118516,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:15:38Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: c9b204f0
+    regression_test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
     blocked_reason: null
     history:
       -
@@ -118449,6 +118545,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:15:39Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c350fbe673ac67bab20083827a4b7f93fb9f2ecd943d179c89189d28d3b80517
+        new_yaml_sha256: ff764216c674e42142a7316ad6f4b82cd42aa4d6f32372894b94705ed24f1f47
+        target_ids:
+          - web.tanstack-keys.758
+        from_status: pending
+        to_status: claimed
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:15:42Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ff764216c674e42142a7316ad6f4b82cd42aa4d6f32372894b94705ed24f1f47
+        new_yaml_sha256: a008be97fa75d65f2416e0fa917b63a213dbe9ee6aa2995ff0a891f91e9ad7a1
+        target_ids:
+          - web.tanstack-keys.758
+        from_status: claimed
+        to_status: in_progress
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:15:45Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a008be97fa75d65f2416e0fa917b63a213dbe9ee6aa2995ff0a891f91e9ad7a1
+        new_yaml_sha256: 7a7073795fd9a46ebb432625466f5974020ce7d57fb3e92926c43b0295d73f3a
+        target_ids:
+          - web.tanstack-keys.758
+        from_status: in_progress
+        to_status: under_review
+        commit: c9b204f0
+        test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.759
     stable_key: 'sha256:04530255dca465b5e575cc3d4db6a762a2c5976b9181c8b143cef3a1b6d21302'
@@ -118466,17 +118610,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:15:47Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: c9b204f0
+    regression_test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
     blocked_reason: null
     history:
       -
@@ -118495,6 +118639,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:15:47Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7a7073795fd9a46ebb432625466f5974020ce7d57fb3e92926c43b0295d73f3a
+        new_yaml_sha256: ac3d5e13bcd9f4a617e2977cbf16df4b93c8931a598b686ab8f508ba27bc8b01
+        target_ids:
+          - web.tanstack-keys.759
+        from_status: pending
+        to_status: claimed
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:15:50Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ac3d5e13bcd9f4a617e2977cbf16df4b93c8931a598b686ab8f508ba27bc8b01
+        new_yaml_sha256: 92e8621fe49a721d84fc0de37fb94de8ae279c7e011b3919338273b37904638d
+        target_ids:
+          - web.tanstack-keys.759
+        from_status: claimed
+        to_status: in_progress
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:15:53Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 92e8621fe49a721d84fc0de37fb94de8ae279c7e011b3919338273b37904638d
+        new_yaml_sha256: df50ebfd88fd7d05c0b696380da3e2cbe99e90c22c888d2ee57516e38571a276
+        target_ids:
+          - web.tanstack-keys.759
+        from_status: in_progress
+        to_status: under_review
+        commit: c9b204f0
+        test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.760
     stable_key: 'sha256:b2bdbc50613826f660add63714afa17fdef5cfb7b89d81e61fefe64598f3402a'
@@ -118512,17 +118704,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:15:55Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: c9b204f0
+    regression_test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
     blocked_reason: null
     history:
       -
@@ -118541,6 +118733,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:15:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: df50ebfd88fd7d05c0b696380da3e2cbe99e90c22c888d2ee57516e38571a276
+        new_yaml_sha256: e2d7fdfa670bbca6bbfd7105ae1dbe9afc5e0e373adc2aa4355ddbe7eaa86277
+        target_ids:
+          - web.tanstack-keys.760
+        from_status: pending
+        to_status: claimed
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:15:59Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e2d7fdfa670bbca6bbfd7105ae1dbe9afc5e0e373adc2aa4355ddbe7eaa86277
+        new_yaml_sha256: 9ab2bd6538a16cf43d95d54e85db8d13bcd7b5d7cfb3dbb9e2e57da37067d3ad
+        target_ids:
+          - web.tanstack-keys.760
+        from_status: claimed
+        to_status: in_progress
+        commit: c9b204f0b96924c7e7a7c11c4506db5d028b2c82
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:16:02Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9ab2bd6538a16cf43d95d54e85db8d13bcd7b5d7cfb3dbb9e2e57da37067d3ad
+        new_yaml_sha256: c0ee70574bd80333efe3b571f2ac6c35417b4bbd7522fb3d9aee59e9d99558b6
+        target_ids:
+          - web.tanstack-keys.760
+        from_status: in_progress
+        to_status: under_review
+        commit: c9b204f0
+        test: 'apps/web/src/features/vehicles/__tests__/VehicleForm.tenantScope.test.tsx::VehicleForm tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.761
     stable_key: 'sha256:681486b02b976ddabfecd4a9f4a483450d6703c21c5b4a4dacee92e432593eba'
