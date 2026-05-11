@@ -7,7 +7,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getReturnNotes, getReturnNote, createReturnNote } from '../api/returnNotes'
 import { getErrorMessage } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { CreateReturnNoteRequest } from '@/types/returnNote'
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 /**
  * Query hook: Get return notes list.
@@ -28,9 +47,13 @@ export function useReturnNotes(params?: {
   source_invoice_id?: string
   source_delivery_note_id?: string
 }) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['return-notes', params],
+    queryKey: tenantScopedKey(['return-notes', params]),
     queryFn: () => getReturnNotes(params),
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
@@ -43,10 +66,13 @@ export function useReturnNotes(params?: {
  * const { data: returnNote, isLoading } = useReturnNote(returnNoteId)
  */
 export function useReturnNote(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['return-note', id],
+    queryKey: tenantScopedKey(['return-note', id]),
     queryFn: () => getReturnNote(id!),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   })
 }
 
@@ -82,27 +108,31 @@ export function useReturnNote(id: string | undefined) {
  */
 export function useCreateReturnNote() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (request: CreateReturnNoteRequest) => createReturnNote(request),
-    onSuccess: (returnNote) => {
+    onSuccess: async (returnNote) => {
       // Invalidate return notes list
-      void queryClient.invalidateQueries({ queryKey: ['return-notes'] })
-
-      // Invalidate source documents (if applicable)
-      if (returnNote.metadata.source_invoice_id) {
-        void queryClient.invalidateQueries({
-          queryKey: ['invoice', returnNote.metadata.source_invoice_id],
-        })
-      }
-      if (returnNote.metadata.source_delivery_note_id) {
-        void queryClient.invalidateQueries({
-          queryKey: ['delivery-note', returnNote.metadata.source_delivery_note_id],
-        })
-      }
-
-      // Invalidate documents list
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('return-notes', tenantId, companyId),
+        }),
+        returnNote.metadata.source_invoice_id
+          ? queryClient.invalidateQueries({
+            queryKey: tenantScopedKey(['invoice', returnNote.metadata.source_invoice_id]),
+          })
+          : Promise.resolve(),
+        returnNote.metadata.source_delivery_note_id
+          ? queryClient.invalidateQueries({
+            queryKey: tenantScopedKey(['delivery-note', returnNote.metadata.source_delivery_note_id]),
+          })
+          : Promise.resolve(),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
 
       toast.success('Return note created')
     },
