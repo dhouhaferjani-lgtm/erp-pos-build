@@ -1,4 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { taxConfigurationApi } from '../api/taxConfigurationApi'
 import type { TaxConfigurationFormData } from '../types/tax'
 
@@ -9,25 +12,40 @@ export const taxConfigurationKeys = {
   documentTypes: () => [...taxConfigurationKeys.all, 'document-types'] as const,
 }
 
+function useTaxConfigurationTenantScope(): boolean {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  return tenantId !== null && companyId !== null
+}
+
 export function useTaxConfigurations() {
+  const hasTenantScope = useTaxConfigurationTenantScope()
+
   return useQuery({
-    queryKey: taxConfigurationKeys.list(),
+    queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
     queryFn: () => taxConfigurationApi.list(),
+    enabled: hasTenantScope,
   })
 }
 
 export function useTaxConfiguration(id: string) {
+  const hasTenantScope = useTaxConfigurationTenantScope()
+
   return useQuery({
-    queryKey: taxConfigurationKeys.detail(id),
+    queryKey: tenantScopedKey([...taxConfigurationKeys.detail(id)]),
     queryFn: () => taxConfigurationApi.get(id),
-    enabled: !!id,
+    enabled: !!id && hasTenantScope,
   })
 }
 
 export function useDocumentTypes() {
+  const hasTenantScope = useTaxConfigurationTenantScope()
+
   return useQuery({
-    queryKey: taxConfigurationKeys.documentTypes(),
+    queryKey: tenantScopedKey([...taxConfigurationKeys.documentTypes()]),
     queryFn: () => taxConfigurationApi.getDocumentTypes(),
+    enabled: hasTenantScope,
     staleTime: Infinity, // Document types don't change often
   })
 }
@@ -38,8 +56,10 @@ export function useCreateTaxConfiguration() {
   return useMutation({
     mutationFn: (data: TaxConfigurationFormData) =>
       taxConfigurationApi.create(data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: taxConfigurationKeys.list() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+      })
     },
   })
 }
@@ -50,9 +70,15 @@ export function useUpdateTaxConfiguration() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TaxConfigurationFormData> }) =>
       taxConfigurationApi.update(id, data),
-    onSuccess: (_, variables) => {
-      void queryClient.invalidateQueries({ queryKey: taxConfigurationKeys.list() })
-      void queryClient.invalidateQueries({ queryKey: taxConfigurationKeys.detail(variables.id) })
+    onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...taxConfigurationKeys.detail(variables.id)]),
+        }),
+      ])
     },
   })
 }
@@ -62,8 +88,10 @@ export function useDeleteTaxConfiguration() {
 
   return useMutation({
     mutationFn: (id: string) => taxConfigurationApi.delete(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: taxConfigurationKeys.list() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+      })
     },
   })
 }
@@ -74,8 +102,10 @@ export function useReorderTaxConfigurations() {
   return useMutation({
     mutationFn: (order: { id: string; sequence_order: number }[]) =>
       taxConfigurationApi.reorder(order),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: taxConfigurationKeys.list() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...taxConfigurationKeys.list()]),
+      })
     },
   })
 }
