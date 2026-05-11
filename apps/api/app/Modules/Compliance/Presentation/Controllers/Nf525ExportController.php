@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Compliance\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\Nf525\Nf525JetExportService;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ReprintLogFilter;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
@@ -23,30 +24,39 @@ use Illuminate\Support\Carbon;
  *
  * After H3: depends only on the Nf525DataProviderContract published by POS
  * (via App\Shared\Contracts\Compliance\). No POS Domain imports remain.
+ *
+ * Tenant isolation (Section 8 / api.compliance round 2):
+ * `company_id` is resolved exclusively from `CompanyContext` (set by
+ * `CompanyContextMiddleware` after verifying the user's
+ * `UserCompanyMembership` for the X-Company-Id header). Earlier rounds
+ * trusted `$request->input('company_id')` directly, which let an admin
+ * holding `compliance.export_jet` exfiltrate any company's NF525 export
+ * across tenant boundaries simply by submitting a foreign company UUID
+ * in the request body. Body `company_id` is no longer accepted.
  */
 final class Nf525ExportController extends Controller
 {
     public function __construct(
         private readonly Nf525JetExportService $exportService,
         private readonly Nf525DataProviderContract $dataProvider,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
      * Export JET XML for a company within a date range.
      *
      * POST /api/v1/compliance/nf525/export-jet
-     * Body: { company_id: string, from: string, to: string }
+     * Body: { from: string, to: string }  (company resolved from context)
      * Returns: XML file download
      */
     public function exportJet(Request $request): Response
     {
         $request->validate([
-            'company_id' => ['required', 'uuid'],
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        $companyId = (string) $request->input('company_id');
+        $companyId = $this->companyContext->requireCompanyId();
         $from = Carbon::parse((string) $request->input('from'));
         $to = Carbon::parse((string) $request->input('to'));
 
@@ -64,16 +74,12 @@ final class Nf525ExportController extends Controller
      * Verify receipt and Z-report hash chains for a company's terminals.
      *
      * POST /api/v1/compliance/nf525/verify-chains
-     * Body: { company_id: string }
+     * Body: {} (company resolved from context)
      * Returns: JSON with per-terminal chain verification results
      */
     public function verifyChains(Request $request): JsonResponse
     {
-        $request->validate([
-            'company_id' => ['required', 'uuid'],
-        ]);
-
-        $companyId = (string) $request->input('company_id');
+        $companyId = $this->companyContext->requireCompanyId();
 
         $terminals = $this->dataProvider->listTerminalsForCompany($companyId);
 
@@ -126,19 +132,19 @@ final class Nf525ExportController extends Controller
      * Get paginated reprint audit log.
      *
      * GET /api/v1/compliance/nf525/reprint-log
-     * Query: company_id, terminal_id?, from?, to?, per_page?
+     * Query: terminal_id?, from?, to?, per_page? (company resolved from context)
      * Returns: Paginated reprint log
      */
     public function reprintLog(Request $request): JsonResponse
     {
         $request->validate([
-            'company_id' => ['required', 'uuid'],
             'terminal_id' => ['nullable', 'uuid'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
+        $companyId = $this->companyContext->requireCompanyId();
         $rawTerminalId = $request->input('terminal_id');
         $terminalId = is_string($rawTerminalId) ? $rawTerminalId : null;
         $rawFrom = $request->input('from');
@@ -147,7 +153,7 @@ final class Nf525ExportController extends Controller
         $toDate = is_string($rawTo) ? $rawTo : null;
 
         $filter = new Nf525ReprintLogFilter(
-            companyId: (string) $request->input('company_id'),
+            companyId: $companyId,
             terminalId: $terminalId,
             fromDate: $fromDate,
             toDate: $toDate,

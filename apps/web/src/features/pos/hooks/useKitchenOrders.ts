@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   getKitchenOrders,
   updateLineStatus,
@@ -7,6 +8,7 @@ import {
   type KitchenLineUpdateResponse,
 } from '../api/kitchenApi'
 import type { OrderData } from '../api/orderApi'
+import { scopedKeyPredicate, usePosTenantScope } from './usePosTenantScope'
 
 export const kitchenKeys = {
   all: ['kitchen'] as const,
@@ -18,9 +20,12 @@ export const kitchenKeys = {
  * Primary updates come via WebSocket (useKitchenChannel).
  */
 export function useKitchenOrders() {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery<OrderData[]>({
-    queryKey: kitchenKeys.orders(),
+    queryKey: tenantScopedKey([...kitchenKeys.orders()]),
     queryFn: getKitchenOrders,
+    enabled: hasTenantScope,
     refetchInterval: 30000, // 30s safety net polling
   })
 }
@@ -35,8 +40,8 @@ export function useUpdateLineStatus() {
   >({
     mutationFn: ({ orderId, lineId, status }) =>
       updateLineStatus(orderId, lineId, status),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: kitchenKeys.orders() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
     },
   })
 }
@@ -46,20 +51,25 @@ export function useBumpOrder() {
 
   return useMutation<OrderData, Error, string>({
     mutationFn: bumpOrder,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: kitchenKeys.orders() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
     },
   })
 }
 
 export function useMarkOrderServed() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<OrderData, Error, string>({
     mutationFn: markOrderServed,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: kitchenKeys.orders() })
-      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedKeyPredicate('orders', tenantId, companyId),
+        }),
+      ])
     },
   })
 }

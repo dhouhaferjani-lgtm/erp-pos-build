@@ -7,6 +7,7 @@ namespace App\Modules\Product\Presentation\Controllers;
 use App\Modules\Product\Application\DTOs\CertificationData;
 use App\Modules\Product\Domain\Certification;
 use App\Modules\Product\Domain\CertificationTranslation;
+use App\Shared\Architecture\CrossTenantRoute;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ class CertificationController extends Controller
     /**
      * List all certifications with sorting and filtering.
      */
+    #[CrossTenantRoute(reason: 'Certifications catalog: global reference data (the certifications table has no tenant_id column — every tenant queries the same shared regulatory certification catalog). Permission-gated by SetPermissionsTeam middleware on the route group, but cross-tenant by data design.')]
     public function index(Request $request): JsonResponse
     {
         // Get sort parameters
@@ -53,6 +55,7 @@ class CertificationController extends Controller
     /**
      * Get a single certification by ID.
      */
+    #[CrossTenantRoute(reason: 'Certifications catalog: reads a single global certification record from the platform-shared regulatory catalog (no tenant_id on table).')]
     public function show(Request $request, string $id): JsonResponse
     {
         $certification = Certification::find($id);
@@ -82,6 +85,7 @@ class CertificationController extends Controller
     /**
      * Create a new certification with translations.
      */
+    #[CrossTenantRoute(reason: 'Certifications catalog: creates a new entry in the platform-shared regulatory certification catalog with locale translations; every tenant sees the new record. Permission-gated.')]
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -138,6 +142,7 @@ class CertificationController extends Controller
     /**
      * Update an existing certification.
      */
+    #[CrossTenantRoute(reason: 'Certifications catalog: updates a global certification record in the platform-shared regulatory catalog (no tenant_id on table); cross-tenant by data design.')]
     public function update(Request $request, string $id): JsonResponse
     {
         $certification = Certification::find($id);
@@ -224,6 +229,7 @@ class CertificationController extends Controller
     /**
      * Delete a certification.
      */
+    #[CrossTenantRoute(reason: 'Certifications catalog: deletes a global certification record (no tenant_id on table) after checking certification_product usage; destructive operation affects every tenant\'s reference catalog.')]
     public function destroy(Request $request, string $id): JsonResponse
     {
         $certification = Certification::find($id);

@@ -9,6 +9,9 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Console\Command;
 
+/**
+ * @cross-tenant-by-design Maintenance task that left-joins products against stock_levels fleet-wide to find orphans; per-product remediation is anchored on the product's own company_id.
+ */
 class FixOrphanedProducts extends Command
 {
     /**

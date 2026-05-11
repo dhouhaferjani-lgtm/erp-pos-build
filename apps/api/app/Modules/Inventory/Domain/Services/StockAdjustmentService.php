@@ -35,9 +35,10 @@ final class StockAdjustmentService
         string $reference,
         string $userId,
         ?int $batchId = null,
+        ?string $expectedCompanyId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId): StockMovement {
-            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId);
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId): StockMovement {
+            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
 
             /** @var numeric-string $quantityBefore */
             $quantityBefore = $stockLevel->quantity;
@@ -47,6 +48,7 @@ final class StockAdjustmentService
 
             $movement = $this->recordMovement(
                 tenantId: $stockLevel->tenant_id,
+                companyId: $stockLevel->company_id,
                 productId: $productId,
                 locationId: $locationId,
                 type: MovementType::Receipt,
@@ -110,9 +112,10 @@ final class StockAdjustmentService
         string $reference,
         string $userId,
         ?int $batchId = null,
+        ?string $expectedCompanyId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId): StockMovement {
-            $stockLevel = $this->lockStockLevel($productId, $locationId);
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId): StockMovement {
+            $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
 
             /** @var numeric-string $available */
             $available = $stockLevel->getAvailableQuantity();
@@ -134,6 +137,7 @@ final class StockAdjustmentService
 
             $movement = $this->recordMovement(
                 tenantId: $stockLevel->tenant_id,
+                companyId: $stockLevel->company_id,
                 productId: $productId,
                 locationId: $locationId,
                 type: MovementType::Issue,
@@ -196,10 +200,13 @@ final class StockAdjustmentService
         string $quantity,
         string $reference,
         string $userId,
+        ?string $expectedCompanyId = null,
     ): void {
-        DB::transaction(function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId): void {
+        DB::transaction(function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $expectedCompanyId): void {
+            $resolvedCompanyId = $expectedCompanyId ?? $this->resolveCompanyId($fromLocationId);
+
             // Lock source stock
-            $sourceStock = $this->lockStockLevel($productId, $fromLocationId);
+            $sourceStock = $this->lockStockLevel($productId, $fromLocationId, $resolvedCompanyId);
 
             /** @var numeric-string $available */
             $available = $sourceStock->getAvailableQuantity();
@@ -221,6 +228,7 @@ final class StockAdjustmentService
 
             $sourceMovement = $this->recordMovement(
                 tenantId: $sourceStock->tenant_id,
+                companyId: $sourceStock->company_id,
                 productId: $productId,
                 locationId: $fromLocationId,
                 type: MovementType::TransferOut,
@@ -232,7 +240,7 @@ final class StockAdjustmentService
             );
 
             // Add to destination
-            $destStock = $this->getOrCreateStockLevel($productId, $toLocationId);
+            $destStock = $this->getOrCreateStockLevel($productId, $toLocationId, $resolvedCompanyId);
             /** @var numeric-string $destQuantityBefore */
             $destQuantityBefore = $destStock->quantity;
             $destQuantityAfter = bcadd($destQuantityBefore, $quantity, self::SCALE);
@@ -240,6 +248,7 @@ final class StockAdjustmentService
 
             $destMovement = $this->recordMovement(
                 tenantId: $destStock->tenant_id,
+                companyId: $destStock->company_id,
                 productId: $productId,
                 locationId: $toLocationId,
                 type: MovementType::TransferIn,
@@ -310,9 +319,10 @@ final class StockAdjustmentService
         string $locationId,
         string $quantity,
         string $reference,
+        ?string $expectedCompanyId = null,
     ): void {
-        DB::transaction(function () use ($productId, $locationId, $quantity, $reference): void {
-            $stockLevel = $this->lockStockLevel($productId, $locationId);
+        DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $expectedCompanyId): void {
+            $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
 
             /** @var numeric-string $available */
             $available = $stockLevel->getAvailableQuantity();
@@ -364,9 +374,10 @@ final class StockAdjustmentService
         string $locationId,
         string $quantity,
         string $reference,
+        ?string $expectedCompanyId = null,
     ): void {
-        DB::transaction(function () use ($productId, $locationId, $quantity, $reference): void {
-            $stockLevel = $this->lockStockLevel($productId, $locationId);
+        DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $expectedCompanyId): void {
+            $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
 
             /** @var numeric-string $reserved */
             $reserved = $stockLevel->reserved;
@@ -409,9 +420,10 @@ final class StockAdjustmentService
         string $newQuantity,
         string $reason,
         string $userId,
+        ?string $expectedCompanyId = null,
     ): StockMovement {
-        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId): StockMovement {
-            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId);
+        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId): StockMovement {
+            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId));
 
             /** @var numeric-string $quantityBefore */
             $quantityBefore = $stockLevel->quantity;
@@ -421,6 +433,7 @@ final class StockAdjustmentService
 
             $movement = $this->recordMovement(
                 tenantId: $stockLevel->tenant_id,
+                companyId: $stockLevel->company_id,
                 productId: $productId,
                 locationId: $locationId,
                 type: MovementType::Adjustment,
@@ -459,11 +472,24 @@ final class StockAdjustmentService
 
     /**
      * Get or create a stock level record for a product at a location.
+     *
+     * Scopes both the Location and Product lookups to $expectedCompanyId so a
+     * forged cross-company locationId or productId can never seed a StockLevel
+     * that mixes one company's product with another company's location. Throws
+     * ModelNotFoundException if either the location or the product does not
+     * belong to $expectedCompanyId.
      */
-    private function getOrCreateStockLevel(string $productId, string $locationId): StockLevel
-    {
-        $product = Product::findOrFail($productId);
-        $location = Location::findOrFail($locationId);
+    private function getOrCreateStockLevel(
+        string $productId,
+        string $locationId,
+        string $expectedCompanyId,
+    ): StockLevel {
+        $location = Location::query()
+            ->where('company_id', $expectedCompanyId)
+            ->findOrFail($locationId);
+        $product = Product::query()
+            ->where('company_id', $location->company_id)
+            ->findOrFail($productId);
 
         return StockLevel::firstOrCreate(
             [
@@ -482,17 +508,21 @@ final class StockAdjustmentService
     /**
      * Lock stock level for update (pessimistic locking).
      */
-    private function lockStockLevel(string $productId, string $locationId): StockLevel
-    {
+    private function lockStockLevel(
+        string $productId,
+        string $locationId,
+        string $expectedCompanyId,
+    ): StockLevel {
         $stockLevel = StockLevel::query()
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
+            ->where('company_id', $expectedCompanyId)
             ->lockForUpdate()
             ->first();
 
         if ($stockLevel === null) {
             // Create with zero quantity if doesn't exist
-            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId);
+            $stockLevel = $this->getOrCreateStockLevel($productId, $locationId, $expectedCompanyId);
 
             // Re-lock
             return StockLevel::query()
@@ -505,10 +535,23 @@ final class StockAdjustmentService
     }
 
     /**
+     * Resolve the company_id for a location when not provided by caller.
+     *
+     * Falls back to an unscoped Location fetch when the caller cannot supply
+     * a company_id (e.g., legacy call sites that pre-date this contract).
+     * New callers SHOULD pass expectedCompanyId directly to avoid this path.
+     */
+    private function resolveCompanyId(string $locationId): string
+    {
+        return Location::findOrFail($locationId)->company_id;
+    }
+
+    /**
      * Record a stock movement.
      */
     private function recordMovement(
         string $tenantId,
+        string $companyId,
         string $productId,
         string $locationId,
         MovementType $type,
@@ -518,7 +561,12 @@ final class StockAdjustmentService
         string $reference,
         string $userId,
     ): StockMovement {
-        $location = Location::findOrFail($locationId);
+        // Scope the Location lookup to $companyId (derived from the upstream
+        // trusted StockLevel). A forged locationId from another company would
+        // fail the company_id predicate and throw ModelNotFoundException.
+        $location = Location::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($locationId);
 
         return StockMovement::create([
             'tenant_id' => $tenantId,

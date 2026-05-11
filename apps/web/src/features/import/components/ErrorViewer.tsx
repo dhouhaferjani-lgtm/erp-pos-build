@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Download, Loader2 } from 'lucide-react'
 import { authenticatedDownload } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { importApi } from '../api/importApi'
 import { ValidationGrid } from './ValidationGrid'
 import { ValidationResults } from './ValidationResults'
@@ -14,20 +17,23 @@ interface ErrorViewerProps {
 
 export function ErrorViewer({ jobId, totalRows }: ErrorViewerProps) {
   const { t } = useTranslation('import')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [currentPage, setCurrentPage] = useState(1)
   const perPage = 50
 
   // Fetch error summary
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
-    queryKey: ['import-error-summary', jobId],
+    queryKey: tenantScopedKey(['import-error-summary', jobId]),
     queryFn: () => importApi.getErrorSummary(jobId),
+    enabled: !!tenantId && !!companyId,
   })
 
   // Fetch paginated errors
   const { data: errorsData, isLoading: errorsLoading } = useQuery({
-    queryKey: ['import-errors', jobId, currentPage, perPage],
+    queryKey: tenantScopedKey(['import-errors', jobId, currentPage, perPage]),
     queryFn: () => importApi.getErrors(jobId, currentPage, perPage),
-    enabled: summaryData?.data.has_errors === true,
+    enabled: summaryData?.data.has_errors === true && !!tenantId && !!companyId,
   })
 
   const handleDownloadErrors = async () => {

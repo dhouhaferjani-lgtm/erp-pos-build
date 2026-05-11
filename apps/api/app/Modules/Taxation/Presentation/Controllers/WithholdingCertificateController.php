@@ -77,6 +77,12 @@ class WithholdingCertificateController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        // api.taxation round-2 (Opus Finding 2, CRITICAL): pre-load
+        // certificate tenant-scoped before reading via the service. The
+        // repository's findById is cluster-blind; this controller-tier
+        // pre-load is the cluster invariant for read-tier scoping.
+        $this->requireTenantScopedCertificate($id);
+
         $certificate = $this->certificateService->findById($id);
 
         if (! $certificate) {
@@ -100,10 +106,17 @@ class WithholdingCertificateController extends Controller
      */
     public function store(CreateWithholdingCertificateRequest $request): JsonResponse
     {
-        /** @var Partner $partner */
-        $partner = Partner::findOrFail($request->input('partner_id'));
+        // api.taxation.013: tenant-scope Partner lookup. The validator at
+        // CreateWithholdingCertificateRequest also runs ScopedExists::
+        // tenantAndCompany on partner_id (api.taxation.001); this
+        // controller-tier check is defense-in-depth.
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
+
+        /** @var Partner $partner */
+        $partner = Partner::where('tenant_id', $tenantId)
+            ->where('company_id', $company->id)
+            ->findOrFail($request->input('partner_id'));
 
         $data = CreateWithholdingCertificateData::fromArray(
             array_merge($request->validated(), [
@@ -134,6 +147,12 @@ class WithholdingCertificateController extends Controller
     public function issue(string $id, Request $request): JsonResponse
     {
         try {
+            // api.taxation round-2 (Opus Finding 1, CRITICAL): pre-load
+            // tenant-scoped before issuing. issue() invokes the fiscal hash
+            // chain — a cross-tenant issue would bake a foreign tenant's
+            // chain sequence under the requesting tenant's identity.
+            $this->requireTenantScopedCertificate($id);
+
             /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
@@ -159,6 +178,9 @@ class WithholdingCertificateController extends Controller
     public function void(string $id, VoidCertificateRequest $request): JsonResponse
     {
         try {
+            // api.taxation round-2 (Opus Finding 1, CRITICAL): see issue().
+            $this->requireTenantScopedCertificate($id);
+
             /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
@@ -188,6 +210,11 @@ class WithholdingCertificateController extends Controller
     public function submitTEJ(string $id, SubmitToTEJRequest $request): JsonResponse
     {
         try {
+            // api.taxation round-2 (Opus Finding 1, CRITICAL): see issue().
+            // submitToTEJ fabricates a tax-authority submission; cross-tenant
+            // would falsely attribute a TEJ filing to a foreign tenant.
+            $this->requireTenantScopedCertificate($id);
+
             /** @var User $user */
             $user = $request->user();
             $userId = (string) $user->id;
@@ -216,6 +243,11 @@ class WithholdingCertificateController extends Controller
      */
     public function downloadPDF(string $id): Response
     {
+        // api.taxation round-2 (Opus Finding 2, CRITICAL): pre-fix downloadPDF
+        // streamed any tenant's certificate by UUID, leaking partner identity,
+        // amounts, hash chain entries, etc.
+        $this->requireTenantScopedCertificate($id);
+
         $certificate = $this->certificateRepository->findById($id);
 
         if (! $certificate) {
@@ -230,6 +262,10 @@ class WithholdingCertificateController extends Controller
      */
     public function downloadTEJXML(string $id): StreamedResponse
     {
+        // api.taxation round-2 (Opus Finding 2, CRITICAL): pre-fix
+        // downloadTEJXML returned any tenant's TEJ submission XML.
+        $this->requireTenantScopedCertificate($id);
+
         $certificate = $this->certificateRepository->findById($id);
 
         if (! $certificate) {
@@ -288,6 +324,10 @@ class WithholdingCertificateController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
+            // api.taxation round-2 (Opus Finding 2, CRITICAL): pre-fix
+            // destroy hard-deleted any tenant's draft certificate by UUID.
+            $this->requireTenantScopedCertificate($id);
+
             $this->certificateRepository->delete($id);
 
             return response()->json([
@@ -301,5 +341,23 @@ class WithholdingCertificateController extends Controller
                 ],
             ], 422);
         }
+    }
+
+    /**
+     * Pre-load a withholding certificate scoped by the current tenant + company.
+     *
+     * Throws ModelNotFoundException (-> 404 via Laravel exception handler)
+     * if the certificate exists but belongs to a foreign tenant. Each
+     * route-anchored handler calls this BEFORE delegating to the
+     * (cluster-blind) repository / service so the read tier enforces the
+     * cluster invariant. Mirrors the api.loyalty round-2 enroll pattern.
+     */
+    private function requireTenantScopedCertificate(string $id): WithholdingCertificate
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return WithholdingCertificate::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
     }
 }

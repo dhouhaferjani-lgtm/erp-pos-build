@@ -12,6 +12,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -60,13 +61,22 @@ class SmartPaymentController extends Controller
     public function previewAllocation(Request $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
         $validated = $request->validate([
-            'partner_id' => ['required', 'string', 'exists:partners,id'],
+            'partner_id' => [
+                'required',
+                'string',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
             'payment_amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'allocation_method' => ['required', new Enum(AllocationMethod::class)],
             'manual_allocations' => ['nullable', 'array'],
-            'manual_allocations.*.document_id' => ['required_with:manual_allocations', 'string', 'exists:documents,id'],
+            'manual_allocations.*.document_id' => [
+                'required_with:manual_allocations',
+                'string',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
         ]);
 
@@ -99,11 +109,22 @@ class SmartPaymentController extends Controller
      */
     public function applyAllocation(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $validated = $request->validate([
-            'payment_id' => ['required', 'string', 'exists:payments,id'],
+            'payment_id' => [
+                'required',
+                'string',
+                ScopedExists::tenantAndCompany('payments', $tenantId, $companyId),
+            ],
             'allocation_method' => ['required', new Enum(AllocationMethod::class)],
             'manual_allocations' => ['nullable', 'array'],
-            'manual_allocations.*.document_id' => ['required_with:manual_allocations', 'string', 'exists:documents,id'],
+            'manual_allocations.*.document_id' => [
+                'required_with:manual_allocations',
+                'string',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
             'manual_allocations.*.amount' => ['required_with:manual_allocations', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
         ]);
 
@@ -129,9 +150,17 @@ class SmartPaymentController extends Controller
     public function getOpenInvoices(string $partnerId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
 
-        // Validate partner belongs to the company
-        $partner = Partner::where('company_id', $companyId)
+        // Opus round-4 Finding 15 — resolve the partner under BOTH tenant_id
+        // AND company_id (cluster invariant Codex established in round-3
+        // Finding 14: BOTH tenant_id AND company_id on every read whose
+        // anchor came from a route param). The service-tier read in
+        // PaymentAllocationService::getOpenInvoices is similarly hardened
+        // for defense in depth.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('id', $partnerId)
             ->first();
 
@@ -145,7 +174,9 @@ class SmartPaymentController extends Controller
         }
 
         // Get invoices with outstanding balance (posted, not fully paid)
-        $openInvoices = Document::where('company_id', $companyId)
+        $openInvoices = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)

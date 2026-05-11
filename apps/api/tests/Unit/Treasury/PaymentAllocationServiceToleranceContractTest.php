@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -127,6 +128,11 @@ final class PaymentAllocationServiceToleranceContractTest extends TestCase
             'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome,
             'is_active' => true,
         ]);
+
+        // Pin CompanyContext so PaymentAllocationService::previewAllocation
+        // (Opus round-4 Finding 15 fix) and ::applyAllocation can resolve
+        // tenantId via $this->companyContext->requireCompany()->tenant_id.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     public function test_payment_allocation_invokes_tolerance_contract_with_country_and_currency(): void

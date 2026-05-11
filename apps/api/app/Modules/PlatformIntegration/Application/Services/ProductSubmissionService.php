@@ -34,6 +34,15 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
 
     /**
      * Upload a photo directly to the pre-signed URL (bypasses PlatformHttpClient).
+     *
+     * Pre-signed URL: the URL IS the auth credential. Tenant headers would
+     * be dead weight (S3/GCS doesn't read them). The pre-sign step
+     * (issued by PlatformHttpClient elsewhere via requestUploadUrl()) is
+     * where tenant context binds — the pre-signed URL is a one-shot
+     * upload credential minted in response to a tenant-bound API call.
+     * Re-applying the X-Tenant-Id / X-Company-Id discipline here would
+     * not improve isolation and would couple us to a header convention
+     * the storage layer doesn't honor.
      */
     public function uploadPhoto(string $uploadUrl, string $fileContents, string $contentType): void
     {

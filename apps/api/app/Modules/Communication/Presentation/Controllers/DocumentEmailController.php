@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Communication\Application\Services\DocumentEmailService;
 use App\Modules\Communication\Presentation\Requests\SendDocumentEmailRequest;
 use App\Modules\Document\Domain\Document;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
@@ -20,6 +21,7 @@ final class DocumentEmailController extends Controller
     /**
      * Send a document via email.
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document Route Model Binding does NOT auto-scope by tenant (Document model has only scopeForTenant local scope, not global). The bound $document is forwarded to DocumentEmailService::send which generates the PDF via the document\'s data — including cross-tenant data if a different-tenant document id is passed. Tracked for future api.document cluster fix.')]
     public function send(SendDocumentEmailRequest $request, Document $document): JsonResponse
     {
         try {
@@ -61,6 +63,7 @@ final class DocumentEmailController extends Controller
     /**
      * Queue a document email for later sending.
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — same Document Route Model Binding issue as send(); the queue path defers actual email sending to a job, but the Document binding gap is identical. Tracked for future api.document cluster fix.')]
     public function queue(SendDocumentEmailRequest $request, Document $document): JsonResponse
     {
         try {

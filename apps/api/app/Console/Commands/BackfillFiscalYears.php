@@ -14,6 +14,8 @@ use Illuminate\Console\Command;
  * Usage:
  *   php artisan fiscal-years:backfill
  *   php artisan fiscal-years:backfill --company=uuid
+ *
+ * @cross-tenant-by-design Iterates Company::doesntHave('fiscalYears') fleet-wide to backfill missing fiscal-year rows; --company narrows but is optional.
  */
 class BackfillFiscalYears extends Command
 {

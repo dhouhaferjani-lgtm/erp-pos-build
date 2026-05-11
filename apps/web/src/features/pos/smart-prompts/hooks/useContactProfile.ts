@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPatch } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
 interface ContactProfile {
   id: string
@@ -12,11 +14,12 @@ interface ContactProfile {
 
 export function useContactProfile(contactId: string | null | undefined) {
   const queryClient = useQueryClient()
+  const { hasTenantScope } = usePosTenantScope()
 
   const { data: profile } = useQuery({
-    queryKey: ['contact-profile', contactId],
+    queryKey: tenantScopedKey(['contact-profile', contactId]),
     queryFn: () => apiGet<ContactProfile>(`/contacts/${contactId}`),
-    enabled: !!contactId,
+    enabled: !!contactId && hasTenantScope,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -29,8 +32,10 @@ export function useContactProfile(contactId: string | null | undefined) {
           updated_at: new Date().toISOString(),
         },
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contact-profile', contactId] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey(['contact-profile', contactId]),
+      })
     },
   })
 

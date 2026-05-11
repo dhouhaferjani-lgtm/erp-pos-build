@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -81,7 +82,11 @@ class BankReconciliationController extends Controller
         $userId = (string) $user->id;
 
         $validated = $request->validate([
-            'repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
+            'repository_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'statement_date' => ['required', 'date'],
             'statement_balance' => ['required', 'numeric'],
             'notes' => ['nullable', 'string', 'max:1000'],

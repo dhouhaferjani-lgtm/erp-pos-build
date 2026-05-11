@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\PlatformIntegration\Infrastructure\Http;
 
+use App\Modules\Company\Services\CompanyContext;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
@@ -22,6 +23,10 @@ final class PlatformHttpClient
     private const CIRCUIT_FAILURE_WINDOW = 30;
 
     private const CIRCUIT_OPEN_DURATION = 30;
+
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
 
     /**
      * @param  array<string, string>  $queryParams
@@ -209,11 +214,36 @@ final class PlatformHttpClient
 
         return Http::baseUrl((string) $baseUrl)
             ->withHeader('X-API-Key', (string) $apiKey)
+            ->withHeaders($this->tenantHeaders())
             ->timeout(10)
             ->connectTimeout(5)
             ->retry(3, 200, fn (\Exception $e, PendingRequest $request) => $e instanceof ConnectionException
                 || ($e instanceof RequestException && in_array($e->response->status(), [429, 500, 502, 503, 504], true))
             );
+    }
+
+    /**
+     * Capture the originating tenant + company at request-creation time
+     * so retries (which may happen in a different async context) preserve
+     * the headers from the time the request was minted, not whatever
+     * CompanyContext happens to hold when the retry fires.
+     *
+     * MANDATORY — both calls throw RuntimeException on empty context. An
+     * empty CompanyContext at outbound HTTP time is a real upstream bug
+     * (queue job that didn't bind context, console command without
+     * TenantScopedCommand, etc.); failing loud surfaces the bug rather
+     * than silently sending headerless requests that the platform-side
+     * Finding J enforcement (platform.synerivia-tenant-enforcement
+     * cluster) would reject anyway.
+     *
+     * @return array<string, string>
+     */
+    private function tenantHeaders(): array
+    {
+        return [
+            'X-Tenant-Id' => $this->companyContext->requireTenantId(),
+            'X-Company-Id' => $this->companyContext->requireCompanyId(),
+        ];
     }
 
     private function buildUrl(string $path): string

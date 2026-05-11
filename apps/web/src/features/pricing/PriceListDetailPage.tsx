@@ -11,7 +11,11 @@ import {
   Package,
   X,
 } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceList, deletePriceList, removePriceListItem, removePriceListFromPartner } from './api'
+import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListItem, PriceListPartner } from './types'
 
 export function PriceListDetailPage() {
@@ -19,34 +23,38 @@ export function PriceListDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [showAssignPartnerModal, setShowAssignPartnerModal] = useState(false)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['price-list', id],
+    queryKey: tenantScopedKey(['price-list', id]),
     queryFn: () => fetchPriceList(id!),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && !!tenantId && !!companyId,
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deletePriceList(id!),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['price-lists'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: priceListsInvalidationPredicate(tenantId, companyId),
+      })
       navigate('/pricing/price-lists')
     },
   })
 
   const removeItemMutation = useMutation({
     mutationFn: (itemId: string) => removePriceListItem(id!, itemId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['price-list', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) })
     },
   })
 
   const removePartnerMutation = useMutation({
     mutationFn: (partnerId: string) => removePriceListFromPartner(id!, partnerId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['price-list', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) })
     },
   })
 

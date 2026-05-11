@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Voucher\Domain\Enums\VoucherEvent;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,6 +21,12 @@ use Illuminate\Validation\Rule;
  */
 final class VoucherLedgerSyncRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         // Authorization handled by middleware + Gate::authorize in controller.
@@ -30,6 +38,8 @@ final class VoucherLedgerSyncRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
             'entries' => ['required', 'array', 'min:1', 'max:100'],
             'entries.*.id' => ['required', 'uuid'],
@@ -38,7 +48,16 @@ final class VoucherLedgerSyncRequest extends FormRequest
             'entries.*.amount' => ['required', 'string'],
             'entries.*.currency' => ['required', 'string', 'size:3'],
             'entries.*.receipt_id' => ['nullable', 'uuid'],
-            'entries.*.terminal_id' => ['nullable', 'uuid'],
+            // api.pos-stabilization round-2 Opus Finding 1 — scope
+            // entries.*.terminal_id by authenticated tenant + company so a
+            // cross-tenant terminal_id is rejected at the validator BEFORE
+            // VoucherLedgerPushService::push runs. Belt-and-braces with the
+            // service-tier Terminal lookup that also pins tenant + company
+            // from CompanyContext.
+            'entries.*.terminal_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('pos_terminals', $company->tenant_id, $company->id),
+            ],
             'entries.*.user_id' => ['required', 'uuid'],
             'entries.*.occurred_at' => ['required', 'date'],
             // The client also sends sync_status / sync_error / synced_at;

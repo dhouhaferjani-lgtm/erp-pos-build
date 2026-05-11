@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Tag, Calendar, Package } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceLists } from './api'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
@@ -13,13 +16,16 @@ export function PriceListListPage() {
   const { t } = useTranslation(['common', 'pricing'])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['price-lists', statusFilter],
+    queryKey: tenantScopedKey(['price-lists', statusFilter]),
     queryFn: () =>
       fetchPriceLists(
         statusFilter === 'all' ? undefined : { is_active: statusFilter === 'active' }
       ),
+    enabled: !!tenantId && !!companyId,
   })
 
   const priceLists = data?.data ?? []

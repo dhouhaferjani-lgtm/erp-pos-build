@@ -6,6 +6,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Package, Grid, List, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useAuthStore } from '../../stores/authStore'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { formatCurrency } from '../../lib/format'
 import { useTableState } from '../../hooks/useTableState'
 import { SortableTableHeader } from '../../components/ui/SortableTableHeader'
@@ -58,7 +60,11 @@ export function ProductListPage() {
   const { t } = useTranslation(['common', 'inventory'])
   usePageTitle('products.title', 'inventory')
 
-  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const currentCompany = useCompanyStore((state) =>
+    state.companies.find((company) => company.id === state.currentCompanyId) ?? null
+  )
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
 
@@ -69,13 +75,14 @@ export function ProductListPage() {
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['products', tableState.getQueryParams()],
+    queryKey: tenantScopedKey(['products', tableState.getQueryParams()]),
     queryFn: async () => {
       const params = new URLSearchParams(tableState.getQueryParams())
       const queryString = params.toString()
       const response = await api.get<ProductsResponse>(`/products${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   // Reset to page 1 when filters or sort change

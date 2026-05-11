@@ -4,24 +4,43 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class RefundPrepaymentRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
     }
 
     /**
-     * @return array<string, array<int, string>>
+     * @return array<string, array<int, mixed>>
      */
     public function rules(): array
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         return [
             'amount' => ['required', 'numeric', 'gt:0'],
-            'payment_method_id' => ['required', 'uuid', 'exists:payment_methods,id'],
-            'repository_id' => ['required', 'uuid', 'exists:payment_repositories,id'],
+            'payment_method_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'repository_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
             'reason' => ['nullable', 'string', 'max:1000'],
         ];
     }

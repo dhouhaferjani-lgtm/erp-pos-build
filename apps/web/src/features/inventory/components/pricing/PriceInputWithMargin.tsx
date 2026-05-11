@@ -4,6 +4,9 @@ import { DollarSign, TrendingUp, AlertCircle } from 'lucide-react'
 import { api } from '../../../../lib/api'
 import { MarginIndicator } from './MarginIndicator'
 import { useCurrency } from '@/hooks/useCurrency'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface MarginCheckResponse {
   data: {
@@ -42,6 +45,8 @@ export function PriceInputWithMargin({
   showSuggestedPrice = true,
 }: PriceInputWithMarginProps) {
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [localValue, setLocalValue] = useState(value.toString())
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -57,7 +62,7 @@ export function PriceInputWithMargin({
 
   // Fetch margin check
   const { data: marginData, isLoading } = useQuery({
-    queryKey: ['margin-check', productId, debouncedValue],
+    queryKey: tenantScopedKey(['margin-check', productId, debouncedValue]),
     queryFn: async () => {
       const response = await api.post<MarginCheckResponse>('/pricing/check-margin', {
         product_id: productId,
@@ -65,7 +70,7 @@ export function PriceInputWithMargin({
       })
       return response.data
     },
-    enabled: debouncedValue > 0 && !disabled,
+    enabled: debouncedValue > 0 && !disabled && !!tenantId && !!companyId,
     staleTime: 10000, // Cache for 10 seconds
   })
 

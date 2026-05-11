@@ -14,7 +14,15 @@
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <testsuite name="Architecture">
+            <directory>tests/Architecture</directory>
+        </testsuite>
     </testsuites>
+    <groups>
+        <exclude>
+            <group>sweep-progress</group>
+        </exclude>
+    </groups>
     <source>
         <include>
             <directory>app</directory>
@@ -24,6 +32,7 @@
         <ini name="memory_limit" value="2G"/>
         <ini name="max_execution_time" value="0"/>
         <env name="APP_ENV" value="testing"/>
+        <env name="APP_DEBUG" value="false"/>
 <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

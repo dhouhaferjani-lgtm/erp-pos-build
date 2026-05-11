@@ -45,6 +45,24 @@ final class OrderManagementService
     }
 
     /**
+     * Round-4 Codex Finding closure — every route-anchored Order lookup MUST
+     * be scoped by authenticated CompanyContext tenant + company predicates.
+     * Pre-fix: addLine/modifyLine/removeLine/sendToKitchen/closeOrder/
+     * cancelOrder/updateLineStatus/bumpOrder/markOrderServed each ran
+     * Order::lockForUpdate()->findOrFail($routeOrderId) with no scope, so a
+     * tenant-A operator who knew a tenant-B order UUID could mutate that
+     * foreign order via the production HTTP routes.
+     *
+     * @return array{0: string, 1: string} [tenantId, companyId]
+     */
+    private function tenantAndCompany(): array
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return [$company->tenant_id, $company->id];
+    }
+
+    /**
      * Create a new order on a terminal.
      *
      * @throws \RuntimeException If terminal is not active or no active shift
@@ -94,7 +112,13 @@ final class OrderManagementService
             $customerIdentifier = null;
             $resolvedPartnerId = null;
             if ($partnerId !== null) {
-                $partner = Partner::find($partnerId);
+                // api.pos-stabilization.020 — scope Partner::find by tenant + company.
+                // Cross-tenant partner_id resolves to null, suppressing the
+                // customer info enrichment without disrupting order creation.
+                $partner = Partner::query()
+                    ->where('tenant_id', $company->tenant_id)
+                    ->where('company_id', $company->id)
+                    ->find($partnerId);
                 if ($partner !== null) {
                     $customerName = $customerName ?? $partner->name;
                     $customerIdentifier = $partner->phone ?? $partner->email ?? null;
@@ -105,10 +129,19 @@ final class OrderManagementService
             $cashierName = $shift->cashier->name ?? 'Unknown';
             $currency = $company->currency ?? 'TND';
 
-            // Validate and lock table if provided
+            // Validate and lock table if provided.
+            // Round-3 Codex Finding 4 — anchor the locked-row SELECT on the
+            // anchoring terminal's tenant + company so a programmatic caller
+            // bypassing the FormRequest validator (queue retry, backfill)
+            // cannot mutate or assign a foreign tenant's table.
             if ($tableId !== null) {
                 /** @var Table $table */
-                $table = Table::lockForUpdate()->findOrFail($tableId);
+                $table = Table::query()
+                    ->where('tenant_id', $terminal->tenant_id)
+                    ->where('company_id', $terminal->company_id)
+                    ->where('id', $tableId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
                 if (! $table->isAvailable()) {
                     throw new \RuntimeException('Table is not available for assignment.');
@@ -170,16 +203,29 @@ final class OrderManagementService
         ?array $modifiers,
         ?string $specialInstructions,
     ): OrderLine {
-        return DB::transaction(function () use ($orderId, $productId, $quantity, $unitPrice, $taxRate, $discountAmount, $modifiers, $specialInstructions): OrderLine {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $productId, $quantity, $unitPrice, $taxRate, $discountAmount, $modifiers, $specialInstructions, $tenantId, $companyId): OrderLine {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->isOpen()) {
                 throw new \RuntimeException('Cannot add lines to a non-open order');
             }
 
+            // api.pos-stabilization.021 — scope Product::findOrFail by the
+            // anchoring order's tenant + company. Cross-tenant product_id
+            // raises ModelNotFoundException before any OrderLine is written.
             /** @var Product $product */
-            $product = Product::findOrFail($productId);
+            $product = Product::query()
+                ->where('tenant_id', $order->tenant_id)
+                ->where('company_id', $order->company_id)
+                ->findOrFail($productId);
 
             // Calculate line totals
             $lineCalc = $this->calculateLineTotals($quantity, $unitPrice, $taxRate, $discountAmount);
@@ -227,9 +273,16 @@ final class OrderManagementService
         ?array $modifiers,
         ?string $specialInstructions,
     ): OrderLine {
-        return DB::transaction(function () use ($orderId, $lineId, $quantity, $discountAmount, $modifiers, $specialInstructions): OrderLine {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $lineId, $quantity, $discountAmount, $modifiers, $specialInstructions, $tenantId, $companyId): OrderLine {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->isOpen()) {
                 throw new \RuntimeException('Cannot modify lines on a non-open order');
@@ -278,9 +331,16 @@ final class OrderManagementService
      */
     public function removeLine(string $orderId, string $lineId): void
     {
-        DB::transaction(function () use ($orderId, $lineId): void {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        DB::transaction(function () use ($orderId, $lineId, $tenantId, $companyId): void {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->isOpen()) {
                 throw new \RuntimeException('Cannot remove lines from a non-open order');
@@ -305,9 +365,17 @@ final class OrderManagementService
      */
     public function sendToKitchen(string $orderId): Order
     {
-        return DB::transaction(function () use ($orderId): Order {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $tenantId, $companyId): Order {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->with('lines')
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->canBeSentToKitchen()) {
                 throw new \RuntimeException('Order cannot be sent to kitchen. Must be open with at least one line.');
@@ -332,6 +400,10 @@ final class OrderManagementService
                 OrderSentToKitchen::dispatch($order->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -346,9 +418,17 @@ final class OrderManagementService
      */
     public function closeOrder(string $orderId, OrderToReceiptService $orderToReceiptService): Order
     {
-        return DB::transaction(function () use ($orderId, $orderToReceiptService): Order {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $orderToReceiptService, $tenantId, $companyId): Order {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->with('lines')
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->canBeClosed()) {
                 throw new \RuntimeException('Order cannot be closed. Must have lines and not be already closed/cancelled.');
@@ -362,18 +442,28 @@ final class OrderManagementService
                 'receipt_id' => $receipt->id,
             ]);
 
-            // Release table if assigned
+            // Release table if assigned. Round-4 — anchor on already-scoped
+            // $order's tenant + company so a stale/foreign $order->table_id
+            // cannot mutate a foreign tenant's table row.
             if ($order->table_id !== null) {
-                Table::where('id', $order->table_id)->update([
-                    'status' => TableStatus::Available,
-                    'current_order_id' => null,
-                ]);
+                Table::query()
+                    ->where('tenant_id', $order->tenant_id)
+                    ->where('company_id', $order->company_id)
+                    ->where('id', $order->table_id)
+                    ->update([
+                        'status' => TableStatus::Available,
+                        'current_order_id' => null,
+                    ]);
             }
 
             DB::afterCommit(function () use ($order, $receipt): void {
                 OrderClosed::dispatch($order->id, $receipt->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -388,9 +478,16 @@ final class OrderManagementService
      */
     public function cancelOrder(string $orderId, ?string $reason): Order
     {
-        return DB::transaction(function () use ($orderId, $reason): Order {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $reason, $tenantId, $companyId): Order {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->canBeCancelled()) {
                 throw new \RuntimeException('Order cannot be cancelled. Already closed or cancelled.');
@@ -409,14 +506,24 @@ final class OrderManagementService
 
             $order->update($updateData);
 
-            // Release table if assigned
+            // Release table if assigned. Round-4 — anchor on already-scoped
+            // $order's tenant + company so cross-tenant table_id cannot leak
+            // even if (somehow) $order->table_id pointed elsewhere.
             if ($order->table_id !== null) {
-                Table::where('id', $order->table_id)->update([
-                    'status' => TableStatus::Available,
-                    'current_order_id' => null,
-                ]);
+                Table::query()
+                    ->where('tenant_id', $order->tenant_id)
+                    ->where('company_id', $order->company_id)
+                    ->where('id', $order->table_id)
+                    ->update([
+                        'status' => TableStatus::Available,
+                        'current_order_id' => null,
+                    ]);
             }
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -434,9 +541,16 @@ final class OrderManagementService
      */
     public function updateLineStatus(string $orderId, string $lineId, OrderLineStatus $newStatus): OrderLine
     {
-        return DB::transaction(function () use ($orderId, $lineId, $newStatus): OrderLine {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $lineId, $newStatus, $tenantId, $companyId): OrderLine {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             /** @var OrderLine $line */
             $line = OrderLine::where('order_id', $order->id)->findOrFail($lineId);
@@ -476,9 +590,17 @@ final class OrderManagementService
      */
     public function markOrderServed(string $orderId): Order
     {
-        return DB::transaction(function () use ($orderId): Order {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $tenantId, $companyId): Order {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->with('lines')
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! $order->canBeServed()) {
                 throw new \RuntimeException('Order must be in Ready status to be marked as served.');
@@ -497,6 +619,10 @@ final class OrderManagementService
                     'status' => OrderLineStatus::Served,
                 ]);
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 
@@ -511,9 +637,17 @@ final class OrderManagementService
      */
     public function bumpOrder(string $orderId): Order
     {
-        return DB::transaction(function () use ($orderId): Order {
+        [$tenantId, $companyId] = $this->tenantAndCompany();
+
+        return DB::transaction(function () use ($orderId, $tenantId, $companyId): Order {
             /** @var Order $order */
-            $order = Order::lockForUpdate()->with('lines')->findOrFail($orderId);
+            $order = Order::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $orderId)
+                ->with('lines')
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if (! in_array($order->status, [OrderStatus::SentToKitchen, OrderStatus::Ready], true)) {
                 throw new \RuntimeException('Order must be sent to kitchen to be bumped.');
@@ -541,6 +675,10 @@ final class OrderManagementService
                 OrderReady::dispatch($order->id);
             });
 
+            // Round-5 — structurally_protected_by_prior_lock: $order was just
+            // loaded under WHERE tenant_id=? AND company_id=? AND id=? with
+            // lockForUpdate; the row pinned by ->fresh($order->id) cannot
+            // belong to a different tenant/company.
             /** @var Order $freshOrder */
             $freshOrder = $order->fresh(['lines']);
 

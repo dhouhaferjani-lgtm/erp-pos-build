@@ -13,6 +13,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
+/**
+ * @cross-tenant-by-design Per-seller fan-out queue job from the system-wide marketplace:delta-sync scheduler closure (MarketplaceServiceProvider::boot iterates MarketplaceSeller::active() globally and dispatches one SyncSellerListingsJob per seller every $intervalMinutes). The unscoped MarketplaceSeller::find($this->sellerId) lookup is gated by globally-unique seller UUID; downstream Product::where('company_id', $seller->company_id)->where('is_active', true)->where('is_physical', true) queries explicitly filter by seller.company_id. Same defense-in-depth seller-resolve hardening as ReconcileListingsJob — tracked at docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md (Finding B).
+ */
 class SyncSellerListingsJob implements ShouldQueue
 {
     use Dispatchable;

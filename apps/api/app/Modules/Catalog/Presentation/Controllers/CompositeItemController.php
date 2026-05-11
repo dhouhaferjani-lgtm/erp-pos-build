@@ -10,6 +10,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Presentation\Requests\StoreCompositeItemRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateCompositeItemRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -62,13 +63,17 @@ class CompositeItemController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.018 round-2: ::query() prefix + tenant_id predicate so
+        // the AST scanner detects scope and cross-tenant UUIDs are rejected.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with(['category', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'activeRecipe.lines.unit', 'variants', 'modifierGroups.modifiers'])
             ->findOrFail($id);
 
@@ -92,13 +97,17 @@ class CompositeItemController extends Controller
 
     public function update(UpdateCompositeItemRequest $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.018 round-2: ::query() prefix + tenant_id predicate.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($id);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
         $item->update($request->validated());
         $item->load(['category', 'activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent', 'variants', 'modifierGroups.modifiers']);
 
@@ -107,13 +116,17 @@ class CompositeItemController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.018 round-2: ::query() prefix + tenant_id predicate.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($id);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
         $item->delete();
 
         return response()->json(null, 204);
@@ -121,13 +134,16 @@ class CompositeItemController extends Controller
 
     public function duplicate(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.018 round-2: ::query() prefix + tenant_id predicate.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with(['activeRecipe.lines', 'variants'])
             ->findOrFail($id);
 
@@ -166,18 +182,24 @@ class CompositeItemController extends Controller
 
     public function checkAvailability(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.018 round-2: ::query() prefix + tenant_id predicate for item lookup.
+        // api.catalog.025 round-2: location_id scoped to caller's company via ScopedExists
+        // (locations has no tenant_id — company-scoped only, per migration 2025_11_30_105000).
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $locationId = $request->input('location_id');
-        if (! is_string($locationId) || ! Str::isUuid($locationId)) {
-            return response()->json(['message' => 'location_id is required and must be a valid UUID'], 422);
-        }
+        $validated = $request->validate([
+            'location_id' => ['required', 'uuid', ScopedExists::company('locations', $company->id)],
+        ]);
 
-        $item = CompositeItem::where('company_id', $companyId)
+        $locationId = $validated['location_id'];
+
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with(['activeRecipe.lines.product', 'activeRecipe.lines.compositeItemComponent'])
             ->findOrFail($id);
 

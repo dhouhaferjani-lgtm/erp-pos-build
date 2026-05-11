@@ -15,6 +15,11 @@ use Illuminate\Contracts\Validation\ValidationRule;
  *
  * Traverses the candidate component's recipe tree to ensure the owner CompositeItem
  * does not appear as a descendant, which would create an infinite loop.
+ *
+ * api.catalog.026 round-2: callerTenantId + callerCompanyId are passed so the
+ * traversal is scoped to the caller's tenant+company — cross-tenant composite
+ * item ids are silently treated as "no cycle found" (CompositeItem::find returns
+ * null → wouldCreateCycle returns false) rather than leaking data.
  */
 class NoCircularCompositeItemReference implements ValidationRule
 {
@@ -22,6 +27,8 @@ class NoCircularCompositeItemReference implements ValidationRule
 
     public function __construct(
         private readonly string $ownerCompositeItemId,
+        private readonly string $callerTenantId = '',
+        private readonly string $callerCompanyId = '',
     ) {}
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
@@ -49,7 +56,15 @@ class NoCircularCompositeItemReference implements ValidationRule
             return false;
         }
 
-        $compositeItem = CompositeItem::with('activeRecipe.lines')->find($compositeItemId);
+        // api.catalog.026 round-2: scope lookup to caller's tenant+company so a
+        // cross-tenant compositeItemId resolves to null (no cycle) without leaking data.
+        $query = CompositeItem::query()->with('activeRecipe.lines');
+        if ($this->callerTenantId !== '') {
+            $query->where('tenant_id', $this->callerTenantId)
+                ->where('company_id', $this->callerCompanyId);
+        }
+
+        $compositeItem = $query->find($compositeItemId);
 
         if ($compositeItem === null || $compositeItem->activeRecipe === null) {
             return false;

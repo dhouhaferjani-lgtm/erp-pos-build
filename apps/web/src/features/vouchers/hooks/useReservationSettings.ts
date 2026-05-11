@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCompany } from '@/hooks/useCompany'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { getVoucherReservationSettings } from '../api/voucherApi'
 
 export function useReservationSettings() {
-  const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useQuery({
-    queryKey: ['reservation-settings', currentCompany?.id],
-    queryFn: () => getVoucherReservationSettings(currentCompany!.id),
-    enabled: !!currentCompany?.id,
+    queryKey: tenantScopedKey(['reservation-settings']),
+    queryFn: () => getVoucherReservationSettings(companyId!),
+    enabled: !!tenantId && !!companyId,
   })
 }

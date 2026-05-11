@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -29,6 +30,7 @@ class PaymentAllocationService
         private PaymentToleranceService $toleranceService,
         private GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     private function scale(): int
@@ -54,8 +56,16 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
+        // Opus round-4 Finding 15 — resolve tenantId from CompanyContext for
+        // defense-in-depth scoping inside the private getOpenInvoices() helper.
+        // The controller-tier ScopedExists::tenantAndCompany() already guards
+        // partner_id; this re-scoping enforces the cluster invariant (BOTH
+        // tenant_id AND company_id on every read whose anchor came from a
+        // route param) at the service layer too.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         // Get open invoices for partner
-        $openInvoices = $this->getOpenInvoices($companyId, $partnerId, $allocationMethod);
+        $openInvoices = $this->getOpenInvoices($tenantId, $companyId, $partnerId, $allocationMethod);
 
         if ($allocationMethod === AllocationMethod::MANUAL && $manualAllocations !== null) {
             return $this->previewManualAllocation($paymentAmount, $manualAllocations, $companyId);
@@ -75,7 +85,14 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
-        $payment = Payment::with(['company', 'partner', 'repository'])->findOrFail($paymentId);
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $payment = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->with(['company', 'partner', 'repository'])
+            ->findOrFail($paymentId);
 
         // Get preview
         $preview = $this->previewAllocation(
@@ -87,7 +104,7 @@ class PaymentAllocationService
         );
 
         // Use DB transaction with pessimistic locking for financial operations
-        $result = DB::transaction(function () use ($payment, $preview) {
+        $result = DB::transaction(function () use ($payment, $preview, $tenantId, $companyId) {
             $createdAllocations = [];
             $totalAllocated = '0.0000';
             /** @var array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}> $fullyPaidDocuments */
@@ -96,7 +113,11 @@ class PaymentAllocationService
             foreach ($preview['allocations'] as $allocation) {
                 // Lock the document for update to prevent concurrent modifications
                 /** @var Document $document */
-                $document = Document::lockForUpdate()->findOrFail($allocation['document_id']);
+                $document = Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->findOrFail($allocation['document_id']);
 
                 // Create allocation record
                 PaymentAllocation::create([
@@ -174,7 +195,10 @@ class PaymentAllocationService
 
                 foreach ($preview['allocations'] as $allocation) {
                     /** @var Document $doc */
-                    $doc = Document::find($allocation['document_id']);
+                    $doc = Document::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->find($allocation['document_id']);
                     /** @var numeric-string $allocAmount */
                     $allocAmount = $allocation['amount'];
                     if ($doc->type === DocumentType::SalesOrder) {
@@ -302,11 +326,20 @@ class PaymentAllocationService
     /**
      * Get open documents for a partner (invoices and sales orders)
      *
+     * Opus round-4 Finding 15 — signature now requires tenantId and applies
+     * BOTH tenant_id AND company_id predicates on the Document read. This
+     * is the service-tier defense-in-depth pair to the controller fix in
+     * SmartPaymentController::getOpenInvoices(); the cluster invariant
+     * Codex established in round-3 Finding 14 demands both predicates on
+     * every read whose anchor came from a route param.
+     *
      * @return Collection<int, Document>
      */
-    private function getOpenInvoices(string $companyId, string $partnerId, AllocationMethod $method): Collection
+    private function getOpenInvoices(string $tenantId, string $companyId, string $partnerId, AllocationMethod $method): Collection
     {
-        $query = Document::where('company_id', $companyId)
+        $query = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('partner_id', $partnerId)
             // Allow both posted invoices AND confirmed sales orders
             ->where(function ($q) {
@@ -460,11 +493,16 @@ class PaymentAllocationService
      */
     private function previewManualAllocation(string $paymentAmount, array $manualAllocations, string $companyId): array
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $allocations = [];
         $totalAllocated = '0.0000';
 
         foreach ($manualAllocations as $manual) {
-            $invoice = Document::findOrFail($manual['document_id']);
+            $invoice = Document::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->findOrFail($manual['document_id']);
             $invoiceBalance = $this->getInvoiceBalance($invoice);
 
             $allocations[] = [

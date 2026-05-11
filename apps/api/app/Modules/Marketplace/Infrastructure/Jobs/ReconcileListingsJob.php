@@ -15,6 +15,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
+/**
+ * @cross-tenant-by-design Per-seller fan-out queue job from the system-wide marketplace:reconcile scheduler closure (MarketplaceServiceProvider:38-42 iterates MarketplaceSeller::active() globally and dispatches one ReconcileListingsJob per seller). The unscoped MarketplaceSeller::find($this->sellerId) lookup is gated by globally-unique seller UUID. Two distinct downstream tenant-scope shapes apply: (1) Product reads explicitly filter by seller->company_id (lines 39-49) — Product carries company_id and the WHERE predicate is direct; (2) MarketplaceListing reads/updates filter by seller_id only (lines 54-58) because MarketplaceListing has no company_id column (verified at apps/api/app/Modules/Marketplace/Domain/Models/MarketplaceListing.php:53-70) — tenant isolation is anchored TRANSITIVELY through the seller_id FK to MarketplaceSeller (which carries company_id). Each MarketplaceSeller is exclusively per-tenant, so seller_id IS the per-tenant boundary for the listings table. Defense-in-depth seller-resolve hardening (re-asserting tenant on the MarketplaceSeller lookup itself, and any future MarketplaceListing schema migration that adds company_id) is tracked separately at docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md (Finding B) for api.marketplace.
+ */
 class ReconcileListingsJob implements ShouldQueue
 {
     use Dispatchable;

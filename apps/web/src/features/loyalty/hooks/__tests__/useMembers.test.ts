@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useMembers, useMember } from '../useMembers'
 
 vi.mock('../../api/memberApi', () => ({
@@ -28,6 +30,36 @@ function createWrapper() {
     return createElement(QueryClientProvider, { client: queryClient }, children)
   }
 }
+
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test',
+      email: 't@example.test',
+      tenant_id: tenantId,
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({
+    currentCompanyId: companyId,
+    companies: [],
+    isLoading: false,
+  })
+}
+
+beforeEach(() => {
+  setTenant('tenant-A', 'company-1')
+})
+
+afterEach(() => {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+})
 
 describe('useMembers', () => {
   it('fetches paginated members list', async () => {

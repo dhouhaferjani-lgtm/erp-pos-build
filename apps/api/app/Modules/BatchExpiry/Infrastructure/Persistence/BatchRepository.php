@@ -30,9 +30,13 @@ class BatchRepository implements BatchRepositoryInterface
     }
 
     /** @return Collection<int, Batch> */
-    public function getByProduct(string $productId, bool $activeOnly = true): Collection
+    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection
     {
-        $query = Batch::where('product_id', $productId);
+        // api.inventory round-2 (Codex Finding 1): lead with tenant+company
+        // predicates so a route-supplied productId cannot leak foreign batches.
+        $query = Batch::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId);
 
         if ($activeOnly) {
             $query->where('is_active', true)

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Workshop\WorkOrder\Presentation\Controllers\WorkOrderAssignmentController;
 use App\Modules\Workshop\WorkOrder\Presentation\Controllers\WorkOrderController;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 | Workshop / WorkOrder Module API Routes
 |--------------------------------------------------------------------------
 |
-| Middleware stack is `['api', 'auth:sanctum', SetPermissionsTeam::class]`
+| Middleware stack is `['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]`
 | per CLAUDE.md rule #12. Authorization is enforced via FormRequest::authorize
 | + per-method `can:*` checks in controllers. All endpoints live under
 | `/api/v1/workshop/work-orders`.
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1/workshop')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Workshop'])
     ->group(function (): void {
         Route::get('work-orders', [WorkOrderController::class, 'index']);
         Route::post('work-orders', [WorkOrderController::class, 'store']);

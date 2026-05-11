@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FileText, Banknote, Wallet, Pause } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { generateXReport, type CurrentShift, type ShiftBalance } from '../api/shiftApi'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -80,12 +81,18 @@ export function ShiftOperationsMenu({
 
   const generateXReportMutation = useMutation({
     mutationFn: () => generateXReport({ terminal_id: shift.terminal_id }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('common:pos.xReportGenerated'))
       onClose()
       // Invalidate shift data to reflect any changes
-      queryClient.invalidateQueries({ queryKey: ['pos', 'shift', terminalCode] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'shift-balance', shift.id] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['pos', 'shift-balance', shift.id]),
+        }),
+      ])
     },
     onError: (error: Error) => {
       toast.error(error.message || t('common:pos.xReportError'))

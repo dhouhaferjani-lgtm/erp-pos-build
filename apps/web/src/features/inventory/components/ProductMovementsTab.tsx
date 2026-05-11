@@ -11,6 +11,9 @@ import {
   Filter,
 } from 'lucide-react'
 import { api } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import { LocationSelectorMulti } from '../../locations/components/LocationSelectorMulti'
 
 interface StockMovement {
@@ -103,11 +106,13 @@ function getDocumentLink(reference: string): string | null {
 
 export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
   const { t } = useTranslation(['inventory', 'common'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([])
   const [showLocationFilter, setShowLocationFilter] = useState(false)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['product-movements', productId, selectedLocationIds],
+    queryKey: tenantScopedKey(['product-movements', productId, selectedLocationIds]),
     queryFn: async () => {
       const params = new URLSearchParams()
       params.append('product_id', productId)
@@ -125,7 +130,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
       )
       return response.data
     },
-    enabled: !!productId,
+    enabled: !!productId && !!tenantId && !!companyId,
   })
 
   // Client-side filtering for multiple location selection

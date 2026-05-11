@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchShiftHistory, type ShiftHistoryFilters } from '../../api/shiftHistoryApi'
 import { Clock, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
 interface Terminal {
   id: string
@@ -15,15 +17,18 @@ interface Terminal {
 export function ShiftHistoryPage() {
   const { t } = useTranslation(['pos', 'common'])
   const [filters, setFilters] = useState<ShiftHistoryFilters>({ page: 1, per_page: 20 })
+  const { hasTenantScope } = usePosTenantScope()
 
   const { data: terminals = [] } = useQuery({
-    queryKey: ['pos', 'terminals'],
+    queryKey: tenantScopedKey(['pos', 'terminals']),
     queryFn: () => apiGet<Terminal[]>('/pos/terminals'),
+    enabled: hasTenantScope,
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pos', 'shift-history', filters],
+    queryKey: tenantScopedKey(['pos', 'shift-history', filters]),
     queryFn: () => fetchShiftHistory(filters),
+    enabled: hasTenantScope,
   })
 
   const shifts = data?.data ?? []

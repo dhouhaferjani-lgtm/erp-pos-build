@@ -145,12 +145,33 @@ final class ReceiptSyncService
      */
     private function syncSingleReceipt(SyncReceiptPayload $payload): SyncReceiptResult
     {
-        // 1. Idempotency check: if receipt with this key already exists, return duplicate
-        $existing = Receipt::where('idempotency_key', $payload->idempotencyKey)->first();
+        // 1. Idempotency check: if receipt with this key already exists, return duplicate.
+        //    Round-3 Codex Finding 2 — the SELECT MUST be scoped by authenticated
+        //    tenant_id + company_id from CompanyContext. Pre-fix this lookup ran
+        //    BEFORE company context was applied, so a tenant-A submitter could
+        //    collide on a tenant-B idempotency_key and receive the foreign
+        //    receipt id, fiscal_hash, and terminal hash state through the
+        //    duplicate-response branch (a live fiscal-data leak).
+        $company = $this->companyContext->requireCompany();
+        $existing = Receipt::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('idempotency_key', $payload->idempotencyKey)
+            ->first();
         if ($existing !== null) {
-            // Refresh the terminal so the echo reflects the current persisted state
-            // (not the idempotency-hit terminal's pre-modification state).
-            $terminalForEcho = Terminal::where('id', $existing->terminal_id)->first();
+            // Refresh the terminal so the echo reflects the current persisted
+            // state. Anchor the Terminal SELECT on the company-scoped
+            // $existing row's tenant + company so the echo cannot reach a
+            // foreign Terminal even if the persisted receipt's terminal_id
+            // is somehow stale or cross-tenant. (Round-3 Finding 4 closure
+            // — F2 scoping above means `$existing` is already same-company,
+            // but the explicit predicates below are defense-in-depth and
+            // unblock the scanner-blind-spot tracker.)
+            $terminalForEcho = Terminal::query()
+                ->where('tenant_id', $existing->tenant_id)
+                ->where('company_id', $existing->company_id)
+                ->where('id', $existing->terminal_id)
+                ->first();
 
             return SyncReceiptResult::duplicate(
                 $payload->idempotencyKey,
@@ -239,9 +260,27 @@ final class ReceiptSyncService
                 $sellableUnit = 'pc';
                 $taxRate = '0.00';
 
+                // Round-3 Codex Finding 1 — defense-in-depth: even when the
+                // FormRequest validator passes, a programmatic caller (queue
+                // retry, backfill) constructing SyncReceiptPayload directly
+                // bypasses ScopedExists. We REWRITE the FK columns from the
+                // resolved entity ids — a payload UUID that fails scoped
+                // resolution is persisted as NULL, never as a raw cross-tenant
+                // FK reference.
+                $resolvedProductId = null;
+                $resolvedCompositeItemId = null;
+
                 if ($productId !== null) {
-                    $product = Product::find($productId);
+                    // api.pos-stabilization.025 — scope Product::find by the
+                    // anchoring terminal's tenant + company. Cross-tenant
+                    // product_id resolves to null and the sellable snapshot
+                    // falls back to its 'Unknown Product' default.
+                    $product = Product::query()
+                        ->where('tenant_id', $terminal->tenant_id)
+                        ->where('company_id', $terminal->company_id)
+                        ->find($productId);
                     if ($product !== null) {
+                        $resolvedProductId = $product->id;
                         $sellableName = $product->name;
                         $sellableCode = $product->sku ?? $product->barcode ?? '';
                         $sellableUnit = $product->unit ?? 'pc';
@@ -251,8 +290,18 @@ final class ReceiptSyncService
                         $taxRate = CurrencyScale::bcformat($product->tax_rate ?? '0', 2);
                     }
                 } elseif ($compositeItemId !== null) {
-                    $compositeItem = CompositeItem::find($compositeItemId);
+                    // Round-2 Opus Finding 2 — composite_items has T+C cols.
+                    // Scope by anchoring terminal's tenant + company to keep
+                    // the Treasury invariant on every service-tier find that
+                    // a foreign sellable snapshot cannot leak into the
+                    // receipt write. Cross-tenant composite_item_id resolves
+                    // to null and falls through to 'Unknown Product' default.
+                    $compositeItem = CompositeItem::query()
+                        ->where('tenant_id', $terminal->tenant_id)
+                        ->where('company_id', $terminal->company_id)
+                        ->find($compositeItemId);
                     if ($compositeItem !== null) {
+                        $resolvedCompositeItemId = $compositeItem->id;
                         $sellableName = $compositeItem->getSellableName();
                         $sellableCode = $compositeItem->code;
                         $sellableUnit = $compositeItem->getSellableUnit() ?? 'pc';
@@ -286,8 +335,11 @@ final class ReceiptSyncService
 
                 $receiptLines[] = [
                     'line_number' => $index + 1,
-                    'product_id' => $compositeItemId !== null ? null : $productId,
-                    'composite_item_id' => $compositeItemId,
+                    // Round-3 Codex Finding 1 — persist the SCOPED-RESOLVED ids
+                    // so a foreign payload UUID is stored as NULL, not as a
+                    // cross-tenant FK reference.
+                    'product_id' => $resolvedCompositeItemId !== null ? null : $resolvedProductId,
+                    'composite_item_id' => $resolvedCompositeItemId,
                     // C2 Day 3 — surface the category context the cashier
                     // sold under. Persisted nullable; Menu tenants populate
                     // it post-Day-3, non-Menu tenants and pre-C2 historical
@@ -505,7 +557,14 @@ final class ReceiptSyncService
             //     is the only acceptable input — anything else risks silent hash-
             //     input substitution that the audit explicitly flagged.
             foreach ($payload->payments as $entry) {
-                $method = PaymentMethod::findOrFail($entry['payment_method_id']);
+                // api.pos-stabilization.026 — scope PaymentMethod::findOrFail
+                // by the anchoring terminal's tenant + company. Cross-tenant
+                // payment_method_id raises ModelNotFoundException, aborting
+                // the sync transaction before any ReceiptPayment row is written.
+                $method = PaymentMethod::query()
+                    ->where('tenant_id', $terminal->tenant_id)
+                    ->where('company_id', $terminal->company_id)
+                    ->findOrFail($entry['payment_method_id']);
 
                 // Codex review B4 (2026-04-30): defense-in-depth at the sync
                 // writer. The HTTP request validator (SyncReceiptsRequest)

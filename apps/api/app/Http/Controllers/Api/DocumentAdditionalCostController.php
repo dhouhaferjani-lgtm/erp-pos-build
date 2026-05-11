@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentAdditionalCost;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -16,6 +17,7 @@ class DocumentAdditionalCostController extends Controller
     /**
      * List additional costs for a document
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document Route Model Binding does NOT auto-scope by tenant: the Document model has only scopeForTenant($tenantId) (a named local scope, not a global scope), so binding `Document $document` resolves any document by id regardless of tenant. The route-group permission gate `can:documents.view` does not validate document-tenant alignment. Tracked for future api.document cluster fix; this attribute is the static-classification placeholder until the gap is closed by adding a global scope on Document or explicit tenant validation in the controller.')]
     public function index(Document $document): JsonResponse
     {
         $costs = $document->additionalCosts()->get();
@@ -28,6 +30,7 @@ class DocumentAdditionalCostController extends Controller
     /**
      * Store a new additional cost
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document Route Model Binding without tenant global scope (mirrors index shape). Tracked for future api.document cluster fix.')]
     public function store(Request $request, Document $document): JsonResponse
     {
         $validated = $request->validate([
@@ -54,6 +57,7 @@ class DocumentAdditionalCostController extends Controller
     /**
      * Update an additional cost
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document + DocumentAdditionalCost Route Model Bindings without tenant global scope (mirrors index shape). The controller does validate $cost->document_id === $document->id alignment, but $document itself can be from any tenant. Tracked for future api.document cluster fix.')]
     public function update(Request $request, Document $document, DocumentAdditionalCost $cost): JsonResponse
     {
         // Ensure cost belongs to document
@@ -83,6 +87,7 @@ class DocumentAdditionalCostController extends Controller
     /**
      * Delete an additional cost
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document + DocumentAdditionalCost Route Model Bindings without tenant global scope (mirrors update shape). Tracked for future api.document cluster fix.')]
     public function destroy(Document $document, DocumentAdditionalCost $cost): JsonResponse
     {
         // Ensure cost belongs to document
@@ -103,6 +108,7 @@ class DocumentAdditionalCostController extends Controller
     /**
      * Get landed cost breakdown showing how additional costs are allocated to lines
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document Route Model Binding without tenant global scope (mirrors index shape). Read-only allocation calculation; gap discloses cross-tenant document line totals. Tracked for future api.document cluster fix.')]
     public function landedCostBreakdown(Document $document): JsonResponse
     {
         $lines = $document->lines()->with('product')->get();

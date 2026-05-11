@@ -218,7 +218,7 @@ class AuditTrailTest extends TestCase
             payload: []
         );
 
-        $events = $auditService->getEventsForAggregate('Document', 'doc-123');
+        $events = $auditService->getEventsForAggregate('Document', 'doc-123', $this->company->id);
 
         $this->assertCount(2, $events);
     }

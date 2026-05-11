@@ -416,8 +416,14 @@ class PaymentRefundService
                     continue;
                 }
 
+                // Defense-in-depth tenant/company scoping. The id originated
+                // from a query already filtered on $originalReceipt->company_id,
+                // so this lookup must hit the same tenant. Belt-and-braces.
                 /** @var Payment $original */
-                $original = Payment::find($originalPaymentId);
+                $original = Payment::query()
+                    ->where('tenant_id', $originalReceipt->tenant_id)
+                    ->where('company_id', $originalReceipt->company_id)
+                    ->find($originalPaymentId);
 
                 try {
                     /** @var numeric-string $negativeAmount */

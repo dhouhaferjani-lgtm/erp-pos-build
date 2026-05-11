@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Scheduling\Presentation\Controllers\AppointmentController;
 use App\Modules\Scheduling\Presentation\Controllers\AppointmentConversionController;
@@ -48,7 +49,7 @@ Route::prefix('api/v1/storefront/{company_id}')
     });
 
 Route::prefix('api/v1/scheduling')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Workshop'])
     ->group(function (): void {
         // Bays — CRUD.
         Route::get('bays', [BayController::class, 'index']);

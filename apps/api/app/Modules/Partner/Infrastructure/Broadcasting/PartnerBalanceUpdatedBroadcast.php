@@ -16,6 +16,12 @@ use Illuminate\Foundation\Events\Dispatchable;
  *
  * Uses a company-level channel (not per-partner) so the list page
  * receives all partner balance updates without subscribing to N channels.
+ *
+ * @cross-tenant-anchored broadcastOn() constructs the company-level partners
+ *   PrivateChannel from $this->domainEvent->tenantId + $this->domainEvent->companyId
+ *   (the wrapped PartnerBalanceUpdated domain event carries them at construction).
+ *   ShouldBroadcastNow (synchronous). Architecture test BroadcastEventTenantContextTest
+ *   enforces the property-sourcing pattern.
  */
 class PartnerBalanceUpdatedBroadcast implements ShouldBroadcastNow
 {

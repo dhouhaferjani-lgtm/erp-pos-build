@@ -91,8 +91,14 @@ export const resolveFraudAlert = async (
   return apiPost(`/fraud-alerts/${alertId}/resolve`, { notes })
 }
 
-// Admin Users API
-export const getAdminUsers = async (): Promise<{ data: AdminUser[] }> => {
+// Tenant-scoped users-with-admin-role API. NOT to be confused with the
+// super-admin getAdminUsers in features/admin/api/index.ts (which hits
+// /admin/users via adminApiGet under the super-admin auth context).
+// This call hits the tenant-scoped /users?role=admin endpoint via the
+// per-tenant apiGet — used by FraudAlert assignment to populate the
+// "assignee" dropdown with users in the current tenant who carry the
+// admin role.
+export const getUsersWithAdminRole = async (): Promise<{ data: AdminUser[] }> => {
   return apiGet('/users?role=admin')
 }
 

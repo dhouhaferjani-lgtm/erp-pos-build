@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://syneriva.example/schemas/tenant-isolation-sweep-inventory-v2.json",
+  "title": "Tenant-isolation sweep inventory schema (v2)",
+  "description": "Machine-readable schema for docs/superpowers/plans/tenant-isolation-sweep-inventory.yml. Source of truth for the YAML's structure; mutated only by the sweep:inventory:* artisan commands.",
+  "type": "object",
+  "required": ["metadata", "agents", "statuses_enum", "clusters", "callsites", "progress"],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "spec_version",
+        "spec_path",
+        "branch",
+        "generated_at",
+        "generated_by",
+        "schema_sha256",
+        "yaml_sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "2" },
+        "spec_version": { "type": "string", "minLength": 1 },
+        "spec_path": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "generated_by": { "enum": ["claude", "codex", "ci", "human"] },
+        "schema_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "yaml_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "required": ["claude", "codex"],
+      "additionalProperties": false,
+      "properties": {
+        "claude": { "$ref": "#/$defs/agentEntry" },
+        "codex": { "$ref": "#/$defs/agentEntry" }
+      }
+    },
+    "statuses_enum": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/status" }
+    },
+    "clusters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cluster" }
+    },
+    "callsites": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/callsite" }
+    },
+    "progress": {
+      "type": "object",
+      "required": ["total_callsites", "total_clusters", "by_status", "by_surface", "by_owner", "drift"],
+      "additionalProperties": false,
+      "properties": {
+        "total_callsites": { "type": "integer", "minimum": 0 },
+        "total_clusters": { "type": "integer", "minimum": 0 },
+        "by_status": {
+          "type": "object",
+          "required": ["pending", "claimed", "in_progress", "under_review", "fixed", "blocked", "deferred", "needs_recheck", "stale_orphan"],
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "by_surface": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["total", "fixed"],
+            "properties": {
+              "total": { "type": "integer", "minimum": 0 },
+              "fixed": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "by_owner": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["claimed", "fixed"],
+                "additionalProperties": false,
+                "properties": {
+                  "claimed": { "type": "integer", "minimum": 0 },
+                  "fixed": { "type": "integer", "minimum": 0 }
+                }
+              },
+              { "type": "integer", "minimum": 0 }
+            ]
+          }
+        },
+        "drift": {
+          "type": "object",
+          "required": ["yaml_says_fixed_code_unsafe", "code_safe_yaml_pending"],
+          "additionalProperties": false,
+          "properties": {
+            "yaml_says_fixed_code_unsafe": { "type": "integer", "minimum": 0 },
+            "code_safe_yaml_pending": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": [
+        "pending",
+        "claimed",
+        "in_progress",
+        "under_review",
+        "fixed",
+        "blocked",
+        "deferred",
+        "needs_recheck",
+        "stale_orphan"
+      ]
+    },
+    "agent": { "enum": ["claude", "codex"] },
+    "verdict": {
+      "enum": [
+        "APPROVE",
+        "APPROVE-WITH-MINOR-EDITS-APPLIED",
+        "REQUEST-CHANGES",
+        "BLOCK"
+      ]
+    },
+    "agentEntry": {
+      "type": "object",
+      "required": ["role", "can_claim", "can_review"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "can_claim": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "can_review": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "required": ["id", "display_name", "surface", "status", "is_reference", "test_file"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(api|web|tauri|tactical)\\.[a-z0-9-]+(\\.[a-z0-9-]+)*$"
+        },
+        "display_name": { "type": "string", "minLength": 1 },
+        "surface": { "enum": ["api", "web", "tauri", "tactical"] },
+        "owner": { "anyOf": [{ "$ref": "#/$defs/agent" }, { "type": "null" }] },
+        "required_owner": { "anyOf": [{ "$ref": "#/$defs/agent" }, { "type": "null" }] },
+        "status": { "$ref": "#/$defs/status" },
+        "blocked_by": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "blocked_by_external": { "type": ["string", "null"] },
+        "blocked_reason": { "type": ["string", "null"] },
+        "blocks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "is_reference": { "type": "boolean" },
+        "expected_callsite_count": { "type": ["integer", "null"], "minimum": 0 },
+        "test_file": { "type": "string", "minLength": 1 },
+        "review_gate": {
+          "type": "object",
+          "required": ["required", "reviewer_must_differ_from_owner", "review_file", "accepted_verdicts"],
+          "additionalProperties": false,
+          "properties": {
+            "required": { "type": "boolean" },
+            "reviewer_must_differ_from_owner": { "type": "boolean" },
+            "review_file": { "type": "string", "minLength": 1 },
+            "accepted_verdicts": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/verdict" }
+            },
+            "verify_review_commit_linkage": { "type": "boolean" }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "callsite": {
+      "type": "object",
+      "required": [
+        "id",
+        "stable_key",
+        "surface",
+        "cluster_id",
+        "scanner",
+        "file",
+        "symbol",
+        "pattern_type",
+        "expected_scope",
+        "severity",
+        "fiscal_path",
+        "cross_module",
+        "stale_state",
+        "status",
+        "history"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^(api|web|tauri)\\.[a-z0-9-]+(\\.[a-z0-9-]+)*\\.[0-9]{3,}$" },
+        "stable_key": {
+          "type": "string",
+          "pattern": "^(sha256:[0-9a-f]{64}|manual:[a-z0-9.-]+:[a-z0-9_-]+)$"
+        },
+        "surface": { "enum": ["api", "web", "tauri"] },
+        "cluster_id": { "type": "string", "minLength": 1 },
+        "scanner": {
+          "enum": [
+            "php_presentation_exists",
+            "php_ast_find",
+            "ts_query_key",
+            "pos_sqlite_cache",
+            "manual"
+          ]
+        },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "symbol": { "type": "string", "minLength": 1 },
+        "pattern_type": { "type": "string", "minLength": 1 },
+        "resource": { "type": ["string", "null"] },
+        "expected_scope": {
+          "enum": [
+            "tenant_and_company",
+            "tenant_only",
+            "company_only",
+            "parent_context",
+            "cross_tenant"
+          ]
+        },
+        "expected_fix": { "type": ["string", "null"] },
+        "severity": { "enum": ["high", "medium", "low"] },
+        "fiscal_path": { "type": "boolean" },
+        "cross_module": { "type": "boolean" },
+        "stale_state": { "enum": ["active", "stale_orphan", "superseded"] },
+        "status": { "$ref": "#/$defs/status" },
+        "owner": { "anyOf": [{ "$ref": "#/$defs/agent" }, { "type": "null" }] },
+        "claimed_at": { "type": ["string", "null"] },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reviewer": { "anyOf": [{ "$ref": "#/$defs/agent" }, { "type": "null" }] },
+            "verdict": { "anyOf": [{ "$ref": "#/$defs/verdict" }, { "type": "null" }] },
+            "reviewed_at": { "type": ["string", "null"] },
+            "review_file": { "type": ["string", "null"] },
+            "review_commit": { "type": ["string", "null"] }
+          }
+        },
+        "fix_commit": { "type": ["string", "null"] },
+        "regression_test": { "type": ["string", "null"] },
+        "blocked_reason": { "type": ["string", "null"] },
+        "structurally_protected_by_upstream_guard": {
+          "description": "Optional list of sibling callsite ids (or free-text guard locators of the form file:line) that act as upstream guards making this callsite unreachable from any control-flow path that has not first been refused by the named guard. Used when a regression_test pin would be misleading because no caller can reach this callsite without being short-circuited by the upstream guard. Mutually informative with regression_test (NOT exclusive — regression_test may still be set for the upstream guard itself). Mutated only by the sweep:inventory:* artisan commands and one-shot mutate scripts.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            { "type": "null" }
+          ]
+        },
+        "history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/historyEvent" }
+        }
+      }
+    },
+    "historyEvent": {
+      "type": "object",
+      "required": ["at", "actor", "action", "command", "to_status"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "actor": { "enum": ["generator", "claude", "codex", "ci", "human"] },
+        "action": {
+          "enum": [
+            "generate",
+            "claim",
+            "start",
+            "submit",
+            "review",
+            "block",
+            "unblock",
+            "defer",
+            "regenerate",
+            "stale_mark",
+            "edit_applied"
+          ]
+        },
+        "command": { "type": ["string", "null"] },
+        "previous_yaml_sha256": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{64}$" }, { "type": "null" }] },
+        "new_yaml_sha256": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{64}$" }, { "type": "null" }] },
+        "target_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "from_status": { "anyOf": [{ "$ref": "#/$defs/status" }, { "type": "null" }] },
+        "to_status": { "$ref": "#/$defs/status" },
+        "commit": { "type": ["string", "null"] },
+        "test": { "type": ["string", "null"] },
+        "review_file": { "type": ["string", "null"] },
+        "review_commit": { "type": ["string", "null"] },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

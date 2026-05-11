@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Workshop\Technician\Presentation\Controllers\PayrollExportController;
 use App\Modules\Workshop\Technician\Presentation\Controllers\TechnicianCertificationController;
@@ -19,13 +20,13 @@ use Illuminate\Support\Facades\Route;
 | CRUD (create / update / time-off / time-entry) lands in a follow-up patch;
 | current scope unblocks Spec B (work-order assignment) and Spec D (scheduler).
 |
-| Middleware stack MUST be `['api', 'auth:sanctum', SetPermissionsTeam::class]`
+| Middleware stack MUST be `['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]`
 | per CLAUDE.md rule #12.
 |
 */
 
 Route::prefix('api/v1')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Workshop'])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Workshop'])
     ->group(function (): void {
         Route::get('/workshop/technicians', [TechnicianProfileController::class, 'index'])
             ->middleware('can:workshop.technicians.view')

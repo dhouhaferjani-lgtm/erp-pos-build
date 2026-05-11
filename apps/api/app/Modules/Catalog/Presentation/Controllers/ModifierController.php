@@ -7,12 +7,16 @@ namespace App\Modules\Catalog\Presentation\Controllers;
 use App\Modules\Catalog\Application\DTOs\ModifierData;
 use App\Modules\Catalog\Domain\Entities\Modifier;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
+use App\Modules\Catalog\Domain\Enums\ComponentType;
 use App\Modules\Catalog\Presentation\Requests\StoreModifierRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Enum;
 
 class ModifierController extends Controller
 {
@@ -26,8 +30,10 @@ class ModifierController extends Controller
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $companyId = $this->companyContext->requireCompanyId();
-        $group = ModifierGroup::where('company_id', $companyId)->findOrFail($groupId);
+        $company = $this->companyContext->requireCompany();
+        $group = ModifierGroup::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($groupId);
 
         $modifier = Modifier::create([
             ...$request->validated(),
@@ -43,21 +49,31 @@ class ModifierController extends Controller
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $modifier = Modifier::with('group')->findOrFail($id);
+        $company = $this->companyContext->requireCompany();
 
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($modifier->group->company_id !== $companyId) {
-            abort(403);
-        }
+        // The modifiers table has no tenant_id / company_id columns; scoping
+        // is enforced via the parent modifier_group's tenant + company.
+        $modifier = Modifier::whereHas('group', function (Builder $q) use ($company): void {
+            $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                ->whereRaw('company_id = ?', [$company->id]);
+        })
+            ->with('group')
+            ->findOrFail($id);
 
         $validated = $request->validate([
             'code' => ['sometimes', 'string', 'max:100'],
             'name' => ['sometimes', 'string', 'max:255'],
             'price_adjustment' => ['sometimes', 'numeric'],
-            'component_type' => ['nullable', 'string'],
-            'component_id' => ['nullable', 'uuid', 'exists:products,id'],
+            // api.catalog.024 round-2: enforce Enum constraint on component_type (was bare 'string').
+            'component_type' => ['nullable', new Enum(ComponentType::class)],
+            'component_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
             'component_quantity' => ['nullable', 'numeric', 'min:0'],
-            'component_unit_id' => ['nullable', 'uuid', 'exists:units,id'],
+            // api.catalog.022 round-2: units has nullable tenant_id (system rows = NULL).
+            'component_unit_id' => ['nullable', 'uuid', ScopedExists::tenantOrSystem('units', $company->tenant_id)],
             'is_default' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'display_order' => ['sometimes', 'integer', 'min:0'],
@@ -74,12 +90,14 @@ class ModifierController extends Controller
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $modifier = Modifier::with('group')->findOrFail($id);
+        $company = $this->companyContext->requireCompany();
 
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($modifier->group->company_id !== $companyId) {
-            abort(403);
-        }
+        $modifier = Modifier::whereHas('group', function (Builder $q) use ($company): void {
+            $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                ->whereRaw('company_id = ?', [$company->id]);
+        })
+            ->with('group')
+            ->findOrFail($id);
 
         $modifier->delete();
 

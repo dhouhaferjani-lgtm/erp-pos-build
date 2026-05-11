@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 /**
  * Minimal unit shape needed to render a <select> option in the bundle
@@ -19,14 +22,18 @@ export interface PickerUnit {
  * `GET /api/v1/uom/units` already filters by is_active=true server-side.
  */
 export function useUnits() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['uom', 'units'],
+    queryKey: tenantScopedKey(['uom', 'units']),
     queryFn: async () => {
       // apiGet unwraps response.data.data — the UoM controller returns
       // `{ data: Unit[], meta: {...} }` so this yields Unit[] directly.
       const units = await apiGet<PickerUnit[]>('/uom/units')
       return units
     },
+    enabled: tenantId !== null && companyId !== null,
     // Units are effectively static per tenant; cache aggressively.
     staleTime: 5 * 60 * 1000,
   })

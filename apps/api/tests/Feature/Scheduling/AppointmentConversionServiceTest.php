@@ -64,6 +64,8 @@ final class AppointmentConversionServiceTest extends TestCase
                 }),
                 Mockery::on(fn (string $v): bool => $v === $appt->vehicle_id),
                 Mockery::on(fn (string $p): bool => $p === $appt->customer_partner_id),
+                Mockery::on(fn (string $t): bool => $t === $appt->tenant_id),
+                Mockery::on(fn (string $c): bool => $c === $appt->company_id),
             )
             ->andReturn($workOrder);
 

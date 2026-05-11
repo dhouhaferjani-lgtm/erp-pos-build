@@ -508,12 +508,22 @@ class GeneralLedgerReportService
      * Returns account information to display in the report header
      * (e.g., "General Ledger - Account 100: Cash").
      *
+     * api.accounting.006: tenant+company-scoped Account lookup. The caller
+     * (currently no production callers; reserved for ledger-header views) is
+     * responsible for supplying the active tenant + company. The two
+     * predicates pin the SQL shape so a foreign account_id (smuggled into a
+     * crafted ledger query) cannot satisfy the lookup.
+     *
      * @param  string  $accountId  Account UUID
      * @return array{code: string, name: string, type: string}|null
      */
-    public function getAccountDetails(string $accountId): ?array
+    public function getAccountDetails(string $accountId, string $tenantId, string $companyId): ?array
     {
-        $account = Account::find($accountId);
+        $account = Account::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($accountId)
+            ->first();
 
         if ($account === null) {
             return null;

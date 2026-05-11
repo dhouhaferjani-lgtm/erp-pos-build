@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Modules\PlatformIntegration;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\ProductSubmissionData;
 use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
@@ -12,6 +13,7 @@ use App\Shared\DTOs\SubmissionStatusDTO;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Mockery;
 use Tests\TestCase;
 
 class ProductSubmissionServiceTest extends TestCase
@@ -26,8 +28,16 @@ class ProductSubmissionServiceTest extends TestCase
         config(['services.platform.api_key' => 'test-key']);
         Cache::flush();
 
+        // CompanyContext stub — api.platform-integration cluster made
+        // X-Tenant-Id + X-Company-Id mandatory on every outbound HTTP
+        // call. These tests focus on submission/upload behavior, not
+        // header content; the stub satisfies the new fail-loud contract.
+        $companyContext = Mockery::mock(CompanyContext::class);
+        $companyContext->allows('requireTenantId')->andReturn('00000000-0000-0000-0000-000000000001');
+        $companyContext->allows('requireCompanyId')->andReturn('00000000-0000-0000-0000-000000000002');
+
         $this->service = new ProductSubmissionService(
-            new PlatformHttpClient,
+            new PlatformHttpClient($companyContext),
         );
     }
 

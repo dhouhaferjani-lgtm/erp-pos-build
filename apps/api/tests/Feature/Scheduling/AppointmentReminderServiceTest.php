@@ -151,7 +151,7 @@ final class AppointmentReminderServiceTest extends TestCase
         $this->assertCount(2, $rows);
 
         $first = $rows[0];
-        (new DispatchAppointmentReminder($first->id))->handle();
+        (new DispatchAppointmentReminder($first->id, $first->tenant_id))->handle();
 
         /** @var AppointmentReminder $refreshed */
         $refreshed = AppointmentReminder::query()->findOrFail($first->id);
@@ -175,7 +175,7 @@ final class AppointmentReminderServiceTest extends TestCase
         $appt->status = AppointmentStatus::Cancelled;
         $appt->save();
 
-        (new DispatchAppointmentReminder($rows[0]->id))->handle();
+        (new DispatchAppointmentReminder($rows[0]->id, $rows[0]->tenant_id))->handle();
 
         /** @var AppointmentReminder $refreshed */
         $refreshed = AppointmentReminder::query()->findOrFail($rows[0]->id);
@@ -195,11 +195,11 @@ final class AppointmentReminderServiceTest extends TestCase
         $rows = $this->service->scheduleFor($appt);
         $reminder = $rows[0];
 
-        (new DispatchAppointmentReminder($reminder->id))->handle();
+        (new DispatchAppointmentReminder($reminder->id, $reminder->tenant_id))->handle();
         $firstSentAt = AppointmentReminder::query()->findOrFail($reminder->id)->sent_at;
 
         // Running twice must NOT re-stamp sent_at.
-        (new DispatchAppointmentReminder($reminder->id))->handle();
+        (new DispatchAppointmentReminder($reminder->id, $reminder->tenant_id))->handle();
         $secondSentAt = AppointmentReminder::query()->findOrFail($reminder->id)->sent_at;
 
         $this->assertNotNull($firstSentAt);

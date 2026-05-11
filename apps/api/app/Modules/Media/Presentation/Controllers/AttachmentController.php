@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Media\Application\Services\AttachmentService;
 use App\Modules\Media\Domain\DocumentAttachment;
 use App\Modules\Media\Presentation\Requests\UploadAttachmentRequest;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -151,6 +152,7 @@ class AttachmentController extends Controller
     /**
      * Get allowed file types and max size for frontend
      */
+    #[CrossTenantRoute(reason: 'Static config endpoint: returns AttachmentService::MAX_FILE_SIZE and ALLOWED_MIME_TYPES platform constants for UI dropdown population. No DB access; constants are platform-level. The other AttachmentController methods (index/store/download/destroy) explicitly validate $user->tenant_id !== $document->tenant_id and pass via the heuristic.')]
     public function config(): JsonResponse
     {
         return response()->json([

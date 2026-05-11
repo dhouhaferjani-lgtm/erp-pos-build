@@ -11,6 +11,7 @@ use App\Modules\POS\Application\Services\HeldOrderService;
 use App\Modules\POS\Domain\HeldOrder;
 use App\Modules\POS\Presentation\Requests\HoldOrderRequest;
 use App\Modules\POS\Presentation\Resources\HeldOrderResource;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -100,9 +101,11 @@ final class HeldOrderController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
-        $heldOrder = HeldOrder::where('company_id', $companyId)
+        $heldOrder = HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($id);
 
         return response()->json([
@@ -131,6 +134,12 @@ final class HeldOrderController extends Controller
                     'request_id' => $request->header('X-Request-Id', (string) Str::uuid()),
                 ],
             ]);
+        } catch (ModelNotFoundException $e) {
+            // Round-5 — let cross-tenant scope misses bubble to Laravel's
+            // default 404 handler instead of being swallowed as 422 by the
+            // broader RuntimeException catch below (ModelNotFoundException
+            // extends RuntimeException).
+            throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([
                 'error' => [

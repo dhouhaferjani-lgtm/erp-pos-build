@@ -4,7 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceList, createPriceList, updatePriceList } from './api'
+import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListFormData } from './types'
 
 export function PriceListForm() {
@@ -13,6 +17,8 @@ export function PriceListForm() {
   const queryClient = useQueryClient()
   const { id } = useParams<{ id: string }>()
   const isEditing = Boolean(id)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const {
     register,
@@ -34,9 +40,9 @@ export function PriceListForm() {
 
   // Fetch existing price list for editing
   const { data: existingPriceList, isLoading: isLoadingPriceList } = useQuery({
-    queryKey: ['price-list', id],
+    queryKey: tenantScopedKey(['price-list', id]),
     queryFn: () => fetchPriceList(id!),
-    enabled: isEditing,
+    enabled: isEditing && !!tenantId && !!companyId,
   })
 
   // Reset form when existing data is loaded
@@ -58,17 +64,23 @@ export function PriceListForm() {
 
   const createMutation = useMutation({
     mutationFn: createPriceList,
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['price-lists'] })
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        predicate: priceListsInvalidationPredicate(tenantId, companyId),
+      })
       navigate(`/pricing/price-lists/${response.data.id}`)
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: (data: PriceListFormData) => updatePriceList(id!, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['price-lists'] })
-      void queryClient.invalidateQueries({ queryKey: ['price-list', id] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: priceListsInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['price-list', id]) }),
+      ])
       navigate(`/pricing/price-lists/${id}`)
     },
   })

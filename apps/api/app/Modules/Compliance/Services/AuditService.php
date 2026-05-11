@@ -73,13 +73,25 @@ final class AuditService
     }
 
     /**
-     * Get audit events for a specific aggregate
+     * Get audit events for a specific aggregate, scoped to a company.
+     *
+     * Round-2 hardening (Opus api.compliance Finding A): the previous
+     * signature took only $aggregateType + $aggregateId and ran an
+     * unscoped query. AuditController dispatches into this method with
+     * route-supplied aggregate_type / aggregate_id query params; without
+     * a company_id predicate, an admin holding compliance.view_reprint_log
+     * could submit `?aggregate_type=Document&aggregate_id=<foreign-uuid>`
+     * and read tenant-B audit events. The required $companyId param now
+     * pins the read to the caller's CompanyContext company. This is the
+     * Treasury cluster invariant: BOTH predicates on every read whose
+     * anchor came from a route param.
      *
      * @return Collection<int, AuditEvent>
      */
-    public function getEventsForAggregate(string $aggregateType, string $aggregateId): Collection
+    public function getEventsForAggregate(string $aggregateType, string $aggregateId, string $companyId): Collection
     {
-        return AuditEvent::where('aggregate_type', $aggregateType)
+        return AuditEvent::where('company_id', $companyId)
+            ->where('aggregate_type', $aggregateType)
             ->where('aggregate_id', $aggregateId)
             ->orderBy('occurred_at')
             ->get();

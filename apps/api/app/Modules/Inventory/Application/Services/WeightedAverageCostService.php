@@ -58,10 +58,14 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $landedUnitCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first to prevent concurrent modifications
+            // Lock stock level first to prevent concurrent modifications.
+            // company_id added to the tuple (api.inventory.032) so the lock
+            // cannot be satisfied by a StockLevel row from another company
+            // even if product_id + location_id happen to collide cross-company.
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -77,8 +81,14 @@ class WeightedAverageCostService
                 ]);
             }
 
-            // Lock product for cost update
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product for cost update — scope by the input product's
+            // own tenant + company so the lock cannot escalate to a foreign
+            // product (defense-in-depth on the upstream-trusted instance).
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $currentQty = (float) $stockLevel->quantity;
             $currentCostPrice = (float) ($product->cost_price ?? 0);
@@ -201,15 +211,22 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level to prevent concurrent modifications
+            // Lock stock level to prevent concurrent modifications.
+            // company_id added to the tuple (api.inventory.032).
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Lock product to get consistent cost price
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product to get consistent cost price — scoped to the
+            // input product's own tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $costPrice = (float) ($product->cost_price ?? 0);
             $currentQty = (float) $stockLevel->quantity;
@@ -294,10 +311,11 @@ class WeightedAverageCostService
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $originalCost, $reference, $referenceType, $referenceId): StockMovement {
-            // Lock stock level first
+            // Lock stock level first. company_id added to the tuple (api.inventory.032).
             $stockLevel = StockLevel::where('product_id', $product->id)
                 ->where('location_id', $location->id)
                 ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -313,8 +331,13 @@ class WeightedAverageCostService
                 ]);
             }
 
-            // Lock product for cost update
-            $product = Product::lockForUpdate()->findOrFail($product->id);
+            // Lock product for cost update — scoped to the input product's
+            // own tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $product->tenant_id)
+                ->where('company_id', $product->company_id)
+                ->lockForUpdate()
+                ->findOrFail($product->id);
 
             $currentQty = (float) $stockLevel->quantity;
             $currentCostPrice = (float) ($product->cost_price ?? 0);

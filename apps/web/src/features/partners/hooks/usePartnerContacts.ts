@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 interface PartnerContact {
   id: string
@@ -16,10 +19,13 @@ interface PartnerContact {
 }
 
 export function usePartnerContacts(partnerId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['partner-contacts', partnerId],
+    queryKey: tenantScopedKey(['partner-contacts', partnerId]),
     queryFn: () => apiGet<PartnerContact[]>(`/partners/${partnerId}/contacts`),
-    enabled: !!partnerId,
+    enabled: !!partnerId && tenantId !== null && companyId !== null,
   })
 }
 

@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\Notification;
  * 4. Log expiry events for audit trail
  *
  * Schedule: Daily at 1:00 AM
+ *
+ * @cross-tenant-by-design Daily system-wide batch expiry sweep queue job — registered in routes/console.php:33 as Schedule::job(DailyExpiryCheck::class)->dailyAt('01:30'); iterates Batch rows across all tenants by design (markExpiredBatches scans the whole table); per-row writes inherit company_id from the batch row, per-company notifications use explicit User::whereRaw('company_id = ?', [$companyId]) filter.
  */
 class DailyExpiryCheck implements ShouldQueue
 {

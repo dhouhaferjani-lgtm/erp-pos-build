@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use App\Modules\Cart\Presentation\Controllers\CatalogCartController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('api/v1/catalog-carts')
-    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])
+    ->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
     ->group(function () {
         Route::get('/', [CatalogCartController::class, 'index'])
             ->middleware('can:catalog_cart.view')

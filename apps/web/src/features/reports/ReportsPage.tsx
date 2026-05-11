@@ -13,7 +13,9 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useAuthStore } from '../../stores/authStore'
 import { formatCurrency } from '../../lib/format'
 
 interface Document {
@@ -73,6 +75,9 @@ export function ReportsPage() {
   const { t } = useTranslation()
   usePageTitle('dashboard.title')
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const hasTenantScope = tenantId !== null && companyId !== null
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -80,38 +85,42 @@ export function ReportsPage() {
 
   // Fetch documents
   const { data: documentsData, isLoading: loadingDocs } = useQuery({
-    queryKey: ['documents'],
+    queryKey: tenantScopedKey(['documents']),
     queryFn: async () => {
       const response = await api.get<DocumentsResponse>('/documents')
       return response.data
     },
+    enabled: hasTenantScope,
   })
 
   // Fetch partners
   const { data: partnersData, isLoading: loadingPartners } = useQuery({
-    queryKey: ['partners'],
+    queryKey: tenantScopedKey(['partners']),
     queryFn: async () => {
       const response = await api.get<PartnersResponse>('/partners')
       return response.data
     },
+    enabled: hasTenantScope,
   })
 
   // Fetch products
   const { data: productsData, isLoading: loadingProducts } = useQuery({
-    queryKey: ['products'],
+    queryKey: tenantScopedKey(['products']),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products')
       return response.data
     },
+    enabled: hasTenantScope,
   })
 
   // Fetch payments
   const { data: paymentsData, isLoading: loadingPayments } = useQuery({
-    queryKey: ['payments'],
+    queryKey: tenantScopedKey(['payments']),
     queryFn: async () => {
       const response = await api.get<PaymentsResponse>('/payments')
       return response.data
     },
+    enabled: hasTenantScope,
   })
 
   const isLoading = loadingDocs || loadingPartners || loadingProducts || loadingPayments

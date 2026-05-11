@@ -15,6 +15,9 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Console\Command;
 
+/**
+ * @cross-tenant-by-design Manual dev/test command that resolves test fixtures via Company::where('name', ...); not intended for production runs.
+ */
 class TestTaxRecoverability extends Command
 {
     protected $signature = 'test:tax-recoverability';

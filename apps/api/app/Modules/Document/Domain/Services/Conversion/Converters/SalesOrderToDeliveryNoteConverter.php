@@ -253,7 +253,11 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
         foreach ($source->lines as $line) {
             // Skip non-physical products
             if ($line->product_id !== null) {
-                $product = Product::find($line->product_id);
+                // api.document.017: scope Product lookup by source tenant + company.
+                $product = Product::query()
+                    ->where('tenant_id', $source->tenant_id)
+                    ->where('company_id', $source->company_id)
+                    ->find($line->product_id);
                 if ($product !== null && ! $product->isPhysical()) {
                     continue;
                 }
@@ -385,8 +389,14 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 continue;
             }
 
-            // Check if product requires batch tracking
-            $product = $line->product_id !== null ? Product::find($line->product_id) : null;
+            // Check if product requires batch tracking.
+            // api.document.018: scope Product lookup by source tenant + company.
+            $product = $line->product_id !== null
+                ? Product::query()
+                    ->where('tenant_id', $source->tenant_id)
+                    ->where('company_id', $source->company_id)
+                    ->find($line->product_id)
+                : null;
             $requiresBatch = $product !== null
                 && ($product->requires_batch_tracking ?? false)
                 && $destination->location_id !== null;
@@ -546,7 +556,11 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 continue;
             }
 
-            $product = Product::find($line->product_id);
+            // api.document.019: scope Product lookup by order tenant + company.
+            $product = Product::query()
+                ->where('tenant_id', $order->tenant_id)
+                ->where('company_id', $order->company_id)
+                ->find($line->product_id);
             if ($product !== null && $product->isPhysical()) {
                 return true;
             }

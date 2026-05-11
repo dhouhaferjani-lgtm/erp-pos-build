@@ -18,6 +18,8 @@ import {
   Plus,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
@@ -25,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Ta
 import { AddVehicleModal } from '../../components/organisms'
 import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
 import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
+import { partnerVehiclesInvalidationPredicate } from './_invalidation'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -118,7 +121,10 @@ export function PartnerDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
   const [showVehicleModal, setShowVehicleModal] = useState(false)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const hasTenantScope = tenantId !== null && companyId !== null
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -137,33 +143,33 @@ export function PartnerDetailPage() {
   const entityLabel = isCustomerContext ? 'Customer' : isSupplierContext ? 'Supplier' : 'Partner'
 
   const { data: partner, isLoading, error } = useQuery({
-    queryKey: ['partner', id],
+    queryKey: tenantScopedKey(['partner', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Partner }>(`/partners/${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && hasTenantScope,
   })
 
   // Fetch related documents (both sales docs for customers and purchase orders for suppliers)
   const { data: documentsData } = useQuery({
-    queryKey: ['partner-documents', id, isSupplierContext],
+    queryKey: tenantScopedKey(['partner-documents', id, isSupplierContext]),
     queryFn: async () => {
       const typeFilter = isSupplierContext ? '&type=purchase_order' : ''
       const response = await api.get<{ data: Document[] }>(`/documents?partner_id=${id}${typeFilter}`)
       return response.data.data
     },
-    enabled: id.length > 0 && (isCustomerContext || isSupplierContext),
+    enabled: id.length > 0 && hasTenantScope && (isCustomerContext || isSupplierContext),
   })
 
   // Fetch related payments
   const { data: paymentsData } = useQuery({
-    queryKey: ['partner-payments', id],
+    queryKey: tenantScopedKey(['partner-payments', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Payment[] }>(`/payments?partner_id=${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && hasTenantScope,
   })
 
   // Fetch related vehicles (for customers) — uses the ownership-aware endpoint via the
@@ -173,13 +179,13 @@ export function PartnerDetailPage() {
 
   // Fetch partner account balance (unallocated deposits/credits)
   const { data: accountBalance } = useQuery({
-    queryKey: ['partner-account-balance', id],
+    queryKey: tenantScopedKey(['partner-account-balance', id]),
     queryFn: async () => {
       // Default to TND for now - in a real app, this would come from tenant settings
       const response = await api.get<{ data: PartnerAccountBalance }>(`/partners/${id}/account-balance/TND`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && hasTenantScope,
   })
 
   const documents = documentsData ?? []
@@ -678,7 +684,9 @@ export function PartnerDetailPage() {
         onClose={() => { setShowVehicleModal(false) }}
         partnerId={partner.id}
         onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: ['partner-vehicles', id] })
+          void queryClient.invalidateQueries({
+            predicate: partnerVehiclesInvalidationPredicate(id, tenantId, companyId),
+          })
         }}
       />
     </div>

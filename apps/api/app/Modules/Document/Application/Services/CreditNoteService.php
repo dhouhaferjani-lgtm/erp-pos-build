@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Application\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -20,6 +21,10 @@ use Illuminate\Support\Facades\DB;
 
 class CreditNoteService
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
+
     /**
      * Create a credit note from a source invoice.
      *
@@ -31,10 +36,19 @@ class CreditNoteService
         CreditNoteReason $reason,
         ?string $notes = null
     ): Document {
-        return DB::transaction(function () use ($sourceInvoiceId, $amount, $reason, $notes): Document {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
+        return DB::transaction(function () use ($sourceInvoiceId, $amount, $reason, $notes, $tenantId, $companyId): Document {
             // 1. Lock the invoice row FIRST (pessimistic locking)
+            // api.document.005: tenant+company scoped read so a cross-tenant
+            // sourceInvoiceId surfaces as ModelNotFoundException, not a
+            // foreign Document instance.
             /** @var Document $invoice */
             $invoice = Document::with('lines')
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->lockForUpdate()
                 ->findOrFail($sourceInvoiceId);
 
@@ -122,10 +136,17 @@ class CreditNoteService
         CreditNoteReason $reason,
         ?string $notes = null
     ): Document {
-        return DB::transaction(function () use ($sourceInvoiceId, $lines, $reason, $notes): Document {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
+        return DB::transaction(function () use ($sourceInvoiceId, $lines, $reason, $notes, $tenantId, $companyId): Document {
             // 1. Lock the invoice row FIRST (pessimistic locking)
+            // api.document.006: tenant+company scoped read.
             /** @var Document $invoice */
             $invoice = Document::with('lines')
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
                 ->lockForUpdate()
                 ->findOrFail($sourceInvoiceId);
 
@@ -277,10 +298,20 @@ class CreditNoteService
         CreditNoteReason $reason,
         ?string $notes = null
     ): Document {
-        return DB::transaction(function () use ($partnerId, $lines, $reason, $notes): Document {
-            // Get partner to validate and extract company/tenant info
+        $company = $this->companyContext->requireCompany();
+        $contextTenantId = $company->tenant_id;
+        $contextCompanyId = $company->id;
+
+        return DB::transaction(function () use ($partnerId, $lines, $reason, $notes, $contextTenantId, $contextCompanyId): Document {
+            // Get partner to validate and extract company/tenant info.
+            // api.document.007: tenant+company scoped — a cross-tenant partnerId
+            // surfaces as ModelNotFoundException, never a foreign Partner.
             /** @var Partner $partner */
-            $partner = Partner::lockForUpdate()->findOrFail($partnerId);
+            $partner = Partner::query()
+                ->where('tenant_id', $contextTenantId)
+                ->where('company_id', $contextCompanyId)
+                ->lockForUpdate()
+                ->findOrFail($partnerId);
 
             $companyId = $partner->company_id;
             $tenantId = $partner->tenant_id;
@@ -420,8 +451,16 @@ class CreditNoteService
         }
 
         return DB::transaction(function () use ($creditNote, $allocatedBy): CreditNoteAllocation {
-            // Lock the source invoice
-            $invoice = Document::lockForUpdate()->findOrFail($creditNote->source_document_id);
+            // Lock the source invoice.
+            // api.document.008: defense-in-depth — scope by the credit note's
+            // own tenant + company so a corrupted source_document_id pointing
+            // across tenants surfaces as ModelNotFoundException rather than
+            // allocating against a foreign invoice.
+            $invoice = Document::query()
+                ->where('tenant_id', $creditNote->tenant_id)
+                ->where('company_id', $creditNote->company_id)
+                ->lockForUpdate()
+                ->findOrFail($creditNote->source_document_id);
 
             // Validate invoice type
             if ($invoice->type !== DocumentType::Invoice) {

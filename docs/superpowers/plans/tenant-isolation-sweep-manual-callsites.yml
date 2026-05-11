@@ -1,0 +1,1015 @@
+# Tenant-Isolation Sweep — Manual Callsites Stub
+#
+# Source for the ManualScanner (master plan Section 5.5). Each entry below
+# becomes one row in the live inventory at
+# docs/superpowers/plans/tenant-isolation-sweep-inventory.yml on the next
+# `php artisan sweep:inventory:generate` run.
+#
+# Manual rows have stable_key = `manual:<cluster_id>:<slug>` — never
+# reproducible by a sha256-based scanner, so they survive regeneration.
+# Cluster owners populate this file as they identify non-mechanical
+# tenant-isolation gaps in their cluster (PlatformIntegration outbound
+# payloads, broadcast channels, scheduled jobs, etc.).
+#
+# Required fields per entry:
+#   - cluster_id          canonical id (e.g. "api.platform-integration")
+#   - slug                lowercase-hyphenated identifier; unique per cluster
+#   - file                relative path from repo root
+#   - symbol              fully-qualified PHP symbol or descriptive string
+#   - pattern_type        free-form scanner-pattern label
+#   - expected_scope      one of tenant_and_company | tenant_only |
+#                         company_only | parent_context | cross_tenant
+#   - severity            high | medium | low
+#   - expected_fix        one-sentence remediation guidance
+#
+# Optional fields:
+#   - resource            table or model short name; null if not applicable
+#   - fiscal_path         bool, defaults false
+#   - cross_module        bool, defaults false
+#   - surface             defaults "api"
+#   - line                int line number, defaults null
+
+manual_callsites:
+  # api.compliance — round-1 Opus Finding 1 (Nf525 fiscal-data leak)
+  - cluster_id: api.compliance
+    slug: nf525-export-jet-body-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 49
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::exportJet'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_terminals_zreports
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator. CompanyContextMiddleware verifies X-Company-Id against UserCompanyMembership."
+
+  - cluster_id: api.compliance
+    slug: nf525-verify-chains-body-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 76
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::verifyChains'
+    pattern_type: trusts_request_input_company_id
+    resource: receipts_zreports
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body company_id from validator."
+
+  - cluster_id: api.compliance
+    slug: nf525-reprint-log-query-company-id
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/Nf525ExportController.php
+    line: 150
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\Nf525ExportController::reprintLog'
+    pattern_type: trusts_request_input_company_id
+    resource: receipt_prints
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "Resolve companyId from CompanyContext->requireCompanyId(); drop body/query company_id from validator."
+
+  # api.compliance — round-1 Opus Finding 2 (AuditController missing middleware/permission/CompanyContext)
+  - cluster_id: api.compliance
+    slug: audit-controller-index-trusts-x-company-id-header
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 25
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::index'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId(); add SetPermissionsTeam middleware + can:compliance.view_reprint_log gate to legacy routes in ComplianceServiceProvider."
+
+  - cluster_id: api.compliance
+    slug: audit-controller-anomalies-trusts-x-company-id-header
+    file: apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php
+    line: 73
+    symbol: 'App\Modules\Compliance\Presentation\Controllers\AuditController::anomalies'
+    pattern_type: trusts_x_company_id_header
+    resource: audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Inject CompanyContext via constructor; replace getCompanyId() with requireCompanyId()."
+
+  # api.compliance — round-2 Opus Finding A (AuditService::getEventsForAggregate unscoped)
+  - cluster_id: api.compliance
+    slug: audit-service-get-events-for-aggregate-unscoped
+    file: apps/api/app/Modules/Compliance/Services/AuditService.php
+    line: 80
+    symbol: 'App\Modules\Compliance\Services\AuditService::getEventsForAggregate'
+    pattern_type: service_method_unscoped
+    resource: audit_events
+    expected_scope: company_only
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add required string $companyId arg; lead query with where('company_id', $companyId). Treasury invariant: any service-tier method reachable from an HTTP route handler with a route-anchored param must take companyId as required input."
+
+  # api.document — round-1 Opus Finding A (DraftPersistenceService::addLinesBatch
+  # is the unscoped twin of api.document.012/013 — the inventory only flagged
+  # the single-line addLine path; the batch path was missed but is reachable via
+  # the no-permission /auto-save route with no FormRequest validator)
+  - cluster_id: api.document
+    slug: draft-persistence-add-lines-batch-product-unscoped
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 422
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Product
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Scope Product::whereIn by document tenant_id + companyId so foreign product names are not snapshotted into local draft lines via /auto-save batch path."
+
+  - cluster_id: api.document
+    slug: draft-persistence-add-lines-batch-service-unscoped
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 425
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLinesBatch'
+    pattern_type: unscoped_eloquent_whereIn
+    resource: Service
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Scope Service::whereIn by document tenant_id + companyId so foreign service names are not snapshotted into local draft lines via /auto-save batch path."
+
+  # api.document — round-2 Codex Finding 1 (DraftPersistence persists raw
+  # foreign product_id/service_id when the scoped lookup misses; fixed by
+  # writing $product?->id / $service?->id instead — addLine + addLinesBatch)
+  - cluster_id: api.document
+    slug: draft-persistence-persists-raw-foreign-product-service-fk
+    file: apps/api/app/Modules/Document/Domain/Services/DraftPersistenceService.php
+    line: 239
+    symbol: 'App\Modules\Document\Domain\Services\DraftPersistenceService::addLine'
+    pattern_type: persists_unverified_foreign_key
+    resource: DocumentLine
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Persist scoped Product/Service lookup result (?->id) into document_lines, not the raw request UUID. Same fix in addLinesBatch."
+
+  # api.catalog — round-1 Opus Finding 1 (sibling-controller blind spots in
+  # Catalog/Presentation/Controllers and the recipe surfaces NOT in scanner inventory)
+  - cluster_id: api.catalog
+    slug: composite-item-controller-bare-where-chains
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to all CompositeItem::where('company_id', $companyId)->findOrFail($id) chains (lines 73, 101, 116, 132, 182). composite_items has both tenant_id and company_id — missing tenant_id violates the Treasury Finding-14 invariant."
+
+  - cluster_id: api.catalog
+    slug: recipe-controller-bare-where-chains
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeController.php
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\RecipeController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem+Recipe
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Lines 33, 70: scope CompositeItem::where('company_id', ...) by tenant_id too. Lines 51, 97, 116, 142: Recipe::with('compositeItem')->findOrFail($id) is unscoped — verify via compositeItem.company_id (and tenant_id) before mutating."
+
+  - cluster_id: api.catalog
+    slug: recipe-line-controller-store-bare-where-chain
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/RecipeLineController.php
+    line: 33
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\RecipeLineController::store'
+    pattern_type: unscoped_eloquent_with_findOrFail
+    resource: Recipe
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Recipe::with('compositeItem')->findOrFail($recipeId) is unscoped. The compositeItem.company_id manual check at line 36-38 catches cross-company but not cross-tenant within a same-id collision (UUID prevents); add scoped Recipe lookup via composite_items.tenant_id + company_id."
+
+  - cluster_id: api.catalog
+    slug: composite-item-variant-controller-bare-where-chain
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemVariantController.php
+    line: 31
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemVariantController'
+    pattern_type: bare_where_company_only
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('tenant_id', $company->tenant_id) to CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId) chain at line 31. composite_items has both columns."
+
+  # api.catalog — round-1 Opus Finding 3 (units bare exists across 8 callsites in Catalog Presentation surface)
+  - cluster_id: api.catalog
+    slug: units-bare-exists-eight-callsites
+    file: apps/api/app/Modules/Catalog/Presentation
+    symbol: '8 validators using exists:units,id'
+    pattern_type: bare_exists_validator
+    resource: units
+    expected_scope: tenant_only
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "units has nullable tenant_id (system row + tenant rows). ScopedExists::tenant excludes system units. Need a custom rule that allows tenant_id=$callerTenantId OR tenant_id IS NULL. Affected: StoreCompositeItemRequest:48, UpdateCompositeItemRequest:50, StoreModifierRequest:30, ModifierController:71, StoreRecipeRequest, UpdateRecipeRequest, StoreRecipeLineRequest:34, RecipeLineController:88."
+
+  # api.catalog — round-1 Opus Finding 4 (tax_configurations annotation overstates the actual guard)
+  - cluster_id: api.catalog
+    slug: tax-configurations-country-guard-overstated
+    file: apps/api/app/Modules/Catalog/Presentation/Requests/StoreCompositeItemRequest.php
+    line: 48
+    symbol: 'StoreCompositeItemRequest::rules + UpdateCompositeItemRequest::rules'
+    pattern_type: annotation_inaccurate
+    resource: tax_configurations
+    expected_scope: parent_context
+    severity: low
+    fiscal_path: true
+    cross_module: false
+    expected_fix: "tax_configurations is country-scoped but the annotation claimed tax-application enforces country_code. Verify the actual enforcement point in Tax/Document/Billing — if absent, add a country_code-coherence check at composite-item save time. UpdateCompositeItemRequest comment was softened in 91c6a9e9; StoreCompositeItemRequest comment still claims the strong guard."
+
+  # api.catalog — round-2 Opus LOW (ModifierController::update component_type asymmetric Enum)
+  - cluster_id: api.catalog
+    slug: modifier-controller-component-type-not-enum
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
+    line: 65
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
+    pattern_type: validation_asymmetry
+    resource: null
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace 'component_type' => ['nullable', 'string'] with ['nullable', new Enum(ComponentType::class)] to match StoreModifierRequest's validation. component_id is already tenant+company scoped to products, so no cross-tenant persistence leak — just an integrity bug."
+
+  # api.catalog — round-2 Opus LOW (CompositeItemController::checkAvailability forwards location_id without scoping)
+  - cluster_id: api.catalog
+    slug: composite-item-check-availability-location-unscoped
+    file: apps/api/app/Modules/Catalog/Presentation/Controllers/CompositeItemController.php
+    line: 175
+    symbol: 'App\Modules\Catalog\Presentation\Controllers\CompositeItemController::checkAvailability'
+    pattern_type: forwards_request_fk_without_scoped_validation
+    resource: locations
+    expected_scope: company_only
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ScopedExists::company('locations', $companyId) to the location_id validator. Returns 0 stock for foreign locations (no leak), but breaks the invariant that user-supplied FKs pass through ScopedExists before use."
+
+  # api.catalog — round-2 Codex LOW (NoCircularCompositeItemReference unscoped find)
+  - cluster_id: api.catalog
+    slug: no-circular-composite-reference-unscoped-find
+    file: apps/api/app/Modules/Catalog/Presentation/Rules/NoCircularCompositeItemReference.php
+    line: 52
+    symbol: 'App\Modules\Catalog\Presentation\Rules\NoCircularCompositeItemReference::passes'
+    pattern_type: unscoped_eloquent_find
+    resource: CompositeItem
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "CompositeItem::with('activeRecipe.lines')->find($compositeItemId) is unscoped. Pass the caller's tenant + company into the rule's constructor and scope the lookup. No persistence leak (the new ScopedExists in StoreRecipeLineRequest still rejects the id), but the unscoped read inside this rule violates the invariant."
+
+  # api.inventory — round-1 Opus LOW (CountingItemController::triggerThirdCount bare exists)
+  - cluster_id: api.inventory
+    slug: counting-item-controller-trigger-third-count-bare-exists
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/CountingItemController.php
+    line: 242
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\CountingItemController::triggerThirdCount'
+    pattern_type: bare_exists_validator
+    resource: inventory_counting_items
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace bare 'exists:inventory_counting_items,id' with ScopedExists scoped via the parent counting_id. Structurally protected today by InventoryCountingService::whereIn(...)->where('counting_id', $counting->id)->update(...) — but the validator surface is a sibling-controller blind spot."
+
+  # api.inventory — round-1 Opus MEDIUM (FraudTriggeredCountingService cross-tenant User::first() fallback)
+  - cluster_id: api.inventory
+    slug: fraud-triggered-counting-system-user-fallback
+    file: apps/api/app/Modules/Inventory/Application/Services/FraudTriggeredCountingService.php
+    line: 56
+    symbol: 'App\Modules\Inventory\Application\Services\FraudTriggeredCountingService::createCountingFromAlert'
+    pattern_type: cross_tenant_fallback_user_first
+    resource: users
+    expected_scope: tenant_only
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "User::where('email', 'system@autoerp.local')->first() ?? User::first() can pick a User from a different tenant when the system user is missing. Triggered by the scheduled fraud:detect command. Audit-trail integrity issue: created_by_user_id may be cross-tenant from the alert's company. Replace fallback with a per-tenant system-user lookup or fail-loud."
+
+  # api.inventory — round-1 Opus LOW (createDraft tenant_id hygiene)
+  - cluster_id: api.inventory
+    slug: inventory-counting-create-draft-tenant-id-not-set
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php
+    line: 422
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\InventoryCountingController::createDraft'
+    pattern_type: tenant_id_not_set_on_create
+    resource: inventory_countings
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Persist company.tenant_id alongside company_id when creating a draft inventory_counting (column is nullable but should always be set for audit consistency). Reads remain company-coherent because company_id is set."
+
+  # api.inventory — round-2 Opus INFORMATIONAL (WAC StockLevel locks tuple-scoped (product_id, location_id, tenant_id) only)
+  - cluster_id: api.inventory
+    slug: wac-stock-level-lock-tuple-missing-company-id
+    file: apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+    line: 62
+    symbol: 'App\Modules\Inventory\Application\Services\WeightedAverageCostService'
+    pattern_type: defense_in_depth_gap
+    resource: stock_levels
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Lock tuples at lines 62, 211, 309 do not include company_id. Defense-in-depth gap; not exploitable today because the stock_levels (tenant_id, product_id, location_id) unique key + product re-lock by tenant+company at lines 83-87/219-223/329-333 catch the leak. Add company_id for symmetry."
+
+  # api.inventory — round-3 Opus + round-4 Codex follow-ups (releaseBySource scoping, releaseForWorkOrder caller-scope)
+  - cluster_id: api.inventory
+    slug: release-by-source-not-tenant-scoped
+    file: apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php
+    line: 237
+    symbol: 'App\Modules\Inventory\Application\Services\StockReservationService::releaseBySource'
+    pattern_type: missing_caller_scope
+    resource: stock_reservations
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "releaseBySource (and releaseForWorkOrder which delegates to it) lack tenantId+companyId predicates. Practical risk is negligible (UUID v4 source_id collision) but mirror the reserveForWorkOrder hardening pattern: take caller scope and filter by it. Cross-module surface (reachable via Workshop's InventoryReservationAdapter::releaseFor)."
+
+  # api.inventory — round-3 Opus INFO (EloquentWorkOrderRepository finder lacks tenant_id predicate; api.workshop's responsibility)
+  - cluster_id: api.workshop
+    slug: eloquent-work-order-repository-find-no-tenant-id
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Persistence/EloquentWorkOrderRepository.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderRepository::findById|findForUpdate'
+    pattern_type: missing_tenant_predicate
+    resource: work_orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Repository finders only filter by company_id (controller checks company access). Add tenant_id predicate so a same-tenant cross-company access through a future caller path cannot leak. api.workshop cluster's responsibility — flagged here from the api.inventory round-3 Opus review."
+
+  # api.inventory — round-4 Codex INFO (Workshop cross-module raw-FK patterns)
+  - cluster_id: api.workshop
+    slug: bundle-expansion-adapter-raw-find
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/BundleExpansionAdapter.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\BundleExpansionAdapter::pricingModeOf|bundleName'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "ServiceBundle::find($bundleId) is unscoped; Workshop should pass and use its own tenant/company scope when resolving cross-module bundle metadata."
+
+  - cluster_id: api.workshop
+    slug: document-generation-adapter-raw-find
+    file: apps/api/app/Modules/Workshop/WorkOrder/Infrastructure/Adapters/DocumentGenerationAdapter.php
+    symbol: 'App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\DocumentGenerationAdapter'
+    pattern_type: unscoped_eloquent_find
+    resource: Document
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id."
+
+  # api.catalog — round-2 Codex Finding 1 (BLOCKING): ProductController +
+  # EnrichmentReviewController bare-where reads invisible to the chained
+  # MethodCall AST visitor (StaticCall blind spot, see d7184178). Both tables
+  # carry tenant_id + company_id. Pre-fix: `Model::where('company_id', X)
+  # ->where('id', Y)->first()` — single-predicate scope only. Round-2 fix
+  # rewrites each as `Model::query()->where('tenant_id', $tenantId)
+  # ->where('company_id', $companyId)->where('id', Y)->first()` so the chain
+  # visitor sees the scope and the cross-tenant invariant is enforced.
+  - cluster_id: api.catalog
+    slug: product-controller-show-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 219
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::show'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->with('primaryImage')->first() — invisible to the AST chain visitor (StaticCall blind spot tracked in audit 2026-05-04-bare-where-scanner-gap.md), and missed the products.tenant_id defense-in-depth predicate. Round-2: Product::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $product) — chain visitor now detects scope; cross-tenant route-param ids 404 instead of leaking. Pinned by tests/Feature/Catalog/CatalogTenantIsolationTest::test_show_product_rejects_cross_tenant_id + ::test_show_product_query_includes_tenant_and_company_predicates."
+
+  - cluster_id: api.catalog
+    slug: product-controller-update-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 384
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::update'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->first() before $productModel->update($validated). Round-2: Product::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $product) — cross-tenant id returns 404; foreign product cannot be mutated. Pinned by ::test_update_product_rejects_cross_tenant_id."
+
+  - cluster_id: api.catalog
+    slug: product-controller-destroy-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 524
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::destroy'
+    pattern_type: bare_where_company_only_static_call
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: Product::where('company_id', $companyId)->where('id', $product)->first() before $productModel->delete(). Round-2 fix anchors the lookup on tenant_id + company_id via the chained MethodCall pattern; cross-tenant DELETE returns 404 and does not soft-delete the foreign row. Pinned by ::test_destroy_product_rejects_cross_tenant_id."
+
+  - cluster_id: api.catalog
+    slug: product-controller-stock-levels-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/ProductController.php
+    line: 565
+    symbol: 'App\Modules\Product\Presentation\Controllers\ProductController::stockLevels'
+    pattern_type: bare_where_company_only_static_call
+    resource: products+stock_levels
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: BOTH the Product lookup (Product::where('company_id',...)->where('id',$product)->first()) AND the StockLevel aggregate read (StockLevel::where('product_id',$productModel->id)->where('company_id',$companyId)) lacked tenant_id. Round-2: chained MethodCall + tenant_id on each. stock_levels carries tenant_id + company_id, so leading with both predicates makes the cross-tenant invariant visible. Pinned by ::test_stock_levels_rejects_cross_tenant_product_id."
+
+  - cluster_id: api.catalog
+    slug: enrichment-review-controller-show-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 100
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::show'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: EnrichmentResult::where('company_id', $companyId)->where('id', $id)->with('product')->first() — invisible to the AST chain visitor (StaticCall) and lacked enrichment_results.tenant_id. Round-2: EnrichmentResult::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->where('id', $id) — cross-tenant 404 + scanner-visible scope. Pinned by ::test_show_enrichment_result_rejects_cross_tenant_id + ::test_show_enrichment_result_query_includes_tenant_and_company_predicates."
+
+  - cluster_id: api.catalog
+    slug: enrichment-review-controller-accept-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 170
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::accept'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: same StaticCall bare-where shape as show() before the accept() state transition (PendingReview → Accepted). A tenant-A user could pass tenant-B's enrichment_result UUID and trigger the foreign accept mutation. Round-2 fix anchors the read on tenant_id + company_id; cross-tenant returns 404 and does not transition the foreign row. Pinned by ::test_accept_enrichment_result_rejects_cross_tenant_id."
+
+  - cluster_id: api.catalog
+    slug: enrichment-review-controller-reject-bare-where-route-anchored-read
+    file: apps/api/app/Modules/Product/Presentation/Controllers/EnrichmentReviewController.php
+    line: 244
+    symbol: 'App\Modules\Product\Presentation\Controllers\EnrichmentReviewController::reject'
+    pattern_type: bare_where_company_only_static_call
+    resource: enrichment_results
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Pre-fix: same StaticCall bare-where shape before the reject() state transition (PendingReview → Rejected). Round-2 fix mirrors accept(); cross-tenant returns 404 and the foreign row stays in PendingReview. Pinned by ::test_reject_enrichment_result_rejects_cross_tenant_id."
+
+  # api.scheduled-jobs — cat-(a) classification per docs/superpowers/audits/2026-05-07-api-scheduled-jobs-triage.md
+  - cluster_id: api.scheduled-jobs
+    slug: import-process-import-job
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessImportJob.php
+    line: 61
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessImportJob::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Two tracks: (1) introduce App\\Jobs\\Concerns\\BindsTenantContext trait providing protected string $tenantId + protected withTenantContext(callable $fn): mixed wrapping in Tenant::find($this->tenantId)?->run($fn) (fail-loud on null); (2) apply trait to ProcessImportJob — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:435 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts handle() with tenant-A binding cannot read or write tenant-B import_jobs / data."
+
+  - cluster_id: api.scheduled-jobs
+    slug: import-process-product-image-import
+    file: apps/api/app/Modules/Import/Application/Jobs/ProcessProductImageImport.php
+    line: 53
+    symbol: 'App\Modules\Import\Application\Jobs\ProcessProductImageImport::handle'
+    pattern_type: unscoped_queue_job_no_tenant_anchor
+    resource: import_jobs
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Apply BindsTenantContext trait — add string $tenantId third constructor arg, wrap handle() body in $this->withTenantContext(fn () => ...). Update dispatcher at ImportController.php:555 (CompanyContext already injected) to pass $this->companyContext->tenantId() as the third dispatch arg. Cross-tenant denial test in tests/Feature/Jobs/ScheduledJobTenantIsolationTest.php asserts the ZIP-extraction path cannot leak across tenants."
+
+  # api.webhooks-incoming — cat-(b) classification per docs/superpowers/audits/2026-05-07-api-webhooks-incoming-triage.md.
+  # All three webhook controllers are structurally tenant-safe today (signature
+  # verification + globally-unique resource/tracking IDs / stub-only). The
+  # cluster work is annotation-only at the controller layer plus a strict
+  # WebhookControllerTenantContextTest architecture test that enforces the
+  # invariant going forward — including, for the PurchaseHub stub, that the
+  # controller body remains stub-shaped (no DB / Bus / Event / Queue /
+  # Notification calls) until a signature middleware + tenant-resolution
+  # path is wired up.
+  - cluster_id: api.webhooks-incoming
+    slug: stripe-webhook-controller-cross-tenant-by-design
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 30
+    symbol: 'App\Modules\Billing\Presentation\Controllers\StripeWebhookController'
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: tenant_subscriptions+billing_invoices+billing_payments
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-by-design` annotation documenting shape (b) sub-form: globally-unique Stripe-issued IDs (sub_*, in_*, pi_*) → resource lookup → resource.tenant_id stamps every downstream notification/update. Signature gate is inline (Stripe SDK Webhook::constructEvent with global STRIPE_WEBHOOK_SECRET, before any DB read). DB-level UNIQUE constraints exist on tenant_subscriptions.stripe_subscription_id and billing_invoices.stripe_invoice_id; billing_payments.provider_payment_id is only composite-indexed (relies on Stripe's external uniqueness contract — tracked as Finding F in the scheduled-jobs cross-cluster observations doc). The architecture test (WebhookControllerTenantContextTest) enforces the annotation; out-of-scope concerns (orWhere fallback in handleSubscriptionCreated, missing event-id idempotency) deferred as Findings D + E."
+
+  - cluster_id: api.webhooks-incoming
+    slug: enrichment-webhook-controller-cross-tenant-by-design
+    file: apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/EnrichmentWebhookController.php
+    line: 13
+    symbol: 'App\Modules\PlatformIntegration\Presentation\Controllers\EnrichmentWebhookController'
+    pattern_type: webhook_controller_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-by-design` annotation pointing to (1) the route-level VerifySynerivaWebhookSignature middleware (HMAC-SHA256 over timestamp.body with global SYNERIVA_WEBHOOK_SECRET, 5-min freshness window, hash_equals constant-time compare) and (2) the existing job-level annotation on ProcessEnrichmentWebhookJob:16 documenting the resolution chain through platform_submission_id → Product → company_id (cross-cluster Finding A). The controller class itself does ZERO DB access; the annotation explains why and chains to the upstream signature gate + downstream job."
+
+  - cluster_id: api.webhooks-incoming
+    slug: purchase-hub-webhook-controller-stub-cross-tenant-by-design
+    file: apps/api/app/Modules/PurchaseHub/Presentation/Controllers/PurchaseHubWebhookController.php
+    line: 12
+    symbol: 'App\Modules\PurchaseHub\Presentation\Controllers\PurchaseHubWebhookController'
+    pattern_type: webhook_controller_stub_no_signature_no_cross_tenant_by_design_annotation
+    resource: null
+    expected_scope: cross_tenant
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "STUB controller — add a LOUD class-level `@cross-tenant-by-design` annotation marking the class as a stub (zero DB access, zero job/event dispatch, zero notification) AND listing the three prerequisites that MUST be satisfied before any DB/Bus/Event/Queue/Notification call is added: (1) register a signature-verification middleware on routes.php:25 (mirror VerifySynerivaWebhookSignature pattern); (2) define a tenant-resolution path from the verified payload (shape a/b/c per master plan §8); (3) update the annotation + convert this entry to cat-(a) with a manual inventory row + regression test. The architecture test (WebhookControllerTenantContextTest) enforces the stub shape via reflection-based body inspection: any forbidden call pattern (DB::, Bus::, Event::dispatch, Queue::push, Notification::send, Model:: static-call writes) in the controller body fails the test until the prerequisites above are met. Tracked as Finding G in the scheduled-jobs cross-cluster observations doc."
+
+  # api.broadcast-channels — 13 cat-(b) annotation sites (5 channel definitions + 8 broadcast event classes).
+  # All sites tenant-anchor on (tenantId, companyId) embedded in the channel/PrivateChannel name pattern.
+  # Annotation grammar: `@cross-tenant-anchored` PHPDoc with prose justification (different from
+  # `@cross-tenant-by-design` used on webhooks/jobs/commands — anchored vs by-design are distinct shapes).
+  # The architecture test (BroadcastChannelTenantContextTest + BroadcastEventTenantContextTest) enforces
+  # both shapes via PhpParser-based static analysis on routes/channels.php and the Broadcasting/ class tree.
+
+  # 5 channel definitions in apps/api/routes/channels.php
+  - cluster_id: api.broadcast-channels
+    slug: product-cost-price-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 19
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.product.{productId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: products+product_cost_price_events
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + productId; (2) auth callback delegates to User::canAccessChannel which verifies user.tenant_id === tenantId, user.isActive(), and an active UserCompanyMembership row for companyId; (3) the productId segment is intentionally NOT validated against (tenantId, companyId) because products carry company_id and there is no cross-company product sharing within a tenant — the company-membership gate is the upstream guard, and the productId segment is a fan-out / subscription-scoping signal only. Architecture test BroadcastChannelTenantContextTest enforces the annotation OR a known-tenant-anchored auth helper (canAccessChannel / canAccessCompanyChannel) call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: imports-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 32
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.imports)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel (tenant_id match + active + active membership in companyId). Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: partners-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 45
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.partners)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports channel — company-level fan-out, no per-partner segmentation. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: pos-terminal-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 58
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.terminal.{terminalId})'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: (1) channel name embeds tenantId + companyId + terminalId; (2) closure signature binds only ($user, $tenantId, $companyId) — Laravel passes only declared parameters, so the {terminalId} segment is NOT a security boundary; (3) terminals carry company_id (no cross-company terminal sharing within a tenant), so the company-membership gate via User::canAccessCompanyChannel is the upstream guard and the {terminalId} segment is a fan-out / subscription-scoping signal only. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  - cluster_id: api.broadcast-channels
+    slug: pos-kitchen-channel-cross-tenant-anchored
+    file: apps/api/routes/channels.php
+    line: 71
+    symbol: 'Broadcast::channel(tenant.{tenantId}.company.{companyId}.pos.kitchen)'
+    pattern_type: broadcast_channel_no_cross_tenant_anchored_annotation
+    resource: kitchen_orders+order_lines
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a `@cross-tenant-anchored` PHPDoc above the Broadcast::channel call documenting: channel name embeds tenantId + companyId; auth callback delegates to User::canAccessCompanyChannel. Same anchor shape as the imports/partners channels — company-level fan-out for the kitchen-display-system. Architecture test enforces the annotation OR a known-tenant-anchored auth helper call in the closure body."
+
+  # 8 broadcast event classes — class-level @cross-tenant-anchored annotation
+  - cluster_id: api.broadcast-channels
+    slug: product-cost-price-updated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Product/Infrastructure/Broadcasting/ProductCostPriceUpdatedBroadcast.php
+    line: 20
+    symbol: 'App\Modules\Product\Infrastructure\Broadcasting\ProductCostPriceUpdatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: products
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs a PrivateChannel from constructor-property-derived tenantId / companyId / productId on the wrapped ProductCostPriceUpdated domain event, never from auth() or a request-scoped facade. ShouldBroadcastNow (synchronous) — queue-context tenant-loss is not in play, but the annotation locks the property-sourced shape so a future async-promotion does not regress. Architecture test BroadcastEventTenantContextTest enforces the property-sourcing pattern via PhpParser scan of the broadcastOn() method body."
+
+  - cluster_id: api.broadcast-channels
+    slug: partner-balance-updated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Partner/Infrastructure/Broadcasting/PartnerBalanceUpdatedBroadcast.php
+    line: 20
+    symbol: 'App\Modules\Partner\Infrastructure\Broadcasting\PartnerBalanceUpdatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: partners
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the company-level partners PrivateChannel from $this->domainEvent->{tenantId,companyId} (the wrapped PartnerBalanceUpdated domain event carries them at construction). Architecture test enforces the property-sourcing pattern."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-sent-to-kitchen-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderSentToKitchenBroadcast.php
+    line: 16
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderSentToKitchenBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored (cluster invariant in master plan §15)."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-ready-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderReadyBroadcast.php
+    line: 14
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderReadyBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: orders
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored."
+
+  - cluster_id: api.broadcast-channels
+    slug: order-line-status-changed-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/OrderLineStatusChangedBroadcast.php
+    line: 14
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\OrderLineStatusChangedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: order_lines
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the kitchen PrivateChannel from constructor-provided readonly $tenantId + $companyId. Annotation-only edit — no code/logic change; POS surface invariant honored. (Discovered during Step 1 triage; not in orchestrator's enumerated five but mechanically identical to OrderSentToKitchen / OrderReady — orchestrator approved scope expansion.)"
+
+  - cluster_id: api.broadcast-channels
+    slug: terminal-activated-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/POS/Infrastructure/Broadcasting/TerminalActivatedBroadcast.php
+    line: 15
+    symbol: 'App\Modules\POS\Infrastructure\Broadcasting\TerminalActivatedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: terminals
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the per-terminal PrivateChannel from $this->event->{tenantId,companyId,terminalId} (the wrapped TerminalActivated domain event carries them). Annotation-only edit — no code/logic change; POS surface invariant honored."
+
+  - cluster_id: api.broadcast-channels
+    slug: import-completed-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportCompletedBroadcast.php
+    line: 15
+    symbol: 'App\Modules\Import\Infrastructure\Broadcasting\ImportCompletedBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportCompleted domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)"
+
+  - cluster_id: api.broadcast-channels
+    slug: import-progress-broadcast-cross-tenant-anchored
+    file: apps/api/app/Modules/Import/Infrastructure/Broadcasting/ImportProgressBroadcast.php
+    line: 15
+    symbol: 'App\Modules\Import\Infrastructure\Broadcasting\ImportProgressBroadcast'
+    pattern_type: broadcast_event_no_cross_tenant_anchored_annotation
+    resource: imports
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add a class-level `@cross-tenant-anchored` PHPDoc documenting that broadcastOn() constructs the imports PrivateChannel from $this->event->{tenantId,companyId} (the wrapped ImportProgressUpdated domain event carries them). (Discovered during Step 1 triage; orchestrator approved scope expansion.)"
+
+  # api.platform-integration — LAST bespoke cluster of the sweep. Two concerns folded into one cluster
+  # per kickoff brief, absorbing Findings A + F from 2026-05-07-scheduled-jobs-cross-cluster-observations.md:
+  #   Concern 1 — outbound HTTP carries originating-tenant context (PlatformHttpClient single load-bearing point).
+  #   Concern 2 — no external ID is trusted as a tenant anchor without DB-enforced uniqueness.
+  # Six manual rows track the load-bearing fixes; the 22 outbound callsites benefit transitively from
+  # the PlatformHttpClient::buildRequest() change and don't need individual rows (would be bookkeeping noise,
+  # not independent fix work). Triage at docs/superpowers/audits/2026-05-08-api-platform-integration-triage.md.
+
+  - cluster_id: api.platform-integration
+    slug: platform-http-client-tenant-headers
+    file: apps/api/app/Modules/PlatformIntegration/Infrastructure/Http/PlatformHttpClient.php
+    line: 205
+    symbol: 'App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient::buildRequest'
+    pattern_type: outbound_http_no_tenant_headers
+    resource: synerivia_platform_outbound
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Inject CompanyContext via constructor; add private addTenantHeaders() that pulls X-Tenant-Id from CompanyContext::requireTenantId() + X-Company-Id from CompanyContext::requireCompanyId() (both throw on empty context — fail-loud, no silent omission); buildRequest() calls addTenantHeaders() so all 4 public methods (get/post/postRaw/getRaw) and all 22 outbound callsites across BarcodeLookupService/CatalogBrowseService/ProductSubmissionService benefit transitively. Pre-platform-side enforcement (tracked as Finding J — platform.synerivia-tenant-enforcement cluster blocked on this cluster landing first), the headers are diagnostic-only metadata establishing audit trail at source."
+
+  - cluster_id: api.platform-integration
+    slug: check-pending-enrichments-per-iteration-rebind
+    file: apps/api/app/Modules/PlatformIntegration/Application/Commands/CheckPendingEnrichmentsCommand.php
+    line: 52
+    symbol: 'App\Modules\PlatformIntegration\Application\Commands\CheckPendingEnrichmentsCommand::handle'
+    pattern_type: console_command_fleet_wide_no_per_iteration_tenant_rebind
+    resource: products+pending_enrichments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Per-iteration tenant rebind: PendingEnrichmentDTO carries productId + tenantId + companyId (extend EnrichmentQueryInterface + Eloquent impl to populate the new fields). Inside the foreach loop, rebind CompanyContext to per-record tenant + company before checkStatusRaw() outbound HTTP fires, so X-Tenant-Id + X-Company-Id headers reflect the originating tenant per-record. Small N (limit:50) — rebind cost is negligible vs the audit/billing benefit. Existing @cross-tenant-by-design docblock on the class remains accurate (the OUTBOX is fleet-wide; the per-call binding is per-record now)."
+
+  - cluster_id: api.platform-integration
+    slug: products-platform-submission-id-unique-migration
+    file: apps/api/database/migrations/2026_05_08_000001_add_unique_to_products_platform_submission_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on products.platform_submission_id'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "New migration adding UNIQUE constraint on products.platform_submission_id. Pre-migration COUNT check inside up() — DB::selectOne('SELECT COUNT(*) - COUNT(DISTINCT platform_submission_id) AS dup FROM products WHERE platform_submission_id IS NOT NULL') — throws RuntimeException with triage instructions if duplicates exist. Source uniqueness contract is upstream (apps/platform/.../barcode_submissions.id is UUID PK), so cross-tenant collision is mathematically negligible — defense-in-depth. Resolves Finding A."
+
+  - cluster_id: api.platform-integration
+    slug: billing-payments-provider-payment-id-unique-migration
+    file: apps/api/database/migrations/2026_05_08_000002_add_unique_to_billing_payments_provider_payment_id.php
+    line: 1
+    symbol: 'Migration: add UNIQUE on billing_payments(provider, provider_payment_id)'
+    pattern_type: external_id_no_db_unique_constraint
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "New migration adding UNIQUE constraint on (provider, provider_payment_id) of billing_payments — replaces the existing composite INDEX (line 81 of 2025_12_16_100004_create_billing_payments_table.php). Pre-migration COUNT check inside up() — DB::selectOne with subquery on (provider, provider_payment_id) tuples — throws RuntimeException if duplicates exist. Stripe's pi_* namespace is per-account-globally-unique by contract, so duplicates would indicate a webhook-deduplication bug (Finding E in cross-cluster observations). Resolves Finding F."
+
+  - cluster_id: api.platform-integration
+    slug: enrichment-listener-sole-defense-in-depth
+    file: apps/api/app/Modules/Product/Application/Listeners/ProcessEnrichmentEventListener.php
+    line: 22
+    symbol: 'App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener::handle'
+    pattern_type: external_id_resolver_no_collision_guard
+    resource: products
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Replace Product::where('platform_submission_id', $event->trackingId)->first() with ->sole(). ->sole() throws ModelNotFoundException on zero results AND MultipleRecordsFoundException on collision; caller catches ModelNotFoundException and treats as graceful 'webhook arrived before local Product was created' skip path (legitimate async — log + return), but lets MultipleRecordsFoundException bubble up loud (real defense-in-depth signal that the upstream UNIQUE constraint was violated). Defense-in-depth pairing with the migration above."
+
+  - cluster_id: api.platform-integration
+    slug: stripe-webhook-sole-defense-in-depth-plus-provider-filter
+    file: apps/api/app/Modules/Billing/Presentation/Controllers/StripeWebhookController.php
+    line: 449
+    symbol: 'App\Modules\Billing\Presentation\Controllers\StripeWebhookController (3 callsites: handlePaymentIntentSucceeded:449, handlePaymentIntentFailed:473, handleChargeRefunded:502)'
+    pattern_type: external_id_resolver_no_collision_guard_and_no_provider_filter
+    resource: billing_payments
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add ->where('provider', PaymentProviderCode::Stripe) to the 3 Payment::where('provider_payment_id', ...)->first() callsites at lines 449, 473, 502 — pairs with the new (provider, provider_payment_id) UNIQUE migration so the resolver actually exercises the unique constraint. Replace ->first() with ->sole() per the same pattern as the listener (catch ModelNotFoundException → graceful 'webhook redelivery before local Payment was reconciled' skip path; let MultipleRecordsFoundException bubble loud). The existing class-level docblock at lines 30-63 already references Finding F as the open gap — update the docblock to reflect the new state once the fix lands."
+
+  # api.super-admin-context — paired with web.super-admin-frontend below.
+  # Triage at docs/superpowers/audits/2026-05-08-api-super-admin-context-and-web-super-admin-frontend-triage.md.
+  # The infrastructure already exists (CrossTenantRoute attribute, sweep visitor honoring, EnsureSuperAdmin
+  # middleware, AdminAuditLog) — this cluster's job is the universal arch test that codifies "every controller
+  # method is either CompanyContext-scoped OR carries #[CrossTenantRoute(reason: ...)]" + the ~58 method
+  # placements across 7 controllers (SuperAdmin{Auth,}Controller, AdminBillingController, MonitoringController,
+  # CountryController, StripeWebhookController, AuthController) so the static guarantee finally holds.
+
+  - cluster_id: api.super-admin-context
+    slug: apply-attribute-and-arch-test
+    file: apps/api/tests/Architecture/ControllerTenantContextTest.php
+    line: 1
+    symbol: 'Tests\Architecture\ControllerTenantContextTest::test_every_controller_method_is_classified'
+    pattern_type: controller_method_no_universal_cross_tenant_classification
+    resource: cross_tenant_attribution
+    expected_scope: cross_tenant
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Author tests/Architecture/ControllerTenantContextTest.php as the universal controller-level invariant: reflection-walk every public method on every concrete controller under app/Http/Controllers/** and app/Modules/*/Presentation/Controllers/*Controller.php and assert (a) the method carries #[CrossTenantRoute(reason: <non-blank>)] OR (b) the method body matches the heuristic regex for CompanyContext / tenantId / tenant_id / companyId / company_id / Auth::user / $request->user / ->tenant. Apply the attribute to ~58 methods across 7 controllers per triage table A–G (SuperAdminController.13, SuperAdminAuthController.3, AdminBillingController.14, StripeWebhookController.handle.1 dual-attributed alongside the existing class-level @cross-tenant-by-design, MonitoringController.12 incl. public ping, CountryController.2, AuthController.* pre-auth + self-scoped) with method-specific reason text per the bar (named action + audit/auth mechanism). Document deferrals fixture for Route-Model-Binding cases (DocumentAdditionalCostController). Codex round-1 will probe each reason for non-vacuousness — boilerplate gets flagged as classifier-bypass."
+
+  # web.super-admin-frontend — paired with api.super-admin-context above.
+  # Frontend audit found ONE leak: features/compliance/components/FraudAlertActionModals.tsx:22 uses
+  # queryKey: ['admin-users'] for a tenant-scoped getAdminUsers call (the function name collides with the
+  # super-admin-side getAdminUsers in features/admin/api/index.ts but hits /users?role=admin via apiGet,
+  # NOT /admin/users via adminApiGet). The fix renames the queryKey to ['users', 'admin-role'] and renames
+  # the compliance-side function to getUsersWithAdminRole. The new web arch test enforces the namespace
+  # invariant so future regressions are caught at CI.
+
+  - cluster_id: web.super-admin-frontend
+    slug: querykey-namespace-arch-test
+    surface: web
+    file: apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts
+    line: 1
+    symbol: 'apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts'
+    pattern_type: querykey_namespace_unenforced
+    resource: tanstack_querykey_cache
+    expected_scope: cross_tenant
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Author apps/web/src/__tests__/architecture/queryKeyNamespace.test.ts as the queryKey-namespace invariant: static-scan every .ts/.tsx under apps/web/src extracting queryKey: [...] literals, classify by file path (under features/admin/ MUST start with 'admin'; outside MUST NOT). The test must RED on the existing leak at features/compliance/components/FraudAlertActionModals.tsx:22 (queryKey: ['admin-users']) and turn GREEN once that file's queryKey is renamed to ['users', 'admin-role'] AND the compliance-side getAdminUsers function in features/compliance/api/fraudApi.ts is renamed to getUsersWithAdminRole (disambiguating from the super-admin getAdminUsers in features/admin/api/index.ts). Verify no admin-prefixed leakage outside features/admin/ AND no domain-prefixed leakage inside features/admin/ (auth-store + adminApi wrappers are already cleanly encapsulated per audit)."
+
+  # api.module-gating — master plan §10 (narrowed) expanded to 20 line-level callsites in 6 controllers
+  # per orchestrator decision 2026-05-08 (after hostile-grep at triage Step 1 surfaced the sibling callsites
+  # outside the original Codex-S4-audited Progression module). Triage at
+  # docs/superpowers/audits/2026-05-08-api-module-gating-triage.md.
+  # Pattern lesson recorded in docs/superpowers/audits/2026-05-07-scheduled-jobs-cross-cluster-observations.md
+  # (master plan §10 narrowing was scope-myopic — Codex SN audit's coverage limit was the load-bearing
+  # assumption; verify by hostile-grep before honoring narrowings).
+  #
+  # Two invariant flavors closed by this cluster (both HIGH severity):
+  #   (a-1) data-scoping invariant: companyId controls which records are read/written.
+  #         Raw-header-trust = direct cross-tenant data leak. (Progression × 3 + Tenant/Onboarding.)
+  #   (a-2) audit-attribution invariant: companyId is recorded in AuditEvent for forensic
+  #         reconstruction. Raw-header-trust = audit-trail evidence-tampering risk. For NF525 +
+  #         AdminAuditLog + two-tier hash chain compliance, this is independently load-bearing.
+  #         (Tenant/CompanySettings + Identity/UserController.)
+  # Plus a Growth Advisor response-id contract check (defense-in-depth on outbound-call return shape).
+  #
+  # Layering with api.super-admin-context: the universal arch test (ControllerTenantContextTest) confirms
+  # every controller method is classified by structural CompanyContext usage OR #[CrossTenantRoute].
+  # That static check correctly admits these methods today (they reference CompanyContext indirectly
+  # through the audit helper or service), but the static heuristic CANNOT enforce that every
+  # companyId-bearing argument flowing OUT of the controllers derives from CompanyContext rather than
+  # raw $request->header('X-Company-Id'). This cluster is the behavioral source-pinning layer that
+  # closes that residual gap (broadcast-channels round-3 lesson: static analysis alone has a data-flow
+  # ceiling; behavioral tests close the runtime contract).
+
+  - cluster_id: api.module-gating
+    slug: progression-controllers-companycontext-injection
+    file: apps/api/app/Modules/Progression/Presentation/Controllers/CompanyProgressionController.php
+    line: 20
+    symbol: 'App\Modules\Progression\Presentation\Controllers (CompanyProgressionController::show:20, register:45+48, milestones:69 + ModuleReadinessController::index:20, activate:38 + RecommendationController::index:20, accept:36, dismiss:56) — 8 method-level callsites'
+    pattern_type: trusts_x_company_id_header_in_controller
+    resource: growth_advisor_companies
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into all 3 Progression controllers (ModuleReadinessController, RecommendationController, CompanyProgressionController). Replace every `$request->header('X-Company-Id', '')` with `$this->companyContext->requireCompanyId()` (8 line-level callsites across the 3 files). Additionally on CompanyProgressionController::register line 48, swap `$request->header('X-Tenant-Id', '')` → `$this->companyContext->requireTenantId()`. Add class-level docblock mirroring AuditController template (api.compliance precedent at apps/api/app/Modules/Compliance/Presentation/Controllers/AuditController.php:18-26): names CompanyContextMiddleware as the validator, names requireCompanyId() as the safe single source of truth, explains structural protection. Behavior-tests must drive a middleware-bypassed flow with a mock CompanyContext returning id A and a request header X-Company-Id: B (malicious) — assert ProgressionService received A, NOT B. (a-1) data-scoping invariant: companyId flows directly to the outbound Growth Advisor HTTP call URL path (e.g., GET /api/v1/companies/{companyId}/modules)."
+
+  - cluster_id: api.module-gating
+    slug: tenant-controllers-companycontext-injection
+    file: apps/api/app/Modules/Tenant/Presentation/Controllers/CompanySettingsController.php
+    line: 112
+    symbol: 'App\Modules\Tenant\Presentation\Controllers (OnboardingController::status:20 + CompanySettingsController::update:112, uploadLogo:159, deleteLogo:220) — 4 method-level callsites'
+    pattern_type: trusts_x_company_id_header_in_controller
+    resource: tenants_audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into OnboardingController and CompanySettingsController. OnboardingController::status (a-1 — primary scoping; flows to checklistService->getStatus($companyId)): replace raw header read AND remove the now-redundant `if ($companyId === null)` 400 guard (CompanyContextMiddleware already 403s on missing context, and requireCompanyId() throws on missing context). CompanySettingsController (a-2 — audit-attribution; flows to logAuditEvent only — actual settings update uses Tenant::find($user->tenant_id) which is already self-scoping): replace 3 callsites at lines 112, 159, 220 with requireCompanyId(). Leave the helper's `if ($companyId === null) return;` guard as defense-in-depth (avoid touching helper signature). Behavior-tests must pin both invariants: middleware-bypassed flow with malicious header proves source-pinning; logAuditEvent records the validated companyId, not the malicious one."
+
+  - cluster_id: api.module-gating
+    slug: identity-user-controller-companycontext-audit-attribution
+    file: apps/api/app/Modules/Identity/Presentation/Controllers/UserController.php
+    line: 177
+    symbol: 'App\Modules\Identity\Presentation\Controllers\UserController (store:177, update:263, destroy:330, activate:392, deactivate:468, setPosPin:526, setPosPin:559, resetPassword:620) — 8 method-level callsites'
+    pattern_type: trusts_x_company_id_header_for_audit_attribution
+    resource: users_audit_events
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Constructor-inject CompanyContext into UserController. Replace 8 `companyId: $request->header('X-Company-Id')` calls (lines 177, 263, 330, 392, 468, 526, 559, 620) with `companyId: $this->companyContext->requireCompanyId()`. (a-2) audit-attribution invariant: data scoping is already correct (User CRUD scopes to where('tenant_id', $currentUser->tenant_id) — auth user's own tenant). The header read flows ONLY to the private logAuditEvent helper. Risk shape is audit-trail evidence-tampering: a user performing role-grant on their own tenant but tagging the AuditEvent with a foreign companyId. For NF525 + AdminAuditLog + two-tier hash chain compliance, this is independently load-bearing — not 'less severe than (a-1)' but 'different invariant, equally load-bearing for compliance contexts.' Leave the helper's `if ($companyId === null) return;` defense-in-depth guard. Behavior-tests must drive the middleware-bypassed flow + assert AuditEvent table records the validated companyId."
+
+  - cluster_id: api.module-gating
+    slug: growth-advisor-response-id-verification
+    file: apps/api/app/Modules/Progression/Application/Services/ProgressionService.php
+    line: 19
+    symbol: 'App\Modules\Progression\Application\Services\ProgressionService::getProfile + ::registerCompany'
+    pattern_type: outbound_response_no_id_match_check
+    resource: growth_advisor_companies
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add private assertResponseCompanyMatches(array $response, string $expectedCompanyId, string $context): void helper to ProgressionService — throws RuntimeException when response['id'] !== null AND response['id'] !== $expectedCompanyId. Pair with assertResponseTenantMatches for tenant_id (CompanyProfileData carries both id + tenant_id). Apply to getProfile (line 19) AND registerCompany (line 33) where Growth Advisor's CompanyProfileData response shape carries the id echo. The 6 other client methods (getMilestones, getModules, activateModule, getRecommendations, acceptRecommendation, dismissRecommendation) return DTOs that don't carry company_id in the response shape — document those as URL-bound only (mis-routing detectable only Growth-Advisor-side; tracked as Finding K's residual at api.growth-advisor-tenant-binding follow-up). The `if (responseId !== null && ...)` guard avoids false-throws on legitimate no-echo shapes. Fail-loud throw bubbles through controller's error handler as 500 — the canonical 'this should never happen' signal. Round-1 review focus: distinguish CLIENT-LAYER catch (network errors → returns null) from SERVICE-LAYER throw (contract violations → bubbles up); they don't intersect."
+
+  # api.auth-permissions — Section 15 (the LAST architectural cluster)
+  # PR1 = Invariants A (lifecycle hooks) + B (universal coverage arch test) + C (team-id consistency, automatic via SetPermissionsTeam reading live tenant_id)
+  # PR2 = Invariant D (token-tenant-claim defense-in-depth middleware)
+  # Triage: docs/superpowers/audits/2026-05-08-api-auth-permissions-triage.md
+  - cluster_id: api.auth-permissions
+    slug: tenant-suspension-token-revocation
+    file: apps/api/app/Observers/TenantObserver.php
+    line: 30
+    symbol: 'App\Observers\TenantObserver::updated — extend with status-suspended branch that revokes personal_access_tokens for every user belonging to the tenant'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_tenant_suspend
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Extend the existing App\\Observers\\TenantObserver::updated method (currently only handles vertical/enabled_extras cache invalidation). Add a branch: when wasChanged('status') AND status === TenantStatus::Suspended, iterate User::where('tenant_id', $tenant->id)->get() and call $user->tokens()->delete() per user. Currently SuperAdminController::suspendTenant updates status='suspended' via Eloquent but no hook revokes user tokens — a suspended-tenant user can continue to authenticate with their pre-suspension bearer token until it naturally expires. Race window between status-commit and token-revocation is acceptable per master plan §15. Document in observer docblock + PR body. Tests in tests/Feature/Identity/AuthPermissionsTenantIsolationTest.php drive Tenant::update via real Eloquent + assert personal_access_tokens count goes to 0 for the affected users (behavioral DB-state assertion preferred over mocks even though Tenant is not final)."
+
+  - cluster_id: api.auth-permissions
+    slug: tenant-deletion-token-revocation
+    file: apps/api/app/Observers/TenantObserver.php
+    line: 30
+    symbol: 'App\Observers\TenantObserver::deleting + ::forceDeleted — NEW hooks on Tenant lifecycle that revoke personal_access_tokens BEFORE the ON DELETE CASCADE on users.tenant_id fires'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_tenant_delete
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Add ::deleting and ::forceDeleted methods to App\\Observers\\TenantObserver. Both call a private revokeAllUserTokens($tenant) helper that runs User::where('tenant_id', $tenant->id)->each(fn(User $u) => $u->tokens()->delete()). Why the deleting event (not deleted): the migration users.tenant_id has ON DELETE CASCADE — the DB cascade removes user rows directly, bypassing Eloquent User events. By the time deleted fires on Tenant, the User rows are already gone and the where('tenant_id', $tenant->id) query returns empty. Hook on deleting (BEFORE the DB transaction commits) so we revoke the polymorphic personal_access_tokens rows (which have NO FK to users.id and would otherwise leak indefinitely) before the cascade purges users. forceDeleted is included as forward-compat defense if Tenant ever adopts SoftDeletes. Sanctum personal_access_tokens has tokenable_type+tokenable_id polymorphic FK, NOT a hard FK to users.id, so DB cascade does NOT cascade transitively to tokens — explicit revocation is required. Forward-compat: no SuperAdminController::deleteTenant endpoint exists today; tests drive Tenant->delete() directly via Eloquent."
+
+  - cluster_id: api.auth-permissions
+    slug: user-tenant-change-token-revocation
+    file: apps/api/app/Observers/UserObserver.php
+    line: 1
+    symbol: 'App\Observers\UserObserver — NEW observer class with ::updated hook revoking personal_access_tokens when wasChanged(tenant_id)'
+    pattern_type: missing_lifecycle_hook_for_token_revocation_on_user_tenant_change
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Create new App\\Observers\\UserObserver class with a single ::updated method that calls User->tokens()->delete() when User->wasChanged('tenant_id'). Register in AppServiceProvider::boot() alongside Tenant::observe(TenantObserver::class) — add User::observe(UserObserver::class). Spatie team-id consistency (Invariant C) is automatic: SetPermissionsTeam middleware reads auth()->user()->tenant_id directly each request — after token revocation + re-login from the new tenant, the new tenant_id flows through and Spatie resolves permissions against the new team-id. No additional Spatie cache-invalidation needed (Spatie does not cache by user-id at this layer). Forward-compat: no SuperAdminController endpoint mutates users.tenant_id today; UserController CRUD always pins to currentUser->tenant_id (line 176). Tests drive User->update(['tenant_id' => newTenantId]) directly via Eloquent."
+
+  - cluster_id: api.auth-permissions
+    slug: setpermissionsteam-universal-coverage-arch-test
+    file: apps/api/tests/Architecture/AuthLifecycleTest.php
+    line: 1
+    symbol: 'tests/Architecture/AuthLifecycleTest::test_every_auth_sanctum_route_group_includes_set_permissions_team — NEW test pinning the contract that every protected route group includes SetPermissionsTeam::class'
+    pattern_type: missing_arch_test_setpermissionsteam_coverage
+    resource: routes
+    expected_scope: tenant_and_company
+    severity: medium
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Create tests/Architecture/AuthLifecycleTest.php that uses PhpParser AST traversal to scan every Route::middleware([...])->group(...) call across (a) routes/api.php, (b) app/Modules/*/Presentation/routes.php, (c) app/Modules/*/routes.php, and (d) app/Modules/Workshop/*/Presentation/routes.php. For each call whose middleware array contains 'auth:sanctum' (literal) AND NOT 'auth:sanctum-admin', assert SetPermissionsTeam::class is also in the array. Frame as REGRESSION-PROTECTION / contract-codification (T0.4 framing): all 38 protected route groups already include SetPermissionsTeam::class on dev tip per the triage's hostile-grep audit (Section B). The test pins the contract so future module additions can't silently regress it. Document parser limits in the test docblock: no support for conditional middleware arrays, no closure-based middleware factories, no Route::middlewareGroup() server-side resolution (none used in current codebase). Layering note: this arch test is COMPLEMENTARY to ControllerTenantContextTest (super-admin-context cluster, method-level) — one is route-level invariant, the other is method-level invariant."
+
+  - cluster_id: api.auth-permissions
+    slug: token-tenant-claim-defense-in-depth
+    file: apps/api/app/Modules/Identity/Presentation/Middleware/EnforceTokenTenantClaim.php
+    line: 1
+    symbol: 'App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim — NEW middleware enforcing token.abilities tenant claim matches user.tenant_id; paired with AuthController::login (line 94) + AuthController::register (line 233) + SuperAdminAuthController::login (line 45) issuance changes encoding tenant ability'
+    pattern_type: missing_token_tenant_claim_enforcement
+    resource: personal_access_tokens
+    expected_scope: tenant_only
+    severity: medium
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "PR2 (separate from PR1's lifecycle hooks). Step 1: modify the 3 Sanctum issuance callsites — AuthController::login:94 + AuthController::register:233 emit createToken(tokenName, ['tenant:'.user->tenant_id, '*']); SuperAdminAuthController::login:45 emits createToken('super-admin-token', ['super-admin']). Step 2: create new App\\Modules\\Identity\\Presentation\\Middleware\\EnforceTokenTenantClaim — reads user->currentAccessToken()->abilities, finds the 'tenant:<id>' ability, asserts the suffix matches user->tenant_id; rejects 401 on mismatch. Step 3: register middleware in api stack AFTER auth:sanctum AND AFTER SetPermissionsTeam (topological order matters — auth resolves token first, SetPermissionsTeam binds team-id, then this middleware verifies token's tenant claim aligns). Grandfathering policy: option (b) — allow tokens lacking 'tenant:' ability (pre-deploy tokens) but reject tokens with mismatching claim. Document policy + 30-day token-rotation window expectation in PR2 body. Three branches MUST have explicit unit-test coverage: matching claim (allow), mismatching claim (reject 401), no claim grandfathered (allow). Super-admin pipeline: tokens have 'super-admin' ability instead of 'tenant:<id>'; middleware exempts super-admin route groups by detecting the ability OR by registering only on api stack (not auth:sanctum-admin stack)."

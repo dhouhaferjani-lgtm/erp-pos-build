@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, RefreshCw, ArrowRightLeft, Package } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
@@ -43,11 +46,13 @@ const movementTypeConfig: Record<string, { label: string; color: string; icon: t
 export function StockMovementsPage() {
   const { t } = useTranslation()
   const { currentLocationId } = useLocation()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [movementFilter, setMovementFilter] = useState<MovementFilter>('all')
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['stock-movements', searchQuery, movementFilter, currentLocationId],
+    queryKey: tenantScopedKey(['stock-movements', searchQuery, movementFilter, currentLocationId]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -63,6 +68,7 @@ export function StockMovementsPage() {
       const response = await api.get<StockMovementsResponse>(`/stock-movements${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const movements = useMemo(() => {

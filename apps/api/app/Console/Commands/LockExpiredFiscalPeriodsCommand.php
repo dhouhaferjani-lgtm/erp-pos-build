@@ -45,6 +45,8 @@ use Illuminate\Console\Command;
  *
  * @see FiscalPeriodAutoLockService For implementation details
  * @see CountryFiscalRulesProvider For country-specific thresholds
+ *
+ * @cross-tenant-by-design Daily scheduler that closes/locks expired fiscal periods across all companies via FiscalPeriodAutoLockService.
  */
 final class LockExpiredFiscalPeriodsCommand extends Command
 {

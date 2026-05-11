@@ -182,6 +182,15 @@ class Coupon extends Model
      * @param  Builder<Coupon>  $query
      * @return Builder<Coupon>
      */
+    public function scopeForTenant(Builder $query, string $tenantId): Builder
+    {
+        return $query->where('tenant_id', $tenantId);
+    }
+
+    /**
+     * @param  Builder<Coupon>  $query
+     * @return Builder<Coupon>
+     */
     public function scopeForCompany(Builder $query, string $companyId): Builder
     {
         return $query->where('company_id', $companyId);

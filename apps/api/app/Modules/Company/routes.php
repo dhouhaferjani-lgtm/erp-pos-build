@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Company\Presentation\Controllers\CompanyController;
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use Illuminate\Support\Facades\Route;
 
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Routes that do NOT require company context
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Company creation - available to any authenticated user within their tenant
     Route::post('companies', [CompanyController::class, 'store'])->name('companies.store');
 

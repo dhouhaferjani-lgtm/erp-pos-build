@@ -10,6 +10,11 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 /**
  * Broadcast event when an order line status changes.
  * Sends immediately without queueing (ShouldBroadcastNow).
+ *
+ * @cross-tenant-anchored broadcastOn() constructs the kitchen PrivateChannel from
+ *   constructor-provided readonly $tenantId + $companyId. ShouldBroadcastNow
+ *   (synchronous). Architecture test BroadcastEventTenantContextTest enforces the
+ *   property-sourcing pattern.
  */
 final class OrderLineStatusChangedBroadcast implements ShouldBroadcastNow
 {

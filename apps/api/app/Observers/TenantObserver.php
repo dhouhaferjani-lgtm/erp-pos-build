@@ -4,35 +4,72 @@ declare(strict_types=1);
 
 namespace App\Observers;
 
+use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Observer for Tenant model to handle cache invalidation.
+ * Observer for Tenant model — cache invalidation + Sanctum token revocation
+ * lifecycle (api.auth-permissions cluster, master plan §15 Invariants A.1 + A.2).
  *
- * When a tenant's vertical or enabled_extras changes, we need to invalidate
- * the tenant config cache.
+ * Cache invalidation: when vertical or enabled_extras changes, the tenant
+ * config cache must be invalidated so CompanyConfigService rebuilds with
+ * the new settings on the next request.
  *
- * This ensures that CompanyConfigService will rebuild the configuration
- * with the new vertical settings on the next request.
- *
- * Note: All companies within a tenant share the same configuration (no
- * company-level vertical overrides), so we only need to invalidate one
- * cache entry per tenant.
+ * Token revocation:
+ *   - On status transition to Suspended: every user in the tenant has their
+ *     personal_access_tokens revoked synchronously. This blocks suspended-
+ *     tenant users from continuing to authenticate with pre-suspension
+ *     bearer tokens. Race window between status-commit and token-revocation
+ *     is acceptable per master plan §15 (sub-second window).
+ *   - On Tenant::deleting / ::forceDeleted: tokens are revoked BEFORE the
+ *     users.tenant_id ON DELETE CASCADE fires. Eloquent User events do NOT
+ *     fire on DB-level cascade, so the hook MUST live on Tenant lifecycle.
+ *     Sanctum personal_access_tokens has polymorphic FK (tokenable_type +
+ *     tokenable_id), NOT a hard FK to users.id, so DB cascade does not
+ *     transitively purge tokens — explicit revocation is required.
  */
 class TenantObserver
 {
     /**
      * Handle the Tenant "updated" event.
      *
-     * Invalidates tenant config cache when vertical or enabled_extras changes.
+     * (1) Invalidates tenant config cache when vertical or enabled_extras changes.
+     * (2) Revokes all user tokens when status transitions to Suspended (Invariant A.1).
      */
     public function updated(Tenant $tenant): void
     {
-        // Check if vertical or enabled_extras changed
         if ($tenant->wasChanged(['vertical', 'enabled_extras'])) {
             $this->invalidateTenantConfigCache($tenant);
         }
+
+        if ($tenant->wasChanged('status') && $tenant->status === TenantStatus::Suspended) {
+            $this->revokeAllUserTokens($tenant);
+        }
+    }
+
+    /**
+     * Handle the Tenant "deleting" event (Invariant A.2).
+     *
+     * Hook fires BEFORE the users.tenant_id ON DELETE CASCADE so the
+     * personal_access_tokens (polymorphic FK; not cascade-transitive) are
+     * revoked while users are still queryable by tenant_id.
+     */
+    public function deleting(Tenant $tenant): void
+    {
+        $this->revokeAllUserTokens($tenant);
+    }
+
+    /**
+     * Handle the Tenant "forceDeleted" event (Invariant A.2 forward-compat).
+     *
+     * Tenant does NOT use SoftDeletes today; this method is forward-compat
+     * defense if the trait is added later. Cost is one method.
+     */
+    public function forceDeleted(Tenant $tenant): void
+    {
+        $this->revokeAllUserTokens($tenant);
     }
 
     /**
@@ -45,5 +82,20 @@ class TenantObserver
     {
         $cacheKey = "tenant_config:{$tenant->id}";
         Cache::forget($cacheKey);
+    }
+
+    /**
+     * Revoke every personal access token for every user belonging to the
+     * given tenant. Uses chunking to bound memory on large tenants.
+     */
+    private function revokeAllUserTokens(Tenant $tenant): void
+    {
+        User::where('tenant_id', $tenant->id)
+            ->select(['id', 'tenant_id'])
+            ->chunkById(200, static function ($users): void {
+                foreach ($users as $user) {
+                    $user->tokens()->delete();
+                }
+            });
     }
 }

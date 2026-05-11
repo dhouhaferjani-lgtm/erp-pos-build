@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -73,9 +74,22 @@ class PaymentMethodController extends Controller
             'fee_fixed' => ['nullable', 'numeric', 'min:0'],
             'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
-            'default_journal_id' => ['nullable', 'uuid', 'exists:journals,id'],
-            'default_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
-            'fee_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
+            // default_journal_id: legacy storage-only field — no `journals` table exists
+            // in the current schema (no migration, no model, no read path). The bare
+            // `exists:journals,id` validator was broken (any value triggers a 500
+            // SQL error: relation "journals" does not exist). Removed pending a
+            // proper Accounting-module journals table + scoped validation.
+            'default_journal_id' => ['nullable', 'uuid'],
+            'default_account_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
+            ],
+            'fee_account_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
+            ],
             'position' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -136,9 +150,22 @@ class PaymentMethodController extends Controller
             'fee_fixed' => ['nullable', 'numeric', 'min:0'],
             'fee_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'restriction_type' => ['nullable', 'string', 'max:50'],
-            'default_journal_id' => ['nullable', 'uuid', 'exists:journals,id'],
-            'default_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
-            'fee_account_id' => ['nullable', 'uuid', 'exists:accounts,id'],
+            // default_journal_id: legacy storage-only field — no `journals` table exists
+            // in the current schema (no migration, no model, no read path). The bare
+            // `exists:journals,id` validator was broken (any value triggers a 500
+            // SQL error: relation "journals" does not exist). Removed pending a
+            // proper Accounting-module journals table + scoped validation.
+            'default_journal_id' => ['nullable', 'uuid'],
+            'default_account_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
+            ],
+            'fee_account_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
+            ],
             'is_active' => ['sometimes', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],
         ]);

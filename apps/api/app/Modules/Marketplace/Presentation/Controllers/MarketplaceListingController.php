@@ -8,6 +8,7 @@ use App\Modules\Marketplace\Application\DTOs\MarketplaceListingData;
 use App\Modules\Marketplace\Application\Services\MarketplaceSearchService;
 use App\Modules\Marketplace\Application\Services\PriceComparisonService;
 use App\Modules\Marketplace\Domain\Models\MarketplaceListing;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -24,6 +25,7 @@ class MarketplaceListingController extends Controller
      *
      * Search marketplace listings by article identifiers.
      */
+    #[CrossTenantRoute(reason: 'Marketplace cross-tenant discovery: by data design, the marketplace is a B2B peer-to-peer listing surface where every tenant can search every seller\'s active listings. Filter is country_code + article_number/barcode/platform_article_id; results span all sellers across all tenants. Cross-tenant by data design.')]
     public function index(Request $request): JsonResponse
     {
         $request->validate([
@@ -46,6 +48,7 @@ class MarketplaceListingController extends Controller
     /**
      * GET /api/v1/marketplace/listings/{id}
      */
+    #[CrossTenantRoute(reason: 'Marketplace cross-tenant discovery: reads any listing by id from the platform-shared marketplace. Listings are intentionally public-to-buyers — every authenticated tenant can view any seller\'s listing detail. Cross-tenant by data design.')]
     public function show(string $id): JsonResponse
     {
         $listing = MarketplaceListing::findOrFail($id);
@@ -58,6 +61,7 @@ class MarketplaceListingController extends Controller
     /**
      * GET /api/v1/marketplace/price-comparison
      */
+    #[CrossTenantRoute(reason: 'Marketplace cross-tenant price discovery: country-scoped price comparison across all sellers via PriceComparisonService::findBetterPrices; queries all marketplace listings for the article in the given country regardless of seller tenant. Cross-tenant by data design.')]
     public function priceComparison(Request $request): JsonResponse
     {
         $request->validate([

@@ -52,6 +52,8 @@ final class CreateFromAppointmentTest extends TestCase
             ],
             vehicleId: $vehicle->id,
             partnerId: $partner->id,
+            tenantId: $tenant->id,
+            companyId: $company->id,
         );
 
         $this->assertSame(WorkOrderStatus::Received, $wo->status);

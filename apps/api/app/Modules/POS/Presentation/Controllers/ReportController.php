@@ -20,6 +20,7 @@ use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Presentation\Requests\GenerateZReportRequest;
 use App\Modules\POS\Presentation\Resources\XReportResource;
 use App\Modules\POS\Presentation\Resources\ZReportResource;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,7 +54,15 @@ final class ReportController extends Controller
         Gate::authorize('pos.view_reports');
 
         $request->validate([
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
+            // api.pos-stabilization.{016,017,018} — scope pos_terminals by caller tenant + company.
+            'terminal_id' => [
+                'required', 'string', 'uuid',
+                ScopedExists::tenantAndCompany(
+                    'pos_terminals',
+                    $this->companyContext->requireCompany()->tenant_id,
+                    $this->companyContext->requireCompanyId(),
+                ),
+            ],
         ]);
 
         /** @var Terminal $terminal */
@@ -294,7 +303,15 @@ final class ReportController extends Controller
         Gate::authorize('pos.view_reports');
 
         $request->validate([
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
+            // api.pos-stabilization.{016,017,018} — scope pos_terminals by caller tenant + company.
+            'terminal_id' => [
+                'required', 'string', 'uuid',
+                ScopedExists::tenantAndCompany(
+                    'pos_terminals',
+                    $this->companyContext->requireCompany()->tenant_id,
+                    $this->companyContext->requireCompanyId(),
+                ),
+            ],
         ]);
 
         /** @var Terminal $terminal */
@@ -344,7 +361,15 @@ final class ReportController extends Controller
         Gate::authorize('pos.view_reports');
 
         $request->validate([
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
+            // api.pos-stabilization.{016,017,018} — scope pos_terminals by caller tenant + company.
+            'terminal_id' => [
+                'required', 'string', 'uuid',
+                ScopedExists::tenantAndCompany(
+                    'pos_terminals',
+                    $this->companyContext->requireCompany()->tenant_id,
+                    $this->companyContext->requireCompanyId(),
+                ),
+            ],
         ]);
 
         /** @var Terminal $terminal */

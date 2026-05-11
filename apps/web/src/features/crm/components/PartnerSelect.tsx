@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { Input } from '@/components/atoms/Input/Input'
 
 interface PartnerOption {
@@ -26,16 +29,18 @@ export function PartnerSelect({ value, onChange }: PartnerSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedName, setSelectedName] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data: results } = useQuery({
-    queryKey: ['partners', 'search', search],
+    queryKey: tenantScopedKey(['partners', 'search', search]),
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '10', is_active: 'true' })
       if (search) params.set('search', search)
       const response = await api.get<PartnerSearchResponse>(`/partners?${params.toString()}`)
       return response.data.data
     },
-    enabled: isOpen && search.length > 0,
+    enabled: isOpen && search.length > 0 && !!tenantId && !!companyId,
   })
 
   useEffect(() => {

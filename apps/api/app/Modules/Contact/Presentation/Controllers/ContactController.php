@@ -10,6 +10,7 @@ use App\Modules\Contact\Application\Services\ContactService;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Contact\Presentation\Requests\CreateContactRequest;
 use App\Modules\Contact\Presentation\Requests\UpdateContactRequest;
+use App\Shared\Presentation\Validation\ScopedExists;
 use App\Support\Traits\FiltersAndSorts;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Builder;
@@ -125,7 +126,8 @@ class ContactController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        $contact = Contact::where('company_id', $this->companyContext->requireCompanyId())
+        $contact = Contact::where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
+            ->where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $id)
             ->with('parties')
             ->first();
@@ -157,7 +159,8 @@ class ContactController extends Controller
      */
     public function update(UpdateContactRequest $request, string $id): JsonResponse
     {
-        $contact = Contact::where('company_id', $this->companyContext->requireCompanyId())
+        $contact = Contact::where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
+            ->where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $id)
             ->first();
 
@@ -194,7 +197,8 @@ class ContactController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $contact = Contact::where('company_id', $this->companyContext->requireCompanyId())
+        $contact = Contact::where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
+            ->where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $id)
             ->first();
 
@@ -221,7 +225,11 @@ class ContactController extends Controller
      */
     public function linkParty(Request $request, string $id): JsonResponse
     {
-        $contact = Contact::where('company_id', $this->companyContext->requireCompanyId())
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $contact = Contact::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('id', $id)
             ->first();
 
@@ -240,7 +248,11 @@ class ContactController extends Controller
 
         /** @var array<string, mixed> $validated */
         $validated = $request->validate([
-            'party_id' => ['required', 'uuid', 'exists:partners,id'],
+            'party_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
             'job_title' => ['nullable', 'string', 'max:100'],
             'department' => ['nullable', 'string', 'max:100'],
             'is_primary' => ['nullable', 'boolean'],
@@ -270,7 +282,8 @@ class ContactController extends Controller
      */
     public function unlinkParty(Request $request, string $id, string $partyId): JsonResponse
     {
-        $contact = Contact::where('company_id', $this->companyContext->requireCompanyId())
+        $contact = Contact::where('tenant_id', $this->companyContext->requireCompany()->tenant_id)
+            ->where('company_id', $this->companyContext->requireCompanyId())
             ->where('id', $id)
             ->first();
 

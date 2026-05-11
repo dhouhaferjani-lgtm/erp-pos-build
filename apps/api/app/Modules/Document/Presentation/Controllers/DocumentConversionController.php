@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
+use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DocumentConversionController extends Controller
 {
     public function __construct(
-        private readonly DocumentConverterRegistry $converterRegistry
+        private readonly DocumentConverterRegistry $converterRegistry,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
@@ -22,7 +26,8 @@ class DocumentConversionController extends Controller
      */
     public function convertQuoteToOrder(string $id): JsonResponse
     {
-        $quote = Document::findOrFail($id);
+        // api.document.022: tenant+company scope.
+        $quote = $this->scopedQuery()->findOrFail($id);
 
         try {
             $order = $this->converterRegistry->convert($quote, DocumentType::SalesOrder);
@@ -56,7 +61,8 @@ class DocumentConversionController extends Controller
             'line_ids.*' => 'exists:document_lines,id',
         ]);
 
-        $order = Document::findOrFail($id);
+        // api.document.023: tenant+company scope.
+        $order = $this->scopedQuery()->findOrFail($id);
 
         try {
             $invoice = $this->converterRegistry->convert($order, DocumentType::Invoice, [
@@ -87,7 +93,8 @@ class DocumentConversionController extends Controller
      */
     public function convertOrderToDelivery(string $id): JsonResponse
     {
-        $order = Document::findOrFail($id);
+        // api.document.024: tenant+company scope.
+        $order = $this->scopedQuery()->findOrFail($id);
 
         try {
             $delivery = $this->converterRegistry->convert($order, DocumentType::DeliveryNote);
@@ -108,7 +115,8 @@ class DocumentConversionController extends Controller
      */
     public function checkQuoteExpiry(string $id): JsonResponse
     {
-        $quote = Document::findOrFail($id);
+        // api.document.025: tenant+company scope.
+        $quote = $this->scopedQuery()->findOrFail($id);
 
         try {
             if ($quote->type !== DocumentType::Quote) {
@@ -135,7 +143,8 @@ class DocumentConversionController extends Controller
      */
     public function checkOrderInvoiceStatus(string $id): JsonResponse
     {
-        $order = Document::findOrFail($id);
+        // api.document.026: tenant+company scope.
+        $order = $this->scopedQuery()->findOrFail($id);
 
         try {
             if ($order->type !== DocumentType::SalesOrder) {
@@ -185,7 +194,8 @@ class DocumentConversionController extends Controller
 
         $request->validate($rules);
 
-        $invoice = Document::findOrFail($id);
+        // api.document.027: tenant+company scope.
+        $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
             $options = [
@@ -230,16 +240,20 @@ class DocumentConversionController extends Controller
      */
     public function createInvoiceFromDeliveryNotes(Request $request): JsonResponse
     {
+        $company = $this->companyContext->requireCompany();
+
         $request->validate([
             'delivery_note_ids' => 'required|array|min:1',
-            'delivery_note_ids.*' => 'uuid|exists:documents,id',
+            // api.document.041: tenant+company scoped exists.
+            'delivery_note_ids.*' => ['uuid', ScopedExists::tenantAndCompany('documents', $company->tenant_id, $company->id)],
         ]);
 
         /** @var array<int, string> $deliveryNoteIds */
         $deliveryNoteIds = array_values($request->input('delivery_note_ids'));
 
-        // Load first delivery note to use as source
-        $firstDn = Document::with('lines')->find($deliveryNoteIds[0]);
+        // Load first delivery note to use as source.
+        // api.document.028: tenant+company scope.
+        $firstDn = $this->scopedQuery()->with('lines')->find($deliveryNoteIds[0]);
 
         if ($firstDn === null) {
             return response()->json([
@@ -314,7 +328,8 @@ class DocumentConversionController extends Controller
             'quantities.*' => 'required|string|regex:/^\d+(\.\d{1,4})?$/',
         ]);
 
-        $purchaseOrder = Document::with('lines')->findOrFail($id);
+        // api.document.029: tenant+company scope.
+        $purchaseOrder = $this->scopedQuery()->with('lines')->findOrFail($id);
 
         try {
             /** @var array<string, string>|null $quantities */
@@ -355,5 +370,19 @@ class DocumentConversionController extends Controller
                 ],
             ], 422);
         }
+    }
+
+    /**
+     * Tenant+company scoped Document base query for route-anchored lookups.
+     *
+     * @return Builder<Document>
+     */
+    private function scopedQuery(): Builder
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id);
     }
 }

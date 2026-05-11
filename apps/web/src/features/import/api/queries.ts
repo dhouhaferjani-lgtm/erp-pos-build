@@ -1,7 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { importApi } from './importApi'
+import { importsListInvalidationPredicate } from '../_invalidation'
 import type { ImportType } from '../types'
 
 // Query Keys
@@ -22,9 +26,12 @@ export const importKeys = {
 
 // Queries
 export function useImportJobs() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.lists(),
+    queryKey: tenantScopedKey([...importKeys.lists()]),
     queryFn: () => importApi.list(),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -35,49 +42,64 @@ export function useImportJob(
     refetchInterval?: number | false
   }
 ) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  const baseEnabled = options?.enabled ?? id.length > 0
   return useQuery({
-    queryKey: importKeys.detail(id),
+    queryKey: tenantScopedKey([...importKeys.detail(id)]),
     queryFn: () => importApi.getJob(id),
-    enabled: options?.enabled ?? id.length > 0,
+    enabled: baseEnabled && !!tenantId && !!companyId,
     ...(options?.refetchInterval !== undefined && { refetchInterval: options.refetchInterval }),
   })
 }
 
 export function useImportErrors(jobId: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.errors(jobId),
+    queryKey: tenantScopedKey([...importKeys.errors(jobId)]),
     queryFn: () => importApi.getErrors(jobId),
-    enabled: jobId.length > 0,
+    enabled: jobId.length > 0 && !!tenantId && !!companyId,
   })
 }
 
 export function useImportPreview(jobId: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.preview(jobId),
+    queryKey: tenantScopedKey([...importKeys.preview(jobId)]),
     queryFn: () => importApi.getPreview(jobId),
-    enabled: jobId.length > 0,
+    enabled: jobId.length > 0 && !!tenantId && !!companyId,
   })
 }
 
 export function useWizardOrder() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.wizardOrder(),
+    queryKey: tenantScopedKey([...importKeys.wizardOrder()]),
     queryFn: () => importApi.getWizardOrder(),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
 export function useMigrationStatus() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.wizardStatus(),
+    queryKey: tenantScopedKey([...importKeys.wizardStatus()]),
     queryFn: () => importApi.getMigrationStatus(),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
 export function useDependencyCheck(type: ImportType) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: importKeys.dependencies(type),
+    queryKey: tenantScopedKey([...importKeys.dependencies(type)]),
     queryFn: () => importApi.checkDependencies(type),
-    enabled: Boolean(type),
+    enabled: Boolean(type) && !!tenantId && !!companyId,
   })
 }
 
@@ -85,6 +107,8 @@ export function useDependencyCheck(type: ImportType) {
 export function useCreateImport() {
   const { t } = useTranslation('import')
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({
@@ -96,8 +120,10 @@ export function useCreateImport() {
       file: File
       columnMapping?: Record<string, string>
     }) => importApi.createJob(type, file, columnMapping),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: importKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: importsListInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('messages.uploadSuccess'))
     },
     onError: (error: Error) => {
@@ -109,13 +135,23 @@ export function useCreateImport() {
 export function useExecuteImport() {
   const { t } = useTranslation('import')
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (jobId: string) => importApi.executeImport(jobId),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: importKeys.detail(data.id) })
-      void queryClient.invalidateQueries({ queryKey: importKeys.lists() })
-      void queryClient.invalidateQueries({ queryKey: importKeys.wizardStatus() })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...importKeys.detail(data.id)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: importsListInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...importKeys.wizardStatus()]),
+        }),
+      ])
       toast.success(t('messages.importStarted'))
     },
     onError: (error: Error) => {
@@ -127,11 +163,15 @@ export function useExecuteImport() {
 export function useDeleteImport() {
   const { t } = useTranslation('import')
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (jobId: string) => importApi.deleteJob(jobId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: importKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: importsListInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('messages.deleted'))
     },
     onError: (error: Error) => {

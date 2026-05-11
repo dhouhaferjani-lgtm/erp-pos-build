@@ -21,6 +21,7 @@ use App\Modules\POS\Presentation\Requests\CreateTerminalRequest;
 use App\Modules\POS\Presentation\Requests\RequestTerminalRequest;
 use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -399,11 +400,18 @@ final class TerminalController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
+        $company = $this->companyContext->requireCompany();
+
+        // Resolve company BEFORE the validator runs so location_id can be
+        // scoped via ScopedExists::company. locations has company_id only
+        // (no tenant_id) — cross-tenant access is impossible because
+        // companies.tenant_id pins membership; cross-company within same
+        // tenant is the real attack vector and is closed here.
+        // Inventory: api.pos-stabilization.019 (validator) + .028 (find).
         $request->validate([
-            'location_id' => ['required', 'uuid', 'exists:locations,id'],
+            'location_id' => ['required', 'uuid', ScopedExists::company('locations', $company->id)],
         ]);
 
-        $company = $this->companyContext->requireCompany();
         $locationId = $request->input('location_id');
 
         // Look up existing active web terminal for (company, location)
@@ -418,9 +426,13 @@ final class TerminalController extends Controller
             ]);
         }
 
-        // Create a new web terminal
+        // Create a new web terminal — Location::findOrFail scoped to the
+        // caller's company so a malicious validator-bypass cannot attach
+        // a foreign location to the new terminal write. Inventory: .028.
         /** @var Location $location */
-        $location = Location::findOrFail($locationId);
+        $location = Location::query()
+            ->where('company_id', $company->id)
+            ->findOrFail($locationId);
         $locationCode = $location->code ?? 'MAIN';
 
         $terminal = Terminal::create([

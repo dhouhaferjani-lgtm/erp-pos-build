@@ -11,6 +11,12 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 /**
  * Broadcast event for import completion notification.
  * Sends immediately without queueing (ShouldBroadcastNow).
+ *
+ * @cross-tenant-anchored broadcastOn() constructs the imports PrivateChannel from
+ *   $this->event->tenantId + $this->event->companyId (the wrapped ImportCompleted
+ *   domain event carries them at construction). ShouldBroadcastNow (synchronous).
+ *   Architecture test BroadcastEventTenantContextTest enforces the property-sourcing
+ *   pattern.
  */
 final class ImportCompletedBroadcast implements ShouldBroadcastNow
 {

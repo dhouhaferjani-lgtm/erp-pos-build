@@ -5,6 +5,10 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { servicesInvalidationPredicate } from './_invalidation'
 import type { Service, CreateServiceData, CategoriesResponse } from './types'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 
@@ -23,6 +27,8 @@ export function ServiceForm() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { id } = useParams<{ id: string }>()
   const isEditing = Boolean(id)
 
@@ -54,23 +60,24 @@ export function ServiceForm() {
 
   // Fetch categories for dropdown
   const { data: categoriesData } = useQuery({
-    queryKey: ['service-categories'],
+    queryKey: tenantScopedKey(['service-categories']),
     queryFn: async () => {
       const response = await api.get<CategoriesResponse>('/services/categories')
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const categories = categoriesData?.data ?? []
 
   // Fetch existing service for editing
   const { data: existingService, isLoading: isLoadingService } = useQuery({
-    queryKey: ['service', id],
+    queryKey: tenantScopedKey(['service', id]),
     queryFn: async () => {
       const response = await api.get<ServiceResponse>(`/services/${id}`)
       return response.data
     },
-    enabled: isEditing,
+    enabled: isEditing && !!tenantId && !!companyId,
   })
 
   // Reset form when existing data is loaded
@@ -107,8 +114,10 @@ export function ServiceForm() {
       const response = await api.post<ServiceResponse>('/services', payload)
       return response.data
     },
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['services'] })
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        predicate: servicesInvalidationPredicate(tenantId, companyId),
+      })
       navigate(`/services/${response.data.id}`)
     },
   })
@@ -126,9 +135,13 @@ export function ServiceForm() {
       const response = await api.put<ServiceResponse>(`/services/${id}`, payload)
       return response.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['services'] })
-      void queryClient.invalidateQueries({ queryKey: ['service', id] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: servicesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['service', id]) }),
+      ])
       navigate(`/services/${id}`)
     },
   })

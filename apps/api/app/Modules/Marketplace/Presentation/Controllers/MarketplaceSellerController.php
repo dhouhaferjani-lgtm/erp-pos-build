@@ -7,6 +7,7 @@ namespace App\Modules\Marketplace\Presentation\Controllers;
 use App\Modules\Marketplace\Domain\Enums\SellerStatus;
 use App\Modules\Marketplace\Domain\Enums\SellerType;
 use App\Modules\Marketplace\Domain\Models\MarketplaceSeller;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -17,6 +18,7 @@ class MarketplaceSellerController extends Controller
     /**
      * GET /api/v1/admin/marketplace/sellers
      */
+    #[CrossTenantRoute(reason: 'Super-admin marketplace management: lists all marketplace sellers across all tenants for platform-operations review (mounted under the /admin/ route prefix). Accepts tenant_id + company_id in store() validation rules — fleet-wide seller management is the explicit purpose.')]
     public function index(): JsonResponse
     {
         $sellers = MarketplaceSeller::orderByDesc('created_at')->paginate(20);
@@ -58,6 +60,7 @@ class MarketplaceSellerController extends Controller
     /**
      * PATCH /api/v1/admin/marketplace/sellers/{id}
      */
+    #[CrossTenantRoute(reason: 'Super-admin marketplace management: edits any marketplace seller record across the fleet (display_name, commission_rate, seller_status, settings); mounted under the /admin/ route prefix.')]
     public function update(Request $request, string $id): JsonResponse
     {
         $seller = MarketplaceSeller::findOrFail($id);
@@ -77,6 +80,7 @@ class MarketplaceSellerController extends Controller
     /**
      * POST /api/v1/admin/marketplace/sellers/{id}/suspend
      */
+    #[CrossTenantRoute(reason: 'Super-admin marketplace management: suspends any marketplace seller across the fleet (sets seller_status=Suspended); mounted under the /admin/ route prefix.')]
     public function suspend(string $id): JsonResponse
     {
         $seller = MarketplaceSeller::findOrFail($id);

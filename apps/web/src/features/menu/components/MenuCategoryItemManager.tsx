@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { Input, Button } from '@/components/atoms'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useAddMenuCategoryItem, useRemoveMenuCategoryItem } from '../hooks/useMenus'
 import type { MenuCategoryData, MenuItemData } from '../types/menu'
 
@@ -30,6 +33,8 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
   const [searchQuery, setSearchQuery] = useState('')
   const [overridePrice, setOverridePrice] = useState('')
   const [searchTab, setSearchTab] = useState<SearchTab>('composite_item')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const addItemMutation = useAddMenuCategoryItem()
   const removeItemMutation = useRemoveMenuCategoryItem()
@@ -37,14 +42,14 @@ export function MenuCategoryItemManager({ category }: MenuCategoryItemManagerPro
   const endpoint = searchTab === 'composite_item' ? '/composite-items' : '/products'
 
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: [searchTab + '-search', searchQuery],
+    queryKey: tenantScopedKey([searchTab + '-search', searchQuery]),
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '10' })
       if (searchQuery) params.append('search', searchQuery)
       const response = await api.get<{ data: SellableOption[] }>(`${endpoint}?${params}`)
       return response.data.data
     },
-    enabled: showAddForm,
+    enabled: showAddForm && !!tenantId && !!companyId,
     staleTime: 30000,
   })
 

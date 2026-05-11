@@ -4,10 +4,19 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateStampCardRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -23,6 +32,13 @@ class UpdateStampCardRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Route is PATCH /loyalty/stamp-cards/{id} — no programId in URL.
+        // The reward_id must belong to a program owned by the current tenant.
+        // loyalty_rewards has no tenant_id column, so scope via the parent
+        // FK: reward.program_id IN (tenant's program ids). Closure-based
+        // exists rule because ScopedExists handles only direct column predicates.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         return [
             'name' => ['sometimes', 'string', 'max:100'],
             'stamps_required' => ['sometimes', 'integer', 'min:1', 'max:50'],
@@ -34,7 +50,19 @@ class UpdateStampCardRequest extends FormRequest
             'qualifying_items.item_ids.*' => ['uuid'],
             'qualifying_items.category_ids' => ['sometimes', 'array'],
             'qualifying_items.category_ids.*' => ['uuid'],
-            'reward_id' => ['sometimes', 'uuid', 'exists:loyalty_rewards,id'],
+            'reward_id' => [
+                'sometimes',
+                'uuid',
+                Rule::exists('loyalty_rewards', 'id')->where(
+                    fn (Builder $query) => $query->whereIn(
+                        'program_id',
+                        fn (Builder $sub) => $sub
+                            ->select('id')
+                            ->from('loyalty_programs')
+                            ->where('tenant_id', $tenantId),
+                    ),
+                ),
+            ],
             'max_active_cards' => ['nullable', 'integer', 'min:1'],
             'expiry_days' => ['nullable', 'integer', 'min:1'],
         ];

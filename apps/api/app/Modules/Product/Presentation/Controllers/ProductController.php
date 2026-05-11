@@ -222,7 +222,12 @@ class ProductController extends Controller
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
-        $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall pattern so
+        // the bare-where AST scanner detects the scope, plus tenant_id added
+        // for defense-in-depth (products carry both tenant_id + company_id).
+        $productModel = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $product)
             ->with('primaryImage')
             ->first();
@@ -382,7 +387,10 @@ class ProductController extends Controller
         $user = $request->user();
         $company = $this->companyContext->requireCompany();
 
-        $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope.
+        $productModel = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $product)
             ->first();
 
@@ -517,8 +525,12 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $company = $this->companyContext->requireCompany();
 
-        $productModel = Product::where('company_id', $this->companyContext->requireCompanyId())
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope.
+        $productModel = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $product)
             ->first();
 
@@ -552,9 +564,14 @@ class ProductController extends Controller
      */
     public function stockLevels(Request $request, string $product): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
+        $tenantId = $company->tenant_id;
 
-        $productModel = Product::where('company_id', $companyId)
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope.
+        $productModel = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('id', $product)
             ->first();
 
@@ -571,8 +588,11 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $stockLevels = StockLevel::where('product_id', $productModel->id)
+        // stock_levels carries tenant_id + company_id; lead with both.
+        $stockLevels = StockLevel::query()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
+            ->where('product_id', $productModel->id)
             ->with('location')
             ->get();
 

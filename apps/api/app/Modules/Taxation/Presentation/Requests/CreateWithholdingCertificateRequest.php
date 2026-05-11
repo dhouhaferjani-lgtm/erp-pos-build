@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Taxation\Domain\Enums\TransactionType;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class CreateWithholdingCertificateRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -21,11 +29,26 @@ class CreateWithholdingCertificateRequest extends FormRequest
      */
     public function rules(): array
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $companyId = $this->companyContext->requireCompanyId();
+
         return [
             'direction' => ['required', Rule::enum(WithholdingDirection::class)],
-            'partner_id' => ['required', 'uuid', 'exists:partners,id'],
-            'document_id' => ['nullable', 'uuid', 'exists:documents,id'],
-            'payment_id' => ['nullable', 'uuid', 'exists:payments,id'],
+            'partner_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'document_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'payment_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('payments', $tenantId, $companyId),
+            ],
             'currency' => ['required', 'string', 'size:3'],
             'gross_amount' => ['required', 'numeric', 'min:0'],
             'transaction_type' => ['nullable', Rule::enum(TransactionType::class)],

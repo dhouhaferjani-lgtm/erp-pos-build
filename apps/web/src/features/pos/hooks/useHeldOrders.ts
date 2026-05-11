@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   getHeldOrders,
   holdOrder,
@@ -7,6 +8,7 @@ import {
   type HoldOrderRequest,
   type HeldOrderData,
 } from '../api/heldOrderApi'
+import { scopedKeyPredicate, usePosTenantScope } from './usePosTenantScope'
 
 /**
  * Query key factory for held-order-related queries.
@@ -24,10 +26,12 @@ export const heldOrderKeys = {
  * Only returns active (held, non-expired) orders.
  */
 export function useHeldOrders(terminalId: string | undefined, shiftId?: string) {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery({
-    queryKey: heldOrderKeys.list(terminalId ?? '', shiftId),
+    queryKey: tenantScopedKey([...heldOrderKeys.list(terminalId ?? '', shiftId)]),
     queryFn: () => getHeldOrders(terminalId!, shiftId),
-    enabled: !!terminalId,
+    enabled: !!terminalId && hasTenantScope,
     refetchInterval: 30_000, // Refresh every 30 seconds to catch expiry
   })
 }
@@ -39,11 +43,14 @@ export function useHeldOrders(terminalId: string | undefined, shiftId?: string) 
  */
 export function useHoldOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (data: HoldOrderRequest) => holdOrder(data),
-    onSuccess: (_data: HeldOrderData) => {
-      queryClient.invalidateQueries({ queryKey: heldOrderKeys.lists() })
+    onSuccess: async (_data: HeldOrderData) => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('held-orders', tenantId, companyId),
+      })
     },
   })
 }
@@ -56,11 +63,14 @@ export function useHoldOrder() {
  */
 export function useRecallOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => recallHeldOrder(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: heldOrderKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('held-orders', tenantId, companyId),
+      })
     },
   })
 }
@@ -72,11 +82,14 @@ export function useRecallOrder() {
  */
 export function useDiscardOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => discardHeldOrder(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: heldOrderKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('held-orders', tenantId, companyId),
+      })
     },
   })
 }

@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchZReports, verifyZReportChain, type ZReportListFilters } from '../../api/reportApi'
 import { FileCheck, Loader2, ShieldCheck, ShieldAlert, ChevronRight, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
+import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 
 interface Terminal {
   id: string
@@ -17,16 +19,18 @@ export function ZReportListPage() {
   const { t } = useTranslation(['pos', 'common'])
   const navigate = useNavigate()
   const [filters, setFilters] = useState<ZReportListFilters>({ page: 1, per_page: 20 })
+  const { hasTenantScope } = usePosTenantScope()
 
   const { data: terminals = [] } = useQuery({
-    queryKey: ['pos', 'terminals'],
+    queryKey: tenantScopedKey(['pos', 'terminals']),
     queryFn: () => apiGet<Terminal[]>('/pos/terminals'),
+    enabled: hasTenantScope,
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pos', 'z-reports', filters],
+    queryKey: tenantScopedKey(['pos', 'z-reports', filters]),
     queryFn: () => fetchZReports(filters),
-    enabled: !!filters.terminal_id,
+    enabled: !!filters.terminal_id && hasTenantScope,
   })
 
   const verifyChainMutation = useMutation({

@@ -222,7 +222,7 @@ class ReturnNoteController extends Controller
                 $storeLines = $data['lines'];
                 $storeProductIds = collect($storeLines)->pluck('product_id')->filter()->unique()->values()->toArray();
                 /** @var Collection<int, Product> $storeProducts */
-                $storeProducts = Product::whereIn('id', $storeProductIds)->get()->keyBy('id');
+                $storeProducts = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $storeProductIds)->get()->keyBy('id');
 
                 foreach ($data['lines'] as $index => $lineData) {
                     $lineTotal = bcmul(
@@ -351,7 +351,7 @@ class ReturnNoteController extends Controller
                 $updateLines = $data['lines'];
                 $updateProductIds = collect($updateLines)->pluck('product_id')->filter()->unique()->values()->toArray();
                 /** @var Collection<int, Product> $updateProducts */
-                $updateProducts = Product::whereIn('id', $updateProductIds)->get()->keyBy('id');
+                $updateProducts = Product::query()->where('tenant_id', $returnNote->tenant_id)->where('company_id', $returnNote->company_id)->whereIn('id', $updateProductIds)->get()->keyBy('id');
 
                 // Create new lines
                 $subtotal = '0.00';

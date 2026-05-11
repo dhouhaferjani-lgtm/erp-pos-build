@@ -4,14 +4,22 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class CreateCountingRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -27,17 +35,19 @@ class CreateCountingRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
             'scope_type' => ['required', Rule::enum(CountingScopeType::class)],
 
             'scope_filters' => ['sometimes', 'array'],
             'scope_filters.product_ids' => ['sometimes', 'array'],
-            'scope_filters.product_ids.*' => ['string', 'exists:products,id'],
+            'scope_filters.product_ids.*' => ['string', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
             'scope_filters.category_ids' => ['sometimes', 'array'],
             'scope_filters.category_ids.*' => ['string'],
             'scope_filters.location_ids' => ['sometimes', 'array'],
-            'scope_filters.location_ids.*' => ['string', 'exists:locations,id'],
-            'scope_filters.location_id' => ['sometimes', 'string', 'exists:locations,id'],
+            'scope_filters.location_ids.*' => ['string', ScopedExists::company('locations', $company->id)],
+            'scope_filters.location_id' => ['sometimes', 'string', ScopedExists::company('locations', $company->id)],
 
             'execution_mode' => ['sometimes', Rule::enum(CountingExecutionMode::class)],
 
@@ -45,9 +55,9 @@ class CreateCountingRequest extends FormRequest
             'requires_count_3' => ['sometimes', 'boolean'],
             'allow_unexpected_items' => ['sometimes', 'boolean'],
 
-            'count_1_user_id' => ['required', 'string', 'exists:users,id'],
-            'count_2_user_id' => ['required_if:requires_count_2,true', 'nullable', 'string', 'exists:users,id'],
-            'count_3_user_id' => ['required_if:requires_count_3,true', 'nullable', 'string', 'exists:users,id'],
+            'count_1_user_id' => ['required', 'string', ScopedExists::tenant('users', $company->tenant_id)],
+            'count_2_user_id' => ['required_if:requires_count_2,true', 'nullable', 'string', ScopedExists::tenant('users', $company->tenant_id)],
+            'count_3_user_id' => ['required_if:requires_count_3,true', 'nullable', 'string', ScopedExists::tenant('users', $company->tenant_id)],
 
             'scheduled_start' => ['nullable', 'date', 'after_or_equal:now'],
             'scheduled_end' => ['nullable', 'date', 'after:scheduled_start'],

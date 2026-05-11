@@ -165,18 +165,27 @@ final class DeliveryNoteService
             return; // No source document, nothing to release
         }
 
-        // Load the source document to verify it's a sales order
-        $sourceDoc = Document::find($deliveryNote->source_document_id);
+        // Load the source document to verify it's a sales order.
+        // api.document.021: scope by delivery note's tenant + company so a
+        // corrupted source_document_id pointing across tenants surfaces as
+        // null (no foreign reservations released).
+        $sourceDoc = Document::query()
+            ->where('tenant_id', $deliveryNote->tenant_id)
+            ->where('company_id', $deliveryNote->company_id)
+            ->find($deliveryNote->source_document_id);
         if ($sourceDoc === null || $sourceDoc->type !== DocumentType::SalesOrder) {
             return; // Source is not a sales order
         }
 
-        // Release all active reservations for this sales order
+        // Release all active reservations for this sales order, scoped to the
+        // delivery note's own tenant + company (api.inventory.033).
         $this->stockReservationService->releaseBySource(
             sourceType: ReservationSource::SalesOrder,
             sourceId: $sourceDoc->id,
             reason: ReleaseReason::Delivered,
             releasedBy: (string) auth()->id(),
+            expectedTenantId: $deliveryNote->tenant_id,
+            expectedCompanyId: $deliveryNote->company_id,
         );
     }
 

@@ -8,6 +8,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -72,7 +73,7 @@ class PaymentRepositoryController extends Controller
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
             'location_id' => ['nullable', 'uuid'],
-            'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
         ]);
@@ -128,7 +129,7 @@ class PaymentRepositoryController extends Controller
             'iban' => ['nullable', 'string', 'max:50'],
             'bic' => ['nullable', 'string', 'max:20'],
             'location_id' => ['nullable', 'uuid'],
-            'responsible_user_id' => ['nullable', 'uuid', 'exists:users,id'],
+            'responsible_user_id' => ['nullable', 'uuid', ScopedExists::tenant('users', $tenantId)],
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
             'is_active' => ['sometimes', 'boolean'],
