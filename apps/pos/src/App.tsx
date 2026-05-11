@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
@@ -9,12 +9,15 @@ import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useCustomerDisplayStore } from '@/stores/customerDisplayStore';
+import { useHoldStore } from '@/stores/holdStore';
 import { isTauriEnvironment } from '@/lib/printing';
 import { applyFullscreen, useFullscreenEscapeKey, useFullscreenWatchdog } from '@/lib/fullscreen';
 import { openCustomerDisplay, sendIdleScreen } from '@/lib/customerDisplay';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/AppShell';
 import { BootstrapErrorScreen } from '@/components/BootstrapErrorScreen';
+import { runC2BareCartLineDump } from '@/lib/migration/c2BareCartLineDump';
+import { useC2MigrationBannerStore } from '@/stores/c2MigrationBannerStore';
 import { useBootstrapErrorTelemetry } from '@/hooks/useBootstrapErrorTelemetry';
 import { CustomerDisplayPage } from '@/pages/CustomerDisplayPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -48,6 +51,7 @@ export function AppRouter() {
   const operator = useOperatorStore((s) => s.operator);
   const isLocked = useOperatorStore((s) => s.isLocked);
   const hasPins = useOperatorStore((s) => s.hasPins);
+  const loadHeldTransactions = useHoldStore((s) => s.loadHeldTransactions);
 
   // T2.4 Day 2 — replace the three independent `useEffect` orchestrators
   // with the bootstrap state machine. The machine's `start()` walks the
@@ -62,6 +66,18 @@ export function AppRouter() {
   const bootstrapLastSuccess = useBootstrapStore((s) => s.lastSuccessfulPhase);
   const startBootstrap = useBootstrapStore((s) => s.start);
   const retryBootstrap = useBootstrapStore((s) => s.retry);
+  // Codex PR #118 r8 P2 — readiness tracks BOTH companyId and terminalId
+  // so the gate below (mounted-screen render check) and the .then/.catch
+  // race-guards both compare the full (company, terminal) pair. A
+  // companyId-only shape would clear "ready" for the wrong terminal pair
+  // when the cashier switches terminals within the same company.
+  const [c2CartMigrationState, setC2CartMigrationState] = useState<{
+    companyId: string | null;
+    terminalId: string | null;
+    ready: boolean;
+  }>({ companyId: null, terminalId: null, ready: false });
+  const [c2CartMigrationRetryTick, setC2CartMigrationRetryTick] = useState(0);
+  const c2CartMigrationStartedRef = useRef<string | null>(null);
 
   useBootstrapErrorTelemetry();
 
@@ -113,6 +129,115 @@ export function AppRouter() {
     // bootstrap would never advance, leaving the app on TerminalSetupPage
     // instead of initializing the cached terminal/PIN state.
   }, [bootstrapPhase, bootstrapLastSuccess, isAuthenticated, companies, companyId, terminal, retryBootstrap]);
+
+  // C2 Risk #3 — destructive pre-C2 held-cart dump must happen before
+  // AppShell/HomePage can mount and hydrate held_transactions into memory.
+  // The SQLite flag inside runC2BareCartLineDump makes this one-shot per
+  // terminal database; this ref only prevents duplicate calls during a
+  // single React mount.
+  useEffect(() => {
+    if (bootstrapPhase !== 'ready') return;
+    if (!isAuthenticated || !companyId || !terminal || !operator || isLocked) return;
+    // Codex PR #118 r7 P2 — the start-ref must be terminal-scoped too,
+    // not just company-scoped, mirroring the migration's own per-terminal
+    // completion key (r6 P2). If the cashier switches terminals within the
+    // same company mid-session, a companyId-only ref would skip the new
+    // terminal's migration on this React mount until the next process
+    // restart.
+    const ref = `${companyId}:${terminal.id}`;
+    if (c2CartMigrationStartedRef.current === ref) return;
+
+    c2CartMigrationStartedRef.current = ref;
+    // Codex PR #118 r8 P2 — capture the (company, terminal) pair we
+    // dispatched for so the .then/.catch race-guards can ignore stale
+    // completions. If the cashier switches company/terminal during the
+    // async migration, the previous dispatch's completion must NOT
+    // overwrite the new dispatch's pending state.
+    const dispatchedCompanyId = companyId;
+    const dispatchedTerminalId = terminal.id;
+    const stillActive = () =>
+      useAuthStore.getState().companyId === dispatchedCompanyId
+      && useTerminalStore.getState().terminal?.id === dispatchedTerminalId;
+    // Codex PR #118 r6 P2 — pass terminalId so the migration scopes its
+    // completion key AND its held-transaction scan to the active terminal.
+    // Each terminal completes its own one-shot dump independently when
+    // multiple terminal records share the company SQLite database.
+    void runC2BareCartLineDump({ companyId, terminalId: terminal.id })
+      .then((result) => {
+        // Codex PR #118 r9 P2 — clear the start-ref UNCONDITIONALLY when
+        // the dispatch settles. The pair-match check guards against
+        // clobbering an unrelated future dispatch that happens to have
+        // started before this one settled. The post-logout deadlock
+        // requires this to fire even when stillActive() is false.
+        if (c2CartMigrationStartedRef.current === ref) {
+          c2CartMigrationStartedRef.current = null;
+        }
+
+        // Codex PR #118 r10 P2 — EVERY result-driven side effect (held-
+        // store reconcile, banner.show, deferred-retry timer, ready-state
+        // commit) must be guarded by stillActive(). A stale dispatch's
+        // completion for the pre-switch (company, terminal) pair must
+        // not mutate the post-switch session's in-memory state or fire a
+        // banner that references the previous terminal's dump.
+        if (!stillActive()) return;
+
+        if (result.dumpedIds.length > 0) {
+          const dumpedIds = new Set(result.dumpedIds);
+          useHoldStore.setState((state) => ({
+            heldTransactions: state.heldTransactions.filter((tx) => !dumpedIds.has(tx.id)),
+          }));
+          void loadHeldTransactions();
+          // Codex PR #118 round-5 P2 — when the migration dumps carts at
+          // ANY phase (initial mount or a deferred retry that lands after
+          // AppShell is up), the cashier must be told. The migration also
+          // writes the Tauri Store flag for cross-boot durability; this
+          // call gives `C2MigrationBanner` the in-session re-render it
+          // needs, since the Tauri Store abstraction does not expose a
+          // change listener and the banner cannot re-poll the persisted
+          // value on its own.
+          useC2MigrationBannerStore.getState().show();
+        }
+        if (result.deferred) {
+          window.setTimeout(() => {
+            setC2CartMigrationRetryTick((tick) => tick + 1);
+          }, 30_000);
+        }
+        setC2CartMigrationState({
+          companyId: dispatchedCompanyId,
+          terminalId: dispatchedTerminalId,
+          ready: true,
+        });
+      })
+      .catch((error) => {
+        console.warn('[c2BareCartLineDump] failed; allowing POS startup', error);
+        // Same unconditional ref-clear as the .then branch — see r9 P2
+        // comment above. Without this, a logout-during-migration race
+        // would leave the ref pointing at the dead dispatch's pair, so
+        // the same terminal would deadlock on re-login.
+        if (c2CartMigrationStartedRef.current === ref) {
+          c2CartMigrationStartedRef.current = null;
+        }
+        if (stillActive()) {
+          window.setTimeout(() => {
+            setC2CartMigrationRetryTick((tick) => tick + 1);
+          }, 30_000);
+          setC2CartMigrationState({
+            companyId: dispatchedCompanyId,
+            terminalId: dispatchedTerminalId,
+            ready: true,
+          });
+        }
+      })
+  }, [
+    bootstrapPhase,
+    isAuthenticated,
+    companyId,
+    terminal,
+    operator,
+    isLocked,
+    c2CartMigrationRetryTick,
+    loadHeldTransactions,
+  ]);
 
   // Bootstrap failure takes precedence over every other render branch —
   // the cashier needs the error surface and recovery affordances, not
@@ -195,6 +320,24 @@ export function AppRouter() {
   // Needs operator PIN
   if (!operator || isLocked) {
     return <PinEntryPage isLocked={isLocked} />;
+  }
+
+  // Codex PR #118 r8 P2 — gate compares both companyId AND terminalId so
+  // a terminal switch within the same company correctly resets to the
+  // loading screen until the new terminal's dispatch lands a completion.
+  if (
+    !c2CartMigrationState.ready
+    || c2CartMigrationState.companyId !== companyId
+    || c2CartMigrationState.terminalId !== terminal?.id
+  ) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <p className="mt-3 text-sm text-gray-500">{t('loading')}</p>
+        </div>
+      </div>
+    );
   }
 
   return (

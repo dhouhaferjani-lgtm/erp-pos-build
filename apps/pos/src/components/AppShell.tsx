@@ -2,6 +2,7 @@ import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { Header } from './Header';
 import { TrainingModeBanner } from './TrainingModeBanner';
+import { C2MigrationBanner } from './C2MigrationBanner';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -88,6 +89,7 @@ export function AppShell() {
           (no DOM, no layout impact). Sits BETWEEN Header and main so
           the cashier sees it on every screen, not just HomePage. */}
       <TrainingModeBanner />
+      <C2MigrationBanner />
       <main className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <Routes>

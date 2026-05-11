@@ -42,5 +42,9 @@
   "trainingMode": {
     "banner": "Training mode",
     "subtitle": "Test terminal — verify mode before each transaction."
+  },
+  "c2Migration": {
+    "banner": "An in-progress order from before the last update was cleared. Re-enter it if needed.",
+    "dismiss": "Got it"
   }
 }

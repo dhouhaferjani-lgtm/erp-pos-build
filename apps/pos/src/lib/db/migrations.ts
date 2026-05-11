@@ -773,4 +773,22 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // C2 post-deploy runtime migration state.
+    //
+    // The destructive held-cart dump cannot run here because this layer
+    // has no company module context. Instead, v31 creates a tiny state
+    // table; AppRouter runs the Menu-aware data migration after bootstrap
+    // and records completion in this table so it is one-shot per terminal
+    // database.
+    version: 31,
+    name: 'create_pos_migration_state',
+    sql: `
+      CREATE TABLE IF NOT EXISTS pos_migration_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];

@@ -20,6 +20,7 @@ export const StorageKeys = {
   TERMINAL: 'terminal',
   PENDING_TERMINAL_ID: 'pending_terminal_id',
   SHIFT: 'current_shift',
+  C2_MIGRATION_BANNER: 'c2_migration_banner',
 } as const;
 
 const ENCRYPTED_KEYS = new Set<string>([StorageKeys.TOKEN]);

@@ -58,6 +58,14 @@ vi.mock('@/lib/echo', () => ({
   disconnectEcho: vi.fn(),
 }));
 
+const migrationMocks = vi.hoisted(() => ({
+  runC2BareCartLineDump: vi.fn(),
+}));
+
+vi.mock('@/lib/migration/c2BareCartLineDump', () => ({
+  runC2BareCartLineDump: migrationMocks.runC2BareCartLineDump,
+}));
+
 vi.mock('@tauri-apps/plugin-os', () => ({
   platform: vi.fn(() => 'macos'),
 }));
@@ -94,6 +102,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useBootstrapStore } from '@/stores/bootstrapStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useHoldStore } from '@/stores/holdStore';
 import { apiGet } from '@/lib/api';
 
 function renderRouter() {
@@ -149,6 +158,19 @@ describe('AppRouter — empty-companies bootstrap recovery fold', () => {
       isLocked: false,
       hasPins: null,
     } as never);
+    useHoldStore.setState({
+      heldTransactions: [],
+      isLoading: false,
+      error: null,
+    });
+
+    migrationMocks.runC2BareCartLineDump.mockResolvedValue({
+      alreadyRan: true,
+      deferred: false,
+      dumpedCount: 0,
+      dumpedIds: [],
+      keptIds: [],
+    });
   });
 
   it('renders BootstrapErrorScreen for isAuthenticated && companies.length === 0 when refresh stays empty', async () => {
@@ -214,5 +236,200 @@ describe('AppRouter — empty-companies bootstrap recovery fold', () => {
     await waitFor(() => {
       expect(fetchCompaniesSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('blocks AppShell until the C2 bare-cart migration finishes after bootstrap is ready', async () => {
+    let resolveMigration: () => void = () => {};
+    migrationMocks.runC2BareCartLineDump.mockReturnValue(
+      new Promise((resolve) => {
+        resolveMigration = () => resolve({
+          alreadyRan: false,
+          deferred: false,
+          dumpedCount: 0,
+          dumpedIds: [],
+          keptIds: [],
+        });
+      }),
+    );
+
+    useAuthStore.setState({
+      companyId: 'company-1',
+      companies: [{ id: 'company-1', name: 'Shop' }],
+      isAuthenticated: true,
+      isInitialized: true,
+      isLoading: false,
+    } as never);
+    useBootstrapStore.setState({
+      phase: 'ready',
+      error: null,
+      lastSuccessfulPhase: 'checking-pins',
+      start: async () => {},
+      retry: async () => {},
+    } as never);
+    useTerminalStore.setState({
+      terminal: { id: 'terminal-1', name: 'Main' },
+      isLoading: false,
+    } as never);
+    useOperatorStore.setState({
+      operator: { id: 'operator-1', name: 'Cashier' },
+      isLocked: false,
+      hasPins: true,
+    } as never);
+
+    renderRouter();
+
+    await waitFor(() => {
+      // Codex PR #118 r6 P2 — terminalId is now passed so the migration
+      // scopes its completion state + held-transaction scan per-terminal.
+      expect(migrationMocks.runC2BareCartLineDump).toHaveBeenCalledWith({
+        companyId: 'company-1',
+        terminalId: 'terminal-1',
+      });
+    });
+    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveMigration();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+    });
+  });
+
+  it('fails open when the C2 migration defers so cached/offline boots can continue', async () => {
+    migrationMocks.runC2BareCartLineDump.mockResolvedValue({
+      alreadyRan: false,
+      deferred: true,
+      dumpedCount: 0,
+      dumpedIds: [],
+      keptIds: [],
+    });
+
+    useAuthStore.setState({
+      companyId: 'company-1',
+      companies: [{ id: 'company-1', name: 'Shop' }],
+      isAuthenticated: true,
+      isInitialized: true,
+      isLoading: false,
+    } as never);
+    useBootstrapStore.setState({
+      phase: 'ready',
+      error: null,
+      lastSuccessfulPhase: 'checking-pins',
+      start: async () => {},
+      retry: async () => {},
+    } as never);
+    useTerminalStore.setState({
+      terminal: { id: 'terminal-1', name: 'Main' },
+      isLoading: false,
+    } as never);
+    useOperatorStore.setState({
+      operator: { id: 'operator-1', name: 'Cashier' },
+      isLocked: false,
+      hasPins: true,
+    } as never);
+
+    renderRouter();
+
+    await waitFor(() => {
+      // Codex PR #118 r6 P2 — terminalId is now passed so the migration
+      // scopes its completion state + held-transaction scan per-terminal.
+      expect(migrationMocks.runC2BareCartLineDump).toHaveBeenCalledWith({
+        companyId: 'company-1',
+        terminalId: 'terminal-1',
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+    });
+  });
+
+  it('removes dumped in-memory held carts when a deferred C2 migration retry succeeds after AppShell mounts', async () => {
+    vi.useFakeTimers();
+    const loadHeldTransactions = vi.fn().mockResolvedValue(undefined);
+    useHoldStore.setState({
+      heldTransactions: [
+        {
+          id: 'dumped-held',
+          label: 'Pre-C2',
+          items: [],
+          subtotal: 0,
+          total: 0,
+          itemCount: 0,
+          heldAt: '2026-05-11T00:00:00.000Z',
+        },
+        {
+          id: 'kept-held',
+          label: 'Post-C2',
+          items: [],
+          subtotal: 0,
+          total: 0,
+          itemCount: 0,
+          heldAt: '2026-05-11T00:01:00.000Z',
+        },
+      ],
+      loadHeldTransactions,
+    } as never);
+    migrationMocks.runC2BareCartLineDump
+      .mockResolvedValueOnce({
+        alreadyRan: false,
+        deferred: true,
+        dumpedCount: 0,
+        dumpedIds: [],
+        keptIds: [],
+      })
+      .mockResolvedValueOnce({
+        alreadyRan: false,
+        deferred: false,
+        dumpedCount: 1,
+        dumpedIds: ['dumped-held'],
+        keptIds: ['kept-held'],
+      });
+
+    useAuthStore.setState({
+      companyId: 'company-1',
+      companies: [{ id: 'company-1', name: 'Shop' }],
+      isAuthenticated: true,
+      isInitialized: true,
+      isLoading: false,
+    } as never);
+    useBootstrapStore.setState({
+      phase: 'ready',
+      error: null,
+      lastSuccessfulPhase: 'checking-pins',
+      start: async () => {},
+      retry: async () => {},
+    } as never);
+    useTerminalStore.setState({
+      terminal: { id: 'terminal-1', name: 'Main' },
+      isLoading: false,
+    } as never);
+    useOperatorStore.setState({
+      operator: { id: 'operator-1', name: 'Cashier' },
+      isLocked: false,
+      hasPins: true,
+    } as never);
+
+    try {
+      renderRouter();
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+      expect(migrationMocks.runC2BareCartLineDump).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(30_000);
+        await Promise.resolve();
+      });
+
+      expect(migrationMocks.runC2BareCartLineDump).toHaveBeenCalledTimes(2);
+      expect(useHoldStore.getState().heldTransactions.map((tx) => tx.id)).toEqual(['kept-held']);
+      expect(loadHeldTransactions).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

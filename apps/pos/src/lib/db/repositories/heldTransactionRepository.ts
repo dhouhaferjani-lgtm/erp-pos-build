@@ -52,9 +52,27 @@ export async function listHeldTransactions(
   );
 }
 
+export async function listAllHeldTransactions(db: Database): Promise<HeldTransactionRow[]> {
+  return queryAll<HeldTransactionRow>(
+    db,
+    'SELECT * FROM held_transactions ORDER BY held_at DESC',
+    [],
+  );
+}
+
 export async function deleteHeldTransaction(
   db: Database,
   id: string,
 ): Promise<void> {
   await execute(db, 'DELETE FROM held_transactions WHERE id = $1', [id]);
+}
+
+export async function deleteHeldTransactionsByIds(
+  db: Database,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+
+  const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
+  await execute(db, `DELETE FROM held_transactions WHERE id IN (${placeholders})`, ids);
 }

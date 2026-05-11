@@ -42,5 +42,9 @@
   "trainingMode": {
     "banner": "Mode formation",
     "subtitle": "Terminal de test — vérifiez le mode avant chaque transaction."
+  },
+  "c2Migration": {
+    "banner": "Une commande en cours créée avant la dernière mise à jour a été supprimée. Ressaisissez-la si nécessaire.",
+    "dismiss": "Compris"
   }
 }
