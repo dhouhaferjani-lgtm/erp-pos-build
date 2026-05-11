@@ -1,21 +1,19 @@
 /**
  * T1.1 Codex round-2 finding (6) — i18n smoke test for the recovery
- * screen + LoginPage Cancel affordance.
+ * copy + LoginPage Cancel affordance.
  *
  * Round-1 fix for finding (d) replaced raw error.message rendering with
- * fixed t('auth.companyRecovery.errorHint') translations, but those
- * keys (along with the rest of the auth.companyRecovery subtree) did
- * not exist in either locale file — so the cashier saw the raw key
- * "auth.companyRecovery.errorHint" rendered verbatim.
+ * fixed recovery translations, but those keys did not exist in either
+ * locale file — so the cashier saw the raw key rendered verbatim.
  *
- * This test mounts the recovery screen + LoginPage with the REAL
+ * This test mounts the bootstrap recovery copy + LoginPage with the REAL
  * i18next instance (no mock) and asserts none of the rendered text
  * starts with "auth." — i.e. every t() call resolved to a translation.
  *
  * Putting this test in apps/pos/src/__tests__/ rather than alongside
- * the components keeps the existing AppRouter.test.tsx and
- * LoginPage.test.tsx focused on behavior — those still mock i18n for
- * speed and to keep snapshot diffs clean.
+ * the components keeps the existing LoginPage behavior tests focused
+ * on behavior — those still mock i18n for speed and to keep snapshot
+ * diffs clean.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -89,11 +87,10 @@ vi.mock('@/components/ErrorBoundary', () => ({
 }));
 
 import i18n from '@/lib/i18n';
-import { AppRouter } from '../App';
 import { LoginPage } from '@/pages/LoginPage';
+import { BootstrapErrorScreen } from '@/components/BootstrapErrorScreen';
+import { useBootstrapStore } from '@/stores/bootstrapStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useTerminalStore } from '@/stores/terminalStore';
-import { useOperatorStore } from '@/stores/operatorStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 
 function renderWithI18n(ui: React.ReactNode) {
@@ -109,65 +106,54 @@ function renderWithI18n(ui: React.ReactNode) {
   );
 }
 
-describe('T1.1 round-2 — i18n smoke (recovery screen + LoginPage)', () => {
+describe('T1.1 round-2 — i18n smoke (bootstrap recovery + LoginPage)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('CompanyRecoveryScreen renders translated text (no raw keys leak through)', () => {
+  it('BootstrapErrorScreen renders empty-company recovery text (no raw keys leak through)', () => {
     useAuthStore.setState({
-      user: { id: 'u1' } as never,
-      token: 'jwt',
-      serverUrl: 'http://localhost:8002',
-      companyId: null,
-      companies: [],
-      isAuthenticated: true,
-      isLoading: false,
-      isInitialized: true,
-    });
-    useAuthStore.setState({
-      initialize: async () => {},
-      fetchCompanies: async () => {},
+      logout: async () => {},
+    } as never);
+    useBootstrapStore.setState({
+      phase: 'error',
+      error: {
+        phase: 'fetching-companies',
+        errorName: 'Error',
+        recoverable: false,
+        retryCount: 0,
+      },
+      retry: async () => {},
+      skipWithCache: async () => {},
     } as never);
 
-    useTerminalStore.setState({ terminal: null, isLoading: false } as never);
-    useOperatorStore.setState({
-      operator: null,
-      isLocked: false,
-      hasPins: null,
-    } as never);
+    renderWithI18n(<BootstrapErrorScreen />);
 
-    renderWithI18n(<AppRouter />);
-
-    const recovery = screen.getByTestId('company-recovery-screen');
+    const recovery = screen.getByTestId('bootstrap-error-screen');
     const text = recovery.textContent ?? '';
 
-    // Each visible string in the recovery screen must come from a
+    // Each visible string in the recovery copy must come from a
     // translation, not from the raw key fallback. If any t() call
-    // falls through, the rendered text contains an "auth.companyRecovery."
+    // falls through, the rendered text contains an "auth.bootstrap."
     // substring — assert that does NOT happen.
-    expect(text).not.toMatch(/auth\.companyRecovery\./);
-    // Sanity: title + sign-out + (auto-mount loading state's) refreshing
-    // text are all real translations rather than raw keys.
+    expect(text).not.toMatch(/auth\.bootstrap\./);
+    // Sanity: title + sign-out are real translations rather than raw keys.
     expect(text).toContain('No companies available');
     expect(text).toContain('Sign out');
   });
 
   // Codex round-3 finding (#7) follow-up: the render-based smoke tests
-  // above only exercise the keys actually rendered in the default
-  // (idle, no-error) state. Five of the 8 T1.1-introduced keys
-  // (errorHint, retrying, retry, stillTrying, cancel) only render in
-  // states the smoke tests don't enter. This direct i18n.t() check
-  // covers all 8 keys for both locales so a future deletion of any
-  // single key fails the suite.
+  // above only exercise the keys actually rendered in the default state.
+  // This direct i18n.t() check covers the recovery/login keys for both
+  // locales so a future deletion of any single key fails the suite.
   it('Every T1.1-introduced i18n key resolves in both en and fr', async () => {
     const KEYS: Array<{ ns: 'common' | 'pos'; key: string }> = [
-      { ns: 'common', key: 'auth.companyRecovery.title' },
-      { ns: 'common', key: 'auth.companyRecovery.message' },
-      { ns: 'common', key: 'auth.companyRecovery.errorHint' },
-      { ns: 'common', key: 'auth.companyRecovery.retrying' },
-      { ns: 'common', key: 'auth.companyRecovery.retry' },
-      { ns: 'common', key: 'auth.companyRecovery.signOut' },
+      { ns: 'common', key: 'auth.bootstrap.title' },
+      { ns: 'common', key: 'auth.bootstrap.noCompaniesMessage' },
+      { ns: 'common', key: 'auth.bootstrap.errorHint' },
+      { ns: 'common', key: 'auth.bootstrap.retrying' },
+      { ns: 'common', key: 'auth.bootstrap.retry' },
+      { ns: 'common', key: 'auth.bootstrap.signOut' },
       { ns: 'pos', key: 'auth.stillTrying' },
       { ns: 'pos', key: 'auth.cancel' },
     ];

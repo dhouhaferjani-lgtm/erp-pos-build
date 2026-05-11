@@ -55,11 +55,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
  *   - `authenticating`: always false. The login token is the entry point
  *     — there is no cached fallback for "I am authenticated"; the cashier
  *     must log in again.
- *   - `fetching-companies`: always false. The phase body is now a no-op
- *     (PR #108 r3 P2 — CompanyRecoveryScreen owns the empty-companies
- *     fetch exclusively to avoid a concurrent /user/companies race), so
- *     there is no failure path that lands here at runtime; the declaration
- *     is kept for completeness.
+ *   - `fetching-companies`: always false. Bootstrap owns the empty-company
+ *     refresh and failures surface through the bootstrap error state.
  *   - `fetching-terminal`: true iff SQLite has a cached terminal record.
  *     `terminalStore.initialize()` populates `terminal` from the SQLite
  *     mirror before any network call, so if the in-memory `terminal` is
@@ -155,24 +152,16 @@ async function runPhase(phase: RunnablePhase, timeoutMs: number): Promise<void> 
       await withTimeout(phase, useAuthStore.getState().initialize(), timeoutMs);
       return;
     case 'fetching-companies':
-      // No-op by design. The empty-companies recovery flow is owned
-      // exclusively by `App.tsx::CompanyRecoveryScreen` — it auto-fires
-      // `fetchCompanies()` on mount and surfaces its own typed error UI.
-      //
-      // Codex review (PR #106 round 6, P2) first gated this phase to
-      // skip when companies were already cached; Codex review (PR #108
-      // round 3, P2) then surfaced that the remaining empty-cache fetch
-      // raced the recovery screen: a cached-authenticated boot with
-      // zero companies would issue two concurrent `/user/companies`
-      // requests, and a bootstrap-side failure / timeout would preempt
-      // a now-recovered recovery screen with the bootstrap error
-      // screen. The full fix is to never fetch from this phase at all;
-      // the recovery screen is the single owner.
-      //
-      // The phase entry stays in the enum so `canEnterPhase` keeps
-      // gating fetching-terminal on `isAuthenticated` before any
-      // terminal API call, and so the sequencing semantics remain
-      // explicit for the next maintainer.
+      // BootstrapErrorScreen owns empty-company recovery, so this phase is
+      // now the single owner of the empty-companies refresh. Cached company
+      // lists still skip the network call for offline boot support.
+      if (useAuthStore.getState().companies.length > 0) {
+        return;
+      }
+      await withTimeout(phase, useAuthStore.getState().fetchCompanies(), timeoutMs);
+      if (useAuthStore.getState().companies.length === 0) {
+        throw new Error('No companies available for authenticated POS user');
+      }
       return;
     case 'fetching-terminal':
       await withTimeout(phase, useTerminalStore.getState().initialize(), timeoutMs);
@@ -226,9 +215,8 @@ function canEnterPhase(phase: RunnablePhase): boolean {
       // (Codex PR #108 r4 P2) prevents advancing past the orphan
       // empty-companies cached-session state — a stale non-null
       // companyId from a prior session would otherwise satisfy the
-      // gate, run the terminal phase, and on failure surface the
-      // bootstrap error screen instead of the CompanyRecoveryScreen
-      // that's specifically designed to repair that exact state.
+      // gate and run the terminal phase before company refresh can
+      // repair the orphan state.
       return (
         useAuthStore.getState().isAuthenticated === true
         && useAuthStore.getState().companies.length > 0

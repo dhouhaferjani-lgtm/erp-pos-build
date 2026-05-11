@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useBootstrapStore } from '@/stores/bootstrapStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
-import { serializeErrorForLog } from '@/lib/errorLogging';
-import { SAFE_ERROR_NAMES } from '@/lib/safeErrorNames';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -108,13 +106,12 @@ export function AppRouter() {
     void retryBootstrap();
     // Codex PR #108 r5 P2 — `companies` MUST be in the deps. The
     // orphan empty-companies cached-session boot path stops bootstrap
-    // before terminal init (PR #108 r4 P2 gate). When
-    // CompanyRecoveryScreen's fetchCompanies returns a non-empty list
-    // that validates the existing companyId, only `companies` changes
-    // (companyId and terminal stay as-is) — without this dep, the
-    // effect would never re-fire and bootstrap would never advance,
-    // leaving the app on TerminalSetupPage instead of initializing
-    // the cached terminal/PIN state.
+    // before terminal init (PR #108 r4 P2 gate). If the fetching-companies
+    // phase later repopulates the company list and validates the existing
+    // companyId, only `companies` changes (companyId and terminal stay
+    // as-is) — without this dep, the effect would never re-fire and
+    // bootstrap would never advance, leaving the app on TerminalSetupPage
+    // instead of initializing the cached terminal/PIN state.
   }, [bootstrapPhase, bootstrapLastSuccess, isAuthenticated, companies, companyId, terminal, retryBootstrap]);
 
   // Bootstrap failure takes precedence over every other render branch —
@@ -153,16 +150,19 @@ export function AppRouter() {
     );
   }
 
-  // T1.1 Step 1.2: empty-companies recovery branch.
-  // Reachable when (a) /user/companies failed mid-login (Step 1.1's window
-  // is now closed for new logins, but a pre-Step-1.1 orphan may still be
-  // cached on disk and rehydrated by initialize()), or (b) an admin has
-  // legitimately revoked the user from every company between sessions.
-  // Without this branch the user falls through to TerminalSetupPage,
-  // which throws on the first apiGet('/terminals?company_id=...') because
-  // companyId is null.
+  // Empty-company recovery is owned by bootstrapStore's
+  // `fetching-companies` phase. While that refresh is pending, keep the
+  // terminal setup routes unmounted so they cannot call terminal APIs
+  // without a usable company context.
   if (isAuthenticated && companies.length === 0) {
-    return <CompanyRecoveryScreen />;
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <p className="mt-3 text-sm text-gray-500">{t('loading')}</p>
+        </div>
+      </div>
+    );
   }
 
   // Needs terminal setup
@@ -201,95 +201,6 @@ export function AppRouter() {
     <Routes>
       <Route path="/*" element={<AppShell />} />
     </Routes>
-  );
-}
-
-/**
- * T1.1 Step 1.2 — recovery screen rendered when isAuthenticated but
- * companies are empty. Auto-runs `fetchCompanies` once on mount; surfaces
- * the failure (typed-fields-only — banner-opacity contract from T0.1) with
- * Retry + Sign-out affordances.
- *
- * T2.4 Day 2 — SAFE_ERROR_NAMES now lives at `lib/safeErrorNames.ts` so
- * this branch and `bootstrapStore` share a single source of truth. The
- * branch stays in place per the kickoff's low-risk first cut — folding
- * it into BootstrapErrorScreen is a post-launch cleanup.
- */
-function CompanyRecoveryScreen() {
-  const { t } = useTranslation('common');
-  const fetchCompanies = useAuthStore((s) => s.fetchCompanies);
-  const logout = useAuthStore((s) => s.logout);
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorLabel, setErrorLabel] = useState<string | null>(null);
-
-  async function runFetch() {
-    setIsLoading(true);
-    setErrorLabel(null);
-    try {
-      await fetchCompanies();
-    } catch (error) {
-      const payload = serializeErrorForLog(error);
-      console.error(
-        '[POS][AppRouter][companyRecovery] fetchCompanies failed',
-        payload,
-      );
-      const safeLabel =
-        payload.errorName && SAFE_ERROR_NAMES.has(payload.errorName)
-          ? payload.errorName
-          : 'Error';
-      setErrorLabel(safeLabel);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void runFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <div
-      className="flex h-screen items-center justify-center bg-gray-50"
-      data-testid="company-recovery-screen"
-    >
-      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md text-center">
-        <h2 className="text-xl font-bold text-gray-900">
-          {t('auth.companyRecovery.title')}
-        </h2>
-        <p className="mt-2 text-sm text-gray-500">
-          {t('auth.companyRecovery.message')}
-        </p>
-
-        {errorLabel && (
-          <div className="mt-4 rounded-md bg-red-50 p-3 text-xs text-red-700">
-            <div className="font-mono font-medium">{errorLabel}</div>
-            <div className="mt-1">{t('auth.companyRecovery.errorHint')}</div>
-          </div>
-        )}
-
-        <button
-          type="button"
-          data-testid="company-recovery-retry"
-          disabled={isLoading}
-          onClick={() => void runFetch()}
-          className="mt-6 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isLoading
-            ? t('auth.companyRecovery.retrying')
-            : t('auth.companyRecovery.retry')}
-        </button>
-        <button
-          type="button"
-          data-testid="company-recovery-signout"
-          onClick={() => logout()}
-          className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700 underline"
-        >
-          {t('auth.companyRecovery.signOut')}
-        </button>
-      </div>
-    </div>
   );
 }
 

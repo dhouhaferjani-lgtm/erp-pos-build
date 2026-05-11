@@ -20,17 +20,10 @@
   "noResults": "No results found",
   "retry": "Retry",
   "auth": {
-    "companyRecovery": {
-      "title": "No companies available",
-      "message": "We couldn't find any companies for your account. Try refreshing, or sign out to switch users.",
-      "errorHint": "We couldn't refresh your companies. Check your connection and try again.",
-      "retrying": "Refreshing...",
-      "retry": "Retry",
-      "signOut": "Sign out"
-    },
     "bootstrap": {
       "title": "We couldn't finish setting up your terminal",
       "message": "The {{phase}} step failed. Try again, or use your cached data if available.",
+      "noCompaniesMessage": "No companies available. We couldn't find any companies for your account. Try refreshing, or sign out to switch users.",
       "errorHint": "Check your connection and try again. Sign out if the problem keeps happening.",
       "retry": "Retry",
       "retrying": "Retrying...",

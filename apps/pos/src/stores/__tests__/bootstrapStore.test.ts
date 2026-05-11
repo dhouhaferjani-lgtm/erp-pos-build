@@ -132,7 +132,7 @@ describe('bootstrapStore — happy path', () => {
   it('calls auth/terminal/pins init exactly once on the cached-companies happy path (Codex r6 P2)', async () => {
     // Default mockedAuth.companies is non-empty, so fetchCompanies must
     // be SKIPPED — mirrors the existing AppRouter behaviour where
-    // fetchCompanies only fires from the empty-companies recovery branch.
+    // fetchCompanies only fires from the empty-companies bootstrap phase.
     const startPromise = useBootstrapStore.getState().start();
     await vi.runAllTimersAsync();
     await startPromise;
@@ -143,26 +143,50 @@ describe('bootstrapStore — happy path', () => {
     expect(checkHasPins).toHaveBeenCalledTimes(1);
   });
 
-  it('never calls fetchCompanies — CompanyRecoveryScreen is the sole owner (Codex PR #108 r3 P2)', async () => {
-    // The empty-companies recovery is owned exclusively by
-    // CompanyRecoveryScreen in App.tsx, which auto-fires fetchCompanies()
-    // on mount. Bootstrap firing a concurrent /user/companies request
-    // raced the recovery screen and could preempt a successful recovery
-    // with a bootstrap-side timeout error. The full fix: the
-    // fetching-companies phase is a no-op regardless of cache state.
+  it('Fold: fetching-companies phase fetches when cache is empty', async () => {
+    // BootstrapErrorScreen owns empty-company recovery, so bootstrapStore
+    // owns the empty-companies fetch instead of leaving it to a second
+    // screen-level fetcher.
     mockedAuth = { ...mockedAuth, companies: [] };
 
     const startPromise = useBootstrapStore.getState().start();
     await vi.runAllTimersAsync();
     await startPromise;
 
-    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(fetchCompanies).toHaveBeenCalledTimes(1);
+  });
+
+  it('Fold: fetching-companies phase surfaces fetch failures via bootstrap error state', async () => {
+    mockedAuth = { ...mockedAuth, companies: [] };
+    fetchCompanies.mockRejectedValue(
+      Object.assign(new Error('companies down'), { name: 'ApiRequestError' }),
+    );
+
+    const startPromise = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await startPromise;
+
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-companies');
+    expect(useBootstrapStore.getState().error?.recoverable).toBe(false);
+  });
+
+  it('Fold: fetching-companies phase errors when refresh succeeds but cache remains empty', async () => {
+    mockedAuth = { ...mockedAuth, companies: [] };
+    fetchCompanies.mockResolvedValue(undefined);
+
+    const startPromise = useBootstrapStore.getState().start();
+    await vi.runAllTimersAsync();
+    await startPromise;
+
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-companies');
   });
 
   it('cached-offline boot does not regress to bootstrap error even if fetchCompanies would fail (Codex r6 P2 + PR #108 r3 P2)', async () => {
     // Returning cashier with cached TOKEN/USER/COMPANIES boots offline.
     // initialize succeeds (cache hydrated). fetchCompanies WOULD fail
-    // (no network) but must never be called from bootstrap.
+    // (no network) but must not be called when cached companies exist.
     fetchCompanies.mockRejectedValue(
       Object.assign(new Error('offline'), { name: 'TypeError' }),
     );
@@ -449,10 +473,11 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
     expect(useBootstrapStore.getState().error).toBeNull();
   });
 
-  it('stops at "ready" without entering fetching-terminal when companyId is null (multi-company select)', async () => {
-    // Empty companies + no selected company → fetching-companies is a
-    // no-op (PR #108 r3 P2: CompanyRecoveryScreen owns that fetch) and
-    // fetching-terminal's canEnterPhase gate fails on the null companyId.
+  it('halts at fetching-companies when companyId is null and the refreshed companies cache stays empty', async () => {
+    // BootstrapErrorScreen owns empty-company recovery, so bootstrap now
+    // owns the empty-company fetch. If the refresh still
+    // leaves no company choices, the cashier gets the bootstrap error
+    // surface instead of falling through to terminal setup.
     mockedAuth = { isAuthenticated: true, companyId: null, companies: [] };
 
     const startPromise = useBootstrapStore.getState().start();
@@ -460,19 +485,18 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
     await startPromise;
 
     expect(initializeAuth).toHaveBeenCalledTimes(1);
-    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(fetchCompanies).toHaveBeenCalledTimes(1);
     expect(initializeTerminal).not.toHaveBeenCalled();
     expect(checkHasPins).not.toHaveBeenCalled();
-    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-companies');
   });
 
-  it('stops at "ready" without entering fetching-terminal when companies cache is empty even if companyId is non-null (Codex PR #108 r4 P2 — orphan recovery)', async () => {
-    // The orphan state CompanyRecoveryScreen is designed to repair:
-    // cached session has a stale non-null companyId from a prior
-    // session but the companies list is empty. Pre-fix, the
-    // fetching-terminal gate only checked companyId; bootstrap would
-    // advance into terminal init, and on failure the bootstrap error
-    // screen would preempt CompanyRecoveryScreen — blocking recovery.
+  it('halts at fetching-companies when orphan recovery refresh leaves the cache empty (Codex PR #108 r4 P2)', async () => {
+    // Cached session has a stale non-null companyId from a prior session
+    // but an empty companies list. Bootstrap retries the company refresh
+    // first and must not advance into terminal init unless the refresh
+    // repopulates the cache.
     mockedAuth = { isAuthenticated: true, companyId: 'stale-company-1', companies: [] };
 
     const startPromise = useBootstrapStore.getState().start();
@@ -480,10 +504,11 @@ describe('bootstrapStore — phase gating (Codex r2 P1)', () => {
     await startPromise;
 
     expect(initializeAuth).toHaveBeenCalledTimes(1);
-    expect(fetchCompanies).not.toHaveBeenCalled();
+    expect(fetchCompanies).toHaveBeenCalledTimes(1);
     expect(initializeTerminal).not.toHaveBeenCalled();
     expect(checkHasPins).not.toHaveBeenCalled();
-    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-companies');
   });
 
   it('stops at "ready" without entering checking-pins when terminal is null', async () => {

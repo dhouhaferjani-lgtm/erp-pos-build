@@ -101,6 +101,21 @@ describe('BootstrapErrorScreen', () => {
     expect(nonRecoverable.queryByTestId('bootstrap-skip-with-cache')).toBeNull();
   });
 
+  it('renders the empty-company recovery copy without cached-data escape for fetching-companies', () => {
+    mockedError = {
+      phase: 'fetching-companies',
+      errorName: 'Error',
+      recoverable: false,
+      retryCount: 0,
+    };
+
+    const { queryByTestId, getByTestId } = render(<BootstrapErrorScreen />);
+    const text = getByTestId('bootstrap-error-screen').textContent ?? '';
+
+    expect(text).toContain('auth.bootstrap.noCompaniesMessage');
+    expect(queryByTestId('bootstrap-skip-with-cache')).toBeNull();
+  });
+
   it('dispatches bootstrapStore.retry() when Retry is clicked', async () => {
     const { getByTestId } = render(<BootstrapErrorScreen />);
     await act(async () => {

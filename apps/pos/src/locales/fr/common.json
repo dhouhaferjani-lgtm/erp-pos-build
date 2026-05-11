@@ -20,17 +20,10 @@
   "noResults": "Aucun résultat trouvé",
   "retry": "Réessayer",
   "auth": {
-    "companyRecovery": {
-      "title": "Aucune entreprise disponible",
-      "message": "Nous n'avons trouvé aucune entreprise pour votre compte. Essayez d'actualiser, ou déconnectez-vous pour changer d'utilisateur.",
-      "errorHint": "Impossible d'actualiser vos entreprises. Vérifiez votre connexion et réessayez.",
-      "retrying": "Actualisation...",
-      "retry": "Réessayer",
-      "signOut": "Se déconnecter"
-    },
     "bootstrap": {
       "title": "Impossible de finaliser la configuration du terminal",
       "message": "L'étape « {{phase}} » a échoué. Réessayez ou utilisez les données en cache si disponibles.",
+      "noCompaniesMessage": "Aucune entreprise disponible. Nous n'avons trouvé aucune entreprise pour votre compte. Essayez d'actualiser, ou déconnectez-vous pour changer d'utilisateur.",
       "errorHint": "Vérifiez votre connexion et réessayez. Déconnectez-vous si le problème persiste.",
       "retry": "Réessayer",
       "retrying": "Nouvel essai...",

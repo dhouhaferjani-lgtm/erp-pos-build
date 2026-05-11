@@ -8,14 +8,10 @@ import { useBootstrapStore } from '@/stores/bootstrapStore';
  * Use cached data / Sign out affordances. Replaces the indefinite spinner
  * branches in `App.tsx::AppRouter` for the four orchestrated phases
  * (`authenticating`, `fetching-companies`, `fetching-terminal`,
- * `checking-pins`). The existing `CompanyRecoveryScreen` stays in place
- * for the empty-companies edge case per the kickoff's low-risk first cut
- * — folding the two is a post-launch cleanup.
+ * `checking-pins`).
  *
- * The visual style mirrors `CompanyRecoveryScreen` so the cashier sees a
- * consistent recovery UX across every bootstrap-time failure. The error
- * label is already coerced to the SAFE_ERROR_NAMES allowlist by the
- * store, so we render it verbatim without further sanitization (the
+ * The error label is already coerced to the SAFE_ERROR_NAMES allowlist by
+ * the store, so we render it verbatim without further sanitization (the
  * T0.1 banner-opacity contract is satisfied at the store boundary).
  */
 export function BootstrapErrorScreen() {
@@ -55,6 +51,10 @@ export function BootstrapErrorScreen() {
   }
 
   const phaseLabel = t(`auth.bootstrap.phase.${error.phase}`);
+  const messageKey =
+    error.phase === 'fetching-companies'
+      ? 'auth.bootstrap.noCompaniesMessage'
+      : 'auth.bootstrap.message';
 
   return (
     <div
@@ -66,7 +66,7 @@ export function BootstrapErrorScreen() {
           {t('auth.bootstrap.title')}
         </h2>
         <p className="mt-2 text-sm text-gray-500">
-          {t('auth.bootstrap.message', { phase: phaseLabel })}
+          {t(messageKey, { phase: phaseLabel })}
         </p>
 
         <div className="mt-4 rounded-md bg-red-50 p-3 text-xs text-red-700">
@@ -156,4 +156,3 @@ export function BootstrapErrorScreen() {
     </div>
   );
 }
-

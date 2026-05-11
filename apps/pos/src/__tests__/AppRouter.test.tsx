@@ -1,12 +1,11 @@
 /**
- * T1.1 Step 1.2 — AppRouter empty-companies recovery branch.
+ * T1.1 Step 1.2 / production-readiness fold — empty-companies recovery.
  *
- * Verifies the new branch:
- *   `isAuthenticated && companies.length === 0` → renders the recovery
- *   screen with a Retry button that re-runs the companies fetch, and a
- *   Sign-out link. This branch must come BEFORE the !terminal check so a
- *   user whose companies failed to load doesn't fall through to
- *   TerminalSetupPage (which throws because companyId is null).
+ * Verifies the folded ownership:
+ *   `isAuthenticated && companies.length === 0` → bootstrapStore owns the
+ *   company refresh, and BootstrapErrorScreen owns Retry / Sign out. This
+ *   must still preempt TerminalSetupPage so a user whose companies failed
+ *   to load does not call terminal APIs with no usable company context.
  *
  * The recovery branch closes the auth-persistence-orphan window from
  * Step 1.1 (a network drop after /auth/login but before /user/companies
@@ -92,6 +91,7 @@ vi.mock('@/components/ErrorBoundary', () => ({
 
 import { AppRouter } from '../App';
 import { useAuthStore } from '@/stores/authStore';
+import { useBootstrapStore } from '@/stores/bootstrapStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { apiGet } from '@/lib/api';
@@ -109,7 +109,7 @@ function renderRouter() {
   );
 }
 
-describe('AppRouter — T1.1 Step 1.2 empty-companies recovery branch', () => {
+describe('AppRouter — empty-companies bootstrap recovery fold', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -132,6 +132,13 @@ describe('AppRouter — T1.1 Step 1.2 empty-companies recovery branch', () => {
     // Override initialize so the AppRouter useEffect doesn't reset state.
     useAuthStore.setState({ initialize: async () => {} } as never);
 
+    useBootstrapStore.setState({
+      phase: 'idle',
+      error: null,
+      lastSuccessfulPhase: null,
+      running: false,
+    } as never);
+
     useTerminalStore.setState({
       terminal: null,
       isLoading: false,
@@ -144,45 +151,61 @@ describe('AppRouter — T1.1 Step 1.2 empty-companies recovery branch', () => {
     } as never);
   });
 
-  it('T1.1: AppRouter renders recovery screen for isAuthenticated && companies.length === 0', async () => {
+  it('renders BootstrapErrorScreen for isAuthenticated && companies.length === 0 when refresh stays empty', async () => {
     renderRouter();
 
-    // Recovery branch must render — TerminalSetupPage must NOT.
+    // Bootstrap recovery must render — TerminalSetupPage must NOT.
     await waitFor(() => {
-      expect(screen.getByTestId('company-recovery-screen')).toBeInTheDocument();
+      expect(screen.getByTestId('bootstrap-error-screen')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('terminal-setup-page')).not.toBeInTheDocument();
   });
 
-  it('T1.1: AppRouter recovery screen Retry button calls fetchCompanies', async () => {
+  it('blocks TerminalSetupPage while the empty-company refresh is still in flight', async () => {
+    const fetchCompaniesSpy = vi.fn(() => new Promise<void>(() => {}));
+    useAuthStore.setState({ fetchCompanies: fetchCompaniesSpy } as never);
+
+    renderRouter();
+
+    await waitFor(() => {
+      expect(fetchCompaniesSpy).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.queryByTestId('terminal-setup-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bootstrap-error-screen')).not.toBeInTheDocument();
+  });
+
+  it('BootstrapErrorScreen Retry button re-runs fetchCompanies', async () => {
     const fetchCompaniesSpy = vi.fn().mockResolvedValue(undefined);
     useAuthStore.setState({ fetchCompanies: fetchCompaniesSpy } as never);
 
     renderRouter();
 
-    const retryButton = await screen.findByTestId('company-recovery-retry');
-    // First call is the auto-mount; clear it so we measure the click only.
+    const retryButton = await screen.findByTestId('bootstrap-retry');
+    // First call is the bootstrap start; clear it so we measure the click only.
     fetchCompaniesSpy.mockClear();
     await act(async () => {
       fireEvent.click(retryButton);
     });
-    expect(fetchCompaniesSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(fetchCompaniesSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('T1.1: AppRouter recovery screen Sign-out button calls logout', async () => {
+  it('BootstrapErrorScreen Sign-out button calls logout', async () => {
     const logoutSpy = vi.fn();
     useAuthStore.setState({ logout: logoutSpy } as never);
 
     renderRouter();
 
-    const signOutButton = await screen.findByTestId('company-recovery-signout');
+    const signOutButton = await screen.findByTestId('bootstrap-signout');
     await act(async () => {
       fireEvent.click(signOutButton);
     });
     expect(logoutSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('T1.1: AppRouter recovery screen auto-runs fetchCompanies on mount', async () => {
+  it('bootstrap start auto-runs fetchCompanies on mount for empty-company state', async () => {
     const fetchCompaniesSpy = vi.fn().mockResolvedValue(undefined);
     useAuthStore.setState({ fetchCompanies: fetchCompaniesSpy } as never);
 
