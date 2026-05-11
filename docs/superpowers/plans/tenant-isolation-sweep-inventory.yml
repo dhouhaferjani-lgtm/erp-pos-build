@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ca8a6d3f47c898c58105335b7c2d0a1d0d4f9a93c6ab6ab87240a3ef68c76e1a
+  yaml_sha256: 29c0963035a183bc768bdfe77033aec37c4c0667fe458c66857b0fe3e91e67d2
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -106754,17 +106754,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:11:35Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -106783,6 +106783,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:11:36Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ca8a6d3f47c898c58105335b7c2d0a1d0d4f9a93c6ab6ab87240a3ef68c76e1a
+        new_yaml_sha256: dd162c2874fa28b7967f84479443feda3c9e1ede7240454484e171eabf46bde2
+        target_ids:
+          - web.tanstack-keys.629
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:11:40Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dd162c2874fa28b7967f84479443feda3c9e1ede7240454484e171eabf46bde2
+        new_yaml_sha256: dd7e9c79261d6222c1397127f62bdd188879a75fb9435cdcfee6004a6f6cc0b3
+        target_ids:
+          - web.tanstack-keys.629
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:11:42Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: dd7e9c79261d6222c1397127f62bdd188879a75fb9435cdcfee6004a6f6cc0b3
+        new_yaml_sha256: 34b193fc516356b7823f7fe86ef6c03b410093f09fdae7ae0c29aad53e460dc1
+        target_ids:
+          - web.tanstack-keys.629
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.630
     stable_key: 'sha256:cf962447ac5346ba22b2df5b64a50201803afe3c4c5574f08c0a0c8f7cf47f5a'
@@ -106800,17 +106848,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:11:45Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -106829,6 +106877,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:11:45Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 34b193fc516356b7823f7fe86ef6c03b410093f09fdae7ae0c29aad53e460dc1
+        new_yaml_sha256: a9b853b14258f29b88689fb8cb6c3d00261eb2c0caa51017ad79539513552e13
+        target_ids:
+          - web.tanstack-keys.630
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:11:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: a9b853b14258f29b88689fb8cb6c3d00261eb2c0caa51017ad79539513552e13
+        new_yaml_sha256: 713cbca5239559ee64ced246ada6727c7b03008159fb15783faa3fe22d4c83ac
+        target_ids:
+          - web.tanstack-keys.630
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:11:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 713cbca5239559ee64ced246ada6727c7b03008159fb15783faa3fe22d4c83ac
+        new_yaml_sha256: 8755add5b375572e235adb2074be346a33862b51aa9a16442f45dbc51e75c667
+        target_ids:
+          - web.tanstack-keys.630
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.631
     stable_key: 'sha256:8a13f44dbf7514eaab83246d816a4ab1c3c1a26132abdf01246f0b7516534372'
@@ -106846,17 +106942,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:11:53Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -106875,6 +106971,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:11:54Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8755add5b375572e235adb2074be346a33862b51aa9a16442f45dbc51e75c667
+        new_yaml_sha256: e6040fce8bda80c64c01afd5c0020b42d3945cc68d8a936cf029cf80ac60a04c
+        target_ids:
+          - web.tanstack-keys.631
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:11:57Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e6040fce8bda80c64c01afd5c0020b42d3945cc68d8a936cf029cf80ac60a04c
+        new_yaml_sha256: 98c431fac0eb7deebea7adc96d6036653628d32620a8e3fe8a86bc599f6fb667
+        target_ids:
+          - web.tanstack-keys.631
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:00Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 98c431fac0eb7deebea7adc96d6036653628d32620a8e3fe8a86bc599f6fb667
+        new_yaml_sha256: 5513c81c0d8966a9510825bb1db592490e828f10280812cafe92f23a55ccd084
+        target_ids:
+          - web.tanstack-keys.631
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.632
     stable_key: 'sha256:d680a1b2bd8d6b2ed926b771315c34a5bcacc21d953e58751d115d5c4da4a696'
@@ -106892,17 +107036,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:02Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -106921,6 +107065,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:02Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 5513c81c0d8966a9510825bb1db592490e828f10280812cafe92f23a55ccd084
+        new_yaml_sha256: 4518d00c649d862665a965e040248bbdb4c8d46a3138a476760879a01bc8c3be
+        target_ids:
+          - web.tanstack-keys.632
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:05Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4518d00c649d862665a965e040248bbdb4c8d46a3138a476760879a01bc8c3be
+        new_yaml_sha256: ee5e535ce4103eb33862a5108456e143c314664c257f381f13f9c2be827a16de
+        target_ids:
+          - web.tanstack-keys.632
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:08Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ee5e535ce4103eb33862a5108456e143c314664c257f381f13f9c2be827a16de
+        new_yaml_sha256: c725cef5ec7eab3daf38d318804d4c11b87faeb296d283575dfb6b9538441ca9
+        target_ids:
+          - web.tanstack-keys.632
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.633
     stable_key: 'sha256:d0358b4f6097f53d22304cd198ba7149aa0950b18e8f405958a4be5a2a8b63f8'
@@ -106938,17 +107130,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:10Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -106967,6 +107159,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:11Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c725cef5ec7eab3daf38d318804d4c11b87faeb296d283575dfb6b9538441ca9
+        new_yaml_sha256: 2f1c7370a591073a9ea1e4368c382fa8efe96db48abe9170fbebbd2f09431c07
+        target_ids:
+          - web.tanstack-keys.633
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2f1c7370a591073a9ea1e4368c382fa8efe96db48abe9170fbebbd2f09431c07
+        new_yaml_sha256: 420c70166e9a9aff2070ef1df1f61e2dd1da49f31fd476773adb699d8960d244
+        target_ids:
+          - web.tanstack-keys.633
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:17Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 420c70166e9a9aff2070ef1df1f61e2dd1da49f31fd476773adb699d8960d244
+        new_yaml_sha256: 169a4654f673e13b33f5bd12a2c7fd543f9e13c2168aa5f5db6ffcd0cf6bcb46
+        target_ids:
+          - web.tanstack-keys.633
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/LocationsPage.tenantScope.test.tsx::LocationsPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.634
     stable_key: 'sha256:ce195a9c7fadd42213b5207b41809d037daaed7bc3858d3f6f201f735509dd3d'
@@ -106984,17 +107224,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:18Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -107013,6 +107253,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:19Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 169a4654f673e13b33f5bd12a2c7fd543f9e13c2168aa5f5db6ffcd0cf6bcb46
+        new_yaml_sha256: 71b490155517c2108997678c62f19f2457594e95069cb09178817cb6c6690efc
+        target_ids:
+          - web.tanstack-keys.634
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:22Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 71b490155517c2108997678c62f19f2457594e95069cb09178817cb6c6690efc
+        new_yaml_sha256: e73098fb3c20a8a88b3cccf380ac844156e806305294e0e4568fec7b94a9298c
+        target_ids:
+          - web.tanstack-keys.634
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:25Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e73098fb3c20a8a88b3cccf380ac844156e806305294e0e4568fec7b94a9298c
+        new_yaml_sha256: 1d583b1931c1f1b9518f55c8a766deba926b84e9a5cbc8caa1fadf65da9512a8
+        target_ids:
+          - web.tanstack-keys.634
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.635
     stable_key: 'sha256:e4fe171194a802245bb4948979b763335a466c80dd0cf93ad41200dea0f9f194'
@@ -107030,17 +107318,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:27Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -107059,6 +107347,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:28Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1d583b1931c1f1b9518f55c8a766deba926b84e9a5cbc8caa1fadf65da9512a8
+        new_yaml_sha256: 7b4fa095ce54b7c8b0a758910632b64395496247f25b1f14771321460fa066bd
+        target_ids:
+          - web.tanstack-keys.635
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:31Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7b4fa095ce54b7c8b0a758910632b64395496247f25b1f14771321460fa066bd
+        new_yaml_sha256: 8d57f84a7eee537abcec1d63373e2cc736cf0b569bd2658816944f4d98d10931
+        target_ids:
+          - web.tanstack-keys.635
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8d57f84a7eee537abcec1d63373e2cc736cf0b569bd2658816944f4d98d10931
+        new_yaml_sha256: 572d2046838b92721b05388531b8d15f90e073a8975fdc095636d6213fd112ad
+        target_ids:
+          - web.tanstack-keys.635
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.636
     stable_key: 'sha256:44d6cdd550d393693d2f62474a31bdd6857d9de088ce019b827c53884e68bcfc'
@@ -107076,17 +107412,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:36Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -107105,6 +107441,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:37Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 572d2046838b92721b05388531b8d15f90e073a8975fdc095636d6213fd112ad
+        new_yaml_sha256: 9d0fe8edfa607cfea184c88e21ff836410eafdaedd96ce4f8f2188bba1a0a758
+        target_ids:
+          - web.tanstack-keys.636
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:40Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9d0fe8edfa607cfea184c88e21ff836410eafdaedd96ce4f8f2188bba1a0a758
+        new_yaml_sha256: 6f1d15a59d488b6493f405098e674086051a990ec3d0b091273b9a7d0c883b98
+        target_ids:
+          - web.tanstack-keys.636
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6f1d15a59d488b6493f405098e674086051a990ec3d0b091273b9a7d0c883b98
+        new_yaml_sha256: fb1d5a4152b1c909a27c3667478a08f2758806e30d597cc8df5b5dd4ba9e52a1
+        target_ids:
+          - web.tanstack-keys.636
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.637
     stable_key: 'sha256:7482dc58ff19ca94d5f6f2fa2e46460b3028f54b10d64a4fdfd182564021d713'
@@ -107122,17 +107506,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:45Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -107151,6 +107535,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:45Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fb1d5a4152b1c909a27c3667478a08f2758806e30d597cc8df5b5dd4ba9e52a1
+        new_yaml_sha256: 84193177e9dbabff7e5af98e02bc66415c1a30d77f6c7e17eaac9da961dd1168
+        target_ids:
+          - web.tanstack-keys.637
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 84193177e9dbabff7e5af98e02bc66415c1a30d77f6c7e17eaac9da961dd1168
+        new_yaml_sha256: 81c171de182d221711b0dabace12afee559f02bd017595598c8ea39d42543a9c
+        target_ids:
+          - web.tanstack-keys.637
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 81c171de182d221711b0dabace12afee559f02bd017595598c8ea39d42543a9c
+        new_yaml_sha256: f049a924a40a24c3062423a8e9da5dab63b78121487570d679a7c12939c8f847
+        target_ids:
+          - web.tanstack-keys.637
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.638
     stable_key: 'sha256:7c83971cfe46961f920cef2b1b004b896c0b3c63fe7176c8f8da21301ecaf8f6'
@@ -107168,17 +107600,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T15:12:53Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 7efb658b
+    regression_test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
     blocked_reason: null
     history:
       -
@@ -107197,6 +107629,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T15:12:54Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f049a924a40a24c3062423a8e9da5dab63b78121487570d679a7c12939c8f847
+        new_yaml_sha256: e59edf88587f82f3cf94545c80a9eeaba6c87ce1ad412a88b9fd86e4a72b0fb2
+        target_ids:
+          - web.tanstack-keys.638
+        from_status: pending
+        to_status: claimed
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T15:12:56Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e59edf88587f82f3cf94545c80a9eeaba6c87ce1ad412a88b9fd86e4a72b0fb2
+        new_yaml_sha256: 4c6a606c7b032a56f58426ffde45fb07da78b02f484f5a2e7283c50a31b6155e
+        target_ids:
+          - web.tanstack-keys.638
+        from_status: claimed
+        to_status: in_progress
+        commit: 7efb658b7b2f7cb09faa9a8957bf00bc4d41ad26
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T15:12:59Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4c6a606c7b032a56f58426ffde45fb07da78b02f484f5a2e7283c50a31b6155e
+        new_yaml_sha256: 29c0963035a183bc768bdfe77033aec37c4c0667fe458c66857b0fe3e91e67d2
+        target_ids:
+          - web.tanstack-keys.638
+        from_status: in_progress
+        to_status: under_review
+        commit: 7efb658b
+        test: 'apps/web/src/features/settings/__tests__/RolesPage.tenantScope.test.tsx::RolesPage tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.639
     stable_key: 'sha256:fae19a45eb1de5127046b95d15089ef04e9ca8e0df39a7dea94042ec897ca81f'
