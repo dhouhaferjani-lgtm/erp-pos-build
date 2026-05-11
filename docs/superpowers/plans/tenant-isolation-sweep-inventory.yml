@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: fde740cbaaaf02949d2655cf9757629c5067f6398f6ca78facae4720f2aa8486
+  yaml_sha256: 3c2168cc73c9adb81d86c4dc1f88a901e7bad2a6b97ef4b9fa483787e04f48ec
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -102755,15 +102755,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T06:23:20Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:38:58Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+      review_commit: 03ffd55e
     fix_commit: 03ffd55e
     regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
@@ -102832,6 +102832,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:38:59Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fde740cbaaaf02949d2655cf9757629c5067f6398f6ca78facae4720f2aa8486
+        new_yaml_sha256: 5df4dad2d4d0624ca180afab25ef8b7af87ffd0bc2622b664a9d25be20942b57
+        target_ids:
+          - web.tanstack-keys.541
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 5de45c70ef82d7c8b2910d6216b01b5649936aaf
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+        review_commit: 03ffd55e
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.542
     stable_key: 'sha256:32936cef9fbacf6a17cde9b167d91b371a334f52c68235fa3adf41d3220e77ca'
@@ -102849,15 +102866,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T06:23:25Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:39:01Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+      review_commit: 03ffd55e
     fix_commit: 03ffd55e
     regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
@@ -102926,6 +102943,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:39:02Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 5df4dad2d4d0624ca180afab25ef8b7af87ffd0bc2622b664a9d25be20942b57
+        new_yaml_sha256: 6cd5ab2cd81b6a1dab0bad16139fcbffc8c5554360b7ead6e38149652b300e5a
+        target_ids:
+          - web.tanstack-keys.542
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 5de45c70ef82d7c8b2910d6216b01b5649936aaf
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+        review_commit: 03ffd55e
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.543
     stable_key: 'sha256:7ae4cd0e3de70c6db6c63f6eb29ad6fd7e65fee4fe3ab71a58917a54f986beab'
@@ -102943,15 +102977,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T06:23:30Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:39:05Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+      review_commit: 03ffd55e
     fix_commit: 03ffd55e
     regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
@@ -103020,6 +103054,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:39:06Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6cd5ab2cd81b6a1dab0bad16139fcbffc8c5554360b7ead6e38149652b300e5a
+        new_yaml_sha256: 3c2168cc73c9adb81d86c4dc1f88a901e7bad2a6b97ef4b9fa483787e04f48ec
+        target_ids:
+          - web.tanstack-keys.543
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 5de45c70ef82d7c8b2910d6216b01b5649936aaf
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-36-opus-review.md
+        review_commit: 03ffd55e
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.544
     stable_key: 'sha256:ceec49fa1353e2385e140091fcbe90fa6a89dc7644d0940de4dd368afb325f15'
