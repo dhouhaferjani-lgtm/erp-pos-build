@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 07bd807daf3846b683dbac7e0bfc6748c3c76b20ea3d386cb886ca3cf4920ca6
+  yaml_sha256: 1173d953b1fca3a567f84a2ea257120449fb35ca4b8255d161471c9f83a01645
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -104012,17 +104012,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T09:52:06Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd730fd9
+    regression_test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104041,6 +104041,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T09:52:06Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 07bd807daf3846b683dbac7e0bfc6748c3c76b20ea3d386cb886ca3cf4920ca6
+        new_yaml_sha256: 638165400605cc3df7272110b770d38c1ed2791eda89f5aa91ff667e88f553af
+        target_ids:
+          - web.tanstack-keys.735
+        from_status: pending
+        to_status: claimed
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T09:52:09Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 638165400605cc3df7272110b770d38c1ed2791eda89f5aa91ff667e88f553af
+        new_yaml_sha256: 7fdccb6dcf506703df9a9e70c07cab820f8fa9c97cbb40fc518898ee98a60283
+        target_ids:
+          - web.tanstack-keys.735
+        from_status: claimed
+        to_status: in_progress
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T09:54:32Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3690af30a6a57ea488f26eaee2e66a7e3c8fe632f670cb7d76bab132cae4958c
+        new_yaml_sha256: d9a1877f57b944a74ab98c4b0dd1f3fddbca2fbde4ef0d6543c9c08f4ea2ea45
+        target_ids:
+          - web.tanstack-keys.735
+        from_status: in_progress
+        to_status: under_review
+        commit: cd730fd9
+        test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.736
     stable_key: 'sha256:f32b33d6babbc5d541537117020247f8c0b873bfba176465993491bb9b9c60c3'
@@ -104058,17 +104106,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T09:52:11Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd730fd9
+    regression_test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104087,6 +104135,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T09:52:12Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7fdccb6dcf506703df9a9e70c07cab820f8fa9c97cbb40fc518898ee98a60283
+        new_yaml_sha256: c7ee1b3ca0d8fcce9dbfc2ec32f995e8f410d9c24e10b9a8ed5c76aba95f006e
+        target_ids:
+          - web.tanstack-keys.736
+        from_status: pending
+        to_status: claimed
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T09:52:15Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c7ee1b3ca0d8fcce9dbfc2ec32f995e8f410d9c24e10b9a8ed5c76aba95f006e
+        new_yaml_sha256: b5367ed48da290fff7873e76af15102471e66dd2bc34a43b77083fe4eef84d89
+        target_ids:
+          - web.tanstack-keys.736
+        from_status: claimed
+        to_status: in_progress
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T09:54:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d9a1877f57b944a74ab98c4b0dd1f3fddbca2fbde4ef0d6543c9c08f4ea2ea45
+        new_yaml_sha256: ab1be48893426e1a2b7ade229206f2cc145c8347804e52b4443f2867d9dac4da
+        target_ids:
+          - web.tanstack-keys.736
+        from_status: in_progress
+        to_status: under_review
+        commit: cd730fd9
+        test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.737
     stable_key: 'sha256:bc780ac68fd0ca40b42f0cb50c4d971fb31f7094dad160ce7daf818a913e8b90'
@@ -104104,17 +104200,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T09:52:18Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd730fd9
+    regression_test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104133,6 +104229,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T09:52:18Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: b5367ed48da290fff7873e76af15102471e66dd2bc34a43b77083fe4eef84d89
+        new_yaml_sha256: b3d6b990946a96dc2933134065a1266bb78a6bd793220aafd544545f16f53dde
+        target_ids:
+          - web.tanstack-keys.737
+        from_status: pending
+        to_status: claimed
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T09:52:22Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: b3d6b990946a96dc2933134065a1266bb78a6bd793220aafd544545f16f53dde
+        new_yaml_sha256: 606579e779581e300ef05f48aec89b532ddc9bb7e68d9afb653f949fad4a1fa5
+        target_ids:
+          - web.tanstack-keys.737
+        from_status: claimed
+        to_status: in_progress
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T09:54:37Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ab1be48893426e1a2b7ade229206f2cc145c8347804e52b4443f2867d9dac4da
+        new_yaml_sha256: 852007b908abd1d2390c4f36ab292015d27a58cdc727cbe9e8087e6c66986abb
+        target_ids:
+          - web.tanstack-keys.737
+        from_status: in_progress
+        to_status: under_review
+        commit: cd730fd9
+        test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.738
     stable_key: 'sha256:3abf82262b4bebabc62ede592837d56b5b71dccf5083d9c3dac81c27d59364d7'
@@ -104150,17 +104294,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T09:52:24Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd730fd9
+    regression_test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104179,6 +104323,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T09:52:24Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 606579e779581e300ef05f48aec89b532ddc9bb7e68d9afb653f949fad4a1fa5
+        new_yaml_sha256: 3aac2edede3c71bea65c504d319898fb377a5a0e8b79a5e911275e6e81bca559
+        target_ids:
+          - web.tanstack-keys.738
+        from_status: pending
+        to_status: claimed
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T09:52:27Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3aac2edede3c71bea65c504d319898fb377a5a0e8b79a5e911275e6e81bca559
+        new_yaml_sha256: a03a9da281a21363cbcc85a97a4664e22ad695d7eba3c295d679a3751dc0d018
+        target_ids:
+          - web.tanstack-keys.738
+        from_status: claimed
+        to_status: in_progress
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T09:54:40Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 852007b908abd1d2390c4f36ab292015d27a58cdc727cbe9e8087e6c66986abb
+        new_yaml_sha256: d4cdb18253f1e8418c07a81ae971213dd9ea17d1fefdccb2841515d565f44606
+        target_ids:
+          - web.tanstack-keys.738
+        from_status: in_progress
+        to_status: under_review
+        commit: cd730fd9
+        test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.739
     stable_key: 'sha256:57cc56c9e47bc1163a00b2cfc68ea5b845daf84ae91b7cc9a2acd0dd737b868c'
@@ -104196,17 +104388,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T09:52:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: cd730fd9
+    regression_test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -104225,6 +104417,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T09:52:29Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a03a9da281a21363cbcc85a97a4664e22ad695d7eba3c295d679a3751dc0d018
+        new_yaml_sha256: 017b993eaedab7c0ed406d67d5ca592a5b1d2d68a3cbb72d1360230705893ed0
+        target_ids:
+          - web.tanstack-keys.739
+        from_status: pending
+        to_status: claimed
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T09:52:32Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 017b993eaedab7c0ed406d67d5ca592a5b1d2d68a3cbb72d1360230705893ed0
+        new_yaml_sha256: 3690af30a6a57ea488f26eaee2e66a7e3c8fe632f670cb7d76bab132cae4958c
+        target_ids:
+          - web.tanstack-keys.739
+        from_status: claimed
+        to_status: in_progress
+        commit: a26f9517516de274a7d9ef8446824bfb683b7c47
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T09:54:42Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d4cdb18253f1e8418c07a81ae971213dd9ea17d1fefdccb2841515d565f44606
+        new_yaml_sha256: 1173d953b1fca3a567f84a2ea257120449fb35ca4b8255d161471c9f83a01645
+        target_ids:
+          - web.tanstack-keys.739
+        from_status: in_progress
+        to_status: under_review
+        commit: cd730fd9
+        test: 'apps/web/src/features/treasury/hooks/__tests__/smartPaymentTenantScope.test.tsx::smart payment hooks tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.740
     stable_key: 'sha256:9cea0fca18e7964850491b6018e2e8b63e4663d97ed33a0bec26b25a1e8a9622'
