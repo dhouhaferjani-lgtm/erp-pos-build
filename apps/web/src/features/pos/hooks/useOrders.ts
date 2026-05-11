@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   getOrders,
   getOrder,
@@ -18,6 +19,7 @@ import {
   type AddLineResponse,
   type ModifyLineResponse,
 } from '../api/orderApi'
+import { usePosTenantScope } from './usePosTenantScope'
 
 /**
  * Query key factory for order-related queries.
@@ -30,13 +32,33 @@ export const orderKeys = {
   detail: (id: string) => [...orderKeys.details(), id] as const,
 }
 
+function scopedOrderListPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'orders' &&
+      k[1] === 'list' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 /**
  * Fetch orders with optional filters.
  */
 export function useOrders(params?: OrderListParams) {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery<OrderListResponse>({
-    queryKey: orderKeys.list(params),
+    queryKey: tenantScopedKey([...orderKeys.list(params)]),
     queryFn: () => getOrders(params),
+    enabled: hasTenantScope,
     refetchInterval: 10000, // Poll every 10s for active orders
   })
 }
@@ -45,10 +67,12 @@ export function useOrders(params?: OrderListParams) {
  * Fetch a single order by ID.
  */
 export function useOrder(id: string | undefined) {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery<OrderData>({
-    queryKey: orderKeys.detail(id!),
+    queryKey: tenantScopedKey([...orderKeys.detail(id!)]),
     queryFn: () => getOrder(id!),
-    enabled: !!id,
+    enabled: !!id && hasTenantScope,
   })
 }
 
@@ -57,11 +81,14 @@ export function useOrder(id: string | undefined) {
  */
 export function useCreateOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<OrderData, Error, CreateOrderRequest>({
     mutationFn: (data) => createOrder(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedOrderListPredicate(tenantId, companyId),
+      })
     },
   })
 }
@@ -71,6 +98,7 @@ export function useCreateOrder() {
  */
 export function useAddOrderLine() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<
     AddLineResponse,
@@ -78,11 +106,15 @@ export function useAddOrderLine() {
     { orderId: string; data: AddOrderLineRequest }
   >({
     mutationFn: ({ orderId, data }) => addOrderLine(orderId, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(variables.orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -92,6 +124,7 @@ export function useAddOrderLine() {
  */
 export function useModifyOrderLine() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<
     ModifyLineResponse,
@@ -100,11 +133,15 @@ export function useModifyOrderLine() {
   >({
     mutationFn: ({ orderId, lineId, data }) =>
       modifyOrderLine(orderId, lineId, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(variables.orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -114,14 +151,19 @@ export function useModifyOrderLine() {
  */
 export function useRemoveOrderLine() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<OrderData, Error, { orderId: string; lineId: string }>({
     mutationFn: ({ orderId, lineId }) => removeOrderLine(orderId, lineId),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(variables.orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -131,14 +173,19 @@ export function useRemoveOrderLine() {
  */
 export function useSendToKitchen() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<OrderData, Error, string>({
     mutationFn: (orderId) => sendToKitchen(orderId),
-    onSuccess: (_data, orderId) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, orderId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -148,14 +195,19 @@ export function useSendToKitchen() {
  */
 export function useCloseOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<OrderData, Error, string>({
     mutationFn: (orderId) => closeOrder(orderId),
-    onSuccess: (_data, orderId) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, orderId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -165,6 +217,7 @@ export function useCloseOrder() {
  */
 export function useCancelOrder() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<
     OrderData,
@@ -172,11 +225,15 @@ export function useCancelOrder() {
     { orderId: string; reason?: string }
   >({
     mutationFn: ({ orderId, reason }) => cancelOrder(orderId, reason),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: orderKeys.detail(variables.orderId),
-      })
-      queryClient.invalidateQueries({ queryKey: orderKeys.lists() })
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...orderKeys.detail(variables.orderId)]),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedOrderListPredicate(tenantId, companyId),
+        }),
+      ])
     },
   })
 }
