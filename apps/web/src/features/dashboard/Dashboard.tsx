@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
@@ -87,14 +89,17 @@ export function Dashboard() {
   usePageTitle('dashboard.title')
   const navigate = useNavigate()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(
     () => sessionStorage.getItem('onboarding-banner-dismissed') === 'true'
   )
 
   const { data: onboardingItems = [] } = useQuery({
-    queryKey: ['onboarding-status'],
+    queryKey: tenantScopedKey(['onboarding-status']),
     queryFn: fetchOnboardingStatus,
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const hasIncompleteRequired = onboardingItems.some((item) => item.required && !item.completed)
@@ -109,27 +114,30 @@ export function Dashboard() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard', 'stats'],
+    queryKey: tenantScopedKey(['dashboard', 'stats']),
     queryFn: async () => {
       const response = await api.get<{ data: DashboardStats }>('/dashboard/stats')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data: documentsData, isLoading: documentsLoading } = useQuery({
-    queryKey: ['dashboard', 'documents'],
+    queryKey: tenantScopedKey(['dashboard', 'documents']),
     queryFn: async () => {
       const response = await api.get<DocumentsResponse>('/documents?limit=5&sort=-created_at')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data: paymentsData, isLoading: paymentsLoading } = useQuery({
-    queryKey: ['dashboard', 'payments'],
+    queryKey: tenantScopedKey(['dashboard', 'payments']),
     queryFn: async () => {
       const response = await api.get<PaymentsResponse>('/payments?limit=5&sort=-created_at')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const isLoading = statsLoading || documentsLoading || paymentsLoading
