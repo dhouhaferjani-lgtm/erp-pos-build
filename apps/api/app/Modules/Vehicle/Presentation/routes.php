@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Vehicle\Presentation\Controllers\PartnerVehiclesController;
 use App\Modules\Vehicle\Presentation\Controllers\VehicleController;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Vehicle'])->group(function (): void {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Vehicle'])->group(function (): void {
     Route::get('/vehicles', [VehicleController::class, 'index'])
         ->middleware('can:vehicles.view')
         ->name('vehicles.index');

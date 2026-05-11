@@ -11,6 +11,9 @@ import {
   TrendingUp,
   Shield,
 } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { getFraudAlerts, getFraudAlertStatistics } from '../api/fraudApi'
 import type { FraudAlert, FraudAlertFilters } from '../types/fraudAlerts'
 import {
@@ -22,6 +25,8 @@ import {
 
 export function FraudAlertsPage() {
   const { t } = useTranslation(['common', 'compliance'])
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [filters, setFilters] = useState<FraudAlertFilters>({})
   const [currentPage, setCurrentPage] = useState(1)
@@ -33,14 +38,16 @@ export function FraudAlertsPage() {
 
   // Fetch alerts
   const { data: alertsData, isLoading } = useQuery({
-    queryKey: ['fraud-alerts', filters, currentPage],
+    queryKey: tenantScopedKey(['fraud-alerts', filters, currentPage]),
     queryFn: () => getFraudAlerts(filters, currentPage),
+    enabled: !!tenantId && !!companyId,
   })
 
   // Fetch statistics
   const { data: statsData } = useQuery({
-    queryKey: ['fraud-alert-statistics'],
+    queryKey: tenantScopedKey(['fraud-alert-statistics']),
     queryFn: getFraudAlertStatistics,
+    enabled: !!tenantId && !!companyId,
   })
 
 

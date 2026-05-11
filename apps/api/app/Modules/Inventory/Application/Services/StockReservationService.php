@@ -232,18 +232,38 @@ class StockReservationService implements InventoryReservationServiceInterface
     /**
      * Release all active reservations for a source (e.g., sales order).
      *
+     * Accepts optional caller-supplied $expectedTenantId and $expectedCompanyId
+     * so the query is scoped to the caller's company. When provided, only
+     * reservations whose company_id matches $expectedCompanyId are released,
+     * preventing a forged cross-company sourceId from releasing foreign
+     * reservations (api.inventory.033).
+     *
      * This is called when a sales order is cancelled or delivered.
+     *
+     * Note: $expectedTenantId is accepted for API symmetry with other tenant-
+     * scoped service methods, but is NOT used in the WHERE clause —
+     * stock_reservations has no tenant_id column. company_id is sufficient
+     * because each company belongs to exactly one tenant. If a future
+     * migration adds tenant_id to stock_reservations, wire $expectedTenantId
+     * into the predicate here. See Codex review M1 (2026-05-09).
      */
     public function releaseBySource(
         ReservationSource $sourceType,
         string $sourceId,
         ReleaseReason $reason,
         ?string $releasedBy = null,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
     ): int {
-        $reservations = StockReservation::where('source_type', $sourceType)
+        $query = StockReservation::where('source_type', $sourceType)
             ->where('source_id', $sourceId)
-            ->active()
-            ->get();
+            ->active();
+
+        if ($expectedCompanyId !== null) {
+            $query->where('company_id', $expectedCompanyId);
+        }
+
+        $reservations = $query->get();
 
         $count = 0;
         foreach ($reservations as $reservation) {
@@ -363,8 +383,13 @@ class StockReservationService implements InventoryReservationServiceInterface
         ?int $priority = 0,
         ?string $notes = null,
     ): Collection {
-        // Check if product requires batch tracking
-        $product = Product::findOrFail($productId);
+        // Check if product requires batch tracking — scoped to caller's
+        // tenant + company so a foreign productId can never satisfy the
+        // lookup, even if upstream validators were bypassed.
+        $product = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($productId);
 
         if (! $product->requires_batch_tracking) {
             // Product doesn't require batch tracking, create single aggregate reservation
@@ -430,14 +455,25 @@ class StockReservationService implements InventoryReservationServiceInterface
      * @throws \RuntimeException If no StockLevel exists for the product.
      */
     public function reserveForWorkOrder(
+        string $tenantId,
+        string $companyId,
         string $productId,
         string $quantity,
         string $workOrderLineId,
         string $workOrderId,
         ?\DateTimeImmutable $expiresAt,
     ): StockReservation {
+        // Scope the StockLevel lookup to the caller's tenant + company.
+        // Prior to api.inventory Codex round-2 Finding 1, this method
+        // derived Company from `StockLevel::where('product_id',$productId)
+        // ->first()->company_id`, allowing a forged cross-company productId
+        // to anchor a reservation against a foreign company's stock on
+        // Workshop approval. Now an unauthorized cross-company productId
+        // returns no row → RuntimeException → reservation is rejected.
         /** @var StockLevel|null $stockLevel */
-        $stockLevel = StockLevel::where('product_id', $productId)
+        $stockLevel = StockLevel::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
             ->orderByRaw('(quantity - reserved) DESC')
             ->first();
 
@@ -448,7 +484,9 @@ class StockReservationService implements InventoryReservationServiceInterface
         }
 
         /** @var Company $company */
-        $company = Company::query()->findOrFail($stockLevel->company_id);
+        $company = Company::query()
+            ->where('tenant_id', $tenantId)
+            ->findOrFail($companyId);
 
         $reservation = $this->reserve(
             company: $company,
@@ -477,6 +515,8 @@ class StockReservationService implements InventoryReservationServiceInterface
     public function releaseForWorkOrder(
         string $workOrderId,
         string $reasonCode,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
     ): int {
         $reason = ReleaseReason::tryFrom($reasonCode) ?? ReleaseReason::ManualRelease;
 
@@ -484,6 +524,8 @@ class StockReservationService implements InventoryReservationServiceInterface
             sourceType: ReservationSource::WorkOrder,
             sourceId: $workOrderId,
             reason: $reason,
+            expectedTenantId: $expectedTenantId,
+            expectedCompanyId: $expectedCompanyId,
         );
     }
 }

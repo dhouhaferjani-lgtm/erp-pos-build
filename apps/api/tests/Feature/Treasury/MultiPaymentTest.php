@@ -424,6 +424,8 @@ class MultiPaymentTest extends TestCase
         );
 
         $balance = $this->multiPaymentService->getUnallocatedDepositBalance(
+            $this->tenant->id,
+            $this->company->id,
             $this->customer->id,
             'EUR'
         );
@@ -452,6 +454,8 @@ class MultiPaymentTest extends TestCase
 
         // Check remaining unallocated
         $balance = $this->multiPaymentService->getUnallocatedDepositBalance(
+            $this->tenant->id,
+            $this->company->id,
             $this->customer->id,
             'EUR'
         );
@@ -528,6 +532,8 @@ class MultiPaymentTest extends TestCase
         );
 
         $balance = $this->multiPaymentService->getPartnerAccountBalance(
+            $this->tenant->id,
+            $this->company->id,
             $this->customer->id,
             'EUR'
         );

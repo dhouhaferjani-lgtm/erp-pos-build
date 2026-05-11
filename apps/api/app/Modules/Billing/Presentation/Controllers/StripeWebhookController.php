@@ -19,7 +19,9 @@ use App\Modules\Billing\Notifications\PaymentFailedNotification;
 use App\Modules\Billing\Notifications\PaymentSucceededNotification;
 use App\Modules\Billing\Notifications\SubscriptionCancelledNotification;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Architecture\CrossTenantRoute;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -27,11 +29,49 @@ use Illuminate\Support\Facades\Notification;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Webhook;
 
+/**
+ * @cross-tenant-by-design Webhook entry — tenant resolution shape (b) sub-form
+ * (master plan §8): tenant is derived from the verified Stripe payload via
+ * globally-unique Stripe-issued resource IDs (sub_*, in_*, pi_*) → resource
+ * lookup → resource.tenant_id stamps every downstream Notification + DB write.
+ *
+ * Signature verification fires inline at handle() lines 53-64 BEFORE any DB
+ * read, via Stripe\Webhook::constructEvent($payload, $signature, $webhookSecret)
+ * with the global STRIPE_WEBHOOK_SECRET. Failure returns 400 with no DB
+ * side-effects. Stripe's SDK enforces timestamp tolerance + HMAC-SHA256 in
+ * constant time — no replay surface.
+ *
+ * No CompanyContext::setCompanyId() binding: tenant_subscriptions,
+ * billing_invoices, billing_payments are platform-level public-schema tables
+ * (see migrations 2025_12_16_10000{1,2,4}_*) tenant-isolated by tenant_id
+ * column rather than schema, and the resolved $resource->tenant_id stamps
+ * every downstream notification/update directly. The "or equivalent"
+ * mechanism in master plan §8 step 3 covers this shape.
+ *
+ * Defense-in-depth: tenant_subscriptions.stripe_subscription_id and
+ * billing_invoices.stripe_invoice_id carry DB UNIQUE constraints
+ * (migrations lines 35 + 60). billing_payments(provider, provider_payment_id)
+ * carries a UNIQUE constraint as of api.platform-integration cluster
+ * (migration 2026_05_08_000002_*), closing Finding F. Resolver code uses
+ * `resolveStripePayment()` (added below) which:
+ *   (a) filters by `provider = stripe` so a foreign-provider Payment that
+ *       contrives a `pi_*` collision is never returned here; AND
+ *   (b) calls ->sole() over ->first() so a >1-row state (only possible if
+ *       the UNIQUE is ever dropped) crashes loud rather than silently
+ *       picking one row.
+ *
+ * Out-of-scope concerns (deferred per the same observations doc):
+ *   - Finding D: handleSubscriptionCreated orWhere(stripe_customer_id)
+ *     fallback — logic-correctness within tenant, not isolation.
+ *   - Finding E: missing event-id idempotency — Stripe redelivers; defer
+ *     to future api.billing hardening cluster.
+ */
 final class StripeWebhookController extends Controller
 {
     /**
      * Handle incoming Stripe webhooks.
      */
+    #[CrossTenantRoute(reason: 'Stripe webhook entry: tenant resolved from the verified Stripe-signed payload via globally-unique resource IDs (sub_*/in_*/pi_*) per master plan §8 shape (b); inline signature verification via Stripe\\Webhook::constructEvent fires BEFORE any DB read; see class-level @cross-tenant-by-design annotation (lines 32-67) for the full tenant-resolution proof + defense-in-depth UNIQUE-constraint pairing from api.platform-integration cluster.')]
     public function handle(Request $request): JsonResponse
     {
         $payload = $request->getContent();
@@ -239,12 +279,22 @@ final class StripeWebhookController extends Controller
             : null;
 
         if ($subscription && $paymentIntentId) {
+            // Provider-filter discipline (Codex round-1 BLOCK-NOVEL).
+            // The (provider, provider_payment_id) UNIQUE constraint
+            // intentionally allows the same external id across different
+            // providers, so the lookup attributes MUST also pin the
+            // provider — otherwise a PayPal/Klarna/etc. row with the same
+            // `pi_*` value would be matched and overwritten as Stripe.
+            // Pair with resolveStripePayment() at the bottom of the file
+            // (read-side) — this is the create/reconcile-side pair.
             $payment = Payment::updateOrCreate(
-                ['provider_payment_id' => $paymentIntentId],
+                [
+                    'provider' => PaymentProviderCode::Stripe->value,
+                    'provider_payment_id' => $paymentIntentId,
+                ],
                 [
                     'tenant_id' => $subscription->tenant_id,
                     'invoice_id' => $invoice?->id,
-                    'provider' => PaymentProviderCode::Stripe,
                     'status' => PaymentStatus::Succeeded,
                     'amount' => $amountPaid,
                     'fee' => 0,
@@ -316,12 +366,18 @@ final class StripeWebhookController extends Controller
             // Create a payment record for tracking failed payments
             $paymentIntentId = $stripeInvoice['payment_intent'] ?? null;
             if ($paymentIntentId) {
+                // Provider-filter discipline (Codex round-1 BLOCK-NOVEL),
+                // mirrors handleInvoicePaid() above — the lookup MUST pin
+                // `provider = stripe` so a foreign-provider row sharing
+                // `pi_*` is not overwritten as Stripe.
                 $payment = Payment::updateOrCreate(
-                    ['provider_payment_id' => $paymentIntentId],
+                    [
+                        'provider' => PaymentProviderCode::Stripe->value,
+                        'provider_payment_id' => $paymentIntentId,
+                    ],
                     [
                         'tenant_id' => $subscription->tenant_id,
                         'invoice_id' => $invoice?->id,
-                        'provider' => PaymentProviderCode::Stripe,
                         'status' => PaymentStatus::Failed,
                         'amount' => ((int) ($stripeInvoice['amount_due'] ?? 0)) / 100,
                         'fee' => 0,
@@ -411,8 +467,12 @@ final class StripeWebhookController extends Controller
     {
         $paymentIntentId = $paymentIntent['id'] ?? null;
 
-        // Update existing payment if exists
-        $payment = Payment::where('provider_payment_id', $paymentIntentId)->first();
+        // Provider-filter discipline + collision-fail-loud (Finding F).
+        // Pre-fix: where('provider_payment_id', $pi)->first() — could
+        // resolve to a foreign-provider Payment that happened to share
+        // the same external id, AND silently picked one of multiple
+        // matches if a UNIQUE-rollback ever occurred.
+        $payment = $this->resolveStripePayment($paymentIntentId);
 
         if ($payment) {
             $payment->update([
@@ -436,7 +496,7 @@ final class StripeWebhookController extends Controller
     {
         $paymentIntentId = $paymentIntent['id'] ?? null;
 
-        $payment = Payment::where('provider_payment_id', $paymentIntentId)->first();
+        $payment = $this->resolveStripePayment($paymentIntentId);
 
         /** @var array<string, mixed>|null $lastError */
         $lastError = $paymentIntent['last_payment_error'] ?? null;
@@ -465,7 +525,7 @@ final class StripeWebhookController extends Controller
         $paymentIntentId = $charge['payment_intent'] ?? null;
 
         $payment = $paymentIntentId
-            ? Payment::where('provider_payment_id', $paymentIntentId)->first()
+            ? $this->resolveStripePayment($paymentIntentId)
             : null;
 
         if (! $payment) {
@@ -586,5 +646,39 @@ final class StripeWebhookController extends Controller
         }
 
         return $tenant->name ?? $tenant->legal_name ?? "Tenant #{$tenantId}";
+    }
+
+    /**
+     * Resolve a Stripe-provider Payment by `pi_*` id with two
+     * defense-in-depth properties (api.platform-integration cluster,
+     * Finding F closure):
+     *   1. Filter by `provider = stripe` so a foreign-provider Payment
+     *      that contrived a `pi_*` collision is never resolved here.
+     *   2. ->sole() over ->first() so a >1-row state (only possible if
+     *      the new (provider, provider_payment_id) UNIQUE constraint is
+     *      ever dropped) crashes loud rather than silently picking one.
+     *
+     * Returns null in the legitimate "not yet reconciled" case (Stripe
+     * webhook redelivery before the local Payment was inserted, or
+     * after it was soft-deleted) — a graceful skip path that does NOT
+     * crash the webhook delivery.
+     */
+    private function resolveStripePayment(?string $paymentIntentId): ?Payment
+    {
+        if ($paymentIntentId === null || $paymentIntentId === '') {
+            return null;
+        }
+
+        try {
+            return Payment::query()
+                ->where('provider', PaymentProviderCode::Stripe->value)
+                ->where('provider_payment_id', $paymentIntentId)
+                ->sole();
+        } catch (ModelNotFoundException) {
+            return null;
+        }
+        // Note: MultipleRecordsFoundException intentionally NOT caught.
+        // It signals the (provider, provider_payment_id) UNIQUE was
+        // violated — a data-integrity emergency that must alert.
     }
 }

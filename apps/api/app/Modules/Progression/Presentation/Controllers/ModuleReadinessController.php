@@ -5,19 +5,31 @@ declare(strict_types=1);
 namespace App\Modules\Progression\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Progression\Application\Services\ProgressionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * api.module-gating cluster: companyId resolves exclusively from
+ * CompanyContext::requireCompanyId() — the middleware-validated source.
+ * Earlier reads of $request->header('X-Company-Id') trusted the raw
+ * header; CompanyContextMiddleware (registered in the global `api`
+ * group) verifies the header against UserCompanyMembership before
+ * binding context, so requireCompanyId() is the safe single source of
+ * truth. Pinning here keeps the controller behavior correct even if
+ * future middleware re-ordering disturbs the validator.
+ */
 final class ModuleReadinessController extends Controller
 {
     public function __construct(
         private readonly ProgressionService $progressionService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = $request->header('X-Company-Id', '');
+        $companyId = $this->companyContext->requireCompanyId();
         $modules = $this->progressionService->getModules($companyId);
 
         return response()->json(['data' => array_map(static fn ($m) => [
@@ -35,7 +47,7 @@ final class ModuleReadinessController extends Controller
 
     public function activate(Request $request, string $moduleId): JsonResponse
     {
-        $companyId = $request->header('X-Company-Id', '');
+        $companyId = $this->companyContext->requireCompanyId();
         $module = $this->progressionService->activateModule($companyId, $moduleId);
 
         if ($module === null) {

@@ -16,7 +16,7 @@ interface BatchRepositoryInterface
     public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch;
 
     /** @return Collection<int, Batch> */
-    public function getByProduct(string $productId, bool $activeOnly = true): Collection;
+    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection;
 
     /**
      * @param  array<string, mixed>  $filters

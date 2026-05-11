@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { useRealtimeChannel } from '../../../hooks/useRealtimeChannel'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { productsInvalidationPredicate } from './useProducts'
 
 /**
  * Product Cost Price Update payload from WebSocket.
@@ -57,26 +59,38 @@ export function useProductRealtime(options: UseProductRealtimeOptions): void {
   const { productId, onUpdate, enabled = true } = options
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { user } = useAuthStore()
-  const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
-  const currentCompany = getCurrentCompany()
+  // Subscribe to TENANT-ID and COMPANY-ID directly (state values) so the
+  // hook re-renders on tenant/company switch — that's what forces the
+  // closure-captured tenantId/companyId below to update. Subscribing to the
+  // `getCurrentCompany` action selector alone wouldn't fire a re-render
+  // because action identities are stable across switches.
+  const user = useAuthStore((s) => s.user)
+  const currentCompanyId = useCompanyStore((s) => s.currentCompanyId)
+  const companies = useCompanyStore((s) => s.companies)
+  const currentCompany = companies.find((c) => c.id === currentCompanyId) ?? null
+
+  const tenantId = user?.tenant_id ?? null
+  const companyId = currentCompanyId ?? null
 
   const handleUpdate = useCallback(
     (data: ProductCostPriceUpdatePayload) => {
-      // Invalidate product queries to trigger refetch
+      // Invalidate the (potentially-orphan) `product` singular cache for this
+      // productId — preserves prior intent. The plural `products` namespace
+      // (used by productKeys.list / productKeys.detail) needs predicate-based
+      // invalidation because tenantScopedKey() puts t/c at the suffix and the
+      // wrapped `[products, t, c]` tag is NOT a prefix of the leaf
+      // `[products, list, params, t, c]`.
       queryClient.invalidateQueries({
-        queryKey: ['product', productId],
+        queryKey: tenantScopedKey(['product', productId]),
       })
-
-      // Also invalidate product list queries in case product is in a list
       queryClient.invalidateQueries({
-        queryKey: ['products'],
+        predicate: productsInvalidationPredicate(tenantId, companyId),
       })
 
       // Call custom callback if provided
       onUpdate?.(data)
     },
-    [productId, queryClient, onUpdate]
+    [productId, queryClient, onUpdate, tenantId, companyId]
   )
 
   const handleError = useCallback((error: Error) => {

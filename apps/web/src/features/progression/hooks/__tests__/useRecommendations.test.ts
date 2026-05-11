@@ -1,8 +1,32 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useRecommendations, useAcceptRecommendation, useDismissRecommendation } from '../useRecommendations'
+
+beforeEach(() => {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test',
+      email: 't@t',
+      tenant_id: 'tenant-A',
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'tok',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
+})
+
+afterEach(() => {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+})
 
 const { mockAcceptRecommendation, mockDismissRecommendation } = vi.hoisted(() => ({
   mockAcceptRecommendation: vi.fn().mockResolvedValue({

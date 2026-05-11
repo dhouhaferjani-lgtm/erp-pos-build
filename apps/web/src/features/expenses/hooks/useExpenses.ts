@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { expenseApi } from '../api/expenseApi'
+import { expensesInvalidationPredicate } from '../_invalidation'
 import type { CreateExpenseDTO, ExpenseFilters } from '../types'
 
 /**
@@ -19,9 +23,12 @@ export const expenseKeys = {
  * Hook to fetch a list of expenses
  */
 export function useExpenses(filters?: ExpenseFilters) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: expenseKeys.list(filters),
+    queryKey: tenantScopedKey([...expenseKeys.list(filters)]),
     queryFn: () => expenseApi.list(filters),
+    enabled: !!tenantId && !!companyId,
   })
 }
 
@@ -29,10 +36,12 @@ export function useExpenses(filters?: ExpenseFilters) {
  * Hook to fetch a single expense
  */
 export function useExpense(id: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: expenseKeys.detail(id),
+    queryKey: tenantScopedKey([...expenseKeys.detail(id)]),
     queryFn: () => expenseApi.get(id),
-    enabled: !!id,
+    enabled: !!id && !!tenantId && !!companyId,
   })
 }
 
@@ -42,11 +51,15 @@ export function useExpense(id: string) {
 export function useCreateExpense() {
   const { t } = useTranslation(['expenses', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (data: CreateExpenseDTO) => expenseApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: expenseKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: expensesInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('expenses:messages.created'))
     },
     onError: (error: Error) => {
@@ -61,13 +74,21 @@ export function useCreateExpense() {
 export function useUpdateExpense() {
   const { t } = useTranslation(['expenses', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateExpenseDTO> }) =>
       expenseApi.update(id, data),
-    onSuccess: (updatedExpense) => {
-      queryClient.invalidateQueries({ queryKey: expenseKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: expenseKeys.detail(updatedExpense.id) })
+    onSuccess: async (updatedExpense) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...expenseKeys.detail(updatedExpense.id)]),
+        }),
+      ])
       toast.success(t('expenses:messages.updated'))
     },
     onError: (error: Error) => {
@@ -82,11 +103,15 @@ export function useUpdateExpense() {
 export function useDeleteExpense() {
   const { t } = useTranslation(['expenses', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (id: string) => expenseApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: expenseKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: expensesInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('expenses:messages.deleted'))
     },
     onError: (error: Error) => {
@@ -101,12 +126,20 @@ export function useDeleteExpense() {
 export function usePostExpense() {
   const { t } = useTranslation(['expenses', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (id: string) => expenseApi.post(id),
-    onSuccess: (postedExpense) => {
-      queryClient.invalidateQueries({ queryKey: expenseKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: expenseKeys.detail(postedExpense.id) })
+    onSuccess: async (postedExpense) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: expensesInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...expenseKeys.detail(postedExpense.id)]),
+        }),
+      ])
       toast.success(t('expenses:messages.posted'))
     },
     onError: (error: Error) => {

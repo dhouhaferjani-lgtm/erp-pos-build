@@ -13,6 +13,24 @@ vi.mock('../../../../lib/api', () => ({
   },
 }))
 
+vi.mock('../../../../stores/authStore', () => {
+  const authState = { user: { tenant_id: 'tenant-A' } }
+  const useAuthStore = Object.assign(
+    (selector: (state: typeof authState) => unknown) => selector(authState),
+    { getState: () => authState },
+  )
+  return { useAuthStore }
+})
+
+vi.mock('../../../../stores/companyStore', () => {
+  const companyState = { currentCompanyId: 'company-1' }
+  const useCompanyStore = Object.assign(
+    (selector: (state: typeof companyState) => unknown) => selector(companyState),
+    { getState: () => companyState },
+  )
+  return { useCompanyStore }
+})
+
 // Mock LocationSelectorMulti to simplify testing
 vi.mock('../../../locations/components/LocationSelectorMulti', () => ({
   LocationSelectorMulti: ({

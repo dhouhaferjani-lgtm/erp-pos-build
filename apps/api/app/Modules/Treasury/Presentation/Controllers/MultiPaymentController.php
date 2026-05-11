@@ -8,8 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,17 +27,32 @@ class MultiPaymentController extends Controller
      */
     public function createSplitPayment(Request $request, string $documentId): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'splits' => 'required|array|min:2',
-            'splits.*.payment_method_id' => 'required|exists:payment_methods,id',
-            'splits.*.amount' => 'required|numeric|min:0.01',
-            'splits.*.repository_id' => 'nullable|exists:payment_repositories,id',
-            'splits.*.instrument_id' => 'nullable|exists:payment_instruments,id',
-            'splits.*.reference' => 'nullable|string|max:255',
+            'splits' => ['required', 'array', 'min:2'],
+            'splits.*.payment_method_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'splits.*.amount' => ['required', 'numeric', 'min:0.01'],
+            'splits.*.repository_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
+            'splits.*.instrument_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
+            ],
+            'splits.*.reference' => ['nullable', 'string', 'max:255'],
         ]);
 
         /** @var Document $document */
-        $document = Document::findOrFail($documentId);
+        $document = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($documentId);
 
         try {
             /** @var string|null $userId */
@@ -65,23 +82,38 @@ class MultiPaymentController extends Controller
      */
     public function recordDeposit(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'partner_id' => 'required|exists:partners,id',
-            'payment_method_id' => 'required|exists:payment_methods,id',
-            'amount' => 'required|numeric|min:0.01',
-            'currency' => 'required|string|size:3',
-            'repository_id' => 'nullable|exists:payment_repositories,id',
-            'instrument_id' => 'nullable|exists:payment_instruments,id',
-            'reference' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:500',
+            'partner_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'payment_method_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency' => ['required', 'string', 'size:3'],
+            'repository_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+            ],
+            'instrument_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
+            ],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
             /** @var User $user */
             $user = $request->user();
             $deposit = $this->multiPaymentService->recordDeposit(
-                $user->tenant_id,
-                $this->companyContext->requireCompanyId(),
+                $tenantId,
+                $companyId,
                 $request->input('partner_id'),
                 $request->input('payment_method_id'),
                 (string) $request->input('amount'),
@@ -109,15 +141,27 @@ class MultiPaymentController extends Controller
      */
     public function applyDeposit(Request $request, string $paymentId): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'document_id' => 'required|exists:documents,id',
-            'amount' => 'required|numeric|min:0.01',
+            'document_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
         ]);
 
         /** @var Payment $payment */
-        $payment = Payment::findOrFail($paymentId);
+        $payment = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($paymentId);
         /** @var Document $document */
-        $document = Document::findOrFail($request->input('document_id'));
+        $document = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($request->input('document_id'));
 
         try {
             $allocation = $this->multiPaymentService->applyDepositToDocument(
@@ -146,15 +190,39 @@ class MultiPaymentController extends Controller
      */
     public function getUnallocatedBalance(string $partnerId, string $currency): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Codex round-3 Finding 14 — resolve the partner under the current
+        // tenant + company BEFORE handing the id to the service. The service
+        // will additionally re-scope its Payment query (defense in depth)
+        // but the controller is the primary guard against cross-tenant
+        // partner-id probing.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($partnerId);
+
+        if ($partner === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+            ], 404);
+        }
+
         try {
             $balance = $this->multiPaymentService->getUnallocatedDepositBalance(
-                $partnerId,
+                $tenantId,
+                $companyId,
+                $partner->id,
                 $currency
             );
 
             return response()->json([
                 'data' => [
-                    'partner_id' => $partnerId,
+                    'partner_id' => $partner->id,
                     'currency' => $currency,
                     'unallocated_balance' => $balance,
                 ],
@@ -171,20 +239,26 @@ class MultiPaymentController extends Controller
      */
     public function recordPaymentOnAccount(Request $request): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
         $request->validate([
-            'partner_id' => 'required|exists:partners,id',
-            'amount' => 'required|numeric|min:0.01',
-            'currency' => 'required|string|size:3',
-            'reference' => 'nullable|string|max:255',
-            'notes' => 'nullable|string|max:500',
+            'partner_id' => [
+                'required',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+            ],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency' => ['required', 'string', 'size:3'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
             /** @var User $user */
             $user = $request->user();
             $result = $this->multiPaymentService->recordPaymentOnAccount(
-                $user->tenant_id,
-                $this->companyContext->requireCompanyId(),
+                $tenantId,
+                $companyId,
                 $request->input('partner_id'),
                 (string) $request->input('amount'),
                 $request->input('currency'),
@@ -212,9 +286,33 @@ class MultiPaymentController extends Controller
      */
     public function getPartnerAccountBalance(string $partnerId, string $currency): JsonResponse
     {
+        $companyId = $this->companyContext->requireCompanyId();
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Codex round-3 Finding 14 — resolve the partner under the current
+        // tenant + company BEFORE handing the id to the service. The service
+        // will additionally re-scope its Payment query (defense in depth)
+        // but the controller is the primary guard against cross-tenant
+        // partner-id probing.
+        $partner = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($partnerId);
+
+        if ($partner === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'PARTNER_NOT_FOUND',
+                    'message' => 'Partner not found',
+                ],
+            ], 404);
+        }
+
         try {
             $balance = $this->multiPaymentService->getPartnerAccountBalance(
-                $partnerId,
+                $tenantId,
+                $companyId,
+                $partner->id,
                 $currency
             );
 

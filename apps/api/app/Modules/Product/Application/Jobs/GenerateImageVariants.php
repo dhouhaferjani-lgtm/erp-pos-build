@@ -12,6 +12,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
+/**
+ * @cross-tenant-by-design Pure storage-transformation queue job — generates WebP variants from a tenant-anchored storage path; handle() has ZERO DB queries, only reads the original via Storage::disk($this->storageDisk) and writes derived variants to ImageVariantService::variantPath()-derived paths. Tenant isolation is anchored upstream by the storage path's tenant-scoped structure (the dispatcher is responsible for handing in a tenant-anchored path; the job has no DB to leak through). Dispatched both from request-scoped ProductImageService.php:82 and from the cat-(b) GenerateProductImageVariants console command (api.console-commands cluster); both dispatchers anchor on the ProductImage row's storage_path which carries the tenant prefix.
+ */
 final class GenerateImageVariants implements ShouldQueue
 {
     use Dispatchable;

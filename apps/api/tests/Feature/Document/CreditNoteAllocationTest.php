@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
@@ -75,6 +76,9 @@ class CreditNoteAllocationTest extends TestCase
 
         $this->creditNoteService = app(CreditNoteService::class);
         $this->postingService = app(DocumentPostingService::class);
+
+        // Pin CompanyContext so service-tier tenant+company scoped reads succeed.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
     private function createChartOfAccounts(): void
@@ -340,8 +344,8 @@ class CreditNoteAllocationTest extends TestCase
     private function updateBalanceDue(Document $invoice): void
     {
         $total = $invoice->total ?? '0.00';
-        $paid = (string) ($invoice->allocations()->sum('amount') ?? '0.00');
-        $credited = (string) ($invoice->creditNoteAllocations()->sum('amount') ?? '0.00');
+        $paid = (string) $invoice->allocations()->sum('amount');
+        $credited = (string) $invoice->creditNoteAllocations()->sum('amount');
 
         $balanceDue = bcsub(bcsub($total, $paid, 3), $credited, 3);
 

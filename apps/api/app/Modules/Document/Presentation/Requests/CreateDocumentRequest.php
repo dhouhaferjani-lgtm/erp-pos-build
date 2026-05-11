@@ -4,15 +4,22 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
 use App\Modules\Identity\Domain\User;
 use App\Services\CompanyConfigService;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class CreateDocumentRequest extends FormRequest
 {
     use AppliesDiscountToleranceRule;
+
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
 
     public function authorize(): bool
     {
@@ -31,6 +38,13 @@ class CreateDocumentRequest extends FormRequest
         $user = $authenticatedUser;
         $tenantId = $user->tenant_id;
 
+        // Codex round-1 Finding 1: scope validators by tenant + company so a
+        // user in Company A cannot submit Company B (same tenant) UUIDs and
+        // have foreign-company partner/product/service/location/document
+        // names persisted into a Company A document line snapshot.
+        $companyId = $this->companyContext->requireCompanyId();
+        $scopedTenantId = $this->companyContext->requireCompany()->tenant_id;
+
         // Check if Vehicle module is enabled for this tenant
         $configService = app(CompanyConfigService::class);
         $hasVehicleModule = $user->tenant !== null
@@ -40,7 +54,7 @@ class CreateDocumentRequest extends FormRequest
             'partner_id' => [
                 'required',
                 'uuid',
-                Rule::exists('partners', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('partners', $scopedTenantId, $companyId),
             ],
             'vehicle_context' => $hasVehicleModule ? ['nullable', 'array'] : ['prohibited'],
             'vehicle_context.vehicle_id' => ['required_with:vehicle_context', 'uuid'],
@@ -62,13 +76,13 @@ class CreateDocumentRequest extends FormRequest
             'source_document_id' => [
                 'nullable',
                 'uuid',
-                Rule::exists('documents', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('documents', $scopedTenantId, $companyId),
             ],
             'location_id' => [
                 'nullable',
                 'uuid',
-                Rule::exists('locations', 'id')
-                    ->where('tenant_id', $tenantId)
+                // Locations table is company-scoped (no tenant_id column).
+                ScopedExists::company('locations', $companyId)
                     ->where('is_active', true),
             ],
             'lines' => ['required', 'array', 'min:1'],
@@ -76,19 +90,18 @@ class CreateDocumentRequest extends FormRequest
                 'nullable',
                 'uuid',
                 'prohibits:lines.*.service_id',
-                Rule::exists('products', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('products', $scopedTenantId, $companyId),
             ],
             'lines.*.service_id' => [
                 'nullable',
                 'uuid',
                 'prohibits:lines.*.product_id',
-                Rule::exists('services', 'id')->where('tenant_id', $tenantId),
+                ScopedExists::tenantAndCompany('services', $scopedTenantId, $companyId),
             ],
             'lines.*.location_id' => [
                 'nullable',
                 'uuid',
-                Rule::exists('locations', 'id')
-                    ->where('tenant_id', $tenantId)
+                ScopedExists::company('locations', $companyId)
                     ->where('is_active', true),
             ],
             'lines.*.description' => ['required', 'string', 'min:1', 'max:500'],

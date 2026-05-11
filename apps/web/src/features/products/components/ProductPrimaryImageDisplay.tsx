@@ -4,21 +4,26 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, ImageOff, Images } from 'lucide-react'
 import { getProductImages, getProductImageDownloadUrl } from '../api/productImages'
 import { ImageGalleryModal } from './ImageGalleryModal'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 interface ProductPrimaryImageDisplayProps {
   productId: string
 }
 
 export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDisplayProps) {
   const { t } = useTranslation('products')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
   const [isGalleryOpen, setIsGalleryOpen] = useState(false)
   const [galleryInitialView, setGalleryInitialView] = useState<'single' | 'grid'>('grid')
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set())
 
   const { data: images = [], isLoading } = useQuery({
-    queryKey: ['product-images', productId],
+    queryKey: tenantScopedKey(['product-images', productId]),
     queryFn: () => getProductImages(productId),
-    enabled: !!productId,
+    enabled: !!productId && !!tenantId && !!companyId,
   })
 
   const handleImageError = (imageId: string) => {

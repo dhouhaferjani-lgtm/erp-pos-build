@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -25,6 +27,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class GenerateZReportRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -40,15 +48,33 @@ final class GenerateZReportRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
         return [
-            'terminal_id' => ['required', 'string', 'uuid', 'exists:pos_terminals,id'],
+            // api.pos-stabilization.003 — pos_terminals (T+C).
+            'terminal_id' => [
+                'required', 'string', 'uuid',
+                ScopedExists::tenantAndCompany('pos_terminals', $tenantId, $companyId),
+            ],
             'cash_counts' => 'nullable|array',
-            'cash_counts.*.payment_method_id' => 'required|uuid|exists:payment_methods,id',
+            // api.pos-stabilization.029 — payment_methods (T+C).
+            'cash_counts.*.payment_method_id' => [
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
             'cash_counts.*.currency_code' => ['required', 'string', 'size:3'],
             'cash_counts.*.actual_amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'variance_reason' => ['nullable', 'string', 'max:500'],
             'blind_count_used' => 'nullable|boolean',
-            'manager_user_id' => 'nullable|uuid|exists:users,id',
+            // api.pos-stabilization.032 — users (tenant only; no company_id col).
+            // The withValidator() callback below also enforces same-tenant +
+            // permission gate — defense in depth.
+            'manager_user_id' => [
+                'nullable', 'uuid',
+                ScopedExists::tenant('users', $tenantId),
+            ],
             'manager_pin' => 'nullable|string|min:4|max:12',
         ];
     }

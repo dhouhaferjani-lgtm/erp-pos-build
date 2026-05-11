@@ -4,9 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Save, RotateCcw, Mail, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors } from '@/lib/designTokens'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { getFraudSettings, updateFraudSettings, resetFraudSettings } from '../api/fraudApi'
+import { fraudSettingsInvalidationPredicate } from '../_invalidation'
 import type { FraudSettings } from '../types/fraudSettings'
 import { CashDrawerControlsSection } from '../components/CashDrawerControlsSection'
 import type { CashDrawerControlsValue } from '../components/CashDrawerControlsSection'
@@ -29,6 +33,8 @@ function narrowEmailSeverity(value: string | null | undefined): EmailSeverity {
 export function FraudSettingsPage() {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { hasPermission } = usePermissions()
   const canEdit = hasPermission('pos.configure_cash_count')
 
@@ -54,8 +60,9 @@ export function FraudSettingsPage() {
 
   // Fetch current settings
   const { data: settingsData, isLoading } = useQuery({
-    queryKey: ['fraud-settings'],
+    queryKey: tenantScopedKey(['fraud-settings']),
     queryFn: getFraudSettings,
+    enabled: !!tenantId && !!companyId,
   })
 
   // Update form when data loads
@@ -68,8 +75,10 @@ export function FraudSettingsPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: updateFraudSettings,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fraud-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: fraudSettingsInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('compliance:fraudSettings.messages.updateSuccess'))
     },
     onError: (error: Error) => {
@@ -80,9 +89,11 @@ export function FraudSettingsPage() {
   // Reset mutation
   const resetMutation = useMutation({
     mutationFn: resetFraudSettings,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setFormData(data.data)
-      queryClient.invalidateQueries({ queryKey: ['fraud-settings'] })
+      await queryClient.invalidateQueries({
+        predicate: fraudSettingsInvalidationPredicate(tenantId, companyId),
+      })
       toast.success(t('compliance:fraudSettings.messages.resetSuccess'))
     },
     onError: (error: Error) => {

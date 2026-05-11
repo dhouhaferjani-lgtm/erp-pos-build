@@ -15,6 +15,7 @@ use App\Modules\Inventory\Presentation\Requests\SubmitCountRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 
 class CountingItemController extends Controller
 {
@@ -237,9 +238,17 @@ class CountingItemController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Validate item_ids before loading the counting so a forged item_id
+        // from another counting (different company) is rejected upfront.
+        // Rule::exists()->where() scopes the FK check to the parent counting_id
+        // so an item belonging to a different counting fails validation.
         $request->validate([
             'item_ids' => 'required|array|min:1',
-            'item_ids.*' => 'string|exists:inventory_counting_items,id',
+            'item_ids.*' => [
+                'string',
+                Rule::exists('inventory_counting_items', 'id')
+                    ->where('counting_id', $countingId),
+            ],
         ]);
 
         $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);

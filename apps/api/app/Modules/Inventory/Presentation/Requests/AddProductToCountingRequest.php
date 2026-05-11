@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -13,6 +15,12 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class AddProductToCountingRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true; // Authorization checked in controller
@@ -23,10 +31,12 @@ class AddProductToCountingRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
             'barcode' => ['required_without:product_id', 'string', 'max:255'],
-            'product_id' => ['required_without:barcode', 'string', 'exists:products,id'],
-            'location_id' => ['nullable', 'string', 'exists:locations,id'],
+            'product_id' => ['required_without:barcode', 'string', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            'location_id' => ['nullable', 'string', ScopedExists::company('locations', $company->id)],
         ];
     }
 

@@ -1,0 +1,7 @@
+[
+  {
+    "class": "App\\Modules\\POS\\Presentation\\Controllers\\VoucherSyncController",
+    "method": "*",
+    "reason": "OUT-OF-SCOPE for this paired-cluster session — VoucherSyncController is in the POS module which the orchestrator's kickoff explicitly excluded from edits. KNOWN TENANT-ISOLATION GAP: requireTerminalId() returns the query-string terminal_id without validating that the supplied terminal belongs to the authenticated user's tenant; Gate::authorize('pos.operate_terminal') is permission-only and does not bind the supplied terminal. The SQL filters that follow scope by redeemable_at_terminal_id (the column on vouchers/receipts) but do not resolve pos_terminals.tenant_id/company_id from authenticated context. Tracked for future api.pos cluster fix; this deferral entry preserves the universal arch test invariant without modifying the POS module from this cluster (per the orchestrator's hard scope boundary)."
+  }
+]

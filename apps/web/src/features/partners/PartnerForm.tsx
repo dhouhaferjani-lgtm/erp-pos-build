@@ -6,16 +6,20 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch, getErrorMessage, isApiError } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { tokens } from '../../lib/designTokens'
 import { cn } from '../../lib/utils'
 import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
 import { Select } from '../../components/atoms/Select/Select'
 import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { B2BFieldsSection } from './components/B2BFieldsSection'
 import { getCountries } from '../settings/api/country'
 import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
+import { partnersInvalidationPredicate } from './_invalidation'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
@@ -128,6 +132,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isEditing = id.length > 0
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const hasTenantScope = tenantId !== null && companyId !== null
 
   // Determine partner type from props or URL
   const isCustomerContext = partnerType === 'customer' || location.pathname.includes('/sales/customers')
@@ -194,8 +201,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({
-    queryKey: ['countries', 'active'],
+    queryKey: tenantScopedKey(['countries', 'active']),
     queryFn: () => getCountries({ is_active: true }),
+    enabled: hasTenantScope,
     staleTime: 10 * 60 * 1000, // 10 minutes — countries rarely change
   })
 
@@ -203,12 +211,12 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   // Fetch partner data when editing
   const { data: partner, isLoading } = useQuery({
-    queryKey: ['partner', id],
+    queryKey: tenantScopedKey(['partner', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Partner }>(`/partners/${id}`)
       return response.data.data
     },
-    enabled: isEditing,
+    enabled: isEditing && hasTenantScope,
   })
 
   // Populate form when partner data loads
@@ -261,9 +269,11 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('sales:partners.messages.created'))
-      void queryClient.invalidateQueries({ queryKey: ['partners'] })
+      await queryClient.invalidateQueries({
+        predicate: partnersInvalidationPredicate(tenantId, companyId),
+      })
       void navigate(basePath)
     },
     onError: handleMutationError,
@@ -272,10 +282,14 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const updateMutation = useMutation({
     mutationFn: (data: PartnerFormData) =>
       apiPatch<Partner>(`/partners/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('sales:partners.messages.updated'))
-      void queryClient.invalidateQueries({ queryKey: ['partners'] })
-      void queryClient.invalidateQueries({ queryKey: ['partner', id] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: partnersInvalidationPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', id]) }),
+      ])
       void navigate(`${basePath}/${id}`)
     },
     onError: handleMutationError,

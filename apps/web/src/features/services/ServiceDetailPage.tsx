@@ -12,8 +12,12 @@ import {
   FolderTree,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useCompany } from '../../hooks/useCompany'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
+import { servicesInvalidationPredicate } from './_invalidation'
 import type { Service, PricingType } from './types'
 
 interface ServiceResponse {
@@ -37,23 +41,27 @@ export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { currentCompany } = useCompany()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['service', id],
+    queryKey: tenantScopedKey(['service', id]),
     queryFn: async () => {
       const response = await api.get<ServiceResponse>(`/services/${id}`)
       return response.data
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && !!tenantId && !!companyId,
   })
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
       await api.delete(`/services/${id}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['services'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: servicesInvalidationPredicate(tenantId, companyId),
+      })
       navigate('/services')
     },
   })

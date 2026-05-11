@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { fetchPOSProducts, type GetPOSProductsParams } from '../api/productApi'
+import { usePosTenantScope } from './usePosTenantScope'
 
 export const posProductKeys = {
   all: ['pos', 'products'] as const,
@@ -8,11 +10,14 @@ export const posProductKeys = {
 }
 
 export function usePOSProducts(params?: GetPOSProductsParams & { enabled?: boolean }) {
+  const { hasTenantScope } = usePosTenantScope()
   const { enabled, ...queryParams } = params ?? {}
+  const hasParams = Object.keys(queryParams).length > 0
+
   return useQuery({
-    queryKey: posProductKeys.list(Object.keys(queryParams).length > 0 ? queryParams : undefined),
-    queryFn: () => fetchPOSProducts(Object.keys(queryParams).length > 0 ? queryParams : undefined),
+    queryKey: tenantScopedKey([...posProductKeys.list(hasParams ? queryParams : undefined)]),
+    queryFn: () => fetchPOSProducts(hasParams ? queryParams : undefined),
     staleTime: 60000, // 1 minute
-    enabled: enabled ?? true,
+    enabled: (enabled ?? true) && hasTenantScope,
   })
 }

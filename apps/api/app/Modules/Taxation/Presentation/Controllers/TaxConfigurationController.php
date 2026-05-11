@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 
 class TaxConfigurationController extends Controller
 {
@@ -48,7 +49,16 @@ class TaxConfigurationController extends Controller
      */
     public function show(string $id): TaxConfigurationResource
     {
-        $configuration = TaxConfiguration::findOrFail($id);
+        // api.taxation.008: tax_configurations is a country-scoped global
+        // reference table (no tenant_id / company_id columns; the table FK
+        // points to countries.code). The cluster invariant for global-
+        // reference tables is `country_code` scoping per the master-plan
+        // kickoff brief — annotate as
+        // structurally_protected_by_country_scoped_reference rather than
+        // forcing a tenant_id predicate that would break FK semantics.
+        $company = $this->companyContext->requireCompany();
+        $configuration = TaxConfiguration::where('country_code', $company->country_code)
+            ->findOrFail($id);
 
         return new TaxConfigurationResource($configuration);
     }
@@ -108,7 +118,10 @@ class TaxConfigurationController extends Controller
      */
     public function update(Request $request, string $id): TaxConfigurationResource
     {
-        $configuration = TaxConfiguration::findOrFail($id);
+        // api.taxation.009: country-scoped (see show() comment).
+        $company = $this->companyContext->requireCompany();
+        $configuration = TaxConfiguration::where('country_code', $company->country_code)
+            ->findOrFail($id);
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:100'],
@@ -134,7 +147,10 @@ class TaxConfigurationController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
-        $configuration = TaxConfiguration::findOrFail($id);
+        // api.taxation.010: country-scoped (see show() comment).
+        $company = $this->companyContext->requireCompany();
+        $configuration = TaxConfiguration::where('country_code', $company->country_code)
+            ->findOrFail($id);
 
         // Don't hard delete, just deactivate
         $configuration->update(['is_active' => false]);
@@ -147,14 +163,25 @@ class TaxConfigurationController extends Controller
      */
     public function reorder(Request $request): JsonResponse
     {
+        // api.taxation.007: country-scoped exists validator. Same rationale
+        // as show/update/destroy — tax_configurations is a country-scoped
+        // global reference, structurally_protected_by_country_scoped_reference.
+        $company = $this->companyContext->requireCompany();
+
         $validated = $request->validate([
             'order' => ['required', 'array'],
-            'order.*.id' => ['required', 'string', 'exists:tax_configurations,id'],
+            'order.*.id' => [
+                'required',
+                'string',
+                Rule::exists('tax_configurations', 'id')
+                    ->where('country_code', $company->country_code),
+            ],
             'order.*.sequence_order' => ['required', 'integer', 'min:1'],
         ]);
 
         foreach ($validated['order'] as $item) {
-            TaxConfiguration::where('id', $item['id'])
+            TaxConfiguration::where('country_code', $company->country_code)
+                ->where('id', $item['id'])
                 ->update(['sequence_order' => $item['sequence_order']]);
         }
 

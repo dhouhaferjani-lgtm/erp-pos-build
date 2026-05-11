@@ -12,6 +12,12 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 /**
  * Broadcast event when an order is sent to the kitchen.
  * Sends immediately without queueing (ShouldBroadcastNow).
+ *
+ * @cross-tenant-anchored broadcastOn() constructs the kitchen PrivateChannel from
+ *   constructor-provided readonly $tenantId + $companyId (set at construction by the
+ *   dispatcher, not read from auth() or a request-scoped facade). ShouldBroadcastNow
+ *   (synchronous). Architecture test BroadcastEventTenantContextTest enforces the
+ *   property-sourcing pattern.
  */
 final class OrderSentToKitchenBroadcast implements ShouldBroadcastNow
 {

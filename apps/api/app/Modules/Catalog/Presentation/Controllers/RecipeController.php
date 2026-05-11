@@ -11,6 +11,7 @@ use App\Modules\Catalog\Domain\Entities\Recipe;
 use App\Modules\Catalog\Presentation\Requests\StoreRecipeRequest;
 use App\Modules\Catalog\Presentation\Requests\UpdateRecipeRequest;
 use App\Modules\Company\Services\CompanyContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
@@ -24,13 +25,17 @@ class RecipeController extends Controller
 
     public function index(string $compositeItemId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.019 round-2: ::query() + tenant_id predicate on CompositeItem lookup.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
         $recipes = Recipe::where('composite_item_id', $item->id)
             ->with(['lines.product', 'lines.compositeItemComponent', 'lines.unit'])
             ->orderByDesc('version')
@@ -43,31 +48,41 @@ class RecipeController extends Controller
 
     public function show(string $id): JsonResponse
     {
+        // api.catalog.019 round-2: whereHas scopes Recipe via compositeItem
+        // (recipes carries no tenant_id/company_id directly — ownership is
+        // through composite_item_id FK). Single-query enforcement at DB level.
+        // whereRaw is required because the generic Builder<Model> closure does
+        // not narrow to CompositeItem at PHPStan level 8 (same pattern as
+        // ModifierController::update).
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
         $recipe = Recipe::with(['lines.product', 'lines.compositeItemComponent', 'lines.unit', 'compositeItem'])
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
             ->findOrFail($id);
-
-        // Verify company access
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($recipe->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
 
         return response()->json(['data' => RecipeData::fromModel($recipe)]);
     }
 
     public function store(StoreRecipeRequest $request, string $compositeItemId): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        // api.catalog.019 round-2: ::query() + tenant_id predicate on CompositeItem lookup.
+        $company = $this->companyContext->requireCompany();
 
         if (! Str::isUuid($compositeItemId)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $item = CompositeItem::where('company_id', $companyId)->findOrFail($compositeItemId);
+        $item = CompositeItem::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($compositeItemId);
 
         // Auto-increment version
         $maxVersion = Recipe::where('composite_item_id', $item->id)->max('version') ?? 0;
@@ -90,16 +105,19 @@ class RecipeController extends Controller
 
     public function update(UpdateRecipeRequest $request, string $id): JsonResponse
     {
+        // api.catalog.019 round-2: whereHas scopes Recipe via compositeItem.
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $recipe = Recipe::with('compositeItem')->findOrFail($id);
-
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($recipe->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
+        $recipe = Recipe::with('compositeItem')
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
+            ->findOrFail($id);
 
         $recipe->update($request->validated());
         $recipe->load(['lines.product', 'lines.compositeItemComponent', 'lines.unit']);
@@ -109,16 +127,19 @@ class RecipeController extends Controller
 
     public function activate(string $id): JsonResponse
     {
+        // api.catalog.019 round-2: whereHas scopes Recipe via compositeItem.
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $recipe = Recipe::with('compositeItem')->findOrFail($id);
-
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($recipe->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
+        $recipe = Recipe::with('compositeItem')
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
+            ->findOrFail($id);
 
         // Deactivate all other recipes for this composite item
         Recipe::where('composite_item_id', $recipe->composite_item_id)
@@ -135,16 +156,19 @@ class RecipeController extends Controller
 
     public function calculateCost(string $id): JsonResponse
     {
+        // api.catalog.019 round-2: whereHas scopes Recipe via compositeItem.
+        $company = $this->companyContext->requireCompany();
+
         if (! Str::isUuid($id)) {
             return response()->json(['message' => 'Invalid ID format'], 400);
         }
 
-        $recipe = Recipe::with('compositeItem')->findOrFail($id);
-
-        $companyId = $this->companyContext->requireCompanyId();
-        if ($recipe->compositeItem->company_id !== $companyId) {
-            abort(403);
-        }
+        $recipe = Recipe::with('compositeItem')
+            ->whereHas('compositeItem', function (Builder $q) use ($company): void {
+                $q->whereRaw('tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('company_id = ?', [$company->id]);
+            })
+            ->findOrFail($id);
 
         $costData = $this->costService->calculate($recipe);
 

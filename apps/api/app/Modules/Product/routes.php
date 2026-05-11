@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Product\Presentation\Controllers\CategoryController;
 use App\Modules\Product\Presentation\Controllers\CertificationController;
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Group 1: Categories — ungated (no Inventory module required)
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index'])->name('categories.index');
@@ -38,7 +39,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 });
 
 // Group 2: Products and all product-related routes — gated behind Inventory module
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, 'module:Inventory'])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Inventory'])->group(function () {
     // Product CRUD with permission middleware
     Route::get('products', [ProductController::class, 'index'])
         ->middleware('can:products.view')

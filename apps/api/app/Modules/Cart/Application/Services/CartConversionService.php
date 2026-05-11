@@ -46,7 +46,15 @@ class CartConversionService
             $documents = [];
 
             foreach ($grouped as $partnerId => $groupItems) {
-                $partner = $partnerId !== 'no_supplier' ? Partner::find($partnerId) : null;
+                // api.cart.001: scope Partner lookup by tenant + company so a
+                // cross-tenant preferred_supplier_partner_id (which can land
+                // on a CatalogCartItem from earlier flows that didn't validate
+                // the FK) cannot link the resulting PO to a foreign supplier.
+                $partner = $partnerId !== 'no_supplier'
+                    ? Partner::where('tenant_id', $company->tenant_id)
+                        ->where('company_id', $company->id)
+                        ->find($partnerId)
+                    : null;
 
                 // If no partner, create a generic one
                 if ($partner === null) {
@@ -136,7 +144,14 @@ class CartConversionService
     {
         return DB::transaction(function () use ($cart, $itemIds, $customerId): Document {
             $company = $this->companyContext->requireCompany();
-            $customer = Partner::findOrFail($customerId);
+            // api.cart.002: scope Partner lookup by tenant + company.
+            // The controller now also runs ScopedExists::tenantAndCompany
+            // on customer_id at the validator tier; this service-tier check
+            // is defense-in-depth so a service-direct caller (e.g., a future
+            // queue job) cannot bypass the validator.
+            $customer = Partner::where('tenant_id', $company->tenant_id)
+                ->where('company_id', $company->id)
+                ->findOrFail($customerId);
             $items = CatalogCartItem::whereIn('id', $itemIds)
                 ->where('cart_id', $cart->id)
                 ->get();

@@ -16,6 +16,14 @@ use Illuminate\Foundation\Events\Dispatchable;
  *
  * This class bridges the gap between domain events and Laravel's broadcasting system,
  * maintaining separation of concerns by keeping broadcasting logic out of the domain layer.
+ *
+ * @cross-tenant-anchored broadcastOn() constructs a PrivateChannel from the wrapped
+ *   ProductCostPriceUpdated domain event's tenantId / companyId / productId properties
+ *   (set at domain-event construction time, not from auth() or a request-scoped facade).
+ *   ShouldBroadcastNow (synchronous), so queue-context tenant-loss is not in play; the
+ *   property-sourced shape is locked here so a future async-promotion does not regress.
+ *   Architecture test BroadcastEventTenantContextTest enforces the property-sourcing
+ *   pattern via PhpParser scan of the broadcastOn() method body.
  */
 class ProductCostPriceUpdatedBroadcast implements ShouldBroadcastNow
 {

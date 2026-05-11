@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -72,13 +75,19 @@ class GetLedgerRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var User $user */
+        $user = $this->user();
+        $tenantId = $user->tenant_id;
+        $companyId = app(CompanyContext::class)->requireCompanyId();
+
         return [
             // Optional account filter
-            // If provided, must be a valid UUID that exists in the accounts table
+            // api.accounting.001: tenant+company-scoped exists prevents a
+            // cross-tenant account_id from satisfying the FK validator.
             'account_id' => [
                 'nullable',
                 'uuid',
-                'exists:accounts,id',
+                ScopedExists::tenantAndCompany('accounts', $tenantId, $companyId),
             ],
 
             // Optional start date for the ledger report
@@ -98,11 +107,12 @@ class GetLedgerRequest extends FormRequest
             ],
 
             // Optional partner filter for subledger queries
-            // If provided, must be a valid UUID that exists in the partners table
+            // api.accounting.002: tenant+company-scoped exists prevents a
+            // cross-tenant partner_id from satisfying the FK validator.
             'partner_id' => [
                 'nullable',
                 'uuid',
-                'exists:partners,id',
+                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
 
             // Page number for pagination (default: 1)

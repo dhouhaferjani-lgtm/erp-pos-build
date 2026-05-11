@@ -6,6 +6,9 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/atoms/Button/Button';
 import { Input } from '@/components/atoms/Input/Input';
 import { Spinner } from '@/components/atoms/Spinner/Spinner';
+import { tenantScopedKey } from '@/lib/tenantScopedKey';
+import { useAuthStore } from '@/stores/authStore';
+import { useCompanyStore } from '@/stores/companyStore';
 import { TranslationEditor, type Translation } from '../components';
 import {
   fetchCertification,
@@ -13,6 +16,7 @@ import {
   updateCertification,
   type CreateCertificationInput,
 } from '../api/certificationApi';
+import { parapharmacyListInvalidationPredicate } from './tenantScope';
 import { toast } from 'sonner';
 
 export function CertificationFormPage() {
@@ -20,6 +24,8 @@ export function CertificationFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null);
   const isEdit = !!id && id !== 'new';
 
   const [type, setType] = useState('');
@@ -34,9 +40,9 @@ export function CertificationFormPage() {
   ]);
 
   const { data: certification, isLoading } = useQuery({
-    queryKey: ['parapharmacy', 'certifications', id],
+    queryKey: tenantScopedKey(['parapharmacy', 'certifications', id]),
     queryFn: () => fetchCertification(id!),
-    enabled: isEdit,
+    enabled: isEdit && !!tenantId && !!companyId,
   });
 
   useEffect(() => {
@@ -61,8 +67,10 @@ export function CertificationFormPage() {
 
   const createMutation = useMutation({
     mutationFn: createCertification,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'certifications'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'certifications'),
+      });
       toast.success(t('parapharmacy:certificationCreated'));
       navigate('/parapharmacy/certifications');
     },
@@ -76,8 +84,10 @@ export function CertificationFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: CreateCertificationInput) => updateCertification(id!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'certifications'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'certifications'),
+      });
       toast.success(t('parapharmacy:certificationUpdated'));
       navigate('/parapharmacy/certifications');
     },

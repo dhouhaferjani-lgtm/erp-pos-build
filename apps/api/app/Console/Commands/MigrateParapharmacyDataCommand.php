@@ -13,6 +13,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+/**
+ * @cross-tenant-by-design One-shot data migration that walks the entire ParapharmacyProductMetadata table to normalize JSONB fields into pivot tables; pivot rows are anchored on each source row's own product_id.
+ */
 class MigrateParapharmacyDataCommand extends Command
 {
     protected $signature = 'parapharmacy:migrate-data

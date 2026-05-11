@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain\Services;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Pricing\Domain\PriceList;
 use App\Modules\Pricing\Domain\PriceListItem;
 use App\Modules\Product\Domain\Product;
@@ -15,6 +16,7 @@ class PricingService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     private function scale(): int
@@ -59,7 +61,14 @@ class PricingService
         }
 
         // 3. Fall back to product base price
-        $product = Product::findOrFail($productId);
+        // api.pricing.001: tenant-scope Product fallback. The controller-tier
+        // validator now also rejects cross-tenant product_id with ScopedExists,
+        // but service-direct callers (queue jobs, cross-module orchestrators)
+        // could still hit this path; defense-in-depth.
+        $company = $this->companyContext->requireCompany();
+        $product = Product::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($productId);
 
         return [
             'price' => $product->sale_price ?? '0.00',
@@ -80,6 +89,15 @@ class PricingService
         string $currency,
         \DateTimeInterface $date
     ): ?array {
+        // api.pricing round-2 (Opus Finding 3): partner_price_lists has no
+        // tenant_id column; the transitive scope on partner_id is enforced
+        // by the controller-tier validator. The join to price_lists must
+        // also filter by tenant_id + company_id so a same-tenant
+        // partner_price_lists row referencing a foreign-tenant price_list_id
+        // (legacy admin error / migration race) cannot leak a foreign
+        // price_list_id in the response.
+        $company = $this->companyContext->requireCompany();
+
         // Get all active price lists for partner, ordered by priority
         $partnerPriceLists = DB::table('partner_price_lists')
             ->join('price_lists', 'partner_price_lists.price_list_id', '=', 'price_lists.id')
@@ -87,6 +105,8 @@ class PricingService
             ->where('partner_price_lists.is_active', true)
             ->where('price_lists.is_active', true)
             ->where('price_lists.currency', $currency)
+            ->where('price_lists.tenant_id', $company->tenant_id)
+            ->where('price_lists.company_id', $company->id)
             ->where(function ($query) use ($date) {
                 $query->whereNull('partner_price_lists.valid_from')
                     ->orWhere('partner_price_lists.valid_from', '<=', $date);
@@ -132,7 +152,18 @@ class PricingService
         string $currency,
         \DateTimeInterface $date
     ): ?array {
-        $priceList = PriceList::where('currency', $currency)
+        // api.pricing round-2 (Opus Finding 2): pre-fix this picked an
+        // arbitrary same-currency default price list ACROSS ALL TENANTS
+        // because PriceList has no global tenant scope. Even though
+        // getPriceFromList downstream couldn't return a value (foreign
+        // price_list_id would not match same-tenant product_id rows),
+        // the response wrapping leaks `price_list_id` from a foreign
+        // tenant via timing/probe attacks. Scope at the source.
+        $company = $this->companyContext->requireCompany();
+
+        $priceList = PriceList::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('currency', $currency)
             ->where('is_default', true)
             ->where('is_active', true)
             ->where(function ($query) use ($date) {

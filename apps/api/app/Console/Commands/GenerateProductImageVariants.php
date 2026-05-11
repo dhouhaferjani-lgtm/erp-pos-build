@@ -10,6 +10,9 @@ use App\Modules\Product\Domain\ProductImage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
+/**
+ * @cross-tenant-by-design Maintenance batch that walks ProductImage rows fleet-wide to dispatch per-image WebP variant jobs; jobs operate on storage paths only, not tenant data.
+ */
 class GenerateProductImageVariants extends Command
 {
     protected $signature = 'products:generate-image-variants

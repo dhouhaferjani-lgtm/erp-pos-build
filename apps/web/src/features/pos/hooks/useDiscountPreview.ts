@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useMemo, useRef, useState, useEffect } from 'react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   previewDiscounts,
   type PreviewDiscountsRequest,
@@ -8,6 +9,7 @@ import {
 } from '../api/discountApi'
 import type { CartItem } from '../molecules/CartLineItem'
 import { useCurrency } from '@/hooks/useCurrency'
+import { usePosTenantScope } from './usePosTenantScope'
 
 export interface DiscountPreviewInput {
   cartItems: CartItem[]
@@ -32,6 +34,7 @@ const DEBOUNCE_MS = 500
 
 export function useDiscountPreview(input: DiscountPreviewInput): DiscountPreviewResult {
   const { decimals } = useCurrency()
+  const { hasTenantScope } = usePosTenantScope()
   const {
     cartItems,
     subtotal,
@@ -78,9 +81,9 @@ export function useDiscountPreview(input: DiscountPreviewInput): DiscountPreview
   }, [request])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pos', 'discount-preview', debouncedRequest],
+    queryKey: tenantScopedKey(['pos', 'discount-preview', debouncedRequest]),
     queryFn: () => previewDiscounts(debouncedRequest!),
-    enabled: !!debouncedRequest,
+    enabled: !!debouncedRequest && hasTenantScope,
     placeholderData: keepPreviousData,
     staleTime: 10_000,
   })

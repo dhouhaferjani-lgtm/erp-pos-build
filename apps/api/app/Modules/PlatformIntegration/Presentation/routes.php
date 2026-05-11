@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\PlatformIntegration\Infrastructure\Middleware\VerifySynerivaWebhookSignature;
 use App\Modules\PlatformIntegration\Presentation\Controllers\BarcodeLookupController;
@@ -19,7 +20,7 @@ Route::middleware(['api', VerifySynerivaWebhookSignature::class])
             ->name('platform.webhook.syneriva');
     });
 
-Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Barcode Lookup
     Route::post('barcode-lookup', BarcodeLookupController::class)
         ->name('platform.barcode-lookup');

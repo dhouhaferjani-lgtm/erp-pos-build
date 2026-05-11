@@ -15,18 +15,29 @@ vi.mock('../../../../lib/api', () => ({
   },
 }))
 
+vi.mock('../../../../stores/authStore', () => {
+  const authState = { user: { tenant_id: 'tenant-A' } }
+  const useAuthStore = Object.assign(
+    (selector: (state: typeof authState) => unknown) => selector(authState),
+    { getState: () => authState },
+  )
+  return { useAuthStore }
+})
+
 // Mock the company store with selector support
-vi.mock('../../../../stores/companyStore', () => ({
-  useCompanyStore: (selector: (state: { getCurrentCompany: () => unknown }) => unknown) => {
-    const mockState = {
-      getCurrentCompany: () => ({
-        currency: 'EUR',
-        locale: 'en_US',
-      }),
-    }
-    return selector(mockState)
-  },
-}))
+vi.mock('../../../../stores/companyStore', () => {
+  const company = { id: 'company-1', currency: 'EUR', locale: 'en_US' }
+  const companyState = {
+    currentCompanyId: 'company-1',
+    companies: [company],
+    getCurrentCompany: () => company,
+  }
+  const useCompanyStore = Object.assign(
+    (selector: (state: typeof companyState) => unknown) => selector(companyState),
+    { getState: () => companyState },
+  )
+  return { useCompanyStore }
+})
 
 // Mock formatCurrency
 vi.mock('../../../../lib/format', () => ({

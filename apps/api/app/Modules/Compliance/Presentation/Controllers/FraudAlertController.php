@@ -7,6 +7,8 @@ namespace App\Modules\Compliance\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\FraudAlert;
+use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,9 +37,11 @@ class FraudAlertController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
-        $query = FraudAlert::where('company_id', $companyId)
+        $query = FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['user', 'assignedUser']);
 
         // Filter by status
@@ -81,9 +85,11 @@ class FraudAlertController extends Controller
      */
     public function show(string $id): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
-        $alert = FraudAlert::where('company_id', $companyId)
+        $alert = FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with(['user', 'assignedUser', 'company'])
             ->findOrFail($id);
 
@@ -99,13 +105,20 @@ class FraudAlertController extends Controller
      */
     public function assign(Request $request, string $id): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         $validated = $request->validate([
-            'assigned_to' => 'required|uuid|exists:users,id',
+            'assigned_to' => [
+                'required',
+                'uuid',
+                ScopedExists::tenant('users', $tenantId),
+            ],
         ]);
 
-        $alert = FraudAlert::where('company_id', $companyId)->findOrFail($id);
+        $alert = FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($id);
 
         $alert->assignTo($validated['assigned_to']);
 
@@ -124,13 +137,16 @@ class FraudAlertController extends Controller
      */
     public function dismiss(Request $request, string $id): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         $validated = $request->validate([
             'notes' => 'required|string|max:1000',
         ]);
 
-        $alert = FraudAlert::where('company_id', $companyId)->findOrFail($id);
+        $alert = FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($id);
 
         $alert->dismiss($validated['notes']);
 
@@ -149,13 +165,16 @@ class FraudAlertController extends Controller
      */
     public function resolve(Request $request, string $id): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         $validated = $request->validate([
             'notes' => 'required|string|max:1000',
         ]);
 
-        $alert = FraudAlert::where('company_id', $companyId)->findOrFail($id);
+        $alert = FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($id);
 
         $alert->resolve($validated['notes']);
 
@@ -174,37 +193,33 @@ class FraudAlertController extends Controller
      */
     public function statistics(): JsonResponse
     {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
+        $base = static fn (): Builder => FraudAlert::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId);
+
         $stats = [
-            'total_alerts' => FraudAlert::where('company_id', $companyId)->count(),
-            'open_alerts' => FraudAlert::where('company_id', $companyId)
-                ->where('status', 'open')
-                ->count(),
-            'investigating' => FraudAlert::where('company_id', $companyId)
-                ->where('status', 'investigating')
-                ->count(),
-            'dismissed' => FraudAlert::where('company_id', $companyId)
-                ->where('status', 'dismissed')
-                ->count(),
-            'resolved' => FraudAlert::where('company_id', $companyId)
-                ->where('status', 'resolved')
-                ->count(),
+            'total_alerts' => $base()->count(),
+            'open_alerts' => $base()->where('status', 'open')->count(),
+            'investigating' => $base()->where('status', 'investigating')->count(),
+            'dismissed' => $base()->where('status', 'dismissed')->count(),
+            'resolved' => $base()->where('status', 'resolved')->count(),
             'by_severity' => [
-                'critical' => FraudAlert::where('company_id', $companyId)
+                'critical' => $base()
                     ->where('severity', 'critical')
                     ->where('status', '!=', 'resolved')
                     ->count(),
-                'warning' => FraudAlert::where('company_id', $companyId)
+                'warning' => $base()
                     ->where('severity', 'warning')
                     ->where('status', '!=', 'resolved')
                     ->count(),
-                'info' => FraudAlert::where('company_id', $companyId)
+                'info' => $base()
                     ->where('severity', 'info')
                     ->where('status', '!=', 'resolved')
                     ->count(),
             ],
-            'recent_alerts' => FraudAlert::where('company_id', $companyId)
+            'recent_alerts' => $base()
                 ->where('detected_at', '>=', now()->subDays(7))
                 ->count(),
         ];

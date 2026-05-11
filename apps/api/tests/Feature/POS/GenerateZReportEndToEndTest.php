@@ -188,10 +188,17 @@ final class GenerateZReportEndToEndTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Test 6 — cross-company terminal → 403
+    // Test 6 — cross-company terminal → 422 (validator-tier denial)
+    //
+    // Post api.pos-stabilization.003 fix: GenerateZReportRequest now scopes
+    // terminal_id via ScopedExists::tenantAndCompany on pos_terminals, so a
+    // cross-company terminal_id fails validation BEFORE the controller's
+    // manual company_id check returns 403. The validator-tier denial is the
+    // tighter contract; same-tenant cross-company terminals are now rejected
+    // with manager_user_id-equivalent semantics on terminal_id.
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function test_generate_z_report_with_cross_company_terminal_returns_403(): void
+    public function test_generate_z_report_with_cross_company_terminal_returns_422(): void
     {
         Sanctum::actingAs($this->cashier);
 
@@ -208,8 +215,11 @@ final class GenerateZReportEndToEndTest extends TestCase
             'terminal_id' => $otherTerminal->id,
         ]);
 
-        $response->assertStatus(403);
-        $response->assertJsonPath('error.code', 'FORBIDDEN');
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('terminal_id', $errors);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

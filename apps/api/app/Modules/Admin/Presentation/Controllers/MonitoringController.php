@@ -6,6 +6,7 @@ namespace App\Modules\Admin\Presentation\Controllers;
 
 use App\Modules\Admin\Application\Services\HealthCheckService;
 use App\Modules\Admin\Application\Services\MonitoringService;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -23,6 +24,7 @@ final class MonitoringController extends Controller
      * Simple health check for load balancers.
      * Returns 200 if healthy, 503 if unhealthy.
      */
+    #[CrossTenantRoute(reason: 'Public load-balancer health probe: reachability check used by Dokploy / upstream load balancers via /v1/health (no auth, no tenant); must remain accessible without a session for liveness routing across the platform.')]
     public function ping(): JsonResponse
     {
         $healthy = $this->healthService->ping();
@@ -36,6 +38,7 @@ final class MonitoringController extends Controller
     /**
      * Detailed health check for super admin dashboard.
      */
+    #[CrossTenantRoute(reason: 'Super-admin platform health check: detailed reachability diagnostics across the fleet\'s shared infrastructure (DB, Redis, queue workers) via HealthCheckService::check; super_admin middleware gated; not tenant-scoped by design.')]
     public function health(): JsonResponse
     {
         $status = $this->healthService->check();
@@ -48,6 +51,7 @@ final class MonitoringController extends Controller
     /**
      * Get comprehensive system health metrics.
      */
+    #[CrossTenantRoute(reason: 'Super-admin system-health monitor: fleet-wide CPU/memory/disk/error-rate metrics aggregated across the platform via MonitoringService::getSystemHealth; super_admin gated; not tenant-scoped.')]
     public function systemHealth(): JsonResponse
     {
         $health = $this->monitoringService->getSystemHealth();
@@ -58,6 +62,7 @@ final class MonitoringController extends Controller
     /**
      * Get performance metrics.
      */
+    #[CrossTenantRoute(reason: 'Super-admin performance monitor: fleet-wide request-latency / throughput metrics via MonitoringService::getPerformanceMetrics for platform operations; super_admin gated; not tenant-scoped.')]
     public function performance(): JsonResponse
     {
         $metrics = $this->monitoringService->getPerformanceMetrics();
@@ -68,6 +73,7 @@ final class MonitoringController extends Controller
     /**
      * Get critical business metrics.
      */
+    #[CrossTenantRoute(reason: 'Super-admin critical-metric monitor: fleet-wide business-critical KPIs (failed-payment rate, fiscal-chain break count, etc.) via MonitoringService::getCriticalMetrics for platform incident response; super_admin gated; not tenant-scoped.')]
     public function critical(): JsonResponse
     {
         $metrics = $this->monitoringService->getCriticalMetrics();
@@ -78,6 +84,7 @@ final class MonitoringController extends Controller
     /**
      * Get queue monitoring data.
      */
+    #[CrossTenantRoute(reason: 'Super-admin queue monitor: fleet-wide queue depth + processing rate + failed-job counts via MonitoringService::getQueueMonitoring; queue infrastructure (Laravel Horizon + Redis) is fleet-wide platform infrastructure, not per-tenant.')]
     public function queues(): JsonResponse
     {
         $queues = $this->monitoringService->getQueueMonitoring();
@@ -88,6 +95,7 @@ final class MonitoringController extends Controller
     /**
      * Get all monitoring data combined for dashboard.
      */
+    #[CrossTenantRoute(reason: 'Super-admin monitoring dashboard: combined system + performance + critical + queue dashboard for platform operations; aggregates fleet-wide metrics from MonitoringService; super_admin gated; not tenant-scoped.')]
     public function dashboard(): JsonResponse
     {
         return response()->json([
@@ -103,6 +111,7 @@ final class MonitoringController extends Controller
     /**
      * Retry a failed job.
      */
+    #[CrossTenantRoute(reason: 'Super-admin queue operation: requeues a specific failed job by id; failed_jobs / jobs are platform-level Laravel queue infrastructure shared across the fleet; super_admin gated.')]
     public function retryFailedJob(Request $request, string $id): JsonResponse
     {
         try {
@@ -135,6 +144,7 @@ final class MonitoringController extends Controller
     /**
      * Delete a failed job.
      */
+    #[CrossTenantRoute(reason: 'Super-admin queue operation: deletes a specific failed job permanently from the failed_jobs table; platform-level Laravel queue infrastructure; super_admin gated.')]
     public function deleteFailedJob(string $id): JsonResponse
     {
         try {
@@ -153,6 +163,7 @@ final class MonitoringController extends Controller
     /**
      * Retry all failed jobs.
      */
+    #[CrossTenantRoute(reason: 'Super-admin queue operation: bulk-retries every failed job in the platform-level failed_jobs queue, requeueing each into the jobs table and truncating failed_jobs; platform-level Laravel queue infrastructure; super_admin gated.')]
     public function retryAllFailedJobs(): JsonResponse
     {
         try {
@@ -186,6 +197,7 @@ final class MonitoringController extends Controller
     /**
      * Flush all failed jobs.
      */
+    #[CrossTenantRoute(reason: 'Super-admin queue operation: flushes (truncates) the platform-level failed_jobs queue without retrying; destructive operation; super_admin gated.')]
     public function flushFailedJobs(): JsonResponse
     {
         try {
@@ -204,6 +216,7 @@ final class MonitoringController extends Controller
     /**
      * Test Sentry error tracking by triggering a test exception.
      */
+    #[CrossTenantRoute(reason: 'Super-admin Sentry probe: throws a controlled RuntimeException to validate the Sentry error-tracking pipeline; production-environment-blocked (returns 403 in prod); no DB or tenant interaction.')]
     public function testSentry(): JsonResponse
     {
         if (config('app.env') === 'production') {

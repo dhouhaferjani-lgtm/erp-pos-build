@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -18,6 +20,12 @@ use Illuminate\Validation\Rule;
  */
 class CreateDraftCountingRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         // Only managers and admins can create counting operations
@@ -32,6 +40,8 @@ class CreateDraftCountingRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
             'title' => ['nullable', 'string', 'max:255'],
             'scope_type' => ['required', Rule::enum(CountingScopeType::class)],
@@ -43,9 +53,9 @@ class CreateDraftCountingRequest extends FormRequest
             'created_on_mobile' => ['sometimes', 'boolean'],
 
             // Optional - can be added later before activation
-            'count_1_user_id' => ['nullable', 'string', 'exists:users,id'],
-            'count_2_user_id' => ['nullable', 'string', 'exists:users,id'],
-            'count_3_user_id' => ['nullable', 'string', 'exists:users,id'],
+            'count_1_user_id' => ['nullable', 'string', ScopedExists::tenant('users', $company->tenant_id)],
+            'count_2_user_id' => ['nullable', 'string', ScopedExists::tenant('users', $company->tenant_id)],
+            'count_3_user_id' => ['nullable', 'string', ScopedExists::tenant('users', $company->tenant_id)],
 
             'scheduled_start' => ['nullable', 'date', 'after_or_equal:now'],
             'scheduled_end' => ['nullable', 'date', 'after:scheduled_start'],
@@ -53,7 +63,7 @@ class CreateDraftCountingRequest extends FormRequest
             // Scope filters optional - products added incrementally
             'scope_filters' => ['sometimes', 'array'],
             'scope_filters.product_ids' => ['sometimes', 'array'],
-            'scope_filters.product_ids.*' => ['string', 'exists:products,id'],
+            'scope_filters.product_ids.*' => ['string', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
         ];
     }
 

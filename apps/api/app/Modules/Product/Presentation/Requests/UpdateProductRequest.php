@@ -52,6 +52,14 @@ class UpdateProductRequest extends FormRequest
             'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'purchase_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'tax_rate' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
+            // api.unmapped.011 (api.catalog): tax_configurations is a
+            // country-scoped global reference table (no tenant_id /
+            // company_id columns; partitioned by country_code). Cross-tenant
+            // assignment is structurally impossible because the table holds
+            // public reference data shared across every tenant in a country.
+            // See docs/superpowers/audits/2026-05-04-scanner-tax-configurations-false-positive.md.
+            // Mirrors the api.catalog.002 / 005 precedent (UpdateCompositeItemRequest /
+            // StoreCompositeItemRequest) closed via the same annotation.
             'default_tax_configuration_id' => ['sometimes', 'nullable', 'uuid', 'exists:tax_configurations,id'],
             'unit' => ['sometimes', 'nullable', 'string', 'max:50'],
             'barcode' => ['sometimes', 'nullable', 'string', 'max:100'],

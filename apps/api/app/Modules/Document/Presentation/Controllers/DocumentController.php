@@ -245,13 +245,15 @@ class DocumentController extends Controller
      */
     public function taxBreakdown(string $id): JsonResponse
     {
-        $document = Document::with(['lines', 'company'])
+        // api.document.030: tenant+company scoped lookup so a cross-tenant
+        // document id surfaces as a 404 BEFORE any data is loaded — closes
+        // the load-then-check timing leak the prior post-condition guard left.
+        $company = $this->companyContext->requireCompany();
+        $document = Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['lines', 'company'])
             ->findOrFail($id);
-
-        // Ensure document belongs to current company context
-        if ($document->company_id !== $this->companyContext->getCompanyId()) {
-            abort(404);
-        }
 
         $taxResult = $this->taxCalculationService->calculateDocumentTaxes($document);
 

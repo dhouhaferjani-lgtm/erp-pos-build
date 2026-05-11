@@ -5,12 +5,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Users, Mail, Phone, FileText, Receipt, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { formatCurrency } from '../../lib/formatCurrency'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { SortableTableHeader } from '../../components/ui/SortableTableHeader'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
 import { useTableState } from '../../hooks/useTableState'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 
@@ -74,8 +76,11 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   const { t, i18n } = useTranslation(['common', 'sales'])
   usePageTitle('partners.title', 'sales')
   const location = useLocation()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((s) => s.getCurrentCompany())
   const currency = currentCompany?.currency ?? 'EUR'
+  const hasTenantScope = tenantId !== null && companyId !== null
 
   // Determine base path and labels based on partner type
   const isCustomerView = partnerType === 'customer' || location.pathname.includes('/sales/customers')
@@ -151,12 +156,13 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   }
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['partners', queryParams],
+    queryKey: tenantScopedKey(['partners', queryParams]),
     queryFn: async () => {
       const params = new URLSearchParams(queryParams)
       const response = await api.get<PartnersResponse>(`/partners?${params.toString()}`)
       return response.data
     },
+    enabled: hasTenantScope,
   })
 
   const partners = data?.data ?? []

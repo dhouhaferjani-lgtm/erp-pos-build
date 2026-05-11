@@ -6,6 +6,7 @@ namespace App\Modules\Identity\Presentation\Controllers;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Application\DTOs\UserData;
 use App\Modules\Identity\Application\Notifications\UserInvitation;
@@ -24,8 +25,30 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * api.module-gating cluster — audit-attribution invariant.
+ *
+ * User CRUD operations are already tenant-scoped via
+ * `where('tenant_id', $currentUser->tenant_id)` (auth-user-anchored
+ * self-scoping). The earlier $request->header('X-Company-Id') reads
+ * flowed only into logAuditEvent's companyId parameter. Trusting the
+ * raw header for audit attribution risks evidence-tampering: a user
+ * performing legitimate self-tenant role-grants could stamp the
+ * AuditEvent with a foreign companyId, distorting forensic
+ * reconstruction.
+ *
+ * For NF525 + AdminAuditLog + two-tier hash chain compliance,
+ * audit-trail integrity is independently load-bearing. This pin
+ * derives audit companyId from the validated CompanyContext source.
+ * The legacy `if ($companyId === null) return;` guard inside
+ * logAuditEvent remains as defense-in-depth.
+ */
 class UserController extends Controller
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
+
     /**
      * List all users in the tenant.
      */
@@ -145,7 +168,7 @@ class UserController extends Controller
         /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($currentUser->tenant_id);
 
-        $user = DB::transaction(function () use ($validated, $currentUser, $request) {
+        $user = DB::transaction(function () use ($validated, $currentUser) {
             // Generate a random password (user will set it via invitation email)
             $tempPassword = Str::random(32);
 
@@ -174,7 +197,7 @@ class UserController extends Controller
                 eventType: 'user.created',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
                 payload: [
                     'name' => $user->name,
                     'email' => $user->email,
@@ -260,7 +283,7 @@ class UserController extends Controller
                 eventType: 'user.updated',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
                 payload: ['changes' => $changes]
             );
 
@@ -327,7 +350,7 @@ class UserController extends Controller
                 eventType: 'user.deleted',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
                 payload: ['email' => $user->email]
             );
 
@@ -389,7 +412,7 @@ class UserController extends Controller
                 eventType: 'user.activated',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
                 payload: ['email' => $user->email]
             );
 
@@ -465,7 +488,7 @@ class UserController extends Controller
                 eventType: 'user.deactivated',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
                 payload: ['email' => $user->email]
             );
 
@@ -523,7 +546,7 @@ class UserController extends Controller
                 eventType: 'user.pos_pin_cleared',
                 aggregateId: $user->id,
                 userId: $currentUser->id,
-                companyId: $request->header('X-Company-Id'),
+                companyId: $this->companyContext->requireCompanyId(),
             );
 
             return response()->json([
@@ -556,7 +579,7 @@ class UserController extends Controller
             eventType: 'user.pos_pin_set',
             aggregateId: $user->id,
             userId: $currentUser->id,
-            companyId: $request->header('X-Company-Id'),
+            companyId: $this->companyContext->requireCompanyId(),
         );
 
         return response()->json([
@@ -617,7 +640,7 @@ class UserController extends Controller
             eventType: 'user.password_reset_triggered',
             aggregateId: $user->id,
             userId: $currentUser->id,
-            companyId: $request->header('X-Company-Id'),
+            companyId: $this->companyContext->requireCompanyId(),
             payload: ['email' => $user->email]
         );
 

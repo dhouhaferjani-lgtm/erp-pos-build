@@ -9,25 +9,34 @@ import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { EmptyState } from '@/components/molecules/EmptyState/EmptyState'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchIngredients, deleteIngredient } from '../api/ingredientApi'
+import { parapharmacyListInvalidationPredicate } from './tenantScope'
 import { toast } from 'sonner'
 
 export function IngredientListPage() {
   const { t } = useTranslation(['common', 'parapharmacy'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['parapharmacy', 'ingredients', page],
+    queryKey: tenantScopedKey(['parapharmacy', 'ingredients', page]),
     queryFn: () => fetchIngredients({ page, per_page: 25 }),
+    enabled: !!tenantId && !!companyId,
   })
 
   const deleteMutation = useMutation({
     mutationFn: deleteIngredient,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parapharmacy', 'ingredients'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: parapharmacyListInvalidationPredicate(tenantId, companyId, 'ingredients'),
+      })
       toast.success(t('parapharmacy:ingredientDeleted'))
       setDeleteId(null)
     },

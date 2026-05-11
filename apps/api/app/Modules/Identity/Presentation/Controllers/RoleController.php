@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Controllers;
 
 use App\Modules\Identity\Domain\User;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -29,6 +30,7 @@ class RoleController extends Controller
     /**
      * List all roles.
      */
+    #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: the SetPermissionsTeam middleware (mounted on every tenant-scoped route group at routes/api.php:48) sets the active team_id on Spatie\'s permission registrar, and Spatie\'s package-level global scope filters Role queries by team_id. Role::with(\'permissions\')->get() therefore returns only the current team\'s roles. The model_has_roles direct DB query in countUsersForRole IS unscoped — but this is read-only count of users tied to a Spatie-scoped role record, so the role-id input is already team-bound.')]
     public function index(Request $request): JsonResponse
     {
         $roles = Role::with('permissions')->get();
@@ -55,6 +57,7 @@ class RoleController extends Controller
     /**
      * Get a single role.
      */
+    #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::with(\'permissions\')->findOrFail($id) is filtered by Spatie\'s package-level global scope to the active team_id (set by SetPermissionsTeam middleware on the route group). A role belonging to a different team would not be found by this query.')]
     public function show(Request $request, int $id): JsonResponse
     {
         $role = Role::with('permissions')->findOrFail($id);
@@ -79,6 +82,7 @@ class RoleController extends Controller
     /**
      * Create a new role.
      */
+    #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::create() inserts the new role with team_id auto-stamped by Spatie\'s permission registrar (SetPermissionsTeam middleware sets the active team_id). $role->syncPermissions(...) operates on the just-created role, which is also team-scoped.')]
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -118,6 +122,7 @@ class RoleController extends Controller
     /**
      * Update a role.
      */
+    #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::findOrFail($id) is filtered by team_id (Spatie global scope set by SetPermissionsTeam middleware); a role from a different team would 404 here. System-role guard (super-admin/admin/owner) prevents renaming protected role names.')]
     public function update(Request $request, int $id): JsonResponse
     {
         $role = Role::findOrFail($id);
@@ -170,6 +175,7 @@ class RoleController extends Controller
     /**
      * Delete a role.
      */
+    #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::findOrFail($id) is team-scoped via Spatie. System-role guard prevents deleting protected names; users-count guard prevents orphaning role assignments.')]
     public function destroy(Request $request, int $id): JsonResponse
     {
         $role = Role::findOrFail($id);
@@ -212,6 +218,7 @@ class RoleController extends Controller
     /**
      * List all permissions.
      */
+    #[CrossTenantRoute(reason: 'Permissions catalog: Permission::all() returns the platform-defined permission catalog. Permissions in Spatie\'s package are platform-shared (the role-permission relationship is team-scoped, not the permissions themselves) — every team picks from the same permission catalog.')]
     public function permissions(Request $request): JsonResponse
     {
         $permissions = Permission::all();
@@ -235,6 +242,7 @@ class RoleController extends Controller
     /**
      * Assign a role to a user.
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped: a user from a different tenant could be found and have a role assigned. Tracked for future api.identity cluster fix; the gap surfaces only when an attacker has BOTH `roles.assign` permission on tenant A AND knowledge of user UUIDs from tenant B (UUIDs are not enumerable in normal flows). Spatie\'s syncPermissions() that follows is team-scoped via the active team_id, but the User lookup itself is not.')]
     public function assignRole(Request $request, string $userId): JsonResponse
     {
         $validated = $request->validate([
@@ -263,6 +271,7 @@ class RoleController extends Controller
     /**
      * Remove a role from a user.
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped (mirrors assignRole shape). Tracked for future api.identity cluster fix. The Spatie removeRole call following is team-scoped, but the User lookup is not.')]
     public function removeRole(Request $request, string $userId): JsonResponse
     {
         $validated = $request->validate([
@@ -291,6 +300,7 @@ class RoleController extends Controller
     /**
      * Get user roles and permissions.
      */
+    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped: any user UUID can be inspected for roles+permissions across tenants. Tracked for future api.identity cluster fix. The roles/permissions returned are themselves Spatie team-scoped to the requesting actor\'s tenant, but the User row lookup discloses cross-tenant existence.')]
     public function userRoles(Request $request, string $userId): JsonResponse
     {
         $user = User::findOrFail($userId);

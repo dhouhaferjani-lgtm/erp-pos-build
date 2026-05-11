@@ -70,9 +70,11 @@ class ServiceController extends Controller
      */
     public function show(Request $request, string $service): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $serviceModel = Service::where('company_id', $companyId)
+        $serviceModel = Service::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $service)
             ->with('category')
             ->first();
@@ -125,9 +127,11 @@ class ServiceController extends Controller
      */
     public function update(UpdateServiceRequest $request, string $service): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $serviceModel = Service::where('company_id', $companyId)
+        $serviceModel = Service::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $service)
             ->first();
 
@@ -147,7 +151,7 @@ class ServiceController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        $serviceData = $this->serviceCatalog->updateService($service, $validated);
+        $serviceData = $this->serviceCatalog->updateService($serviceModel->id, $validated);
 
         return response()->json([
             'data' => $serviceData,
@@ -163,9 +167,11 @@ class ServiceController extends Controller
      */
     public function destroy(Request $request, string $service): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $serviceModel = Service::where('company_id', $companyId)
+        $serviceModel = Service::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $service)
             ->first();
 
@@ -182,7 +188,7 @@ class ServiceController extends Controller
             ], 404);
         }
 
-        $this->serviceCatalog->deleteService($service);
+        $this->serviceCatalog->deleteService($serviceModel->id);
 
         return response()->json(null, 204);
     }

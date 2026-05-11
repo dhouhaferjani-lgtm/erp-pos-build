@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class CreateMemberRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -24,6 +32,9 @@ class CreateMemberRequest extends FormRequest
         $user = $this->user();
         $tenantId = $user?->tenant_id;
 
+        $companyId = $this->companyContext->requireCompanyId();
+        $scopedTenantId = $this->companyContext->requireCompany()->tenant_id;
+
         return [
             'phone' => [
                 'required',
@@ -37,7 +48,11 @@ class CreateMemberRequest extends FormRequest
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date', 'before:today'],
-            'customer_id' => ['nullable', 'uuid', 'exists:partners,id'],
+            'customer_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $scopedTenantId, $companyId),
+            ],
             'loyaltyable_type' => ['nullable', 'string', 'in:contact,partner'],
             'loyaltyable_id' => ['nullable', 'uuid'],
             'external_id' => ['nullable', 'string', 'max:255'],

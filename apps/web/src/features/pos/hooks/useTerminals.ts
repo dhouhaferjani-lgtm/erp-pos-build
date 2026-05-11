@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   fetchTerminals,
   fetchTerminal,
@@ -14,6 +15,7 @@ import {
   type UpdateTerminalInput,
   type DeactivateTerminalInput,
 } from '../api/terminalApi'
+import { usePosTenantScope } from './usePosTenantScope'
 
 /**
  * Query key factory for terminal-related queries
@@ -27,13 +29,33 @@ export const terminalKeys = {
   detail: (id: string) => [...terminalKeys.details(), id] as const,
 }
 
+function scopedTerminalListPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'terminals' &&
+      k[1] === 'list' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 /**
  * Fetch all terminals
  */
 export function useTerminals() {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery({
-    queryKey: terminalKeys.lists(),
+    queryKey: tenantScopedKey([...terminalKeys.lists()]),
     queryFn: fetchTerminals,
+    enabled: hasTenantScope,
   })
 }
 
@@ -41,10 +63,12 @@ export function useTerminals() {
  * Fetch a single terminal by ID
  */
 export function useTerminal(id: string | undefined) {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery({
-    queryKey: terminalKeys.detail(id!),
+    queryKey: tenantScopedKey([...terminalKeys.detail(id!)]),
     queryFn: () => fetchTerminal(id!),
-    enabled: !!id,
+    enabled: !!id && hasTenantScope,
   })
 }
 
@@ -53,11 +77,14 @@ export function useTerminal(id: string | undefined) {
  */
 export function useCreateTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (data: CreateTerminalInput) => createTerminal(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedTerminalListPredicate(tenantId, companyId),
+      })
     },
   })
 }
@@ -67,13 +94,20 @@ export function useCreateTerminal() {
  */
 export function useUpdateTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateTerminalInput }) =>
       updateTerminal(id, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: terminalKeys.detail(variables.id) })
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedTerminalListPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...terminalKeys.detail(variables.id)]),
+        }),
+      ])
     },
   })
 }
@@ -83,11 +117,14 @@ export function useUpdateTerminal() {
  */
 export function useArchiveTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => archiveTerminal(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedTerminalListPredicate(tenantId, companyId),
+      })
     },
   })
 }
@@ -97,11 +134,14 @@ export function useArchiveTerminal() {
  */
 export function useDeleteTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => deleteTerminal(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedTerminalListPredicate(tenantId, companyId),
+      })
     },
   })
 }
@@ -111,12 +151,19 @@ export function useDeleteTerminal() {
  */
 export function useActivateTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => activateTerminal(id),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: terminalKeys.detail(data.id) })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedTerminalListPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+        }),
+      ])
     },
   })
 }
@@ -126,13 +173,20 @@ export function useActivateTerminal() {
  */
 export function useDeactivateTerminal() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data?: DeactivateTerminalInput | undefined }) =>
       deactivateTerminal(id, data),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: terminalKeys.detail(data.id) })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedTerminalListPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+        }),
+      ])
     },
   })
 }
@@ -142,12 +196,19 @@ export function useDeactivateTerminal() {
  */
 export function useToggleTrainingMode() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation({
     mutationFn: (id: string) => toggleTrainingMode(id),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: terminalKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: terminalKeys.detail(data.id) })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedTerminalListPredicate(tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...terminalKeys.detail(data.id)]),
+        }),
+      ])
     },
   })
 }

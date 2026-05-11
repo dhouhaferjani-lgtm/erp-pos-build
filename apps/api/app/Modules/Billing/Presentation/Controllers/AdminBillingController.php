@@ -15,6 +15,7 @@ use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -33,6 +34,7 @@ final class AdminBillingController extends Controller
     /**
      * Get billing dashboard stats.
      */
+    #[CrossTenantRoute(reason: 'Super-admin billing dashboard: aggregates fleet-wide MRR/ARR/revenue, active+trial+past_due subscription counts, and outstanding/overdue invoice totals across all tenants for platform finance operations; mounted under auth:sanctum-admin + super_admin (EnsureSuperAdmin).')]
     public function dashboard(): JsonResponse
     {
         $stats = [
@@ -56,6 +58,7 @@ final class AdminBillingController extends Controller
     /**
      * Get configured payment providers.
      */
+    #[CrossTenantRoute(reason: 'Super-admin payment-provider config view: reads PaymentProviderManager::getProviderStatus — payment provider configuration (Stripe/PayPal/etc.) is fleet-wide platform infrastructure, not per-tenant.')]
     public function providers(): JsonResponse
     {
         $providers = $this->providerManager->getProviderStatus();
@@ -66,6 +69,7 @@ final class AdminBillingController extends Controller
     /**
      * List all plans.
      */
+    #[CrossTenantRoute(reason: 'Super-admin plan catalog: lists all subscription plans from the platform-level Plan catalog ordered by display_order; not tenant-scoped by design — every tenant chooses from the same shared plan catalog.')]
     public function listPlans(): JsonResponse
     {
         $plans = Plan::orderBy('display_order')->get();
@@ -76,6 +80,7 @@ final class AdminBillingController extends Controller
     /**
      * List all subscriptions.
      */
+    #[CrossTenantRoute(reason: 'Super-admin subscription directory: lists subscriptions across all tenants with status + plan_id filters for fleet-wide billing operations and renewal management; super_admin middleware gated.')]
     public function listSubscriptions(Request $request): JsonResponse
     {
         $query = TenantSubscription::with(['tenant', 'plan']);
@@ -98,6 +103,7 @@ final class AdminBillingController extends Controller
     /**
      * Get subscription details.
      */
+    #[CrossTenantRoute(reason: 'Super-admin subscription detail view: reads any tenant\'s subscription by id with tenant + plan + invoices relations for fleet-wide support and dispute resolution; super_admin middleware gated.')]
     public function getSubscription(string $id): JsonResponse
     {
         $subscription = TenantSubscription::with(['tenant', 'plan', 'invoices'])
@@ -109,6 +115,7 @@ final class AdminBillingController extends Controller
     /**
      * List all invoices.
      */
+    #[CrossTenantRoute(reason: 'Super-admin invoice directory: lists invoices across all tenants with status + tenant_id filters for fleet-wide billing reconciliation; super_admin middleware gated.')]
     public function listInvoices(Request $request): JsonResponse
     {
         $query = Invoice::with(['tenant', 'subscription.plan']);
@@ -131,6 +138,7 @@ final class AdminBillingController extends Controller
     /**
      * Get invoice details.
      */
+    #[CrossTenantRoute(reason: 'Super-admin invoice detail view: reads any tenant\'s invoice by id with line items, payments, and subscription/plan join for fleet-wide billing operations and dispute investigation. Closes inventory row api.unmapped.020 (unscoped Invoice::with()->findOrFail; visitor honors this attribute).')]
     public function getInvoice(string $id): JsonResponse
     {
         $invoice = Invoice::with(['tenant', 'items', 'payments', 'subscription.plan'])
@@ -142,6 +150,7 @@ final class AdminBillingController extends Controller
     /**
      * Download invoice PDF.
      */
+    #[CrossTenantRoute(reason: 'Super-admin invoice PDF download: generates and serves a PDF for any tenant\'s invoice via InvoiceService::generatePdf for the billing console. Closes inventory row api.unmapped.021.')]
     public function downloadInvoice(string $id): Response
     {
         $invoice = Invoice::findOrFail($id);
@@ -156,6 +165,7 @@ final class AdminBillingController extends Controller
     /**
      * Create a manual invoice.
      */
+    #[CrossTenantRoute(reason: 'Super-admin manual invoice creation: creates an invoice for any tenant via InvoiceService::createManualInvoice (out-of-band charges, contractual adjustments) outside the automated subscription billing flow; super_admin middleware gated.')]
     public function createInvoice(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -184,6 +194,7 @@ final class AdminBillingController extends Controller
     /**
      * List all payments.
      */
+    #[CrossTenantRoute(reason: 'Super-admin payment directory: lists payments across all tenants with status + provider + tenant_id filters for fleet-wide finance reconciliation; super_admin middleware gated.')]
     public function listPayments(Request $request): JsonResponse
     {
         $query = Payment::with(['tenant', 'invoice']);
@@ -210,6 +221,7 @@ final class AdminBillingController extends Controller
     /**
      * Get payment details.
      */
+    #[CrossTenantRoute(reason: 'Super-admin payment detail view: reads any tenant\'s payment by id with refunds + recorder relations for fleet-wide dispute investigation. Closes inventory row api.unmapped.022.')]
     public function getPayment(string $id): JsonResponse
     {
         $payment = Payment::with(['tenant', 'invoice', 'refunds', 'recorder'])
@@ -221,6 +233,7 @@ final class AdminBillingController extends Controller
     /**
      * Record a manual payment.
      */
+    #[CrossTenantRoute(reason: 'Super-admin manual payment record: records an out-of-band payment (manual / bank_transfer / cash / check) on any tenant\'s invoice; recorded_by stamps the super-admin\'s id and metadata.recorded_manually=true marks the audit shape.')]
     public function recordPayment(Request $request): JsonResponse
     {
         /** @var SuperAdmin $admin */
@@ -271,6 +284,7 @@ final class AdminBillingController extends Controller
     /**
      * Process a refund.
      */
+    #[CrossTenantRoute(reason: 'Super-admin payment refund: processes a refund (full or partial) on any tenant\'s payment; routes through PaymentProviderManager for online providers (Stripe/etc.) and records a refund row with initiated_by stamping the super-admin id. Closes inventory row api.unmapped.023.')]
     public function refundPayment(Request $request, string $id): JsonResponse
     {
         /** @var SuperAdmin $admin */
@@ -332,6 +346,7 @@ final class AdminBillingController extends Controller
     /**
      * Update subscription status.
      */
+    #[CrossTenantRoute(reason: 'Super-admin subscription manual edit: changes status (active/paused/cancelled) or appends admin notes on any tenant\'s subscription via the domain methods (activate/pause/cancel); super_admin middleware gated.')]
     public function updateSubscription(Request $request, string $id): JsonResponse
     {
         $subscription = TenantSubscription::findOrFail($id);

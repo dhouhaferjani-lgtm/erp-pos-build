@@ -1,15 +1,18 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { ArticleDetailPanel } from '../components/organisms/ArticleDetailPanel'
 import { AddToInventoryModal } from '../components/organisms/AddToInventoryModal'
 import { partsCatalogKeys } from '../hooks/usePartsCatalog'
+import { usePartsCatalogTenantScope } from '../hooks/usePartsCatalogTenantScope'
 import type { EnrichedArticle } from '../types/catalog'
 
 export function ArticleDetailPage() {
   const { articleId } = useParams<{ articleId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const hasTenantScope = usePartsCatalogTenantScope()
 
   const [inventoryModalArticle, setInventoryModalArticle] = useState<EnrichedArticle | null>(null)
 
@@ -23,10 +26,12 @@ export function ArticleDetailPage() {
 
   const handleInventorySuccess = useCallback(() => {
     setInventoryModalArticle(null)
-    if (articleId) {
-      void queryClient.invalidateQueries({ queryKey: partsCatalogKeys.articleDetail(articleId) })
+    if (articleId && hasTenantScope) {
+      void queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...partsCatalogKeys.articleDetail(articleId)]),
+      })
     }
-  }, [articleId, queryClient])
+  }, [articleId, hasTenantScope, queryClient])
 
   if (!articleId) return null
 

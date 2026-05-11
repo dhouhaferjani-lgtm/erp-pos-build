@@ -5,6 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Package, AlertTriangle, MapPin, Plus, Minus, RefreshCw, X, ArrowRightLeft } from 'lucide-react'
 import { api, apiPost } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { bccomp, bcsub } from '../../lib/decimal'
 import { tokens } from '../../lib/designTokens'
 import { SearchInput } from '../../components/ui/SearchInput'
@@ -14,6 +17,7 @@ import { useLocation } from '../../hooks/useLocation'
 import { useCurrency } from '../../hooks/useCurrency'
 import { getLocations } from '../locations/api/locations'
 import type { StockLevel, StockLevelsResponse } from './types'
+import { stockLevelsInvalidationPredicate } from './_invalidation'
 
 interface StockMovement {
   id: string
@@ -40,6 +44,8 @@ export function StockLevelsPage() {
   const queryClient = useQueryClient()
   const { currentLocationId } = useLocation()
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [selectedStock, setSelectedStock] = useState<StockLevel | null>(null)
@@ -51,12 +57,13 @@ export function StockLevelsPage() {
 
   // Fetch all locations for transfer
   const { data: locationsData } = useQuery({
-    queryKey: ['locations'],
+    queryKey: tenantScopedKey(['locations']),
     queryFn: getLocations,
+    enabled: !!tenantId && !!companyId,
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['stock-levels', searchQuery, currentLocationId],
+    queryKey: tenantScopedKey(['stock-levels', searchQuery, currentLocationId]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -65,14 +72,17 @@ export function StockLevelsPage() {
       const response = await api.get<StockLevelsResponse>(`/stock-levels${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const adjustMutation = useMutation({
     mutationFn: async (data: { product_id: string; location_id: string; new_quantity: string; reason: string }) => {
       return apiPost<StockMovement>('/stock-movements/adjust', data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })
@@ -81,8 +91,10 @@ export function StockLevelsPage() {
     mutationFn: async (data: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string }) => {
       return apiPost<StockMovement>('/stock-movements/receive', data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })
@@ -91,8 +103,10 @@ export function StockLevelsPage() {
     mutationFn: async (data: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string }) => {
       return apiPost<StockMovement>('/stock-movements/issue', data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })
@@ -101,8 +115,10 @@ export function StockLevelsPage() {
     mutationFn: async (data: { product_id: string; from_location_id: string; to_location_id: string; quantity: string; reference: string }) => {
       return apiPost<{ message: string }>('/stock-movements/transfer', data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
+      })
       closeModal()
     },
   })

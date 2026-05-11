@@ -219,12 +219,15 @@ final class SalesOrderService
         $cancelledAt = now();
         $cancelledBy = $cancelledBy ?? auth()->id();
 
-        // Release all stock reservations for this sales order
+        // Release all stock reservations for this sales order, scoped to the
+        // sales order's own tenant + company (api.inventory.033).
         $releasedCount = $this->stockReservationService->releaseBySource(
             sourceType: ReservationSource::SalesOrder,
             sourceId: $salesOrder->id,
             reason: ReleaseReason::Cancelled,
             releasedBy: (string) $cancelledBy,
+            expectedTenantId: $salesOrder->tenant_id,
+            expectedCompanyId: $salesOrder->company_id,
         );
 
         // Update sales order status

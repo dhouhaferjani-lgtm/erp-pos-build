@@ -218,9 +218,9 @@ class QuoteController extends Controller
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
             $serviceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
             /** @var Collection<int, Product> $products */
-            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            $products = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $productIds)->get()->keyBy('id');
             /** @var Collection<int, Service> $services */
-            $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+            $services = Service::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $serviceIds)->get()->keyBy('id');
 
             // Create lines
             foreach ($lines as $index => $lineData) {
@@ -326,9 +326,9 @@ class QuoteController extends Controller
                 $updateProductIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
                 $updateServiceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
                 /** @var Collection<int, Product> $updateProducts */
-                $updateProducts = Product::whereIn('id', $updateProductIds)->get()->keyBy('id');
+                $updateProducts = Product::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateProductIds)->get()->keyBy('id');
                 /** @var Collection<int, Service> $updateServices */
-                $updateServices = Service::whereIn('id', $updateServiceIds)->get()->keyBy('id');
+                $updateServices = Service::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateServiceIds)->get()->keyBy('id');
 
                 // Calculate totals from new lines
                 $subtotal = '0.00';

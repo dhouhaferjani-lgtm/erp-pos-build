@@ -145,8 +145,16 @@ final class ReceiptChainVerificationTest extends TestCase
             'terminal_id' => $otherTerminal->id,
         ]);
 
-        $response->assertStatus(403)
-            ->assertJsonPath('error.code', 'FORBIDDEN');
+        // Post api.pos-stabilization.018 fix: the FormRequest-tier
+        // ScopedExists::tenantAndCompany on pos_terminals refuses cross-
+        // company terminal_ids before the controller's manual company_id
+        // check runs. 422 (validator) is now the correct contract; 403
+        // (manual check) was the pre-fix behavior. Assert the new contract
+        // using the project's `error.errors.<field>` envelope shape.
+        $response->assertUnprocessable();
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors, 'expected error.errors envelope, got: '.$response->getContent());
+        $this->assertArrayHasKey('terminal_id', $errors);
     }
 
     public function test_verify_receipt_chain_requires_valid_terminal_id(): void

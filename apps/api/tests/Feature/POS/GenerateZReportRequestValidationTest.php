@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Domain\Terminal;
@@ -221,14 +222,14 @@ final class GenerateZReportRequestValidationTest extends TestCase
             'manager_pin' => '5678',
         ]);
 
-        // The exists:users,id rule is tenant-unaware, so the UUID itself passes the rule.
-        // withValidator() must catch the cross-tenant violation and return 422.
+        // Post api.pos-stabilization.032 fix: the rules() method now applies
+        // ScopedExists::tenant on users, which catches cross-tenant manager_user_id
+        // BEFORE the withValidator() callback runs. The rejection still surfaces
+        // as 422 with manager_user_id error key — only the message string changed
+        // from the bespoke "Manager must be in the same tenant." (withValidator
+        // tier) to Laravel's default exists-rule message (validator tier).
         $response->assertStatus(422);
         $this->assertJsonValidationErrors($response, ['manager_user_id']);
-        $response->assertJsonPath(
-            'error.errors.manager_user_id.0',
-            'Manager must be in the same tenant.'
-        );
     }
 
     // -------------------------------------------------------------------------
@@ -237,7 +238,12 @@ final class GenerateZReportRequestValidationTest extends TestCase
 
     public function test_typed_accessors_return_defaults_when_fields_absent(): void
     {
-        $request = GenerateZReportRequest::create('/test/generate-z', 'POST', []);
+        // Post api.pos-stabilization.003 fix: GenerateZReportRequest now
+        // constructor-injects CompanyContext, so Symfony's static
+        // Request::create() (which calls __construct positionally) no longer
+        // works. Resolve via the container instead so DI is honored, then
+        // populate the request envelope with the desired payload.
+        $request = $this->makeRequestWithPayload([]);
 
         $this->assertSame([], $request->getCashCountsInput());
         $this->assertNull($request->getVarianceReason());
@@ -252,7 +258,7 @@ final class GenerateZReportRequestValidationTest extends TestCase
 
     public function test_typed_accessors_return_correct_values(): void
     {
-        $request = GenerateZReportRequest::create('/test/generate-z', 'POST', [
+        $request = $this->makeRequestWithPayload([
             'cash_counts' => [
                 [
                     'payment_method_id' => $this->paymentMethod->id,
@@ -276,5 +282,28 @@ final class GenerateZReportRequestValidationTest extends TestCase
         $this->assertTrue($request->getBlindCountUsed());
         $this->assertSame($this->cashier->id, $request->getManagerUserId());
         $this->assertSame('9999', $request->getManagerPin());
+    }
+
+    /**
+     * Direct-constructor instantiation that honors GenerateZReportRequest's
+     * CompanyContext constructor injection (introduced as part of
+     * api.pos-stabilization.003/.029/.032 fixes). Replaces the previous
+     * Symfony Request::create() factory call which bypasses DI.
+     *
+     * Bypasses Laravel's container-driven auto-validation (which would fire
+     * authorize() + rules()) by calling `new` directly — these tests
+     * exercise the typed-accessor contract only, not validation.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function makeRequestWithPayload(array $payload): GenerateZReportRequest
+    {
+        /** @var CompanyContext $companyContext */
+        $companyContext = app(CompanyContext::class);
+        $request = new GenerateZReportRequest($companyContext);
+        $request->initialize([], $payload);
+        $request->setMethod('POST');
+
+        return $request;
     }
 }

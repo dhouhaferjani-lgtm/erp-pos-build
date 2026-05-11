@@ -1,0 +1,7 @@
+[
+  {
+    "class": "App\\Modules\\Scheduling\\Infrastructure\\Jobs\\DispatchAppointmentReminder",
+    "deferred_to_cluster": "api.console-commands",
+    "tracked_in": "api.console-commands.002 (locked at 99b6f5aa); manual per-query scoping shape; trait extraction is future cluster cleanup"
+  }
+]

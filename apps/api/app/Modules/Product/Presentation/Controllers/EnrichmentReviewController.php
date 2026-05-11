@@ -115,9 +115,13 @@ final class EnrichmentReviewController extends Controller
             ], 403);
         }
 
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $result = EnrichmentResult::where('company_id', $companyId)
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope
+        // (enrichment_results carries both tenant_id + company_id).
+        $result = EnrichmentResult::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $id)
             ->with('product')
             ->first();
@@ -181,9 +185,13 @@ final class EnrichmentReviewController extends Controller
             ], 403);
         }
 
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $result = EnrichmentResult::where('company_id', $companyId)
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope
+        // (enrichment_results carries both tenant_id + company_id).
+        $result = EnrichmentResult::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $id)
             ->with('product')
             ->first();
@@ -251,9 +259,13 @@ final class EnrichmentReviewController extends Controller
             ], 403);
         }
 
-        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
 
-        $result = EnrichmentResult::where('company_id', $companyId)
+        // api.catalog round-2 (Codex Finding 1): chained MethodCall + tenant scope
+        // (enrichment_results carries both tenant_id + company_id).
+        $result = EnrichmentResult::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('id', $id)
             ->with('product')
             ->first();

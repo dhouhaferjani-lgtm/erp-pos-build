@@ -70,7 +70,6 @@ final class HeldOrderServiceTest extends TestCase
         $this->assertEquals($this->user->id, $heldOrder->cashier_id);
         $this->assertEquals($this->company->id, $heldOrder->company_id);
         $this->assertEquals($this->tenant->id, $heldOrder->tenant_id);
-        $this->assertNotNull($heldOrder->held_at);
         $this->assertNotNull($heldOrder->expires_at);
     }
 
@@ -99,6 +98,7 @@ final class HeldOrderServiceTest extends TestCase
         );
 
         $expectedExpiry = $heldOrder->held_at->copy()->addMinutes(60);
+        $this->assertNotNull($heldOrder->expires_at);
         $this->assertTrue(
             $heldOrder->expires_at->diffInSeconds($expectedExpiry) < 2,
             'Expiry should be approximately 60 minutes from held_at.'
@@ -221,7 +221,9 @@ final class HeldOrderServiceTest extends TestCase
         $result = $this->service->listHeldOrders($this->terminal->id);
 
         $this->assertCount(1, $result);
-        $this->assertEquals('Active', $result->first()->label);
+        $first = $result->first();
+        $this->assertNotNull($first);
+        $this->assertEquals('Active', $first->label);
     }
 
     public function test_list_held_orders_includes_null_expiry(): void
@@ -257,7 +259,9 @@ final class HeldOrderServiceTest extends TestCase
         $result = $this->service->listHeldOrders($this->terminal->id, $this->shift->id);
 
         $this->assertCount(1, $result);
-        $this->assertEquals('Shift 1', $result->first()->label);
+        $first = $result->first();
+        $this->assertNotNull($first);
+        $this->assertEquals('Shift 1', $first->label);
     }
 
     public function test_expire_orders_sets_status_to_expired(): void
@@ -275,7 +279,7 @@ final class HeldOrderServiceTest extends TestCase
             'expires_at' => null,
         ]);
 
-        $count = $this->service->expireOrders();
+        $count = $this->service->expireOrders($this->tenant->id, $this->company->id);
 
         $this->assertEquals(1, $count);
 
@@ -297,7 +301,7 @@ final class HeldOrderServiceTest extends TestCase
     {
         $this->createHeldOrder(['expires_at' => now()->addHours(4)]);
 
-        $count = $this->service->expireOrders();
+        $count = $this->service->expireOrders($this->tenant->id, $this->company->id);
 
         $this->assertEquals(0, $count);
     }

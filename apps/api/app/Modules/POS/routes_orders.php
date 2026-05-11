@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\POS\Presentation\Controllers\OrderController;
 use Illuminate\Support\Facades\Route;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Route;
  *
  * Separate route file to avoid merge conflicts with the main POS routes.
  */
-Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class])->group(function () {
+Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Order CRUD
     Route::post('/pos/orders', [OrderController::class, 'store']);
     Route::get('/pos/orders', [OrderController::class, 'index']);

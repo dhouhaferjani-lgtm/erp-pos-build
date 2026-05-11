@@ -431,8 +431,11 @@ class ImportController extends Controller
             ]);
         }
 
-        // Large imports: dispatch to queue for async processing
-        ProcessImportJob::dispatch($job->id, $companyId);
+        // Large imports: dispatch to queue for async processing.
+        // tenantId is passed so the worker can rebind tenant context via
+        // BindsTenantContext::withTenantContext() before any DB access
+        // (api.scheduled-jobs.001).
+        ProcessImportJob::dispatch($job->id, $companyId, $tenantId);
 
         // Mark as queued (before actual processing begins)
         $job->update(['status' => ImportStatus::Pending]);
@@ -551,8 +554,11 @@ class ImportController extends Controller
             totalRows: 0 // Will be set after ZIP extraction
         );
 
-        // Dispatch queue job for async ZIP processing
-        ProcessProductImageImport::dispatch($job->id, $fullPath);
+        // Dispatch queue job for async ZIP processing.
+        // tenantId is passed so the worker can rebind tenant context via
+        // BindsTenantContext::withTenantContext() before any DB access
+        // (api.scheduled-jobs.002).
+        ProcessProductImageImport::dispatch($job->id, $fullPath, $tenantId);
 
         // Mark as pending
         $job->update(['status' => ImportStatus::Pending]);

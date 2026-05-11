@@ -79,7 +79,14 @@ class LoyaltyMemberController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $member = LoyaltyMember::with(['enrollments.program', 'loyaltyable'])->findOrFail($id);
+        // api.loyalty.006: tenant-scope LoyaltyMember route lookup.
+        // loyalty_members has tenant_id only (no company_id column);
+        // tenant predicate alone satisfies the cluster invariant.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $member = LoyaltyMember::where('tenant_id', $tenantId)
+            ->with(['enrollments.program', 'loyaltyable'])
+            ->findOrFail($id);
 
         return response()->json([
             'data' => LoyaltyMemberData::fromModel($member),
@@ -111,7 +118,10 @@ class LoyaltyMemberController extends Controller
      */
     public function update(UpdateMemberRequest $request, string $id): JsonResponse
     {
-        $member = LoyaltyMember::findOrFail($id);
+        // api.loyalty.007: tenant-scope LoyaltyMember route lookup.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($id);
         $member->update($request->validated());
 
         return response()->json([
@@ -125,6 +135,20 @@ class LoyaltyMemberController extends Controller
      */
     public function enroll(EnrollMemberRequest $request, string $id): JsonResponse
     {
+        // api.loyalty round-2 (Codex Finding 1): the inventory enumerated
+        // 5 LoyaltyMember controller findOrFail callsites (show / update /
+        // enrollments / transactions / adjust) but missed `enroll`. The
+        // service path then resolves $id via unscoped LoyaltyMember::find
+        // in EloquentLoyaltyMemberRepository, so without this pre-check
+        // tenant-A could POST /loyalty/members/{tenantB-id}/enroll with a
+        // tenant-A program_id and create an Enrollment row linking
+        // tenant-B's member to tenant-A's program (loyalty_enrollments
+        // has no tenant column). Resolve the route id under tenant scope
+        // before delegating; ModelNotFoundException → 404 mirrors the
+        // sibling controller methods.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($id);
+
         $data = $request->validated();
 
         $enrollment = $this->enrollmentService->enroll(
@@ -144,7 +168,19 @@ class LoyaltyMemberController extends Controller
      */
     public function optOut(string $memberId, string $enrollmentId): JsonResponse
     {
-        $this->enrollmentService->optOut($enrollmentId);
+        // api.loyalty round-3 (Codex round-2 Finding 1): the original
+        // implementation ignored $memberId entirely and resolved
+        // $enrollmentId via unscoped EloquentEnrollmentRepository::findById,
+        // letting tenant-A mutate tenant-B's enrollment state. Mirror the
+        // transactions/adjust pattern: pre-load tenant-scoped member,
+        // then resolve enrollment chained to that member.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        $this->enrollmentService->optOut($enrollment->id);
 
         return response()->json([
             'message' => 'Member opted out successfully',
@@ -156,7 +192,14 @@ class LoyaltyMemberController extends Controller
      */
     public function reactivate(string $memberId, string $enrollmentId): JsonResponse
     {
-        $this->enrollmentService->reactivate($enrollmentId);
+        // api.loyalty round-3 (Codex round-2 Finding 1): same as optOut.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
+        $enrollment = Enrollment::where('id', $enrollmentId)
+            ->where('member_id', $member->id)
+            ->firstOrFail();
+
+        $this->enrollmentService->reactivate($enrollment->id);
 
         return response()->json([
             'message' => 'Enrollment reactivated successfully',
@@ -168,7 +211,12 @@ class LoyaltyMemberController extends Controller
      */
     public function enrollments(string $id): JsonResponse
     {
-        $member = LoyaltyMember::with(['enrollments.program'])->findOrFail($id);
+        // api.loyalty.008: tenant-scope LoyaltyMember route lookup.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $member = LoyaltyMember::where('tenant_id', $tenantId)
+            ->with(['enrollments.program'])
+            ->findOrFail($id);
 
         return response()->json([
             'data' => $member->enrollments->map(fn ($enrollment) => EnrollmentData::fromModel($enrollment)),
@@ -180,7 +228,12 @@ class LoyaltyMemberController extends Controller
      */
     public function transactions(Request $request, string $memberId, string $enrollmentId): JsonResponse
     {
-        $member = LoyaltyMember::findOrFail($memberId);
+        // api.loyalty.009: tenant-scope LoyaltyMember route lookup.
+        // The downstream Enrollment query is anchored on $member->id, which
+        // is now tenant-scoped, so the enrollment chain inherits isolation.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
         $enrollment = Enrollment::where('id', $enrollmentId)
             ->where('member_id', $member->id)
             ->firstOrFail();
@@ -204,7 +257,12 @@ class LoyaltyMemberController extends Controller
      */
     public function adjust(AdjustPointsRequest $request, string $memberId, string $enrollmentId): JsonResponse
     {
-        $member = LoyaltyMember::findOrFail($memberId);
+        // api.loyalty.010: tenant-scope LoyaltyMember route lookup.
+        // The downstream Enrollment query is anchored on $member->id, which
+        // is now tenant-scoped, so the enrollment chain inherits isolation.
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $member = LoyaltyMember::where('tenant_id', $tenantId)->findOrFail($memberId);
         $enrollment = Enrollment::where('id', $enrollmentId)
             ->where('member_id', $member->id)
             ->firstOrFail();

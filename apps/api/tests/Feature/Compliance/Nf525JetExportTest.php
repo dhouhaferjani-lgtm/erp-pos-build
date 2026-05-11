@@ -287,8 +287,14 @@ class Nf525JetExportTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_export_jet_validates_company_id_format(): void
+    public function test_export_jet_ignores_body_company_id(): void
     {
+        // Tenant-isolation hardening (Section 8 / api.compliance round 2):
+        // company_id is now resolved exclusively from CompanyContext. Earlier
+        // rounds trusted $request->input('company_id'), which was the
+        // attack vector Opus flagged. The field is no longer validated;
+        // any value (including a malformed string or a foreign-tenant UUID)
+        // is silently ignored and the user's authenticated company is used.
         $this->actingAs($this->adminUser, 'sanctum');
 
         $response = $this->postJson('/api/v1/compliance/nf525/export-jet', [
@@ -297,7 +303,14 @@ class Nf525JetExportTest extends TestCase
             'to' => '2026-12-31',
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'application/xml');
+        // Filename embeds the resolved company id from context, not the
+        // body input — this is the structural proof that the body
+        // company_id was ignored.
+        $disposition = $response->headers->get('Content-Disposition') ?? '';
+        $this->assertStringContainsString($this->company->id, $disposition);
+        $this->assertStringNotContainsString('not-a-uuid', $disposition);
     }
 
     /**

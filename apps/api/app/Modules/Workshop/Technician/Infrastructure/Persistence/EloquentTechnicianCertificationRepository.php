@@ -33,18 +33,20 @@ final readonly class EloquentTechnicianCertificationRepository implements Techni
     }
 
     /**
-     * Returns certs expiring within [today, today + $days] inclusive. Excludes already-expired
-     * ones (< today) — those are surfaced through a different alerting surface.
+     * Returns certs expiring within [today, today + $days] inclusive, scoped to
+     * `$tenantId`. Excludes already-expired ones (< today) — those are surfaced
+     * through a different alerting surface.
      *
      * @return Collection<int, TechnicianCertification>
      */
-    public function findExpiringWithin(int $days): Collection
+    public function findExpiringWithin(int $days, string $tenantId): Collection
     {
         $today = Carbon::today();
         $horizon = $today->copy()->addDays($days);
 
         /** @var Collection<int, TechnicianCertification> $result */
         $result = TechnicianCertification::query()
+            ->where('tenant_id', $tenantId)
             ->whereNotNull('expires_at')
             ->whereBetween('expires_at', [$today, $horizon])
             ->get();

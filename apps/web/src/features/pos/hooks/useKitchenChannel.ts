@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useRealtimeChannel } from '@/hooks/useRealtimeChannel'
-import { useAuthStore } from '@/stores/authStore'
-import { useCompanyStore } from '@/stores/companyStore'
 import { kitchenKeys } from './useKitchenOrders'
+import { usePosTenantScope } from './usePosTenantScope'
 
 /**
  * Subscribe to the kitchen WebSocket channel for real-time KDS updates.
@@ -17,16 +17,13 @@ import { kitchenKeys } from './useKitchenOrders'
  */
 export function useKitchenChannel(): void {
   const queryClient = useQueryClient()
-  const user = useAuthStore((s) => s.user)
-  const companyId = useCompanyStore((s) => s.currentCompanyId)
-
-  const tenantId = user?.tenant_id
+  const { tenantId, companyId } = usePosTenantScope()
   const channelName = tenantId && companyId
     ? `tenant.${tenantId}.company.${companyId}.pos.kitchen`
     : ''
 
   const handleEvent = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: kitchenKeys.orders() })
+    void queryClient.invalidateQueries({ queryKey: tenantScopedKey([...kitchenKeys.orders()]) })
   }, [queryClient])
 
   // Subscribe to each event type

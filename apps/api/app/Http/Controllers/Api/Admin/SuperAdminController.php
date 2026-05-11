@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
 use App\Services\VerticalConfigService;
+use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ class SuperAdminController extends Controller
         private readonly VerticalConfigService $verticalConfigService
     ) {}
 
+    #[CrossTenantRoute(reason: 'Super-admin dashboard aggregates fleet-wide tenant, user, and subscription counts for the platform-operations panel; mounted under the auth:sanctum-admin + super_admin (EnsureSuperAdmin) middleware group at routes/api.php:54.')]
     public function dashboard(): JsonResponse
     {
         $stats = [
@@ -42,6 +44,7 @@ class SuperAdminController extends Controller
         return response()->json(['data' => $stats]);
     }
 
+    #[CrossTenantRoute(reason: 'Super-admin tenant directory: lists every tenant in the fleet with optional name/slug/tax_id search for support and billing operations; mounted under auth:sanctum-admin + super_admin (EnsureSuperAdmin).')]
     public function tenants(Request $request): JsonResponse
     {
         $query = Tenant::with('subscription.plan');
@@ -63,6 +66,7 @@ class SuperAdminController extends Controller
         return response()->json(['data' => $tenants]);
     }
 
+    #[CrossTenantRoute(reason: 'Super-admin tenant detail view: reads any tenant by id and renders fleet-context stats (users_count, companies_count, locations_count) joined across the tenant\'s companies/locations for support tickets and renewal review; super_admin middleware gated.')]
     public function showTenant(string $id): JsonResponse
     {
         $tenant = Tenant::with(['subscription.plan'])->findOrFail($id);
@@ -97,6 +101,7 @@ class SuperAdminController extends Controller
     /**
      * Get plan usage and limits for a specific tenant.
      */
+    #[CrossTenantRoute(reason: 'Super-admin plan-usage probe: reads any tenant\'s plan limits and current usage via PlanEnforcementService::getPlanSummary to advise upgrades or investigate quota incidents; super_admin middleware gated.')]
     public function getTenantPlanUsage(string $id): JsonResponse
     {
         $tenant = Tenant::findOrFail($id);
@@ -106,6 +111,7 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'Tenant lifecycle: super-admin extends the trial period on any tenant\'s subscription (writes tenant_subscriptions.trial_ends_at + status=trial); logged to AdminAuditLog via AdminAuditService::logTenantAction with super_admin_id, oldValues, newValues, and a notes field naming the days extended.')]
     public function extendTrial(Request $request, string $id): JsonResponse
     {
         $request->validate([
@@ -146,6 +152,7 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'Tenant lifecycle: super-admin changes the subscription plan on any tenant (writes tenant_subscriptions.plan_id); logged to AdminAuditLog via AdminAuditService::logTenantAction with the previous plan_id and the new plan_id for billing-audit reconstruction.')]
     public function changePlan(Request $request, string $id): JsonResponse
     {
         $request->validate([
@@ -186,6 +193,7 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'Tenant lifecycle: super-admin suspends any tenant for billing or abuse reasons (writes tenants.status=suspended); logged to AdminAuditLog with the previous status and the operator-provided reason text.')]
     public function suspendTenant(Request $request, string $id): JsonResponse
     {
         $request->validate([
@@ -216,6 +224,7 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'Tenant lifecycle: super-admin reactivates any tenant after suspension/expiration (writes tenants.status=active); logged to AdminAuditLog with the previous status for fleet-wide audit chain.')]
     public function activateTenant(Request $request, string $id): JsonResponse
     {
         $tenant = Tenant::findOrFail($id);
@@ -245,6 +254,7 @@ class SuperAdminController extends Controller
     /**
      * Update the enabled_extras (optional modules) for a tenant.
      */
+    #[CrossTenantRoute(reason: 'Tenant lifecycle: super-admin updates the optional-modules whitelist (tenants.enabled_extras) on any tenant after vertical-compatibility validation via VerticalConfigService; logged to AdminAuditLog with previous and new extras arrays.')]
     public function updateExtras(Request $request, string $id): JsonResponse
     {
         $tenant = Tenant::findOrFail($id);
@@ -298,6 +308,7 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    #[CrossTenantRoute(reason: 'Super-admin audit-log viewer: reads admin_audit_logs joined to super_admins (actor) and tenants (target) across all tenants and super-admin actors for compliance review and incident investigation; super_admin middleware gated.')]
     public function auditLogs(Request $request): JsonResponse
     {
         $query = DB::table('admin_audit_logs')
@@ -327,6 +338,7 @@ class SuperAdminController extends Controller
     /**
      * List all users with optional search and filter.
      */
+    #[CrossTenantRoute(reason: 'Super-admin user directory: lists users across all tenants with optional name/email search, tenant_id filter, email_verified filter, and status filter for support, account verification, and incident response; super_admin middleware gated.')]
     public function users(Request $request): JsonResponse
     {
         $query = User::with(['tenant']);
@@ -363,6 +375,7 @@ class SuperAdminController extends Controller
     /**
      * Show a specific user's details.
      */
+    #[CrossTenantRoute(reason: 'Super-admin user detail view: reads any user by id with their tenant relation and a cross-tenant join on user_company_memberships + companies for support and audit; super_admin middleware gated.')]
     public function showUser(string $id): JsonResponse
     {
         $user = User::with(['tenant'])->findOrFail($id);
@@ -387,6 +400,7 @@ class SuperAdminController extends Controller
     /**
      * Manually verify a user's email address (super admin override).
      */
+    #[CrossTenantRoute(reason: 'Super-admin email-verification override: manually stamps email_verified_at on any user (cross-tenant); logged to AdminAuditLog via AdminAuditService::log with entityType=user, entityId, oldValues+newValues, and the operator-provided notes.')]
     public function verifyUserEmail(Request $request, string $id): JsonResponse
     {
         $request->validate([

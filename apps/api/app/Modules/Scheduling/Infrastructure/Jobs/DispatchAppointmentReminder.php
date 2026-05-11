@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Scheduling\Infrastructure\Jobs;
 
+use App\Modules\Scheduling\Domain\Appointment;
 use App\Modules\Scheduling\Domain\AppointmentReminder;
 use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
 use App\Modules\Scheduling\Domain\Enums\ReminderDeliveryStatus;
@@ -24,6 +25,13 @@ use Illuminate\Support\Facades\Log;
  * module lands, the dispatch call can be swapped for a real
  * `Notification::send(...)` without changing the surrounding contract.
  *
+ * Tenant-isolation: the job is dispatched by {@see ScheduleAppointmentReminders}
+ * with both the reminder id AND the reminder's parent tenant id. Every
+ * read inside `handle()` is then explicitly tenant-scoped via
+ * `where('tenant_id', $this->tenantId)`. This is defense-in-depth: the
+ * queue worker runs without a request-bound `CompanyContext`, so the
+ * scope must be re-asserted from a job-payload anchor.
+ *
  * Skip cases:
  *   - reminder row already non-pending → return silently (another worker
  *     handled it).
@@ -39,14 +47,16 @@ final class DispatchAppointmentReminder implements ShouldQueue
 
     public function __construct(
         public readonly string $reminderId,
+        public readonly string $tenantId,
     ) {}
 
     public function handle(): void
     {
         /** @var AppointmentReminder|null $reminder */
         $reminder = AppointmentReminder::query()
-            ->with('appointment')
-            ->find($this->reminderId);
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $this->reminderId)
+            ->first();
 
         if ($reminder === null) {
             return;
@@ -56,7 +66,11 @@ final class DispatchAppointmentReminder implements ShouldQueue
             return;
         }
 
-        $appointment = $reminder->appointment()->first();
+        /** @var Appointment|null $appointment */
+        $appointment = Appointment::query()
+            ->where('tenant_id', $this->tenantId)
+            ->where('id', $reminder->appointment_id)
+            ->first();
         if ($appointment === null) {
             return;
         }

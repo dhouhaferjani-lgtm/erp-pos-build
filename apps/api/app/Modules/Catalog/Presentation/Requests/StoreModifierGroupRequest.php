@@ -12,6 +12,12 @@ use Illuminate\Validation\Rules\Enum;
 
 class StoreModifierGroupRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return $this->user()?->can('modifier-groups.manage') ?? false;
@@ -22,7 +28,7 @@ class StoreModifierGroupRequest extends FormRequest
      */
     public function rules(): array
     {
-        $companyId = app(CompanyContext::class)->getCompanyId();
+        $companyId = $this->companyContext->requireCompanyId();
 
         return [
             'code' => [

@@ -175,8 +175,12 @@ class AgedReceivablesService
         string $fromDate,
         string $toDate
     ): array {
-        // Get partner
-        $partner = Partner::findOrFail($partnerId);
+        // Get partner.
+        // api.document.009: scope by company so a cross-tenant partnerId
+        // surfaces as ModelNotFoundException, not a foreign Partner row.
+        $partner = Partner::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($partnerId);
 
         // Calculate opening balance (all invoices before fromDate)
         /** @var numeric-string $openingBalance */

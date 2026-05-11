@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { usePosTenantScope } from '../../hooks/usePosTenantScope'
 import { smartPromptsApi } from '../api/smartPromptsApi'
 import { verticalContextFields } from '../config/verticalContextFields'
 import type { Recommendation } from '../types/recommendations'
@@ -22,6 +24,7 @@ export function useCartRecommendations(
   customerId?: string | null,
 ): UseCartRecommendationsResult | null {
   const { config } = useCompanyConfig()
+  const { hasTenantScope } = usePosTenantScope()
   const [skinType, setSkinType] = useState<string | null>(null)
 
   const vertical = config?.vertical ?? ''
@@ -45,10 +48,10 @@ export function useCartRecommendations(
     }
   }, [sortedIds])
 
-  const queryEnabled = isSupported && isEnabled && debouncedIds.length > 0
+  const queryEnabled = isSupported && isEnabled && debouncedIds.length > 0 && hasTenantScope
 
   const { data, isLoading } = useQuery({
-    queryKey: ['smart-prompts', 'recommendations', debouncedIds, skinType, customerId],
+    queryKey: tenantScopedKey(['smart-prompts', 'recommendations', debouncedIds, skinType, customerId]),
     queryFn: () =>
       smartPromptsApi.getRecommendations({
         product_ids: debouncedIds,

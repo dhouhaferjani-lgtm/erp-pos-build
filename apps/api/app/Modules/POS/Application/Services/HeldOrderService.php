@@ -74,10 +74,12 @@ final class HeldOrderService
      */
     public function recallOrder(string $heldOrderId): HeldOrder
     {
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
         /** @var HeldOrder $heldOrder */
-        $heldOrder = HeldOrder::where('company_id', $companyId)
+        $heldOrder = HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($heldOrderId);
 
         if (! $heldOrder->canBeRecalled()) {
@@ -105,10 +107,12 @@ final class HeldOrderService
      */
     public function discardOrder(string $heldOrderId): void
     {
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
         /** @var HeldOrder $heldOrder */
-        $heldOrder = HeldOrder::where('company_id', $companyId)
+        $heldOrder = HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($heldOrderId);
 
         $heldOrder->delete();
@@ -124,9 +128,11 @@ final class HeldOrderService
      */
     public function listHeldOrders(string $terminalId, ?string $shiftId = null): Collection
     {
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
-        $query = HeldOrder::where('company_id', $companyId)
+        $query = HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->forTerminal($terminalId)
             ->held()
             ->where(function ($q): void {
@@ -143,16 +149,20 @@ final class HeldOrderService
     }
 
     /**
-     * Expire all held orders that have passed their expiry time.
+     * Expire all held orders for a single (tenant, company) pair that have
+     * passed their expiry time.
      *
-     * Finds orders where expires_at < now and status = held,
-     * then sets their status to expired.
+     * Round-5 — both predicates are required by the cluster invariant. The
+     * caller (`pos:expire-held-orders`) iterates per tenant + per company so
+     * the UPDATE never crosses tenants.
      *
      * @return int Number of orders expired
      */
-    public function expireOrders(): int
+    public function expireOrders(string $tenantId, string $companyId): int
     {
-        return HeldOrder::where('status', HeldOrderStatus::Held)
+        return HeldOrder::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('status', HeldOrderStatus::Held)
             ->whereNotNull('expires_at')
             ->where('expires_at', '<', now())
             ->update(['status' => HeldOrderStatus::Expired]);

@@ -24,12 +24,15 @@ class StockMovementController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
 
+        // Both predicates required: tenant_id alone leaks same-tenant
+        // cross-company movement history when a user with multi-company
+        // membership selects company A but the query returns company B
+        // rows. (api.inventory Codex round-1 Finding 1.)
         $query = StockMovement::query()
-            ->where('tenant_id', $tenantId)
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->with(['product', 'location', 'user']);
 
         if ($request->has('product_id')) {

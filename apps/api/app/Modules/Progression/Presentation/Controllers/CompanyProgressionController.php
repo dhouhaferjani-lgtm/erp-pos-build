@@ -5,19 +5,26 @@ declare(strict_types=1);
 namespace App\Modules\Progression\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Progression\Application\Services\ProgressionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * api.module-gating cluster: companyId AND tenantId resolve exclusively
+ * from CompanyContext (requireCompanyId / requireTenantId). See
+ * ModuleReadinessController docblock for full rationale.
+ */
 final class CompanyProgressionController extends Controller
 {
     public function __construct(
         private readonly ProgressionService $progressionService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     public function show(Request $request): JsonResponse
     {
-        $companyId = $request->header('X-Company-Id', '');
+        $companyId = $this->companyContext->requireCompanyId();
         $profile = $this->progressionService->getProfile($companyId);
 
         if ($profile === null) {
@@ -42,10 +49,9 @@ final class CompanyProgressionController extends Controller
 
     public function register(Request $request): JsonResponse
     {
-        $companyId = $request->header('X-Company-Id', '');
         $profile = $this->progressionService->registerCompany([
-            'company_id' => $companyId,
-            'tenant_id' => $request->header('X-Tenant-Id', ''),
+            'company_id' => $this->companyContext->requireCompanyId(),
+            'tenant_id' => $this->companyContext->requireTenantId(),
         ]);
 
         if ($profile === null) {
@@ -66,7 +72,7 @@ final class CompanyProgressionController extends Controller
 
     public function milestones(Request $request): JsonResponse
     {
-        $companyId = $request->header('X-Company-Id', '');
+        $companyId = $this->companyContext->requireCompanyId();
         $milestones = $this->progressionService->getMilestones($companyId);
 
         return response()->json(['data' => array_map(static fn ($m) => [

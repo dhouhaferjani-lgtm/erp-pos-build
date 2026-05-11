@@ -18,12 +18,15 @@ class CompanyContext
 {
     private ?string $currentCompanyId = null;
 
+    private ?string $currentTenantId = null;
+
     /**
      * Set the current company ID.
      */
     public function setCompanyId(string $companyId): void
     {
         $this->currentCompanyId = $companyId;
+        $this->currentTenantId = null;
     }
 
     /**
@@ -46,6 +49,26 @@ class CompanyContext
         }
 
         return $this->currentCompanyId;
+    }
+
+    /**
+     * Get the current tenant ID (parent of the bound company), looking it up
+     * once per request and caching. Used by route-anchored reads that need
+     * BOTH tenant_id and company_id predicates per the tenant-isolation
+     * cluster invariant.
+     *
+     * @throws \RuntimeException If no company context is set or the company
+     *                           cannot be resolved.
+     */
+    public function requireTenantId(): string
+    {
+        if ($this->currentTenantId !== null) {
+            return $this->currentTenantId;
+        }
+
+        $this->currentTenantId = $this->requireCompany()->tenant_id;
+
+        return $this->currentTenantId;
     }
 
     /**
@@ -113,5 +136,6 @@ class CompanyContext
     public function clear(): void
     {
         $this->currentCompanyId = null;
+        $this->currentTenantId = null;
     }
 }

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import {
   getFloors,
   getTables,
@@ -18,6 +19,7 @@ import {
   type UpdateTableRequest,
   type TableListParams,
 } from '../api/tableApi'
+import { scopedKeyPredicate, usePosTenantScope } from './usePosTenantScope'
 
 export const tableKeys = {
   all: ['tables'] as const,
@@ -27,16 +29,22 @@ export const tableKeys = {
 }
 
 export function useFloors() {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery<FloorData[]>({
-    queryKey: tableKeys.floors(),
+    queryKey: tenantScopedKey([...tableKeys.floors()]),
     queryFn: getFloors,
+    enabled: hasTenantScope,
   })
 }
 
 export function useTables(params?: TableListParams) {
+  const { hasTenantScope } = usePosTenantScope()
+
   return useQuery<TableData[]>({
-    queryKey: tableKeys.tableList(params),
+    queryKey: tenantScopedKey([...tableKeys.tableList(params)]),
     queryFn: () => getTables(params),
+    enabled: hasTenantScope,
   })
 }
 
@@ -45,8 +53,10 @@ export function useCreateFloor() {
 
   return useMutation<FloorData, Error, CreateFloorRequest>({
     mutationFn: createFloor,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.floors() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...tableKeys.floors()]),
+      })
     },
   })
 }
@@ -56,8 +66,10 @@ export function useUpdateFloor() {
 
   return useMutation<FloorData, Error, { id: string; data: UpdateFloorRequest }>({
     mutationFn: ({ id, data }) => updateFloor(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.floors() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...tableKeys.floors()]),
+      })
     },
   })
 }
@@ -67,63 +79,80 @@ export function useDeleteFloor() {
 
   return useMutation<unknown, Error, string>({
     mutationFn: deleteFloor,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.floors() })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey([...tableKeys.floors()]),
+      })
     },
   })
 }
 
 export function useCreateTable() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<TableData, Error, CreateTableRequest>({
     mutationFn: createTable,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('tables', tenantId, companyId),
+      })
     },
   })
 }
 
 export function useUpdateTable() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<TableData, Error, { id: string; data: UpdateTableRequest }>({
     mutationFn: ({ id, data }) => updateTable(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('tables', tenantId, companyId),
+      })
     },
   })
 }
 
 export function useDeleteTable() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<unknown, Error, string>({
     mutationFn: deleteTable,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('tables', tenantId, companyId),
+      })
     },
   })
 }
 
 export function useReleaseTable() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<TableData, Error, string>({
     mutationFn: releaseTable,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('tables', tenantId, companyId),
+      })
     },
   })
 }
 
 export function useSetTableStatus() {
   const queryClient = useQueryClient()
+  const { tenantId, companyId } = usePosTenantScope()
 
   return useMutation<TableData, Error, { id: string; status: string }>({
     mutationFn: ({ id, status }) => setTableStatus(id, status),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: tableKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedKeyPredicate('tables', tenantId, companyId),
+      })
     },
   })
 }

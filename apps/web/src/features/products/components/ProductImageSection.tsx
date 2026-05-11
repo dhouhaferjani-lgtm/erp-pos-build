@@ -4,6 +4,9 @@ import { Image } from 'lucide-react'
 import { getProductImages } from '../api/productImages'
 import { ProductImageUpload } from './ProductImageUpload'
 import { ProductImageGallery } from './ProductImageGallery'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface ProductImageSectionProps {
   productId: string
@@ -11,11 +14,13 @@ interface ProductImageSectionProps {
 
 export function ProductImageSection({ productId }: ProductImageSectionProps) {
   const { t } = useTranslation('products')
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data: images = [], isLoading } = useQuery({
-    queryKey: ['product-images', productId],
+    queryKey: tenantScopedKey(['product-images', productId]),
     queryFn: () => getProductImages(productId),
-    enabled: !!productId,
+    enabled: !!productId && !!tenantId && !!companyId,
   })
 
   return (

@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Presentation\Concerns\RequiresCompanyAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -19,20 +20,31 @@ use Illuminate\Routing\Controller;
  * - Viewing subledger reports (receivables, payables)
  * - Reconciling subledger against control accounts
  * - Refreshing cached partner balances
+ *
+ * api.accounting (round-2 Codex remediation): every method validates the
+ * URL `{companyId}` against the authenticated user's `UserCompanyMembership`
+ * BEFORE invoking the service. This closes the route-driven cross-tenant
+ * exploit Codex round-1 second-layer flagged on api.accounting.004/005:
+ * a tenant-A user can no longer hit `/api/v1/companies/{tenant-B-company}/...`
+ * because the membership check short-circuits with 404. The service-tier
+ * `where('company_id', $companyId)` scope is then sufficient because the
+ * controller has already verified the auth user owns that company.
  */
 class PartnerBalanceController extends Controller
 {
+    use RequiresCompanyAccess;
+
     public function __construct(
         private readonly PartnerBalanceService $balanceService
     ) {}
 
     /**
      * GET /api/v1/companies/{companyId}/partners/{partnerId}/balance
-     *
-     * Get balance for a specific partner, optionally filtered by account purpose.
      */
     public function show(Request $request, string $companyId, string $partnerId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $purpose = null;
         /** @var string|null $purposeQuery */
         $purposeQuery = $request->query('purpose');
@@ -52,11 +64,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * GET /api/v1/companies/{companyId}/partners/{partnerId}/statement
-     *
-     * Get transaction statement for a partner.
      */
     public function statement(Request $request, string $companyId, string $partnerId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $purpose = null;
         /** @var string|null $purposeQuery */
         $purposeQuery = $request->query('purpose');
@@ -90,11 +102,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * GET /api/v1/companies/{companyId}/subledger/receivables
-     *
-     * Get all customer receivable balances.
      */
-    public function receivables(string $companyId): JsonResponse
+    public function receivables(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $balances = $this->balanceService->getAllPartnerBalances(
             $companyId,
             SystemAccountPurpose::CustomerReceivable
@@ -113,11 +125,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * GET /api/v1/companies/{companyId}/subledger/payables
-     *
-     * Get all supplier payable balances.
      */
-    public function payables(string $companyId): JsonResponse
+    public function payables(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $balances = $this->balanceService->getAllPartnerBalances(
             $companyId,
             SystemAccountPurpose::SupplierPayable
@@ -136,11 +148,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * GET /api/v1/companies/{companyId}/subledger/reconcile/{purpose}
-     *
-     * Reconcile subledger against control account.
      */
-    public function reconcile(string $companyId, string $purpose): JsonResponse
+    public function reconcile(Request $request, string $companyId, string $purpose): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $purposeEnum = SystemAccountPurpose::from($purpose);
         $result = $this->balanceService->reconcileSubledger($companyId, $purposeEnum);
 
@@ -154,11 +166,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * POST /api/v1/companies/{companyId}/partners/{partnerId}/balance/refresh
-     *
-     * Refresh cached balance for a partner (recalculate from GL).
      */
-    public function refresh(string $companyId, string $partnerId): JsonResponse
+    public function refresh(Request $request, string $companyId, string $partnerId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $this->balanceService->refreshPartnerBalance($companyId, $partnerId);
 
         $balance = $this->balanceService->getCachedOrCalculateBalance(
@@ -180,11 +192,11 @@ class PartnerBalanceController extends Controller
 
     /**
      * POST /api/v1/companies/{companyId}/partners/balance/refresh-all
-     *
-     * Refresh cached balances for all partners in a company.
      */
-    public function refreshAll(string $companyId): JsonResponse
+    public function refreshAll(Request $request, string $companyId): JsonResponse
     {
+        $this->assertCompanyAccess($request, $companyId);
+
         $count = $this->balanceService->refreshAllPartnerBalances($companyId);
 
         return response()->json([

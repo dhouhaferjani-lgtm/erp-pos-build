@@ -5,6 +5,9 @@ import { Search, UserPlus } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchContacts, contactKeys } from '../api/contactApi'
 import type { ContactFilters } from '../api/contactApi'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { Input } from '@/components/atoms/Input/Input'
 import { Button } from '@/components/atoms/Button/Button'
 import { Badge } from '@/components/atoms/Badge/Badge'
@@ -15,10 +18,13 @@ export function ContactListPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [filters] = useState<ContactFilters>({ per_page: 25 })
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data, isLoading } = useQuery({
-    queryKey: contactKeys.list({ ...filters, search, page }),
+    queryKey: tenantScopedKey([...contactKeys.list({ ...filters, search, page })]),
     queryFn: () => fetchContacts({ ...filters, search, page }),
+    enabled: !!tenantId && !!companyId,
   })
 
   const contacts = data?.data ?? []

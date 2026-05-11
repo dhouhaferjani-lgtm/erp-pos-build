@@ -55,8 +55,14 @@ final class DraftPersistenceService
         array $data
     ): Document {
         return DB::transaction(function () use ($tenantId, $companyId, $userId, $draftId, $data) {
+            // api.document.011: scope by tenant + company so a cross-tenant
+            // draftId surfaces as null and a fresh draft is created instead
+            // of mutating a foreign tenant's row.
             $document = $draftId !== null
-                ? Document::find($draftId)
+                ? Document::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($draftId)
                 : null;
 
             if ($document === null) {
@@ -195,11 +201,23 @@ final class DraftPersistenceService
         string $userId,
         array $lineData
     ): DocumentLine {
+        // api.document.012: scope Product lookup by document's tenant + company.
         /** @var Product|null $product */
-        $product = isset($lineData['product_id']) ? Product::find($lineData['product_id']) : null;
+        $product = isset($lineData['product_id'])
+            ? Product::query()
+                ->where('tenant_id', $document->tenant_id)
+                ->where('company_id', $companyId)
+                ->find($lineData['product_id'])
+            : null;
 
+        // api.document.013: scope Service lookup by document's tenant + company.
         /** @var Service|null $service */
-        $service = isset($lineData['service_id']) ? Service::find($lineData['service_id']) : null;
+        $service = isset($lineData['service_id'])
+            ? Service::query()
+                ->where('tenant_id', $document->tenant_id)
+                ->where('company_id', $companyId)
+                ->find($lineData['service_id'])
+            : null;
 
         $defaultName = $service !== null
             ? (string) $service->name
@@ -218,9 +236,15 @@ final class DraftPersistenceService
         $unitPrice = (float) ($lineData['unit_price'] ?? 0);
         $lineTotal = (string) ($quantity * $unitPrice);
 
+        // api.document.045: persist the *scoped* lookup result, not the raw
+        // request UUID. If the scoped lookup missed (cross-tenant or
+        // cross-company), $product / $service is null — write null to the
+        // foreign-key column rather than poisoning the line with an
+        // attacker-supplied UUID that DocumentLine::product()/::service()
+        // (unscoped belongsTo) would later dereference.
         $line = $document->lines()->create([
-            'product_id' => $lineData['product_id'] ?? null,
-            'service_id' => $lineData['service_id'] ?? null,
+            'product_id' => $product?->id,
+            'service_id' => $service?->id,
             'line_number' => $document->lines()->count() + 1,
             'description' => $overriddenDescription,
             'designation_default_snapshot' => $designationSnapshot,
@@ -399,12 +423,28 @@ final class DraftPersistenceService
         string $userId,
         array $linesData
     ): void {
-        // 1. Batch fetch all products and services (1 query each instead of N)
+        // 1. Batch fetch all products and services (1 query each instead of N).
+        // api.document.043: scope batch Product lookup by document tenant + company.
+        // The /auto-save route accepts unrestricted $request->all() with no
+        // validator, so without this scope a tenant-A user can POST tenant-B
+        // product UUIDs in a multi-line lines array and have foreign product
+        // names persisted as designation snapshots on tenant-A draft lines.
         $productIds = collect($linesData)->pluck('product_id')->filter()->unique()->toArray();
-        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $products = Product::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
 
+        // api.document.044: scope batch Service lookup by document tenant + company.
         $serviceIds = collect($linesData)->pluck('service_id')->filter()->unique()->toArray();
-        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+        $services = Service::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $serviceIds)
+            ->get()
+            ->keyBy('id');
 
         // 2. Prepare line data for batch insert
         $currentLineNumber = $document->lines()->count();
@@ -433,11 +473,17 @@ final class DraftPersistenceService
 
             $batchSnapshot = $batchDefaultName !== '' ? mb_substr($batchDefaultName, 0, 500) : null;
 
+            // api.document.045: persist the *scoped* lookup result, not the raw
+            // request UUID. If the scoped lookup missed (foreign tenant /
+            // foreign company), $product / $service is null and the FK column
+            // gets null — preventing later cross-tenant dereference via
+            // DocumentLine::product() / DocumentLine::service() unscoped
+            // belongsTo relations.
             $insertData = [
                 'id' => (string) \Str::uuid(),
                 'document_id' => $document->id,
-                'product_id' => $lineData['product_id'] ?? null,
-                'service_id' => $lineData['service_id'] ?? null,
+                'product_id' => $product?->id,
+                'service_id' => $service?->id,
                 'line_number' => $currentLineNumber,
                 'description' => $batchDescription,
                 'designation_default_snapshot' => $batchSnapshot,

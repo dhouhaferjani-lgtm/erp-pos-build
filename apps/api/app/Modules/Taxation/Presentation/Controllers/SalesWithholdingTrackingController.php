@@ -9,7 +9,9 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Taxation\Application\DTOs\CreateSalesWithholdingTrackingData;
+use App\Modules\Taxation\Application\DTOs\SalesWithholdingTrackingData;
 use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
+use App\Modules\Taxation\Domain\Entities\SalesWithholdingTracking;
 use App\Modules\Taxation\Presentation\Requests\MarkCertificateReceivedRequest;
 use App\Modules\Taxation\Presentation\Requests\RecordSalesWithholdingRequest;
 use Illuminate\Http\JsonResponse;
@@ -35,12 +37,17 @@ class SalesWithholdingTrackingController extends Controller
         string $documentId,
         RecordSalesWithholdingRequest $request
     ): JsonResponse {
-        $document = Document::findOrFail($documentId);
-
-        // Verify document belongs to current company
-        if ($document->company_id !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Document does not belong to your company');
-        }
+        // api.taxation.011: pre-fix Document::findOrFail loaded
+        // foreign-tenant document and then 403'd post-load. Per the
+        // cluster invariant, every read whose anchor came from a route
+        // param MUST carry tenant_id + company_id predicates so a
+        // foreign document 404s at the read tier rather than leaking
+        // its existence (and content via eager loads) before a
+        // post-load check.
+        $company = $this->companyContext->requireCompany();
+        $document = Document::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($documentId);
 
         // Verify document is a sales document
         if (! in_array($document->type, [DocumentType::Invoice, DocumentType::CreditNote])) {
@@ -50,8 +57,6 @@ class SalesWithholdingTrackingController extends Controller
         $data = CreateSalesWithholdingTrackingData::fromArray(
             array_merge($request->validated(), ['document_id' => $documentId])
         );
-
-        $company = $this->companyContext->requireCompany();
 
         try {
             $tracking = $this->service->recordWithholding(
@@ -100,19 +105,25 @@ class SalesWithholdingTrackingController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $tracking = $this->service->findById($id);
+        // api.taxation round-3 (NICE-TO-HAVE follow-up): tighten the
+        // round-2 response-tier 404 collapse to TRUE SQL-tier scoping.
+        // Pre-fix the foreign tracking row was hydrated (with eager-loaded
+        // document/customer/payment) before the post-load 404. Post-fix
+        // the WHERE clause carries tenant_id + company_id predicates so
+        // a foreign id never loads any data into memory.
+        $company = $this->companyContext->requireCompany();
 
-        if (! $tracking) {
+        $tracking = SalesWithholdingTracking::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['document', 'customer', 'payment'])
+            ->find($id);
+
+        if ($tracking === null) {
             abort(404, 'Sales withholding tracking record not found');
         }
 
-        // Verify tracking record belongs to current company
-        if ($tracking->companyId !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Tracking record does not belong to your company');
-        }
-
         return response()->json([
-            'data' => $tracking,
+            'data' => SalesWithholdingTrackingData::fromEntity($tracking),
         ]);
     }
 
@@ -125,15 +136,19 @@ class SalesWithholdingTrackingController extends Controller
         string $id,
         MarkCertificateReceivedRequest $request
     ): JsonResponse {
-        $tracking = $this->service->findById($id);
+        // api.taxation round-3 (NICE-TO-HAVE follow-up): SQL-tier scoping
+        // mirrors show(). The existence check uses the same WHERE filter so
+        // a foreign id 404s without ever hydrating; only after the gate
+        // passes does the service layer load + mutate.
+        $company = $this->companyContext->requireCompany();
 
-        if (! $tracking) {
+        $exists = SalesWithholdingTracking::where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('id', $id)
+            ->exists();
+
+        if (! $exists) {
             abort(404, 'Sales withholding tracking record not found');
-        }
-
-        // Verify tracking record belongs to current company
-        if ($tracking->companyId !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Tracking record does not belong to your company');
         }
 
         try {

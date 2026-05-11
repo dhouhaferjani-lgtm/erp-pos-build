@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -76,6 +77,11 @@ final class TreasuryEventsTest extends TestCase
             'type' => 'cash_register',
             'is_active' => true,
         ]);
+
+        // PaymentAllocationService now requires CompanyContext to be set so
+        // its tenant-scoped find()/findOrFail() can resolve scope (Section 7
+        // Treasury cluster fix — tenant-isolation sweep).
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->allocationService = app(PaymentAllocationService::class);
     }
