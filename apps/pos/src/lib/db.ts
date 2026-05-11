@@ -42,7 +42,36 @@ export async function getDatabase(companyId: string): Promise<Database> {
 
   await runMigrations(db);
 
+  // Codex r1 P2 closure — migration v32 is a one-shot retroactive cleanup
+  // (logged in `_migrations`), but lock-signature failures could in principle
+  // reappear post-WAL (extreme write contention, checkpoint stalls, OS-level
+  // file locks on networked storage). Running the same UPDATE as an
+  // idempotent startup hook every boot is the rerunnable safety net: empty
+  // result when nothing is stuck, costless when there is. The migration row
+  // remains as the audit-trail anchor for the initial retroactive sweep.
+  await runStuckReceiptRecovery(db);
+
   return db;
+}
+
+/**
+ * Bug 5 — rerunnable recovery for offline_receipts dead-lettered with the
+ * SQLite lock signature. See migration v32 for the one-shot retroactive
+ * counterpart. WHERE clause is intentionally identical so both code paths
+ * share a single semantic.
+ *
+ * Exported for unit testing only — production callers should rely on
+ * `getDatabase` invoking it automatically after migrations.
+ */
+export async function runStuckReceiptRecovery(database: Database): Promise<void> {
+  await database.execute(
+    `UPDATE offline_receipts
+       SET status = 'pending',
+           retry_count = 0,
+           sync_error = NULL
+     WHERE status = 'failed'
+       AND sync_error LIKE '%database is locked%'`,
+  );
 }
 
 export async function closeDatabase(): Promise<void> {
