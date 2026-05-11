@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 0712191d67d9f22f25ef7115cdcf14c2b8d52789d178d9abb99cb8683da7ccca
+  yaml_sha256: d6f7f3c9e27ff9ded5e7476be0f7084efdcc4a3451b0fe4179926e11bdda565f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -83124,15 +83124,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:21Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83201,6 +83201,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 0712191d67d9f22f25ef7115cdcf14c2b8d52789d178d9abb99cb8683da7ccca
+        new_yaml_sha256: 3dc4720eb22dba845ac3fdfdca088880385619fa9496b73f6fea8772d1167c3f
+        target_ids:
+          - web.tanstack-keys.362
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.363
     stable_key: 'sha256:6be911dabd2a5a3ee45bf2eb494b97e5aeb8755853fc411c5699ab98ecf4ad05'
@@ -83218,15 +83235,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:27Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:24Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83295,6 +83312,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:25Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 3dc4720eb22dba845ac3fdfdca088880385619fa9496b73f6fea8772d1167c3f
+        new_yaml_sha256: d7f598342615ce934b6a05aaa928ab565fd8d5c209fe8670df1fdca697648a2e
+        target_ids:
+          - web.tanstack-keys.363
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.364
     stable_key: 'sha256:ab085d2c9abf32945f3a2ff2d52afc7c88ccfe932d9697038d8b008d984929a1'
@@ -83312,15 +83346,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:32Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:27Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83389,6 +83423,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:28Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d7f598342615ce934b6a05aaa928ab565fd8d5c209fe8670df1fdca697648a2e
+        new_yaml_sha256: 4c7fa11b7449d04b6b463e3c77eb07499d943dde6da8d455549d9d37cb5aa203
+        target_ids:
+          - web.tanstack-keys.364
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.365
     stable_key: 'sha256:7442cc8217f384bf5c2f60360b17c27999d62aea536e8606a10455235cb86990'
@@ -83406,15 +83457,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:37Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:30Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83483,6 +83534,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:31Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 4c7fa11b7449d04b6b463e3c77eb07499d943dde6da8d455549d9d37cb5aa203
+        new_yaml_sha256: 062e6f4ee8664b96aea9698b60e26cda34f5f7bc40b6096e186d8f27bc794fad
+        target_ids:
+          - web.tanstack-keys.365
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.366
     stable_key: 'sha256:3678baec863a6c6f72cb14a628bf1e0e8cf3a85faccd25bcf44c2da43d9244eb'
@@ -83500,15 +83568,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:42Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:33Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83577,6 +83645,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:34Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 062e6f4ee8664b96aea9698b60e26cda34f5f7bc40b6096e186d8f27bc794fad
+        new_yaml_sha256: 8eedb412a2ac2f4eb20e1745b928c8ca463fb0a623dea17cd7755ecb0b942232
+        target_ids:
+          - web.tanstack-keys.366
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.367
     stable_key: 'sha256:a4c06df9d23c5f8d3131b4c0307020425495418b4b616588d8a71981af13d992'
@@ -83594,15 +83679,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-10T22:22:47Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:41:36Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+      review_commit: 8445f8c1
     fix_commit: 8445f8c1
     regression_test: 'apps/web/src/features/loyalty/hooks/__tests__/useRewards.tenantScope.test.tsx::tenant-A rewards data does not contain tenant-B entries (L18)'
     blocked_reason: null
@@ -83671,6 +83756,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:41:37Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 8eedb412a2ac2f4eb20e1745b928c8ca463fb0a623dea17cd7755ecb0b942232
+        new_yaml_sha256: d6f7f3c9e27ff9ded5e7476be0f7084efdcc4a3451b0fe4179926e11bdda565f
+        target_ids:
+          - web.tanstack-keys.367
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 1290ff45c186454d6a7d0e4cda04e7705fe982aa
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-22-opus-review.md
+        review_commit: 8445f8c1
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.368
     stable_key: 'sha256:1005bf85b81990fccaf4f6277b1bc568df0077a3ade22fa4fa50d1efbb85fb5a'
