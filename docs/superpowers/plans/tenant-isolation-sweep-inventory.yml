@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 80bcfc416e53fcc8ca5e020b26993aa49559840c5e88937f7d0252ef7e095e9c
+  yaml_sha256: c8e473fa0fb856fbcd7db44f9391f9fb699cdc8eb061d2ea97ac8f6fbff6b11f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -43191,17 +43191,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:35:44Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43220,6 +43220,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:35:45Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 80bcfc416e53fcc8ca5e020b26993aa49559840c5e88937f7d0252ef7e095e9c
+        new_yaml_sha256: f1efbe27730062175a9b6a5d33d65e4d9b4f9084986bdf65bbe7299c6a637696
+        target_ids:
+          - web.tanstack-keys.008
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:35:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: f1efbe27730062175a9b6a5d33d65e4d9b4f9084986bdf65bbe7299c6a637696
+        new_yaml_sha256: 56a4861cde7ef8cfaf5db08aad3fa9cee0f46065d041c53e4ca171fc99dcb02f
+        target_ids:
+          - web.tanstack-keys.008
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:35:50Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 56a4861cde7ef8cfaf5db08aad3fa9cee0f46065d041c53e4ca171fc99dcb02f
+        new_yaml_sha256: 2a0ab756dda858efe7170ddbba68eec0a491fd9d27bf3160a97756a5f0eaa662
+        target_ids:
+          - web.tanstack-keys.008
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.009
     stable_key: 'sha256:023f387d2f0954d22b7433d73928e6e42118daaa83a50fc60e699439ca9cca7a'
@@ -43237,17 +43285,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:35:52Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43266,6 +43314,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:35:53Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2a0ab756dda858efe7170ddbba68eec0a491fd9d27bf3160a97756a5f0eaa662
+        new_yaml_sha256: dba657758cf08ce04d726b6ab75a80d5e2ef763fd9f5603ddc0650c4fce13101
+        target_ids:
+          - web.tanstack-keys.009
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:35:56Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dba657758cf08ce04d726b6ab75a80d5e2ef763fd9f5603ddc0650c4fce13101
+        new_yaml_sha256: df2145ccf080366910bf984f02d92aa23d65855e3de5a6a416a4cb7ee9b8b2b0
+        target_ids:
+          - web.tanstack-keys.009
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:35:58Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: df2145ccf080366910bf984f02d92aa23d65855e3de5a6a416a4cb7ee9b8b2b0
+        new_yaml_sha256: 18a71244d06a2aa3dcd341a533c153f78a13d0651559cb98335c70ebfa16e784
+        target_ids:
+          - web.tanstack-keys.009
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.010
     stable_key: 'sha256:60b2d0ee450442d410ca49c373623bb5c1b78ee13959814cefbd82c7d1e630fd'
@@ -43283,17 +43379,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:00Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43312,6 +43408,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:01Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 18a71244d06a2aa3dcd341a533c153f78a13d0651559cb98335c70ebfa16e784
+        new_yaml_sha256: 390c4a2776d5dcc22176ed3a00b268a66ffd1554f6933ebc817028feabb3667f
+        target_ids:
+          - web.tanstack-keys.010
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 390c4a2776d5dcc22176ed3a00b268a66ffd1554f6933ebc817028feabb3667f
+        new_yaml_sha256: 3dc224a91a464f98a2b87c4d926977c978bd62122fe94fdb9232d223c90146f6
+        target_ids:
+          - web.tanstack-keys.010
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:06Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3dc224a91a464f98a2b87c4d926977c978bd62122fe94fdb9232d223c90146f6
+        new_yaml_sha256: f6951bd6eceec1e0925d9ee78c4d6bb6e4a152b21b4467fc37cc095754bdb1aa
+        target_ids:
+          - web.tanstack-keys.010
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.011
     stable_key: 'sha256:1a43bb4ecc29ae422277a079362a2a4981df53d20ce46334c4a334d1f364ffa6'
@@ -43329,17 +43473,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:08Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43358,6 +43502,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:09Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f6951bd6eceec1e0925d9ee78c4d6bb6e4a152b21b4467fc37cc095754bdb1aa
+        new_yaml_sha256: 58c4c5fd7572689b8489bd07e4fbbf4ec5ff7b2b0077b466b0f13f79e29163ac
+        target_ids:
+          - web.tanstack-keys.011
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:12Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 58c4c5fd7572689b8489bd07e4fbbf4ec5ff7b2b0077b466b0f13f79e29163ac
+        new_yaml_sha256: 6152118f55b1719fb6d8c69b49f660c08e4b738c2f2f6d1a9bde39407ee50ccd
+        target_ids:
+          - web.tanstack-keys.011
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:15Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 6152118f55b1719fb6d8c69b49f660c08e4b738c2f2f6d1a9bde39407ee50ccd
+        new_yaml_sha256: 7bf6d36c85df2041007c5f4a15f62c1f6d5d1df92c9a8b6db903dd0805c7aaa9
+        target_ids:
+          - web.tanstack-keys.011
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.012
     stable_key: 'sha256:c6b29eb5f027b90162cae21f19bf99948ab6e55656f11e690b38a4b453082a09'
@@ -43375,17 +43567,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:17Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43404,6 +43596,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:17Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 7bf6d36c85df2041007c5f4a15f62c1f6d5d1df92c9a8b6db903dd0805c7aaa9
+        new_yaml_sha256: 657aecdb5cee3d336c0550557ccb5ab9624842b48066e1545bc7ea67b878cba6
+        target_ids:
+          - web.tanstack-keys.012
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:20Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 657aecdb5cee3d336c0550557ccb5ab9624842b48066e1545bc7ea67b878cba6
+        new_yaml_sha256: 7141f568c169a8780d31e8aa4f404293c10267b5c7157d7fff118c985995fa83
+        target_ids:
+          - web.tanstack-keys.012
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:23Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7141f568c169a8780d31e8aa4f404293c10267b5c7157d7fff118c985995fa83
+        new_yaml_sha256: 57476672db798e2a4a37203ee123ac770cf51c2c9bcc744ce7db52f1c265fda8
+        target_ids:
+          - web.tanstack-keys.012
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.013
     stable_key: 'sha256:ef17ac6d1106abb5db8c61d54602cba3f4092c1a6bc9668ab73e2fc1b4715f5d'
@@ -43421,17 +43661,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:25Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43450,6 +43690,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:25Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 57476672db798e2a4a37203ee123ac770cf51c2c9bcc744ce7db52f1c265fda8
+        new_yaml_sha256: 0629058e73dfe7db9b3191e0a7784c35f769532b57d6bd5b60c474f91845bafa
+        target_ids:
+          - web.tanstack-keys.013
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:28Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 0629058e73dfe7db9b3191e0a7784c35f769532b57d6bd5b60c474f91845bafa
+        new_yaml_sha256: e754a8c93ea65ef0a33089683f99c95b8ba636cfcb1b0f6f57197250c96c381c
+        target_ids:
+          - web.tanstack-keys.013
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:31Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e754a8c93ea65ef0a33089683f99c95b8ba636cfcb1b0f6f57197250c96c381c
+        new_yaml_sha256: 2c5ae58cb74580e2b9f4756f9d2961be5d1894f9b31b9f87495281134998878f
+        target_ids:
+          - web.tanstack-keys.013
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.014
     stable_key: 'sha256:53fdaa81adedd81fbbe576fee6eb565755286d4809f92b0348ce84fbef3f6591'
@@ -43467,17 +43755,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:33Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43496,6 +43784,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:33Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 2c5ae58cb74580e2b9f4756f9d2961be5d1894f9b31b9f87495281134998878f
+        new_yaml_sha256: f03764ded1fefa6c1cb42b8f3645a1ef7d4ee660c1add65636ead4cbbdeb0dd3
+        target_ids:
+          - web.tanstack-keys.014
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:36Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: f03764ded1fefa6c1cb42b8f3645a1ef7d4ee660c1add65636ead4cbbdeb0dd3
+        new_yaml_sha256: a10251bd18dab9b13242552ff830267c130c7891402286aa451614557a4aa5c2
+        target_ids:
+          - web.tanstack-keys.014
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:39Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a10251bd18dab9b13242552ff830267c130c7891402286aa451614557a4aa5c2
+        new_yaml_sha256: 87991fb4651201ac775f1384005d46d9d324000be4757bd21a0b0991390d654d
+        target_ids:
+          - web.tanstack-keys.014
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.015
     stable_key: 'sha256:09e257d2ecb730e2833623470de2f572b7c1a776eee0d8150a807bd7b06c6dbf'
@@ -43513,17 +43849,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:41Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43542,6 +43878,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:42Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 87991fb4651201ac775f1384005d46d9d324000be4757bd21a0b0991390d654d
+        new_yaml_sha256: 21e6cfa395e1a63a07768d1e8904b612ea95f8357f8c99e2144d876240c20e6d
+        target_ids:
+          - web.tanstack-keys.015
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:45Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 21e6cfa395e1a63a07768d1e8904b612ea95f8357f8c99e2144d876240c20e6d
+        new_yaml_sha256: 2c7b204e31d1283934aebc1d606d3d669bcc38b40e113b022dacc0df3a873c81
+        target_ids:
+          - web.tanstack-keys.015
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:48Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 2c7b204e31d1283934aebc1d606d3d669bcc38b40e113b022dacc0df3a873c81
+        new_yaml_sha256: 82d519baab81b7113f30b73bb3a2cca4107a39192846b92626d6ccaa44069d38
+        target_ids:
+          - web.tanstack-keys.015
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.016
     stable_key: 'sha256:de611a566633c751cb124547a43213a21ca47470260f2eaf1baafa3551d3a61f'
@@ -43559,17 +43943,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:50Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43588,6 +43972,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:50Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 82d519baab81b7113f30b73bb3a2cca4107a39192846b92626d6ccaa44069d38
+        new_yaml_sha256: bf4c902a4901a62d6c8c22aee38772ff9f49752141df2fe41d757d86883588ac
+        target_ids:
+          - web.tanstack-keys.016
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:36:53Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: bf4c902a4901a62d6c8c22aee38772ff9f49752141df2fe41d757d86883588ac
+        new_yaml_sha256: 923524c859217c130efcc3f0375fd52deabcef97a8c8e60e76d8030c467ed16c
+        target_ids:
+          - web.tanstack-keys.016
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:36:56Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 923524c859217c130efcc3f0375fd52deabcef97a8c8e60e76d8030c467ed16c
+        new_yaml_sha256: 30158fc267e030a44db2e798a9a7b7d7c5e25fee5c3ee42a9321024177aa520b
+        target_ids:
+          - web.tanstack-keys.016
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.017
     stable_key: 'sha256:5f683abd53a9178b61c1cc06bf9e27f2329b4f14253c0b339b01bdf5461553e6'
@@ -43605,17 +44037,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T14:36:58Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: fe160a38
+    regression_test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
     blocked_reason: null
     history:
       -
@@ -43634,6 +44066,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T14:36:59Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 30158fc267e030a44db2e798a9a7b7d7c5e25fee5c3ee42a9321024177aa520b
+        new_yaml_sha256: c8f50abb6ee7d2d0f728d7b8d743cc2522502c5455f2232dc4d03e6c6fb7c368
+        target_ids:
+          - web.tanstack-keys.017
+        from_status: pending
+        to_status: claimed
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T14:37:02Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c8f50abb6ee7d2d0f728d7b8d743cc2522502c5455f2232dc4d03e6c6fb7c368
+        new_yaml_sha256: a23daf70711d7846c8cba0a79ad53aff899a29ca17f1fb039eaa8a83e25d55a3
+        target_ids:
+          - web.tanstack-keys.017
+        from_status: claimed
+        to_status: in_progress
+        commit: fe160a3817f3d9f61269c4461bae29cf3ff03a9b
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T14:37:04Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a23daf70711d7846c8cba0a79ad53aff899a29ca17f1fb039eaa8a83e25d55a3
+        new_yaml_sha256: c8e473fa0fb856fbcd7db44f9391f9fb699cdc8eb061d2ea97ac8f6fbff6b11f
+        target_ids:
+          - web.tanstack-keys.017
+        from_status: in_progress
+        to_status: under_review
+        commit: fe160a38
+        test: 'apps/web/src/components/organisms/RecordPaymentModal/__tests__/tenantScope.test.tsx::RecordPaymentModal tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.018
     stable_key: 'sha256:76fd679a9851a8e6ddceab16cc040a3c4db2631ec58ee0ae42e2024a406953a4'
