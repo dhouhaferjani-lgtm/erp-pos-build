@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { tenantScopedKey } from '@/lib/tenantScopedKey';
+import { useAuthStore } from '@/stores/authStore';
+import { useCompanyStore } from '@/stores/companyStore';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -11,6 +14,22 @@ import type {
   MarkCertificateReceivedRequest,
 } from '../types';
 import * as withholdingApi from '../api/withholdingApi';
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey;
+    return (
+      Array.isArray(k) &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    );
+  };
+}
 
 /**
  * Preview withholding calculation
@@ -26,9 +45,13 @@ export function useWithholdingPreview() {
  * Fetch withholding certificates list
  */
 export function useWithholdingCertificates(filters?: CertificateFilters) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['withholding-certificates', filters],
+    queryKey: tenantScopedKey(['withholding-certificates', filters]),
     queryFn: () => withholdingApi.fetchWithholdingCertificates(filters),
+    enabled: tenantId !== null && companyId !== null,
   });
 }
 
@@ -36,10 +59,13 @@ export function useWithholdingCertificates(filters?: CertificateFilters) {
  * Fetch single withholding certificate
  */
 export function useWithholdingCertificate(id: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['withholding-certificate', id],
+    queryKey: tenantScopedKey(['withholding-certificate', id]),
     queryFn: () => withholdingApi.fetchWithholdingCertificate(id),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   });
 }
 
@@ -48,13 +74,17 @@ export function useWithholdingCertificate(id: string) {
  */
 export function useCreateWithholdingCertificate() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: (request: CreateWithholdingCertificateRequest) =>
       withholdingApi.createWithholdingCertificate(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificates'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
+      });
       toast.success(t('messages.certificateCreated'));
     },
     onError: (error: Error) => {
@@ -68,14 +98,20 @@ export function useCreateWithholdingCertificate() {
  */
 export function useIssueWithholdingCertificate() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: (id: string) =>
       withholdingApi.issueWithholdingCertificate(id),
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] });
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificates'] });
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
+        }),
+      ]);
       toast.success(t('messages.certificateIssued'));
     },
     onError: (error: Error) => {
@@ -89,14 +125,20 @@ export function useIssueWithholdingCertificate() {
  */
 export function useVoidWithholdingCertificate() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: ({ id, request }: { id: string; request: VoidCertificateRequest }) =>
       withholdingApi.voidWithholdingCertificate(id, request),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] });
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificates'] });
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
+        }),
+      ]);
       toast.success(t('messages.certificateVoided'));
     },
     onError: (error: Error) => {
@@ -110,14 +152,20 @@ export function useVoidWithholdingCertificate() {
  */
 export function useSubmitCertificateToTEJ() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: ({ id, request }: { id: string; request: SubmitToTEJRequest }) =>
       withholdingApi.submitCertificateToTEJ(id, request),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificate', id] });
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificates'] });
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-certificate', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
+        }),
+      ]);
       toast.success(t('messages.tejSubmitted'));
     },
     onError: (error: Error) => {
@@ -131,13 +179,17 @@ export function useSubmitCertificateToTEJ() {
  */
 export function useDeleteWithholdingCertificate() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: (id: string) =>
       withholdingApi.deleteWithholdingCertificate(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-certificates'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('withholding-certificates', tenantId, companyId),
+      });
       toast.success(t('messages.certificateDeleted'));
     },
     onError: (error: Error) => {
@@ -150,9 +202,13 @@ export function useDeleteWithholdingCertificate() {
  * Fetch withholding rules
  */
 export function useWithholdingRules(countryCode?: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['withholding-rules', countryCode],
+    queryKey: tenantScopedKey(['withholding-rules', countryCode]),
     queryFn: () => withholdingApi.fetchWithholdingRules(countryCode),
+    enabled: tenantId !== null && companyId !== null,
   });
 }
 
@@ -160,10 +216,13 @@ export function useWithholdingRules(countryCode?: string) {
  * Fetch single withholding rule
  */
 export function useWithholdingRule(id: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['withholding-rule', id],
+    queryKey: tenantScopedKey(['withholding-rule', id]),
     queryFn: () => withholdingApi.fetchWithholdingRule(id),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   });
 }
 
@@ -172,12 +231,16 @@ export function useWithholdingRule(id: string) {
  */
 export function useCreateWithholdingRule() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: withholdingApi.createWithholdingRule,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
+      });
       toast.success(t('messages.ruleCreated'));
     },
     onError: (error: Error) => {
@@ -191,14 +254,20 @@ export function useCreateWithholdingRule() {
  */
 export function useUpdateWithholdingRule() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof withholdingApi.updateWithholdingRule>[1] }) =>
       withholdingApi.updateWithholdingRule(id, data),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] });
-      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+    onSuccess: async (_, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-rule', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
+        }),
+      ]);
       toast.success(t('messages.ruleUpdated'));
     },
     onError: (error: Error) => {
@@ -212,12 +281,16 @@ export function useUpdateWithholdingRule() {
  */
 export function useDeleteWithholdingRule() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: withholdingApi.deleteWithholdingRule,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
+      });
       toast.success(t('messages.ruleDeleted'));
     },
     onError: (error: Error) => {
@@ -231,13 +304,19 @@ export function useDeleteWithholdingRule() {
  */
 export function useDeactivateWithholdingRule() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: withholdingApi.deactivateWithholdingRule,
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['withholding-rule', id] });
-      queryClient.invalidateQueries({ queryKey: ['withholding-rules'] });
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['withholding-rule', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('withholding-rules', tenantId, companyId),
+        }),
+      ]);
       toast.success(t('messages.ruleDeactivated'));
     },
     onError: (error: Error) => {
@@ -250,9 +329,13 @@ export function useDeactivateWithholdingRule() {
  * Fetch sales withholding tracking records
  */
 export function useSalesWithholdingTracking(filters?: SalesWithholdingTrackingFilters) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['sales-withholding-tracking', filters],
+    queryKey: tenantScopedKey(['sales-withholding-tracking', filters]),
     queryFn: () => withholdingApi.fetchSalesWithholdingTracking(filters),
+    enabled: tenantId !== null && companyId !== null,
   });
 }
 
@@ -260,10 +343,13 @@ export function useSalesWithholdingTracking(filters?: SalesWithholdingTrackingFi
  * Fetch single sales withholding tracking record
  */
 export function useSalesWithholdingTrackingRecord(id: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
+
   return useQuery({
-    queryKey: ['sales-withholding-tracking', id],
+    queryKey: tenantScopedKey(['sales-withholding-tracking', id]),
     queryFn: () => withholdingApi.fetchSalesWithholdingTrackingRecord(id),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   });
 }
 
@@ -272,13 +358,17 @@ export function useSalesWithholdingTrackingRecord(id: string) {
  */
 export function useMarkCertificateReceived() {
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null);
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null);
   const { t } = useTranslation('withholding');
 
   return useMutation({
     mutationFn: ({ id, request }: { id: string; request: MarkCertificateReceivedRequest }) =>
       withholdingApi.markCertificateReceived(id, request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sales-withholding-tracking'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('sales-withholding-tracking', tenantId, companyId),
+      });
       toast.success(t('salesWithholding.messages.certificateMarkedReceived'));
     },
     onError: (error: Error) => {
