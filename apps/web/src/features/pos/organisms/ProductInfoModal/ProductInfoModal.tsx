@@ -6,9 +6,12 @@ import { Modal } from '@/components/organisms/Modal'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules/Tabs/Tabs'
 import { tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { apiGet } from '@/lib/api'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useTaxConfigName } from '@/hooks/useTaxConfigName'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 /**
  * Product Info Modal Props
@@ -128,6 +131,8 @@ export function ProductInfoModal({
   const { t, i18n } = useTranslation(['pos', 'products', 'common'])
   const { currency } = useCurrency()
   const [activeTab, setActiveTab] = useState('details')
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch product details
   const {
@@ -135,9 +140,9 @@ export function ProductInfoModal({
     isLoading: isLoadingProduct,
     error: productError,
   } = useQuery({
-    queryKey: ['product', productId],
+    queryKey: tenantScopedKey(['product', productId]),
     queryFn: () => fetchProductDetails(productId),
-    enabled: isOpen,
+    enabled: tenantId !== null && companyId !== null && isOpen,
   })
 
   const taxConfigName = useTaxConfigName(product?.default_tax_configuration_id)
@@ -148,9 +153,9 @@ export function ProductInfoModal({
     isLoading: isLoadingStock,
     error: stockError,
   } = useQuery({
-    queryKey: ['product-stock', productId],
+    queryKey: tenantScopedKey(['product-stock', productId]),
     queryFn: () => fetchProductStock(productId),
-    enabled: isOpen && activeTab === 'stock',
+    enabled: tenantId !== null && companyId !== null && isOpen && activeTab === 'stock',
   })
 
   const stockLevels = stockData?.locations

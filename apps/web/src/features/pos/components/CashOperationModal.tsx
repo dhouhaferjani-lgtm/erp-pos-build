@@ -7,6 +7,7 @@ import { POSButton } from '../atoms/POSButton'
 import { recordCashDeposit, recordCashPayout } from '../api/shiftApi'
 import { AlertCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 
 export interface CashOperationModalProps {
   isOpen: boolean
@@ -61,15 +62,17 @@ export function CashOperationModal({
   const operationMutation = useMutation({
     mutationFn: (data: { shift_id: string; amount: string; reason: string }) =>
       isDeposit ? recordCashDeposit(data) : recordCashPayout(data),
-    onSuccess: () => {
+    onSuccess: async () => {
       const successKey = isDeposit
         ? 'common:pos.depositRecorded'
         : 'common:pos.payoutRecorded'
       toast.success(t(successKey))
 
       // Invalidate shift balance to reflect the change
-      queryClient.invalidateQueries({ queryKey: ['pos', 'shift-balance', shiftId] })
-      queryClient.invalidateQueries({ queryKey: ['pos', 'shift', terminalCode] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['pos', 'shift-balance', shiftId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['pos', 'shift', terminalCode]) }),
+      ])
 
       // Close modal and reset form
       handleClose()

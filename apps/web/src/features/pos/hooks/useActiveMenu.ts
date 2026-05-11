@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { ModifierGroupData, ModifierData } from '@/features/catalog/types/compositeItem'
 
 export interface MenuModifier extends ModifierData {}
@@ -48,10 +51,13 @@ export const activeMenuKeys = {
 }
 
 export function useActiveMenu(options?: { enabled?: boolean }) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: activeMenuKeys.all,
+    queryKey: tenantScopedKey(activeMenuKeys.all),
     queryFn: () => apiGet<ActiveMenu>('/active-menu'),
     staleTime: 60000, // 1 minute
-    enabled: options?.enabled ?? true,
+    enabled: tenantId !== null && companyId !== null && (options?.enabled ?? true),
   })
 }

@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Gift, Star, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { POSButton } from '../atoms/POSButton'
 import { getRewards, redeemReward, type LoyaltyReward } from '../api/loyaltyApi'
 import { toast } from 'sonner'
@@ -24,11 +27,13 @@ export function LoyaltyRewardSelector({
 }: LoyaltyRewardSelectorProps) {
   const { t } = useTranslation(['pos'])
   const [redeemingId, setRedeemingId] = useState<string | null>(null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['loyalty', 'rewards', enrollmentId],
+    queryKey: tenantScopedKey(['loyalty', 'rewards', enrollmentId]),
     queryFn: () => getRewards(enrollmentId),
-    enabled: !!enrollmentId,
+    enabled: tenantId !== null && companyId !== null && !!enrollmentId,
   })
 
   const redeemMutation = useMutation({
