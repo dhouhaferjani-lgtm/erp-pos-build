@@ -14,7 +14,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiDelete, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface PaymentAllocation {
   id: string
@@ -86,11 +89,29 @@ const statusColors: Record<Payment['status'], string> = {
   reversed: 'bg-gray-100 text-gray-800',
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function PaymentDetailPage() {
   const { t } = useTranslation(['treasury', 'common'])
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [showRefundModal, setShowRefundModal] = useState(false)
@@ -105,33 +126,33 @@ export function PaymentDetailPage() {
   const getPaymentTypeLabel = (type: PaymentType | null) => type ? t(`payments.types.${type}`) : null
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['payment', id],
+    queryKey: tenantScopedKey(['payment', id]),
     queryFn: async () => {
       if (!id) throw new Error('No payment ID')
       const response = await api.get<PaymentResponse>(`/payments/${id}`)
       return response.data
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && tenantId !== null && companyId !== null,
   })
 
   const { data: canRefundData } = useQuery({
-    queryKey: ['payment', id, 'can-refund'],
+    queryKey: tenantScopedKey(['payment', id, 'can-refund']),
     queryFn: async () => {
       if (!id) throw new Error('No payment ID')
       const response = await api.get<CanRefundResponse>(`/payments/${id}/can-refund`)
       return response.data
     },
-    enabled: Boolean(id) && data?.data?.status === 'completed',
+    enabled: Boolean(id) && tenantId !== null && companyId !== null && data?.data?.status === 'completed',
   })
 
   const { data: refundHistoryData } = useQuery({
-    queryKey: ['payment', id, 'refund-history'],
+    queryKey: tenantScopedKey(['payment', id, 'refund-history']),
     queryFn: async () => {
       if (!id) throw new Error('No payment ID')
       const response = await api.get<RefundHistoryResponse>(`/payments/${id}/refund-history`)
       return response.data
     },
-    enabled: Boolean(id) && data?.data?.status === 'completed',
+    enabled: Boolean(id) && tenantId !== null && companyId !== null && data?.data?.status === 'completed',
   })
 
   const deleteMutation = useMutation({
@@ -139,8 +160,10 @@ export function PaymentDetailPage() {
       if (!id) throw new Error('No payment ID')
       return apiDelete(`/payments/${id}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+      })
       toast.success(t('payments.messages.deleted'))
       void navigate('/treasury/payments')
     },
@@ -154,10 +177,12 @@ export function PaymentDetailPage() {
       if (!id) throw new Error('No payment ID')
       return api.post(`/payments/${id}/refund`, { reason })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['payment', id] })
-      void queryClient.invalidateQueries({ queryKey: ['payment', id, 'refund-history'] })
-      void queryClient.invalidateQueries({ queryKey: ['payment', id, 'can-refund'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'refund-history']) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'can-refund']) }),
+      ])
       toast.success(t('payments.messages.refunded'))
       setShowRefundModal(false)
       setRefundReason('')
@@ -172,10 +197,12 @@ export function PaymentDetailPage() {
       if (!id) throw new Error('No payment ID')
       return api.post(`/payments/${id}/partial-refund`, { amount, reason })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['payment', id] })
-      void queryClient.invalidateQueries({ queryKey: ['payment', id, 'refund-history'] })
-      void queryClient.invalidateQueries({ queryKey: ['payment', id, 'can-refund'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'refund-history']) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id, 'can-refund']) }),
+      ])
       toast.success(t('payments.messages.partialRefunded'))
       setShowPartialRefundModal(false)
       setPartialRefundAmount('')
@@ -191,9 +218,13 @@ export function PaymentDetailPage() {
       if (!id) throw new Error('No payment ID')
       return api.post(`/payments/${id}/reverse`, { reason })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['payment', id] })
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+        }),
+      ])
       toast.success(t('payments.messages.reversed'))
       setShowReverseModal(false)
       setReverseReason('')
