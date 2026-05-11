@@ -23,6 +23,8 @@ Scanner: 275 → 228 (-47 violations). Verify-history: clean.
 
 ## Verdict
 
+Verdict: APPROVE
+
 APPROVE — all 4 batches.
 
 ## Gates evaluated (all pass)

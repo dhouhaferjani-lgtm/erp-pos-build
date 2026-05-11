@@ -25,6 +25,8 @@ Scanner: 301 → 275 (-26 violations). Verify-history: clean throughout.
 
 ## Verdict
 
+Verdict: APPROVE
+
 APPROVE — all 10 batches.
 
 ## Gates evaluated (all pass)

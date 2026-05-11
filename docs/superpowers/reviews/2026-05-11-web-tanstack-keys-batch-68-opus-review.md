@@ -16,7 +16,7 @@ Scanner: 228 → 223 (-5 violations). Verify-history: clean.
 
 ## Verdict
 
-APPROVE.
+Verdict: APPROVE
 
 ## Gates evaluated
 
