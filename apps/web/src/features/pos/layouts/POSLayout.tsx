@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Store, X, Monitor, Clock, DollarSign, Settings } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { getCurrentShift, getShiftBalance } from '../api/shiftApi'
 import { useCurrency } from '@/hooks/useCurrency'
 import { ShiftOperationsMenu } from './ShiftOperationsMenu'
 import { CashOperationModal } from '../components/CashOperationModal'
+import { usePosTenantScope } from '../hooks/usePosTenantScope'
 
 interface POSLayoutProps {
   children: React.ReactNode
@@ -36,20 +38,21 @@ export function POSLayout({
   const [shiftDuration, setShiftDuration] = useState<string | null>(null)
   const [isOperationsMenuOpen, setIsOperationsMenuOpen] = useState(false)
   const [activeModal, setActiveModal] = useState<'deposit' | 'payout' | null>(null)
+  const { hasTenantScope } = usePosTenantScope()
 
   // Fetch current shift data (auto-refreshing every 30 seconds)
   const { data: shift } = useQuery({
-    queryKey: ['pos', 'shift', terminalCode],
+    queryKey: tenantScopedKey(['pos', 'shift', terminalCode]),
     queryFn: () => (terminalCode ? getCurrentShift(terminalCode) : null),
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && hasTenantScope,
     refetchInterval: 30000, // 30 seconds
   })
 
   // Fetch shift balance (auto-refreshing every 30 seconds)
   const { data: balance } = useQuery({
-    queryKey: ['pos', 'shift-balance', shift?.id],
+    queryKey: tenantScopedKey(['pos', 'shift-balance', shift?.id]),
     queryFn: () => (shift?.id ? getShiftBalance(shift.id) : null),
-    enabled: !!shift?.id,
+    enabled: !!shift?.id && hasTenantScope,
     refetchInterval: 30000, // 30 seconds
   })
 
