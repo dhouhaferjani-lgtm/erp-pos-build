@@ -9,8 +9,11 @@ import { Select } from '../../atoms/Select'
 import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { api, apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useCurrency } from '../../../hooks/useCurrency'
 import { AddRepositoryModal } from '../AddRepositoryModal'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 interface PaymentMethod {
   id: string
@@ -103,6 +106,22 @@ export interface RecordPaymentModalProps {
   prefill: InvoicePrefill
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function RecordPaymentModal({
   isOpen,
   onClose,
@@ -112,6 +131,8 @@ export function RecordPaymentModal({
   const { t } = useTranslation(['treasury', 'common'])
   const { currency, symbol, decimals, format: formatCurrencyAmount } = useCurrency()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
@@ -147,36 +168,36 @@ export function RecordPaymentModal({
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
-    queryKey: ['payment-methods'],
+    queryKey: tenantScopedKey(['payment-methods']),
     queryFn: async () => {
       const response = await api.get<PaymentMethodsResponse>('/payment-methods')
       return response.data
     },
-    enabled: isOpen,
+    enabled: isOpen && tenantId !== null && companyId !== null,
   })
 
   const paymentMethods = paymentMethodsData?.data ?? []
 
   // Fetch repositories
   const { data: repositoriesData } = useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<RepositoriesResponse>('/payment-repositories')
       return response.data
     },
-    enabled: isOpen,
+    enabled: isOpen && tenantId !== null && companyId !== null,
   })
 
   const repositories = repositoriesData?.data ?? []
 
   // Fetch open invoices for the partner (for excess allocation)
   const { data: openInvoicesData } = useQuery({
-    queryKey: ['open-invoices', prefill.partner_id],
+    queryKey: tenantScopedKey(['open-invoices', prefill.partner_id]),
     queryFn: async () => {
       const response = await api.get<OpenInvoicesResponse>(`/partners/${prefill.partner_id}/open-invoices`)
       return response.data
     },
-    enabled: isOpen && !!prefill.partner_id,
+    enabled: isOpen && !!prefill.partner_id && tenantId !== null && companyId !== null,
   })
 
   const openInvoices = useMemo(() => {
@@ -309,13 +330,23 @@ export function RecordPaymentModal({
         excess_allocations: excessAmount > 0 && excessAllocationMethod === 'manual' ? manualAllocations : undefined,
       })
     },
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
-      void queryClient.invalidateQueries({ queryKey: ['invoice', prefill.document_id] })
-      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['open-invoices'] })
-      void queryClient.invalidateQueries({ queryKey: ['document', prefill.document_id] })
+    onSuccess: async (response) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['invoice', prefill.document_id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('invoices', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('open-invoices', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', prefill.document_id]) }),
+      ])
 
       // response is already the unwrapped data (MultiPaymentResponseData)
       setSuccessData(response)
@@ -822,8 +853,10 @@ export function RecordPaymentModal({
       <AddRepositoryModal
         isOpen={showRepositoryModal}
         onClose={() => { setShowRepositoryModal(false); }}
-        onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
+        onSuccess={async () => {
+          await queryClient.invalidateQueries({
+            predicate: scopedNamespacePredicate('payment-repositories', tenantId, companyId),
+          })
         }}
       />
     </>
