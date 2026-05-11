@@ -6,6 +6,9 @@ import {
   rejectEnrichmentResult,
   bulkAcceptEnrichmentResults,
 } from './enrichmentApi'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 export const enrichmentKeys = {
   all: ['enrichment-results'] as const,
@@ -16,53 +19,85 @@ export const enrichmentKeys = {
   detail: (id: string) => [...enrichmentKeys.details(), id] as const,
 }
 
+export function enrichmentInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === 'enrichment-results' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function useEnrichmentResults(params?: {
   status?: string
   quality?: string
   page?: number
 }) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: enrichmentKeys.list(params),
+    queryKey: tenantScopedKey([...enrichmentKeys.list(params)]),
     queryFn: () => getEnrichmentResults(params),
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
 export function useEnrichmentResult(id: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: enrichmentKeys.detail(id),
+    queryKey: tenantScopedKey([...enrichmentKeys.detail(id)]),
     queryFn: () => getEnrichmentResult(id),
-    enabled: id.length > 0,
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 }
 
 export function useAcceptEnrichment() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, acceptedFields }: { id: string; acceptedFields: string[] }) =>
       acceptEnrichmentResult(id, acceptedFields),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: enrichmentKeys.all })
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        predicate: enrichmentInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useRejectEnrichment() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       rejectEnrichmentResult(id, reason),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: enrichmentKeys.all })
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        predicate: enrichmentInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useBulkAcceptEnrichment() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (ids: string[]) => bulkAcceptEnrichmentResults(ids),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: enrichmentKeys.all })
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        predicate: enrichmentInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
