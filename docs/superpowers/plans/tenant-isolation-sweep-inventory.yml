@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: d53009da925e2b36e1b0d6688712ce78ea855dc70835489a61a5b2293ccf1851
+  yaml_sha256: fa17c620c8401ef505b5db955acdfcdedae8ea0d2a1a771f70e86068e1f5c060
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -84952,17 +84952,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T06:23:20Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 03ffd55e
+    regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -84981,6 +84981,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T06:23:21Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: d53009da925e2b36e1b0d6688712ce78ea855dc70835489a61a5b2293ccf1851
+        new_yaml_sha256: 302a2951d8aeb9aa6f19562c536d85c1e272ab7eea6c0c982bbbcc27ecba3387
+        target_ids:
+          - web.tanstack-keys.541
+        from_status: pending
+        to_status: claimed
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T06:23:23Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 302a2951d8aeb9aa6f19562c536d85c1e272ab7eea6c0c982bbbcc27ecba3387
+        new_yaml_sha256: a0ea552e7bee8af00018e661e952dedaaab41085cc8ccd7b257acab0c33010a8
+        target_ids:
+          - web.tanstack-keys.541
+        from_status: claimed
+        to_status: in_progress
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:27:06Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 78cfb4efb20e410ffb6dedcc08587ab8dd57f62a70875da5201e0d73546be63e
+        new_yaml_sha256: 1e343de6f8d8abd35439f8cf009a6d7604d32901beaabddcd9e053cdd7b0fa8b
+        target_ids:
+          - web.tanstack-keys.541
+        from_status: in_progress
+        to_status: under_review
+        commit: 03ffd55e
+        test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.542
     stable_key: 'sha256:32936cef9fbacf6a17cde9b167d91b371a334f52c68235fa3adf41d3220e77ca'
@@ -84998,17 +85046,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T06:23:25Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 03ffd55e
+    regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -85027,6 +85075,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T06:23:26Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a0ea552e7bee8af00018e661e952dedaaab41085cc8ccd7b257acab0c33010a8
+        new_yaml_sha256: 03bb9202ef01a5f4c390dfe3b8812fb6446835db3eaa9f4f8b09215dae337bae
+        target_ids:
+          - web.tanstack-keys.542
+        from_status: pending
+        to_status: claimed
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T06:23:28Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 03bb9202ef01a5f4c390dfe3b8812fb6446835db3eaa9f4f8b09215dae337bae
+        new_yaml_sha256: 882995ae545cdc6be0ef87a63bb531040244691f4ab7d109de650bda177a6594
+        target_ids:
+          - web.tanstack-keys.542
+        from_status: claimed
+        to_status: in_progress
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:27:09Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1e343de6f8d8abd35439f8cf009a6d7604d32901beaabddcd9e053cdd7b0fa8b
+        new_yaml_sha256: 7e1ca05e30d6c1f0b8d7545ec2b3d11244c1fc54b06a27339016340ddaf1ca9d
+        target_ids:
+          - web.tanstack-keys.542
+        from_status: in_progress
+        to_status: under_review
+        commit: 03ffd55e
+        test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.543
     stable_key: 'sha256:7ae4cd0e3de70c6db6c63f6eb29ad6fd7e65fee4fe3ab71a58917a54f986beab'
@@ -85044,17 +85140,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T06:23:30Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 03ffd55e
+    regression_test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -85073,6 +85169,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T06:23:31Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 882995ae545cdc6be0ef87a63bb531040244691f4ab7d109de650bda177a6594
+        new_yaml_sha256: 552dc3e27a3859b31f0b010dbcc1d58df17bfa0eede1322d7768307e2e260a7d
+        target_ids:
+          - web.tanstack-keys.543
+        from_status: pending
+        to_status: claimed
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T06:23:33Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 552dc3e27a3859b31f0b010dbcc1d58df17bfa0eede1322d7768307e2e260a7d
+        new_yaml_sha256: 78cfb4efb20e410ffb6dedcc08587ab8dd57f62a70875da5201e0d73546be63e
+        target_ids:
+          - web.tanstack-keys.543
+        from_status: claimed
+        to_status: in_progress
+        commit: 3b462ec637bda8596f0e642796afcb75c40da6a3
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:27:11Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 7e1ca05e30d6c1f0b8d7545ec2b3d11244c1fc54b06a27339016340ddaf1ca9d
+        new_yaml_sha256: fa17c620c8401ef505b5db955acdfcdedae8ea0d2a1a771f70e86068e1f5c060
+        target_ids:
+          - web.tanstack-keys.543
+        from_status: in_progress
+        to_status: under_review
+        commit: 03ffd55e
+        test: 'apps/web/src/features/pos/smart-prompts/hooks/__tests__/smartPrompts.tenantScope.test.tsx::POS smart prompts tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.544
     stable_key: 'sha256:ceec49fa1353e2385e140091fcbe90fa6a89dc7644d0940de4dd368afb325f15'
