@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api, apiDelete, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 export interface DocumentAttachment {
   id: string
@@ -43,15 +46,18 @@ interface ConfigResponse {
  * Fetch attachments for a document
  */
 export function useAttachments(documentId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['attachments', documentId],
+    queryKey: tenantScopedKey(['attachments', documentId]),
     queryFn: async () => {
       const response = await api.get<AttachmentsResponse>(
         `/documents/${documentId}/attachments`
       )
       return response.data.data
     },
-    enabled: !!documentId,
+    enabled: !!documentId && tenantId !== null && companyId !== null,
   })
 }
 
@@ -59,12 +65,16 @@ export function useAttachments(documentId: string | undefined) {
  * Fetch attachment configuration (allowed file types, max size)
  */
 export function useAttachmentConfig() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['attachments-config'],
+    queryKey: tenantScopedKey(['attachments-config']),
     queryFn: async () => {
       const response = await api.get<ConfigResponse>('/attachments/config')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 1000 * 60 * 60, // 1 hour - config rarely changes
   })
 }
@@ -74,6 +84,8 @@ export function useAttachmentConfig() {
  */
 export function useUploadAttachment(documentId: string) {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: async ({ file, description }: { file: File; description?: string }) => {
@@ -94,8 +106,10 @@ export function useUploadAttachment(documentId: string) {
       )
       return response.data.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['attachments', documentId] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey(['attachments', documentId]),
+      })
       toast.success('Attachment uploaded successfully')
     },
     onError: (error) => {
@@ -109,13 +123,17 @@ export function useUploadAttachment(documentId: string) {
  */
 export function useDeleteAttachment(documentId: string) {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: async (attachmentId: string) => {
       await apiDelete(`/documents/${documentId}/attachments/${attachmentId}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['attachments', documentId] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tenantScopedKey(['attachments', documentId]),
+      })
       toast.success('Attachment deleted')
     },
     onError: (error) => {
