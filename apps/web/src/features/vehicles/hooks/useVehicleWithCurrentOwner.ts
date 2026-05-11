@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../../../lib/api'
+import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type {
   VehicleData,
   VehicleMileageReadingData,
@@ -31,15 +34,18 @@ export async function fetchVehicleWithCurrentOwner(
 }
 
 export function useVehicleWithCurrentOwner(vehicleId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['vehicle-with-owner', vehicleId],
+    queryKey: tenantScopedKey(['vehicle-with-owner', vehicleId]),
     queryFn: () => {
       if (vehicleId === undefined || vehicleId === '') {
         throw new Error('vehicleId is required')
       }
       return fetchVehicleWithCurrentOwner(vehicleId)
     },
-    enabled: vehicleId !== undefined && vehicleId !== '',
+    enabled: vehicleId !== undefined && vehicleId !== '' && tenantId !== null && companyId !== null,
     // Align with other vehicle hooks that rely on TanStack Query defaults.
     staleTime: 30_000,
   })
