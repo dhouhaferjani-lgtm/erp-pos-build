@@ -1,5 +1,6 @@
 import { getDatabase } from '@/lib/db';
 import { getReceiptByIdempotencyKey } from '@/lib/db/repositories/offlineReceiptRepository';
+import { parseMenuCompositeId } from '@/lib/menu/compositeId';
 import { useAuthStore } from '@/stores/authStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import type { FullReceiptResponse } from '@/types/receipt';
@@ -7,6 +8,7 @@ import type { FullReceiptResponse } from '@/types/receipt';
 interface OfflineReceiptLine {
   product_id?: string;
   composite_item_id?: string;
+  menu_category_id?: string;
   name: string;
   sku: string;
   quantity: number;
@@ -24,6 +26,34 @@ interface OfflinePaymentEntry {
   amount: string;
   card_last_four?: string | null;
   transaction_reference?: string | null;
+}
+
+function unpackLineIds(line: OfflineReceiptLine): {
+  product_id: string | null;
+  composite_item_id: string | null;
+  menu_category_id: string | null;
+} {
+  let productId = line.product_id ?? null;
+  let compositeItemId = line.composite_item_id ?? null;
+  let menuCategoryId = line.menu_category_id ?? null;
+
+  if (productId !== null) {
+    const parsed = parseMenuCompositeId(productId);
+    productId = parsed.sellableId;
+    menuCategoryId = menuCategoryId ?? parsed.categoryId;
+  }
+
+  if (compositeItemId !== null) {
+    const parsed = parseMenuCompositeId(compositeItemId);
+    compositeItemId = parsed.sellableId;
+    menuCategoryId = menuCategoryId ?? parsed.categoryId;
+  }
+
+  return {
+    product_id: productId,
+    composite_item_id: compositeItemId,
+    menu_category_id: menuCategoryId,
+  };
 }
 
 /**
@@ -48,19 +78,24 @@ export async function getOfflineReceiptForPrint(
 
   const company = useAuthStore.getState().companies.find((c) => c.id === companyId);
 
-  const lines = (JSON.parse(receipt.lines) as OfflineReceiptLine[]).map((l, idx) => ({
-    id: `local-line-${String(idx)}`,
-    line_number: idx + 1,
-    product_code: l.sku,
-    product_name: l.name,
-    quantity: String(l.quantity),
-    unit_price: l.unit_price,
-    line_total: l.line_total,
-    tax_rate: l.tax_rate,
-    tax_amount: l.tax_amount,
-    discount_amount: l.discount_amount ?? '0.00',
-    modifiers: l.modifiers ?? null,
-  }));
+  const lines = (JSON.parse(receipt.lines) as OfflineReceiptLine[]).map((l, idx) => {
+    const lineIds = unpackLineIds(l);
+
+    return {
+      id: `local-line-${String(idx)}`,
+      line_number: idx + 1,
+      ...lineIds,
+      product_code: l.sku,
+      product_name: l.name,
+      quantity: String(l.quantity),
+      unit_price: l.unit_price,
+      line_total: l.line_total,
+      tax_rate: l.tax_rate,
+      tax_amount: l.tax_amount,
+      discount_amount: l.discount_amount ?? '0.00',
+      modifiers: l.modifiers ?? null,
+    };
+  });
 
   const methods = usePaymentStore.getState().paymentMethods;
   const payments = (JSON.parse(receipt.payments_json) as OfflinePaymentEntry[]).map((p, idx) => {

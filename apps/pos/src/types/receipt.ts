@@ -115,6 +115,18 @@ export interface FullReceiptResponse {
   lines: Array<{
     id: string;
     line_number: number;
+    /**
+     * C2 Day 3: bare sellable UUID. Composite IDs (Menu-tenant) are
+     * unpacked at the wire boundary by `unpackCompositeIdsOnLines`;
+     * `menu_category_id` below carries the category context.
+     */
+    product_id: string | null;
+    composite_item_id: string | null;
+    /**
+     * C2 Day 3: Menu-tenant category context. Null for non-Menu
+     * tenants and pre-C2 historical lines (graceful degradation).
+     */
+    menu_category_id: string | null;
     product_code: string;
     product_name: string;
     quantity: string;
