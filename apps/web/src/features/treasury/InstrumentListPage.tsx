@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { FileCheck, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 
@@ -38,6 +40,8 @@ const statusColors: Record<Instrument['status'], string> = {
 
 export function InstrumentListPage() {
   const { t } = useTranslation(['common', 'treasury'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get translated status label
@@ -55,11 +59,12 @@ export function InstrumentListPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['instruments'],
+    queryKey: tenantScopedKey(['instruments']),
     queryFn: async () => {
       const response = await api.get<InstrumentsResponse>('/payment-instruments')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const instruments = data?.data ?? []

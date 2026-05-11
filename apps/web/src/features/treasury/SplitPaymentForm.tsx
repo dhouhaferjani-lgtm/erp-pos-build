@@ -3,7 +3,10 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCurrency } from '../../hooks/useCurrency'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface PaymentMethod {
   id: string
@@ -44,6 +47,8 @@ export function SplitPaymentForm({
 }: SplitPaymentFormProps) {
   const { t } = useTranslation(['treasury', 'common'])
   const { format: formatCurrencyHook } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([
     {
@@ -57,19 +62,21 @@ export function SplitPaymentForm({
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const { data: paymentMethodsData } = useQuery({
-    queryKey: ['payment-methods'],
+    queryKey: tenantScopedKey(['payment-methods']),
     queryFn: async () => {
       const response = await api.get<{ data: PaymentMethod[] }>('/payment-methods')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data: repositoriesData } = useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<{ data: Repository[] }>('/payment-repositories')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const submitMutation = useMutation({

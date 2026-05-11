@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, CreditCard, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 
@@ -36,6 +38,8 @@ const statusColors: Record<Payment['status'], string> = {
 
 export function PaymentListPage() {
   const { t } = useTranslation(['common', 'treasury'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get translated status label
@@ -48,11 +52,12 @@ export function PaymentListPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['payments'],
+    queryKey: tenantScopedKey(['payments']),
     queryFn: async () => {
       const response = await api.get<PaymentsResponse>('/payments')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const payments = data?.data ?? []
