@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: e0db4ec11d41ce29fb8857652c3a57c0e7ffa6c5c287ca933bb6c7d33632620d
+  yaml_sha256: c49b016864cf50f831b05e381fcfa04490d94798decab2fdbaa24d7350d2770a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -46365,17 +46365,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T11:53:47Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 8c002141
+    regression_test: 'apps/web/src/features/catalog/components/__tests__/CompositeItemSearchSelect.test.tsx::CompositeItemSearchSelect'
     blocked_reason: null
     history:
       -
@@ -46394,6 +46394,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T11:53:47Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e0db4ec11d41ce29fb8857652c3a57c0e7ffa6c5c287ca933bb6c7d33632620d
+        new_yaml_sha256: d2c7473562b3d663c964bfc0b32fcbb8ddb8af8b823d2f65de0b7b3d744e4a84
+        target_ids:
+          - web.tanstack-keys.053
+        from_status: pending
+        to_status: claimed
+        commit: e70f0f4149ff8362e524a34f69c3807abc62c75d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T11:53:50Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: d2c7473562b3d663c964bfc0b32fcbb8ddb8af8b823d2f65de0b7b3d744e4a84
+        new_yaml_sha256: fbc1f4a31fdb69b20c1b2f9915aef94b6af3b1eba78bcc511c2412e2000aa133
+        target_ids:
+          - web.tanstack-keys.053
+        from_status: claimed
+        to_status: in_progress
+        commit: e70f0f4149ff8362e524a34f69c3807abc62c75d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T11:54:07Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d5c4222947b74a9c8261e376ba4aec685d83b51a84b48f8a23007ecd58ecebf4
+        new_yaml_sha256: 9f313b1b37bcb2e243c3c24905483e52888430d9a678efdc159712fc67827697
+        target_ids:
+          - web.tanstack-keys.053
+        from_status: in_progress
+        to_status: under_review
+        commit: 8c002141
+        test: 'apps/web/src/features/catalog/components/__tests__/CompositeItemSearchSelect.test.tsx::CompositeItemSearchSelect'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.054
     stable_key: 'sha256:00e86de839f3978cb16cd71cb2f3a4efd810e4da78524356e5a5a26e65493bab'
@@ -46411,17 +46459,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T11:53:51Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 8c002141
+    regression_test: 'apps/web/src/features/catalog/components/__tests__/CompositeItemSearchSelect.test.tsx::CompositeItemSearchSelect'
     blocked_reason: null
     history:
       -
@@ -46440,6 +46488,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T11:53:52Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: fbc1f4a31fdb69b20c1b2f9915aef94b6af3b1eba78bcc511c2412e2000aa133
+        new_yaml_sha256: 9ab12cc29395bcbe7363183190f1086d35b9db7ba21a1d3cbceab9e5d292b2b5
+        target_ids:
+          - web.tanstack-keys.054
+        from_status: pending
+        to_status: claimed
+        commit: e70f0f4149ff8362e524a34f69c3807abc62c75d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T11:53:55Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9ab12cc29395bcbe7363183190f1086d35b9db7ba21a1d3cbceab9e5d292b2b5
+        new_yaml_sha256: d5c4222947b74a9c8261e376ba4aec685d83b51a84b48f8a23007ecd58ecebf4
+        target_ids:
+          - web.tanstack-keys.054
+        from_status: claimed
+        to_status: in_progress
+        commit: e70f0f4149ff8362e524a34f69c3807abc62c75d
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T11:54:10Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9f313b1b37bcb2e243c3c24905483e52888430d9a678efdc159712fc67827697
+        new_yaml_sha256: c49b016864cf50f831b05e381fcfa04490d94798decab2fdbaa24d7350d2770a
+        target_ids:
+          - web.tanstack-keys.054
+        from_status: in_progress
+        to_status: under_review
+        commit: 8c002141
+        test: 'apps/web/src/features/catalog/components/__tests__/CompositeItemSearchSelect.test.tsx::CompositeItemSearchSelect'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.055
     stable_key: 'sha256:a50b15e3764c856b069038b1f1eee541f106a2097eb54d20c92bd0394922dfb3'
