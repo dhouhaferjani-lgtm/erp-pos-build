@@ -203,33 +203,38 @@ final class ReceiptVoidService
             return;
         }
 
-        // Bug 2 follow-up — pos_receipt_payments.amount stores the cashier's
-        // tendered amount (post-Bug-2 contract). For cash receipts with
-        // over-tender, only `tendered − change_due` actually entered the
-        // drawer at sale time; the rest was handed back to the customer as
-        // change. The refund must move ONLY that net cash back out, otherwise
-        // voiding turns the drawer phantom-short by the change-due amount.
+        // Bug 2 follow-up — refund the net cash that physically entered the
+        // drawer at sale time. This equals `receipt.total − Σ(non_cash
+        // payments)` regardless of payment.amount shape:
+        //   - Post-Bug-2 receipts have cash payment.amount = tendered.
+        //   - Pre-Bug-2 receipts have cash payment.amount = cart total.
+        //   - Split payments have correct per-tender amounts in either era.
+        // Computing from `total − non_cash_sum` is universal because the
+        // change_due is the difference between tendered and the cash
+        // portion of the total; subtracting non-cash payments from total
+        // yields the cash portion the drawer actually received, without
+        // depending on whether `payment.amount` was tendered or total.
         //
-        // Pre-Bug-2 rows (and any legacy data) have change_due = NULL — treat
-        // those as 0 so the refund equals the full payment.amount (which on
-        // those rows was the cart total, not the tendered amount). max(0, …)
-        // is defensive: a legacy row whose payment.amount somehow understates
-        // change_due should not produce a negative refund.
+        // max(0, …) is defensive: legacy data where total < non_cash_sum
+        // (impossible under valid invariants) must not produce a negative
+        // refund.
         $receipt->loadMissing('payments');
-        $cashAmount = '0.00';
+        $hasCashPayment = false;
+        $nonCashSum = '0';
         foreach ($receipt->payments as $payment) {
             if ($payment->payment_type === 'CASH') {
-                $cashAmount = bcadd($cashAmount, (string) $payment->amount, $this->scale());
+                $hasCashPayment = true;
+            } else {
+                $nonCashSum = bcadd($nonCashSum, (string) $payment->amount, $this->scale());
             }
         }
 
-        $changeDue = $receipt->change_due !== null ? (string) $receipt->change_due : '0';
-        $netDrawerCash = bcsub($cashAmount, $changeDue, $this->scale());
+        $netDrawerCash = bcsub((string) $receipt->total, $nonCashSum, $this->scale());
         if (bccomp($netDrawerCash, '0', $this->scale()) < 0) {
             $netDrawerCash = '0';
         }
 
-        if (bccomp($netDrawerCash, '0', $this->scale()) > 0) {
+        if ($hasCashPayment && bccomp($netDrawerCash, '0', $this->scale()) > 0) {
             $this->cashDrawerService->recordRefund(
                 $shift,
                 $netDrawerCash,
