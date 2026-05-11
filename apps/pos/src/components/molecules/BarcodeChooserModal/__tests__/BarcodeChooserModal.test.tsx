@@ -81,6 +81,51 @@ describe('BarcodeChooserModal — T2.1 Step B', () => {
     expect(screen.queryByTestId('barcode-chooser-list')).not.toBeInTheDocument();
   });
 
+  it('C2 Day 2: renders the category disambiguator for Menu-tenant composite rows (menu_category_id present)', () => {
+    renderModal({
+      candidates: [
+        makeProduct({
+          id: 'cola_drinks',
+          name: 'Cola',
+          barcode: '555',
+          sku: 'COLA',
+          category: 'Drinks',
+          menu_category_id: 'cat-drinks',
+        }),
+        makeProduct({
+          id: 'cola_combos',
+          name: 'Cola',
+          barcode: '555',
+          sku: 'COLA',
+          category: 'Lunch combos',
+          menu_category_id: 'cat-combos',
+        }),
+      ],
+    });
+
+    // Both rows render their category context so the cashier can tell
+    // them apart — without this, the chooser collapses into two
+    // identical rows for the same sellable across two menu categories.
+    expect(screen.getByTestId('barcode-chooser-row-category-cola_drinks').textContent).toBe('Drinks');
+    expect(screen.getByTestId('barcode-chooser-row-category-cola_combos').textContent).toBe('Lunch combos');
+  });
+
+  it('C2 Day 2: omits the category disambiguator for non-Menu rows (menu_category_id absent)', () => {
+    renderModal({
+      candidates: [
+        makeProduct({ id: 'pa', name: 'Product A', barcode: '555', sku: 'A-1', category: 'Snacks' }),
+        makeProduct({ id: 'pb', name: 'Product B', barcode: '555', sku: 'B-1', category: 'Snacks' }),
+      ],
+    });
+
+    // Non-Menu catalogs keep the compact two-line row (name + sku/barcode);
+    // a "Snacks" disambiguator would be noise for both standard-retail
+    // and automotive workflows where the same sellable can't repeat
+    // across categories.
+    expect(screen.queryByTestId('barcode-chooser-row-category-pa')).toBeNull();
+    expect(screen.queryByTestId('barcode-chooser-row-category-pb')).toBeNull();
+  });
+
   it('B.11: chooser-modal i18n keys resolve in en + fr', async () => {
     const KEYS = [
       'barcodeChooser.title',

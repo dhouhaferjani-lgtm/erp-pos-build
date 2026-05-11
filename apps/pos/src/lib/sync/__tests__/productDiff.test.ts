@@ -44,6 +44,35 @@ describe('diffProducts', () => {
     expect(result.products.find(p => p.id === '2')).toBeUndefined();
   });
 
+  it('C2 Day 2: detects newly populated menu_category_id during the v30 migration backfill window (Codex r3 P2)', () => {
+    // Pre-v30 cached row carries id 'cola' but no menu_category_id.
+    // Post-v30 sync emits the same id with the backfilled
+    // menu_category_id. Without this field in COMPARE_FIELDS, diff
+    // would treat the rows as equal and downstream canonicalization
+    // would never see the fresh id — chooser-row category label and
+    // ID-based dedupe would stay disabled until another visible
+    // field flips.
+    const cached: POSProduct = { ...makeProduct('cola', '3.00') };
+    const fresh: POSProduct = {
+      ...makeProduct('cola', '3.00'),
+      menu_category_id: 'cat-drinks',
+    };
+    const result = diffProducts([cached], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh);
+  });
+
+  it('C2 Day 2: detects newly populated sellable_id during the v30 migration backfill window', () => {
+    const cached: POSProduct = { ...makeProduct('cola', '3.00') };
+    const fresh: POSProduct = {
+      ...makeProduct('cola', '3.00'),
+      sellable_id: 'sellable-cola',
+    };
+    const result = diffProducts([cached], [fresh]);
+    expect(result.changed).toBe(true);
+    expect(result.products[0]).toBe(fresh);
+  });
+
   it('handles modifier_groups comparison via JSON', () => {
     const p1 = { ...makeProduct('1', '10.00'), modifier_groups: [{ id: 'mg1', name: 'Size', selection_type: 'single' as const, min_selections: 0, max_selections: 1, is_required: false, position: 0, modifiers: [] }] };
     const p2 = { ...makeProduct('1', '10.00'), modifier_groups: [{ id: 'mg1', name: 'Size', selection_type: 'single' as const, min_selections: 0, max_selections: 1, is_required: false, position: 0, modifiers: [] }] };

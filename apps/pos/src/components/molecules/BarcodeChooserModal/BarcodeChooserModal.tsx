@@ -113,6 +113,26 @@ export function BarcodeChooserModal({
                     <p className="truncate font-semibold text-gray-900">
                       {product.name}
                     </p>
+                    {/*
+                     * C2 Day 2 — Menu tenants flatten the same sellable
+                     * across every category it appears in (composite-id
+                     * rows). A barcode/SKU collision routed here by the
+                     * Tier-1/Tier-2 multi-match resolver therefore needs
+                     * a per-row category disambiguator — without it the
+                     * cashier sees two identical-looking rows and the
+                     * Toast/Shopify-style "pick the right one" affordance
+                     * is meaningless. Non-Menu catalogs (no
+                     * `menu_category_id`) skip this line so the chooser
+                     * stays as compact as before for them.
+                     */}
+                    {product.menu_category_id && product.category && (
+                      <p
+                        className="text-xs font-medium text-blue-700"
+                        data-testid={`barcode-chooser-row-category-${product.id}`}
+                      >
+                        {product.category}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500">
                       <span className="font-mono">{product.sku}</span>
                       {product.barcode && (

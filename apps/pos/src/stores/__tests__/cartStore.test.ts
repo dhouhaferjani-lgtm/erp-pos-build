@@ -48,6 +48,55 @@ describe('cartStore', () => {
     expect(useCartStore.getState().items).toHaveLength(2);
   });
 
+  it('C2 Day 2: keeps composite-id rows for the same sellable across categories as separate lines', () => {
+    // Menu tenants emit one POSProduct per (sellable, category) composite
+    // via `${sellable_id}_${menu_category_id}`. Two cart adds of the
+    // SAME sellable from DIFFERENT categories must produce two cart
+    // lines, not be deduped — the cashier is intentionally pricing
+    // each as the category-specific row (e.g. "Cola @ Drinks" vs
+    // "Cola @ Lunch combo"). The existing addItem dedup keys on
+    // `product.id`, which for composite-id rows is already
+    // `${sellable}_${category}` — distinct ids → distinct lines.
+    useCartStore.getState().addItem(makeProduct({
+      id: 'cola_drinks',
+      name: 'Cola',
+      category: 'Drinks',
+      menu_category_id: 'cat-drinks',
+      sale_price: '3.00',
+    }));
+    useCartStore.getState().addItem(makeProduct({
+      id: 'cola_combos',
+      name: 'Cola',
+      category: 'Lunch combos',
+      menu_category_id: 'cat-combos',
+      sale_price: '1.50',
+    }));
+
+    const items = useCartStore.getState().items;
+    expect(items).toHaveLength(2);
+    expect(items[0]!.product.id).toBe('cola_drinks');
+    expect(items[0]!.unit_price).toBe('3.00');
+    expect(items[1]!.product.id).toBe('cola_combos');
+    expect(items[1]!.unit_price).toBe('1.50');
+  });
+
+  it('C2 Day 2: still merges quantity when the SAME composite-id row is added twice', () => {
+    const cola = makeProduct({
+      id: 'cola_drinks',
+      name: 'Cola',
+      category: 'Drinks',
+      menu_category_id: 'cat-drinks',
+      sale_price: '3.00',
+    });
+    useCartStore.getState().addItem(cola);
+    useCartStore.getState().addItem(cola);
+
+    const items = useCartStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]!.quantity).toBe(2);
+    expect(items[0]!.line_total).toBe('6.00');
+  });
+
   it('updates quantity of an existing item', () => {
     useCartStore.getState().addItem(makeProduct());
     const itemId = useCartStore.getState().items[0]!.id;

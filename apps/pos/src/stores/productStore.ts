@@ -50,14 +50,51 @@ const initialState: ProductState = {
   companyConfig: null,
 };
 
-function extractCategories(products: POSProduct[]): string[] {
-  const uniqueCategories = new Set<string>();
+/**
+ * C2 Day 2 — Menu tenants emit one POSProduct per (sellable, category)
+ * composite (`${sellable_id}_${menu_category_id}`). The legacy name-only
+ * category Set is correct for non-Menu catalogs but mishandles a mid-
+ * shift category rename on Menu tenants: cached rows carry the OLD name,
+ * freshly flattened rows carry the NEW one, and both reach this stage
+ * during the reconcile window. A naive dedupe produces two list entries
+ * for one logical category — AND clicking either tab filters by name,
+ * hiding the rows carrying the other label (Codex PR #109 r1 P2).
+ *
+ * Fix: canonicalize per `menu_category_id` BEFORE both category-list
+ * extraction and `set({ products })`. First-seen name wins for the
+ * canonical mapping; every product carrying that id is rewritten to
+ * the canonical name in place via a fresh object (no input mutation).
+ * Non-Menu rows (no `menu_category_id`) bypass canonicalization and
+ * dedupe by name as before.
+ */
+function canonicalizeMenuCatalog(
+  products: POSProduct[],
+): { products: POSProduct[]; categories: string[] } {
+  const canonicalNameById = new Map<string, string>();
   for (const p of products) {
-    if (p.category) {
-      uniqueCategories.add(p.category);
+    if (p.menu_category_id && p.category && !canonicalNameById.has(p.menu_category_id)) {
+      canonicalNameById.set(p.menu_category_id, p.category);
     }
   }
-  return Array.from(uniqueCategories).sort();
+
+  const namesWithoutId = new Set<string>();
+  const normalized = products.map((p) => {
+    if (p.menu_category_id) {
+      const canonical = canonicalNameById.get(p.menu_category_id);
+      if (canonical && canonical !== p.category) {
+        return { ...p, category: canonical };
+      }
+      return p;
+    }
+    if (p.category) namesWithoutId.add(p.category);
+    return p;
+  });
+
+  const categories = Array.from(
+    new Set<string>([...canonicalNameById.values(), ...namesWithoutId]),
+  ).sort();
+
+  return { products: normalized, categories };
 }
 
 export function hasModule(config: CompanyConfig | null, moduleName: string): boolean {
@@ -108,7 +145,14 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         const cachedProducts = await getAllProducts(db);
         if (cachedProducts.length > 0) {
           hasLocalData = true;
-          const categories = extractCategories(cachedProducts);
+          // Codex review (PR #109 round 2, P2): the SQLite hydration
+          // path also needs the canonical-name rewrite. Cached rows
+          // can sit in SQLite with the pre-rename label after a
+          // failed/pending sync; without normalization here the
+          // ProductGrid filter hides the renamed rows behind the
+          // canonical tab during the cache-only window before any
+          // successful API refresh.
+          const canonical = canonicalizeMenuCatalog(cachedProducts);
           // Codex round-4 P2 (PR #98) — invalidate the scan LRU when
           // the initial SQLite hydration replaces in-memory products.
           // SQLite can be ahead of the in-memory snapshot if a sync
@@ -119,13 +163,13 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
           // can't resolve to a Tier 0 entry that pre-dates the
           // fresher SQLite catalog.
           const currentInMemory = get().products;
-          if (diffProducts(currentInMemory, cachedProducts).changed
+          if (diffProducts(currentInMemory, canonical.products).changed
               || currentInMemory.length === 0) {
             clearScanCache();
           }
           set({
-            products: cachedProducts,
-            categories,
+            products: canonical.products,
+            categories: canonical.categories,
             isLoading: false,
           });
         }
@@ -181,15 +225,22 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
           }
         }
 
+        // Codex review (PR #109 round 4, P2) — canonicalize BEFORE
+        // diffing. In-memory `currentProducts` is already canonical;
+        // diffing against raw fresh labels would mark every Menu row
+        // with a non-canonical category as changed on each tick,
+        // re-clearing the scan cache and re-setting the store for no
+        // real change.
+        const canonicalFresh = canonicalizeMenuCatalog(freshProducts);
         const currentProducts = get().products;
-        const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+        const { changed, products: merged } = diffProducts(currentProducts, canonicalFresh.products);
         if (changed || currentProducts.length === 0) {
           // Codex round-1 P2 (PR #98) — drop scan LRU when the
           // Menu-mode fetch updates in-memory state.
           clearScanCache();
           set({
             products: merged,
-            categories: extractCategories(merged),
+            categories: canonicalFresh.categories,
             lastFetched: Date.now(),
           });
         } else {
@@ -219,12 +270,17 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       if (!companyId) {
         try {
           const freshProducts = await fetchStandardProductsFromAPILegacy();
+          // Canonicalize before diff (Codex r4 P2). Standard catalogs
+          // carry no menu_category_id so this is effectively a no-op
+          // for them, but keeping the shape symmetric across paths
+          // avoids future drift.
+          const canonicalFresh = canonicalizeMenuCatalog(freshProducts);
           const currentProducts = get().products;
-          const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+          const { changed, products: merged } = diffProducts(currentProducts, canonicalFresh.products);
           if (changed || currentProducts.length === 0) {
             set({
               products: merged,
-              categories: extractCategories(merged),
+              categories: canonicalFresh.categories,
               lastFetched: Date.now(),
             });
           } else {
@@ -266,14 +322,16 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
             set({ products: [], categories: [] });
           }
         } else {
-          const { changed, products: merged } = diffProducts(currentProducts, freshProducts);
+          // Canonicalize before diff (Codex r4 P2).
+          const canonicalFresh = canonicalizeMenuCatalog(freshProducts);
+          const { changed, products: merged } = diffProducts(currentProducts, canonicalFresh.products);
           if (changed || currentProducts.length === 0) {
             // Codex round-1 P2 (PR #98) — drop scan LRU when the
             // foreground pull updates in-memory state.
             clearScanCache();
             set({
               products: merged,
-              categories: extractCategories(merged),
+              categories: canonicalFresh.categories,
             });
           }
         }
@@ -322,7 +380,14 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
       // `{ changed: true, products: [] }` when current is non-empty and
       // fresh is empty, and let the `if (changed)` branch clear in-memory
       // state along with the scan LRU.
-      const { changed, products: merged } = diffProducts(get().products, freshProducts);
+      // Codex review (PR #109 round 4, P2) — canonicalize the SQLite
+      // result BEFORE diffing. The in-memory snapshot is already
+      // canonical; diffing raw mixed-label SQLite rows against it
+      // would mark every Menu row with a non-canonical label as
+      // changed on every scheduler tick, churning the scan cache and
+      // re-setting the store for no real change.
+      const canonicalFresh = canonicalizeMenuCatalog(freshProducts);
+      const { changed, products: merged } = diffProducts(get().products, canonicalFresh.products);
       if (changed) {
         // Codex round-1 P2 (PR #98) — invalidate the recent-scan LRU
         // when the in-memory catalog actually changes. Without this,
@@ -332,7 +397,7 @@ export const useProductStore = create<ProductStore>()((set, get) => ({
         // sees a cold cache and falls through to the fresh in-memory
         // + SQLite state.
         clearScanCache();
-        set({ products: merged, categories: extractCategories(merged) });
+        set({ products: merged, categories: canonicalFresh.categories });
       }
     } catch (error) {
       console.error('[productStore] refreshFromSQLite failed:', error);

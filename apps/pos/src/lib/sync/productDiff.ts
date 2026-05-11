@@ -8,6 +8,15 @@ interface DiffResult {
 const COMPARE_FIELDS: (keyof POSProduct)[] = [
   'name', 'sku', 'barcode', 'sale_price', 'stock_quantity',
   'category', 'image_url', 'tax_rate', 'sellableType', 'position',
+  // C2 Day 2 (Codex PR #109 r3 P2) — the v30 migration backfills
+  // `menu_category_id` / `sellable_id` onto rows that already exist
+  // by id. Without comparing these here, `diffProducts` would return
+  // the pre-migration cached row in `merged` because every visible
+  // field matched, and the downstream `canonicalizeMenuCatalog` pass
+  // would never see the freshly populated ids — leaving the
+  // chooser-row category label and ID-based dedupe disabled for the
+  // refreshed product until another visible field changes.
+  'menu_category_id', 'sellable_id',
 ];
 
 function productEquals(a: POSProduct, b: POSProduct): boolean {
