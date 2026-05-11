@@ -20,6 +20,26 @@ export async function getDatabase(companyId: string): Promise<Database> {
   db = await Database.load(`sqlite:${dbName}`);
   currentDbName = dbName;
 
+  // Bug 5 — enable WAL so concurrent readers (the sync scheduler's pending
+  // queue read) do not contend with the writer that the cashier-facing
+  // `createOfflineReceipt` transaction holds. Default `journal_mode=DELETE`
+  // serializes EVERYTHING through an exclusive lock; the Tauri plugin then
+  // surfaces `(code: 5) database is locked` as a raw string, the dead-letter
+  // cap saturates, and the next sealed receipt's `previous_hash` diverges
+  // from the server's `terminal.last_hash` — chain-broken cascade (Bug 4)
+  // plus the intermittent "Échec du paiement" the cashier sees (Bug 3).
+  //
+  // WAL mode is database-file-persistent — a single `PRAGMA journal_mode=WAL`
+  // before migrations is sufficient; subsequent connections from the SQLx
+  // pool inherit it. busy_timeout is intentionally NOT set in app code —
+  // SQLx 0.8.6 already defaults connections to 5s
+  // (sqlx-sqlite/src/options/mod.rs:194-201).
+  //
+  // Operational note: WAL creates `-wal` and `-shm` sidecar files next to
+  // the main `.db` file. Any backup tooling must include them OR call
+  // `PRAGMA wal_checkpoint(TRUNCATE)` and close the connection first.
+  await db.execute('PRAGMA journal_mode=WAL');
+
   await runMigrations(db);
 
   return db;

@@ -54,6 +54,7 @@ import {
   cleanupSyncedCashDrawerOps,
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
+import { coerceSyncError } from '@/lib/sync/coerceSyncError';
 import {
   upsertVouchers,
   upsertVoucherLedgerEntries,
@@ -444,7 +445,7 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         continue;
       }
 
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
         ...serializeErrorForLog(error),
         receiptId: receipt.id,
@@ -490,7 +491,7 @@ export async function pushZReports(db: Database): Promise<{
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'success');
       pushed++;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'error', message);
       errors.push(`Z-Report ${zReport.formatted_z_number}: ${message}`);
       failed++;
@@ -535,7 +536,7 @@ export async function pushCashDrawerOps(db: Database): Promise<{
       await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'success');
       pushed++;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await updateCashDrawerOpStatus(db, op.id, 'failed', message);
       await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'error', message);
       errors.push(`Cash drawer ${op.type} ${op.id}: ${message}`);
@@ -789,7 +790,7 @@ export async function pullProducts(db: Database): Promise<number> {
     const result = await pullProductsCore(db);
     return result.count;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'products', null, 'error', message);
     return 0;
   }
@@ -846,7 +847,7 @@ export async function pullProductsForeground(
         'products',
         null,
         'error',
-        err instanceof Error ? err.message : 'Unknown error',
+        coerceSyncError(err),
       ).catch(() => undefined);
       throw err;
     }
@@ -889,7 +890,7 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
     await logSyncOperation(db, 'pull', 'payment_config', null, 'success');
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'payment_config', null, 'error', message);
     return false;
   }
@@ -906,7 +907,7 @@ export async function pullOperatorPins(db: Database): Promise<number> {
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
     return operators.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'operators', null, 'error', message);
     return 0;
   }
@@ -987,7 +988,7 @@ export async function pullTerminalState(
       throw error;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'error', message);
     return false;
   }
@@ -1056,7 +1057,7 @@ export async function pullZChainState(
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'success');
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'error', message);
     return false;
   }
@@ -1140,7 +1141,7 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
     await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${pending.length} pin updates`);
     return pending.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     for (const row of pending) {
       await markPinUpdateFailed(db, row.id, message);
     }
@@ -1216,7 +1217,7 @@ export async function pullTables(db: Database): Promise<boolean> {
     await logSyncOperation(db, 'pull', 'tables', null, 'success', `${floors.length} floors / ${tableInputs.length} tables`);
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'tables', null, 'error', message);
     return false;
   }
@@ -1321,7 +1322,7 @@ export async function pullActiveMenu(db: Database): Promise<boolean> {
     await logSyncOperation(db, 'pull', 'active_menu', null, 'success', `${response.categories.length} categories / ${items.length} items`);
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'active_menu', null, 'error', message);
     return false;
   }
@@ -1390,7 +1391,7 @@ export async function pullVouchers(
     );
     return vouchers.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'vouchers', null, 'error', message);
     return 0;
   }
@@ -1431,7 +1432,7 @@ export async function pullVoucherLedger(
     );
     return entries.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'voucher_ledger', null, 'error', message);
     return 0;
   }
@@ -1476,7 +1477,7 @@ export async function pullReceiptQrIndex(
     );
     return entries.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'receipt_qr_index', null, 'error', message);
     return 0;
   }
@@ -1595,7 +1596,7 @@ export async function pushVoucherLedgerEntries(
         failed++;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await markVoucherLedgerEntryFailed(db, entry.id, message);
       await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', message);
       errors.push(`Voucher ledger ${entry.id}: ${message}`);
