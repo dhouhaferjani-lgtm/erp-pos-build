@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Product;
 
+use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Modules\Product\Application\Contracts\ProductRepositoryInterface;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Infrastructure\Persistence\EloquentProductRepository;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -23,5 +25,13 @@ class ProductServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/routes.php');
 
         Event::listen(EnrichmentWebhookReceived::class, ProcessEnrichmentEventListener::class);
+
+        // Bug 1 — coarse POS catalog refresh signal. Product carries
+        // tenant_id / company_id directly, so the observer's default
+        // attribute-lookup path is sufficient. Pass the class name (not an
+        // instance) — `Model::observe()` re-resolves the observer from the
+        // container, so any constructor state on a passed instance would
+        // be lost.
+        Product::observe(CatalogModelObserver::class);
     }
 }

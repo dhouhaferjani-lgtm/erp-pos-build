@@ -13,6 +13,7 @@ use App\Modules\Menu\Presentation\Requests\AddMenuCategoryItemRequest;
 use App\Modules\Menu\Presentation\Requests\StoreMenuCategoryRequest;
 use App\Modules\Menu\Presentation\Requests\SyncMenuCategoryItemsRequest;
 use App\Modules\Menu\Presentation\Requests\UpdateMenuCategoryRequest;
+use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
@@ -90,6 +91,11 @@ class MenuCategoryController extends Controller
         /** @var array{items: array<int, array{sellable_type: string, sellable_id: string, override_price?: string|null, display_order?: int, is_available?: bool}>} $validated */
         $validated = $request->validated();
 
+        // Bug 1 — Eloquent's mass-delete (`where()->delete()`) bypasses
+        // model events, so the CatalogModelObserver-equivalent Event::listen
+        // subscription in MenuServiceProvider does NOT fire here. Emit an
+        // explicit CatalogChannelEvent after the rewrite so the POS picks
+        // up the change immediately (per Codex r1 P2).
         MenuCategoryItem::where('menu_category_id', $category->id)->delete();
 
         foreach ($validated['items'] as $index => $item) {
@@ -102,6 +108,8 @@ class MenuCategoryController extends Controller
                 'is_available' => $item['is_available'] ?? true,
             ]);
         }
+
+        $this->broadcastCatalogChange($category, 'MenuCategoryItem.sync');
 
         $category->load(['compositeItems', 'products']);
 
@@ -146,14 +154,37 @@ class MenuCategoryController extends Controller
         }
 
         // Verify category belongs to company
-        MenuCategory::query()
+        $category = MenuCategory::query()
             ->whereHas('menu', fn (Builder $q) => $q->whereRaw('company_id = ?', [$companyId]))
             ->findOrFail($categoryId);
 
+        // Bug 1 — single-row `where()->delete()` is still a mass delete in
+        // Eloquent and bypasses model events. Explicit broadcast keeps the
+        // POS in sync (per Codex r1 P2).
         MenuCategoryItem::where('menu_category_id', $categoryId)
             ->where('id', $itemId)
             ->delete();
 
+        $this->broadcastCatalogChange($category, 'MenuCategoryItem.removed');
+
         return response()->json(null, 204);
+    }
+
+    /**
+     * Emit a CatalogChannelEvent for the parent menu's tenant + company.
+     * Used after mass-delete operations that bypass Eloquent model events.
+     */
+    private function broadcastCatalogChange(MenuCategory $category, string $reason): void
+    {
+        $menu = $category->menu()->first();
+        if ($menu === null) {
+            return;
+        }
+        CatalogModelObserver::broadcastFor(
+            tenantId: $menu->tenant_id,
+            companyId: $menu->company_id,
+            reason: $reason,
+            modelClass: MenuCategoryItem::class,
+        );
     }
 }

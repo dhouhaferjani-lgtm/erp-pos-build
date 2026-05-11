@@ -9,6 +9,7 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Catalog\Presentation\Requests\StoreModifierGroupRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,11 +155,23 @@ class ModifierGroupController extends Controller
             ->where('company_id', $company->id)
             ->findOrFail($compositeItemId);
 
+        // Bug 1 — pivot writes via syncWithoutDetaching() do not fire
+        // Eloquent model events on either side (CompositeItem or
+        // ModifierGroup), so the CatalogModelObserver does not see the
+        // assignment. Explicit broadcast after the pivot write keeps the
+        // POS in sync (per Codex r4 P2).
         $item->modifierGroups()->syncWithoutDetaching([
             $validated['modifier_group_id'] => [
                 'display_order' => $validated['display_order'] ?? 0,
             ],
         ]);
+
+        CatalogModelObserver::broadcastFor(
+            tenantId: $company->tenant_id,
+            companyId: $company->id,
+            reason: 'CompositeItemModifierGroup.assigned',
+            modelClass: CompositeItem::class,
+        );
 
         $item->load('modifierGroups.modifiers');
 
@@ -181,7 +194,16 @@ class ModifierGroupController extends Controller
         $item = CompositeItem::where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->findOrFail($compositeItemId);
+        // Bug 1 — pivot detach() does not fire model events. Explicit
+        // broadcast for the same reason as assignToItem above.
         $item->modifierGroups()->detach($modifierGroupId);
+
+        CatalogModelObserver::broadcastFor(
+            tenantId: $company->tenant_id,
+            companyId: $company->id,
+            reason: 'CompositeItemModifierGroup.removed',
+            modelClass: CompositeItem::class,
+        );
 
         return response()->json(null, 204);
     }
