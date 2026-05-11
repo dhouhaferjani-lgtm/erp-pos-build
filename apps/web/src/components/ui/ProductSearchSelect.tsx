@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, Package } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface Product {
   id: string
@@ -35,9 +38,11 @@ export function ProductSearchSelect({
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products-search', searchQuery],
+    queryKey: tenantScopedKey(['products-search', searchQuery]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) {
@@ -47,17 +52,17 @@ export function ProductSearchSelect({
       const response = await api.get<ProductsResponse>(`/products${query ? `?${query}` : ''}`)
       return response.data
     },
-    enabled: isOpen,
+    enabled: tenantId !== null && companyId !== null && isOpen,
     staleTime: 30000,
   })
 
   const { data: selectedProductData } = useQuery({
-    queryKey: ['product', value],
+    queryKey: tenantScopedKey(['product', value]),
     queryFn: async () => {
       const response = await api.get<{ data: Product }>(`/products/${value}`)
       return response.data.data
     },
-    enabled: Boolean(value) && !isOpen,
+    enabled: tenantId !== null && companyId !== null && Boolean(value) && !isOpen,
     staleTime: 60000,
   })
 
