@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -16,10 +17,28 @@ import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from
 import { useRelatedDocuments } from '../hooks/useRelatedDocuments'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'convert' | null
 type ActiveTab = 'related' | 'attachments'
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 export function QuoteDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -27,6 +46,8 @@ export function QuoteDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
@@ -40,12 +61,12 @@ export function QuoteDetailPage() {
 
   // Fetch quote
   const { data: quote, isLoading, error } = useQuery({
-    queryKey: ['document', 'quote', id],
+    queryKey: tenantScopedKey(['document', 'quote', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`/quotes/${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
   // Fetch related documents to check if already converted
@@ -86,9 +107,13 @@ export function QuoteDetailPage() {
   // Confirm quote mutation
   const confirmMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/quotes/${id}/confirm`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.confirmed'))
     },
     onError: (error) => {
@@ -99,16 +124,20 @@ export function QuoteDetailPage() {
   // Convert to order mutation
   const convertMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/quotes/${id}/convert-to-order`, {}),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) }),
+      ])
       if (data?.id) {
         void navigate(`/sales/orders/${data.id}`)
       }
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      void queryClient.invalidateQueries({ queryKey: ['document', 'quote', id] })
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'quote', id]) })
     },
   })
 
