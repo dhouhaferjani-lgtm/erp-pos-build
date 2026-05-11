@@ -1,6 +1,8 @@
 import { useInfiniteQuery, type UseInfiniteQueryResult } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { getVehicleArticles, getSearchTreeArticles } from '../api/partsCatalog'
 import { partsCatalogKeys } from './usePartsCatalog'
+import { usePartsCatalogTenantScope } from './usePartsCatalogTenantScope'
 import type { PaginatedArticles, VehicleType } from '../types/catalog'
 
 export function useVehicleArticles(
@@ -8,8 +10,10 @@ export function useVehicleArticles(
   vehicleId: string,
   productGroupId?: string
 ): UseInfiniteQueryResult<{ pages: PaginatedArticles[]; pageParams: (string | undefined)[] }> {
+  const hasTenantScope = usePartsCatalogTenantScope()
+
   return useInfiniteQuery({
-    queryKey: partsCatalogKeys.articles({ vehicleType, vehicleId, productGroupId }),
+    queryKey: tenantScopedKey([...partsCatalogKeys.articles({ vehicleType, vehicleId, productGroupId })]),
     queryFn: ({ pageParam }) => {
       const params: { product_group_id?: string; cursor?: string; per_page: number } = {
         per_page: 20,
@@ -21,15 +25,17 @@ export function useVehicleArticles(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.meta.has_more ? (lastPage.meta.cursor ?? undefined) : undefined,
-    enabled: Boolean(vehicleId),
+    enabled: Boolean(vehicleId) && hasTenantScope,
   })
 }
 
 export function useCategoryArticles(
   nodeId: string
 ): UseInfiniteQueryResult<{ pages: PaginatedArticles[]; pageParams: (string | undefined)[] }> {
+  const hasTenantScope = usePartsCatalogTenantScope()
+
   return useInfiniteQuery({
-    queryKey: partsCatalogKeys.searchTreeArticles(nodeId),
+    queryKey: tenantScopedKey([...partsCatalogKeys.searchTreeArticles(nodeId)]),
     queryFn: ({ pageParam }) => {
       const params: { cursor?: string; per_page: number } = { per_page: 20 }
       if (pageParam) params.cursor = pageParam
@@ -38,6 +44,6 @@ export function useCategoryArticles(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.meta.has_more ? (lastPage.meta.cursor ?? undefined) : undefined,
-    enabled: Boolean(nodeId),
+    enabled: Boolean(nodeId) && hasTenantScope,
   })
 }
