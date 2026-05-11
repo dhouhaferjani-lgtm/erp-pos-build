@@ -77,15 +77,6 @@ export interface OfflineReceipt {
   sync_error: string | null;
 }
 
-// TODO(go-live-followup): optimistic +1 increment of pendingReceiptCount on
-//   insert (deferred from T1.3 PR #90). Today the badge hydrates from SQLite
-//   after each sync tick (~60 s interval), so an insert is invisible in the
-//   header until the next tick. An optimistic +1 here would close that
-//   visible delay; the next SQLite-sourced hydration corrects any drift.
-//   Hooks needed: this function (insert success → +1) and the rollback path
-//   in receiptService (compensating −1, but only if we got to +1 first). See
-//   docs/superpowers/plans/2026-05-08-pos-t1.3-sync-indicator-truthfulness-kickoff-prompt.md
-//   Section 3 Step 4.1.
 export async function insertOfflineReceipt(
   db: Database,
   receipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'>,

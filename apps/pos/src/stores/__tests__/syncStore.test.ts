@@ -126,6 +126,16 @@ describe('syncStore', () => {
     expect(useSyncStore.getState().pendingReceiptCount).toBe(5);
   });
 
+  it('T2.2 follow-up: pendingReceiptCount increments optimistically after a durable offline insert', () => {
+    useSyncStore.getState().setPendingCount(0);
+
+    useSyncStore.getState().incrementPendingCount();
+    expect(useSyncStore.getState().pendingReceiptCount).toBe(1);
+
+    useSyncStore.getState().incrementPendingCount();
+    expect(useSyncStore.getState().pendingReceiptCount).toBe(2);
+  });
+
   it('reset returns to initial state', () => {
     useSyncStore.setState({
       isSyncing: true,

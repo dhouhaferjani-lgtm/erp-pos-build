@@ -19,6 +19,7 @@ interface SyncActions {
   completeSync: (result: SyncResult) => void;
   failSync: (error: string) => void;
   setPendingCount: (count: number) => void;
+  incrementPendingCount: () => void;
   setLastSyncAt: (timestamp: number | null) => void;
   setScheduler: (scheduler: SyncScheduler | null) => void;
   triggerSync: () => void;
@@ -73,6 +74,10 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
 
   setPendingCount: (count: number) => {
     set({ pendingReceiptCount: count });
+  },
+
+  incrementPendingCount: () => {
+    set((state) => ({ pendingReceiptCount: state.pendingReceiptCount + 1 }));
   },
 
   // T1.3 Step 4.2: explicit hydration entry point for lastSyncAt.

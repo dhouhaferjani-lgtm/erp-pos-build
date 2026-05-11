@@ -17,6 +17,15 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   scheduleDebouncedSync: vi.fn(),
 }));
 
+const incrementPendingCountSpy = vi.fn();
+vi.mock('@/stores/syncStore', () => ({
+  useSyncStore: {
+    getState: () => ({
+      incrementPendingCount: incrementPendingCountSpy,
+    }),
+  },
+}));
+
 // Codex review B5 (2026-05-01): mock the local voucher repository so the
 // store_voucher path can be exercised end-to-end. Default behavior:
 //   - findByCode returns null (no voucher) — store_voucher tests override
@@ -1146,6 +1155,26 @@ describe('T2.2 Step 5.1: post-COMMIT sync trigger', () => {
     expect(scheduleDebouncedSync).toHaveBeenCalledOnce();
   });
 
+  it('increments pendingReceiptCount AFTER db.execute(\'COMMIT\') on the happy path', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      callOrder.push(`db.execute(${sql})`);
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+    incrementPendingCountSpy.mockImplementation(() => {
+      callOrder.push('incrementPendingCount');
+    });
+
+    await createOfflineReceipt(db, makeBaseInput());
+
+    const commitIdx = callOrder.indexOf("db.execute(COMMIT)");
+    const incrementIdx = callOrder.indexOf('incrementPendingCount');
+    expect(commitIdx).toBeGreaterThanOrEqual(0);
+    expect(incrementIdx).toBeGreaterThanOrEqual(0);
+    expect(incrementIdx).toBeGreaterThan(commitIdx);
+    expect(incrementPendingCountSpy).toHaveBeenCalledOnce();
+  });
+
   it('does NOT fire scheduleDebouncedSync when db.execute(\'COMMIT\') throws', async () => {
     vi.mocked(db.execute).mockImplementation(async (sql: string) => {
       if (sql === 'COMMIT') {
@@ -1157,6 +1186,7 @@ describe('T2.2 Step 5.1: post-COMMIT sync trigger', () => {
     await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('disk full');
 
     expect(scheduleDebouncedSync).not.toHaveBeenCalled();
+    expect(incrementPendingCountSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT fire scheduleDebouncedSync when insertOfflineReceipt fails (transaction rolls back before COMMIT)', async () => {
@@ -1165,6 +1195,7 @@ describe('T2.2 Step 5.1: post-COMMIT sync trigger', () => {
     await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('insert failed');
 
     expect(scheduleDebouncedSync).not.toHaveBeenCalled();
+    expect(incrementPendingCountSpy).not.toHaveBeenCalled();
   });
 });
 
