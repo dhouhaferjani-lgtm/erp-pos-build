@@ -187,6 +187,102 @@ class ReceiptVoidServiceTest extends TestCase
         $this->assertEquals('119.000', $refundOp->amount);
     }
 
+    public function test_voiding_cash_over_tender_refunds_net_drawer_cash_not_tendered_amount(): void
+    {
+        // Bug 2 follow-up — when the cashier over-tendered (€20 for a €10
+        // receipt), only €10 actually entered the drawer (the other €10 was
+        // returned as change). Voiding must refund €10, not €20, otherwise
+        // the drawer goes phantom-short by the change-due amount.
+        $receipt = $this->createReceipt([
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'total' => '10.000',
+            'change_due' => '10.000',
+        ]);
+        $shift = $this->createOpenShift();
+
+        $paymentMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'requires_third_party' => false,
+            'is_push' => false,
+            'has_deducted_fees' => false,
+            'is_restricted' => false,
+            'fee_fixed' => '0.00',
+            'fee_percent' => '0.00',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        // Post-Bug-2 contract: ReceiptPayment.amount == tendered (€20).
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_type' => 'CASH',
+            'amount' => '20.000',
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'Over-tender void test');
+
+        $refundOp = CashDrawerOperation::where('shift_id', $shift->id)
+            ->where('operation_type', 'REFUND')
+            ->where('receipt_id', $receipt->id)
+            ->first();
+
+        $this->assertNotNull($refundOp);
+        // €10 net cash actually entered the drawer at sale time (€20 tendered
+        // − €10 change returned). The refund must move that €10 back out.
+        $this->assertEquals('10.000', $refundOp->amount);
+    }
+
+    public function test_voiding_cash_with_null_change_due_refunds_full_payment_amount(): void
+    {
+        // Defensive: pre-Bug-2 receipts (and any future legacy row) may have
+        // change_due = NULL. Treat NULL as 0; refund the full payment.amount.
+        $receipt = $this->createReceipt([
+            'change_due' => null,
+        ]);
+        $shift = $this->createOpenShift();
+
+        $paymentMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+            'is_physical' => true,
+            'has_maturity' => false,
+            'requires_third_party' => false,
+            'is_push' => false,
+            'has_deducted_fees' => false,
+            'is_restricted' => false,
+            'fee_fixed' => '0.00',
+            'fee_percent' => '0.00',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+
+        ReceiptPayment::create([
+            'receipt_id' => $receipt->id,
+            'payment_type' => 'CASH',
+            'amount' => '119.000',
+            'payment_method_id' => $paymentMethod->id,
+        ]);
+
+        $this->service->voidReceipt($receipt, $this->cashier, 'NULL change_due void test');
+
+        $refundOp = CashDrawerOperation::where('shift_id', $shift->id)
+            ->where('operation_type', 'REFUND')
+            ->where('receipt_id', $receipt->id)
+            ->first();
+
+        $this->assertNotNull($refundOp);
+        $this->assertEquals('119.000', $refundOp->amount);
+    }
+
     public function test_voiding_skips_cash_drawer_when_no_open_shift(): void
     {
         $receipt = $this->createReceipt();

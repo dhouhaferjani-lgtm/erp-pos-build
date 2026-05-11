@@ -109,8 +109,10 @@ describe('paymentStore offline-first cash checkout', () => {
         operatorId: 'op-1',
         operatorName: 'Cashier Alice',
         currency: 'EUR',
+        // Bug 2 fix: payments[].amount is the tendered amount (100), not
+        // the cart total (50). See CashCountToleranceVarianceRegressionTest.
         payments: expect.arrayContaining([
-          expect.objectContaining({ methodCode: 'CASH', amount: '50.00' }),
+          expect.objectContaining({ methodCode: 'CASH', amount: '100.00' }),
         ]),
       }),
     );
@@ -448,7 +450,9 @@ describe('paymentStore offline-first cash checkout', () => {
       expect.anything(),
       expect.objectContaining({
         currency: 'TND',
-        payments: [expect.objectContaining({ methodCode: 'CASH', amount: '50.000' })],
+        // Bug 2 fix: amount is the tendered amount (60.000 in TND scale 3),
+        // not the cart total (50.000).
+        payments: [expect.objectContaining({ methodCode: 'CASH', amount: '60.000' })],
       }),
     );
   });

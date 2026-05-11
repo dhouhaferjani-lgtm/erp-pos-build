@@ -203,7 +203,18 @@ final class ReceiptVoidService
             return;
         }
 
-        // Calculate total cash amount from receipt payments
+        // Bug 2 follow-up — pos_receipt_payments.amount stores the cashier's
+        // tendered amount (post-Bug-2 contract). For cash receipts with
+        // over-tender, only `tendered − change_due` actually entered the
+        // drawer at sale time; the rest was handed back to the customer as
+        // change. The refund must move ONLY that net cash back out, otherwise
+        // voiding turns the drawer phantom-short by the change-due amount.
+        //
+        // Pre-Bug-2 rows (and any legacy data) have change_due = NULL — treat
+        // those as 0 so the refund equals the full payment.amount (which on
+        // those rows was the cart total, not the tendered amount). max(0, …)
+        // is defensive: a legacy row whose payment.amount somehow understates
+        // change_due should not produce a negative refund.
         $receipt->loadMissing('payments');
         $cashAmount = '0.00';
         foreach ($receipt->payments as $payment) {
@@ -212,10 +223,16 @@ final class ReceiptVoidService
             }
         }
 
-        if (bccomp($cashAmount, '0.00', $this->scale()) > 0) {
+        $changeDue = $receipt->change_due !== null ? (string) $receipt->change_due : '0';
+        $netDrawerCash = bcsub($cashAmount, $changeDue, $this->scale());
+        if (bccomp($netDrawerCash, '0', $this->scale()) < 0) {
+            $netDrawerCash = '0';
+        }
+
+        if (bccomp($netDrawerCash, '0', $this->scale()) > 0) {
             $this->cashDrawerService->recordRefund(
                 $shift,
-                $cashAmount,
+                $netDrawerCash,
                 $user,
                 $receipt->id,
             );

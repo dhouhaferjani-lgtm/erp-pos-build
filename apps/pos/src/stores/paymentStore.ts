@@ -533,15 +533,28 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const company = authState.companies.find((c) => c.id === authState.companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
-      const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
 
+      // Bug 2 fix — pos_receipt_payments.amount is the cashier's TENDERED
+      // amount per the backend contract documented at
+      // CashCountToleranceVarianceRegressionTest.php:30-40 ("The 'amount'
+      // column already stores what the cashier physically tendered, so a
+      // €100 receipt with €99.70 tender + €0.30 tolerance write-off
+      // contributes +€99.70 to drawer cash"). Pre-fix this line wrote
+      // totalEstimate (cart total), which:
+      //   (a) made the print path's change derivation always zero
+      //       (`Σ(payments.amount) − total` = 0 when amount = total) —
+      //       this is Bug 2's headline symptom on the ticket; and
+      //   (b) broke cash-variance reporting for any over-tender (phantom
+      //       shortage of (tendered − total) on the shift close).
+      // The advanced/multi-payment path already passes the per-tender
+      // amount; the cash quick-path now matches that convention.
       const result = await createReceiptLocalFirst(
         set,
         terminalId,
         cartItems,
         [{
           methodCode: cashMethod.code,
-          amount: totalEstimate.toFixed(decimals),
+          amount: tenderedAmount.toFixed(decimals),
           paymentMethodId: cashMethod.id,
           repositoryId: cashRegister.id,
         }],
