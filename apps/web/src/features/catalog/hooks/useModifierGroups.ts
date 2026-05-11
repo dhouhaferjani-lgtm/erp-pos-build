@@ -11,8 +11,11 @@ import {
   assignModifierGroup,
   removeModifierGroup,
 } from '../api/modifierGroupApi'
-import { compositeItemKeys } from './useCompositeItems'
+import { compositeItemsInvalidationPredicate } from './useCompositeItems'
 import type { CreateModifierGroupData, CreateModifierData } from '../types/compositeItem'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 export const modifierGroupKeys = {
   all: ['modifierGroups'] as const,
@@ -22,90 +25,136 @@ export const modifierGroupKeys = {
   detail: (id: string) => [...modifierGroupKeys.details(), id] as const,
 }
 
+export function modifierGroupsInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === 'modifierGroups' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function useModifierGroups(params?: {
   search?: string | undefined
   is_active?: boolean | undefined
   per_page?: number | undefined
   page?: number | undefined
 }) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: modifierGroupKeys.list(params as Record<string, unknown>),
+    queryKey: tenantScopedKey([...modifierGroupKeys.list(params as Record<string, unknown>)]),
     queryFn: () => getModifierGroups(params),
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
 export function useModifierGroup(id: string) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: modifierGroupKeys.detail(id),
+    queryKey: tenantScopedKey([...modifierGroupKeys.detail(id)]),
     queryFn: () => getModifierGroup(id),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   })
 }
 
 export function useCreateModifierGroup() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (data: CreateModifierGroupData) => createModifierGroup(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useUpdateModifierGroup() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateModifierGroupData> }) =>
       updateModifierGroup(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useDeleteModifierGroup() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteModifierGroup(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useCreateModifier() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ groupId, data }: { groupId: string; data: CreateModifierData }) =>
       createModifier(groupId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useUpdateModifier() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateModifierData> }) =>
       updateModifier(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useDeleteModifier() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteModifier(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: modifierGroupKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: modifierGroupsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useAssignModifierGroup() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -117,13 +166,17 @@ export function useAssignModifierGroup() {
       modifierGroupId: string
       displayOrder?: number
     }) => assignModifierGroup(compositeItemId, modifierGroupId, displayOrder),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: compositeItemKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: compositeItemsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useRemoveModifierGroup() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -133,8 +186,10 @@ export function useRemoveModifierGroup() {
       compositeItemId: string
       modifierGroupId: string
     }) => removeModifierGroup(compositeItemId, modifierGroupId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: compositeItemKeys.all })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: compositeItemsInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
