@@ -16,7 +16,9 @@ import {
   Pencil,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { FilterTabs } from '../../components/ui/FilterTabs'
 import { ActionMenu, type ActionMenuItem } from '../../components/ui/ActionMenu'
@@ -68,10 +70,28 @@ const roleColors: Record<string, string> = {
   viewer: 'bg-gray-100 text-gray-800',
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function UsersPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const currentUser = useAuthStore((state) => state.user)
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -85,7 +105,7 @@ export function UsersPage() {
 
   // Fetch users
   const { data, isLoading, error } = useQuery({
-    queryKey: ['users', searchQuery, statusFilter],
+    queryKey: tenantScopedKey(['users', searchQuery, statusFilter]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -94,15 +114,17 @@ export function UsersPage() {
       const response = await api.get<UsersResponse>(`/users${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   // Fetch roles for the create user form
   const { data: rolesData } = useQuery({
-    queryKey: ['roles'],
+    queryKey: tenantScopedKey(['roles']),
     queryFn: async () => {
       const response = await api.get<{ data: Role[] }>('/roles')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   // Create user mutation
@@ -111,8 +133,10 @@ export function UsersPage() {
       const response = await api.post<{ data: User }>('/users', userData)
       return response.data.data
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('users', tenantId, companyId),
+      })
       setShowAddModal(false)
       showNotification('success', t('users.messages.created'))
     },
@@ -127,8 +151,10 @@ export function UsersPage() {
       setActionLoading(userId)
       await api.post(`/users/${userId}/activate`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('users', tenantId, companyId),
+      })
       showNotification('success', t('users.messages.activated'))
     },
     onError: (error) => {
@@ -144,8 +170,10 @@ export function UsersPage() {
       setActionLoading(userId)
       await api.post(`/users/${userId}/deactivate`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('users', tenantId, companyId),
+      })
       showNotification('success', t('users.messages.deactivated'))
     },
     onError: (error) => {
@@ -177,8 +205,10 @@ export function UsersPage() {
       setActionLoading(userId)
       await api.delete(`/users/${userId}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('users', tenantId, companyId),
+      })
       showNotification('success', t('users.messages.deleted'))
     },
     onError: (error) => {
@@ -246,7 +276,7 @@ export function UsersPage() {
       })
     }
 
-    if (user.status === 'active' && user.id !== currentUser?.id) {
+    if (user.status === 'active' && user.id !== currentUserId) {
       items.push({
         key: 'deactivate',
         label: t('users.actions.deactivate'),
@@ -275,7 +305,7 @@ export function UsersPage() {
       })
     }
 
-    if (user.id !== currentUser?.id) {
+    if (user.id !== currentUserId) {
       items.push({
         key: 'delete',
         label: t('users.actions.delete'),
