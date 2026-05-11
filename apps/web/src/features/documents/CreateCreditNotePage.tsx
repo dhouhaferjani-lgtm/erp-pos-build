@@ -15,11 +15,14 @@ import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { Button } from '@/components/atoms/Button/Button'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
 
 const creditNoteSchema = z.object({
@@ -42,11 +45,29 @@ type CreditNoteFormData = z.infer<typeof creditNoteSchema>
 type CreditMode = 'customer' | 'invoice'
 type LineMode = 'all' | 'partial'
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function CreateCreditNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   // Mode states
   const [creditMode, setCreditMode] = useState<CreditMode>('invoice')
   const [lineMode, setLineMode] = useState<LineMode>('all')
@@ -82,12 +103,12 @@ export function CreateCreditNotePage() {
 
   // Fetch invoice details when invoice is selected
   const { data: invoiceData } = useQuery({
-    queryKey: ['invoice', sourceInvoiceId],
+    queryKey: tenantScopedKey(['invoice', sourceInvoiceId]),
     queryFn: async () => {
       const response = await api.get<{ data: Invoice }>(`/invoices/${sourceInvoiceId}`)
       return response.data.data
     },
-    enabled: !!sourceInvoiceId && creditMode === 'invoice',
+    enabled: tenantId !== null && companyId !== null && !!sourceInvoiceId && creditMode === 'invoice',
   })
 
   // When invoice is selected, update partner and lines
@@ -210,10 +231,16 @@ export function CreateCreditNotePage() {
       const response = await api.post('/credit-notes', payload)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('sales:creditNotes.messages.created'))
-      void queryClient.invalidateQueries({ queryKey: ['credit-notes'] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('credit-notes', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       navigate('/sales/credit-notes')
     },
     onError: (error: Error) => {

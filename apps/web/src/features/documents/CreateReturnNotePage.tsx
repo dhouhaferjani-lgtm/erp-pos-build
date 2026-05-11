@@ -15,11 +15,14 @@ import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DeliveryNoteSearchSelect } from '@/components/ui/DeliveryNoteSearchSelect'
 import { ReturnReasonSelect } from './components/ReturnReasonSelect'
 import { ReturnConditionSelect } from './components/ReturnConditionSelect'
 import { RefundMethodSelect } from './components/RefundMethodSelect'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
 import type { DeliveryNote } from '@/components/ui/DeliveryNoteSearchSelect'
 import type { ReturnReason } from '@/types/returnNote'
@@ -66,11 +69,29 @@ interface DocumentLine {
   total: string
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function CreateReturnNotePage() {
   const { t } = useTranslation(['sales', 'common'])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Form state
   const [sourceType, setSourceType] = useState<SourceType>('delivery_note')
@@ -104,22 +125,22 @@ export function CreateReturnNotePage() {
 
   // Fetch selected invoice details
   const { data: invoiceDetails } = useQuery({
-    queryKey: ['invoice', selectedInvoice?.id],
+    queryKey: tenantScopedKey(['invoice', selectedInvoice?.id]),
     queryFn: async () => {
       const response = await api.get<{ data: DocumentDetailResponse }>(`/invoices/${selectedInvoice?.id}`)
       return response.data.data
     },
-    enabled: !!selectedInvoice?.id && sourceType === 'invoice',
+    enabled: tenantId !== null && companyId !== null && !!selectedInvoice?.id && sourceType === 'invoice',
   })
 
   // Fetch selected delivery note details
   const { data: deliveryNoteDetails } = useQuery({
-    queryKey: ['delivery-note', selectedDeliveryNote?.id],
+    queryKey: tenantScopedKey(['delivery-note', selectedDeliveryNote?.id]),
     queryFn: async () => {
       const response = await api.get<{ data: DocumentDetailResponse }>(`/delivery-notes/${selectedDeliveryNote?.id}`)
       return response.data.data
     },
-    enabled: !!selectedDeliveryNote?.id && sourceType === 'delivery_note',
+    enabled: tenantId !== null && companyId !== null && !!selectedDeliveryNote?.id && sourceType === 'delivery_note',
   })
 
   // Get current document and lines
@@ -212,9 +233,11 @@ export function CreateReturnNotePage() {
       const response = await api.post('/return-notes', payload)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('sales:returnNotes.messages.created'))
-      void queryClient.invalidateQueries({ queryKey: ['return-notes'] })
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('return-notes', tenantId, companyId),
+      })
       navigate('/sales/return-notes')
     },
     onError: (error: Error) => {
