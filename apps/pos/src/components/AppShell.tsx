@@ -8,6 +8,7 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
+import { useCatalogChannel } from '@/hooks/useCatalogChannel';
 
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
@@ -28,6 +29,12 @@ export function AppShell() {
 
   // Sync cart/checkout state to customer-facing display
   useCustomerDisplaySync();
+
+  // Bug 1 — subscribe to the company-level catalog channel so admin-side
+  // product / menu mutations show up in the POS within ~500ms instead of
+  // waiting for the 60s polling tick. The hook is a no-op if companyId
+  // hasn't been set yet, so mounting unconditionally is safe.
+  useCatalogChannel();
 
   const handleActivity = useCallback(() => {
     resetActivityTimer();
