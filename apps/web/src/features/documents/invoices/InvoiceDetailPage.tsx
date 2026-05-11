@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -22,6 +23,8 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 import type { PaymentStatus } from '../components/PaymentStatusBadge'
 import type { InvoiceForCreditNote } from '../../../types/creditNote'
@@ -29,12 +32,30 @@ import type { InvoiceForCreditNote } from '../../../types/creditNote'
 type ConfirmAction = 'confirm' | 'post' | null
 type ActiveTab = 'related' | 'attachments' | 'creditNotes' | 'payments'
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function InvoiceDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
@@ -52,12 +73,12 @@ export function InvoiceDetailPage() {
 
   // Fetch invoice
   const { data: invoice, isLoading, error } = useQuery({
-    queryKey: ['document', 'invoice', id],
+    queryKey: tenantScopedKey(['document', 'invoice', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`/invoices/${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
   // Fetch credit notes for posted invoices
@@ -75,9 +96,13 @@ export function InvoiceDetailPage() {
   // Confirm invoice mutation
   const confirmMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.confirmed'))
     },
     onError: (error) => {
@@ -88,9 +113,13 @@ export function InvoiceDetailPage() {
   // Post invoice mutation (fiscal posting)
   const postMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/invoices/${id}/post`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.posted'))
     },
     onError: (error: Error) => {
@@ -115,10 +144,16 @@ export function InvoiceDetailPage() {
   // Confirm deliveries and post mutation (one-click workflow)
   const confirmDeliveriesAndPostMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/invoices/${id}/confirm-deliveries-and-post`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['delivery-notes'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('delivery-notes', tenantId, companyId),
+        }),
+      ])
       setShowDeliveryConfirmationModal(false)
       toast.success(t('sales:invoices.deliveryConfirmation.success'))
     },
@@ -175,18 +210,30 @@ export function InvoiceDetailPage() {
     })
   }
 
-  const handleCreditNoteCreated = () => {
+  const handleCreditNoteCreated = async () => {
     setShowCreditNoteForm(false)
-    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-    void queryClient.invalidateQueries({ queryKey: ['documents'] })
-    void queryClient.invalidateQueries({ queryKey: ['credit-notes'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+      }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('credit-notes', tenantId, companyId),
+      }),
+    ])
   }
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
-    void queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] })
-    void queryClient.invalidateQueries({ queryKey: ['documents'] })
-    void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'invoice', id]) }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+      }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+      }),
+    ])
   }
 
   if (isLoading) {
