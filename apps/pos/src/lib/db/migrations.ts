@@ -791,4 +791,40 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // Bug 5 — retroactive one-shot cleanup for offline_receipts that were
+    // dead-lettered because of the SQLITE_BUSY cascade. The Tauri plugin-sql
+    // layer throws the libsqlite failure as a raw string; the lock-specific
+    // signature is `(code: 5) database is locked`. Before this PR, the sync
+    // error serializer collapsed that string to the literal `'Unknown error'`,
+    // so existing dead-lettered rows are NOT recoverable here by design —
+    // they need PR C's recovery UX (or manual SQLite) since the
+    // `'Unknown error'` signature is ambiguous. From this PR onward,
+    // `coerceSyncError` preserves the lock signature, and the rerunnable
+    // `runStuckReceiptRecovery` hook in `db.ts` (called on every boot AFTER
+    // migrations) re-applies this same UPDATE so any new lock-signature
+    // failure self-heals on the next launch. This migration row remains
+    // as the audit-trail anchor for the initial retroactive sweep.
+    //
+    // The recovery is intentionally narrow:
+    //   - status='failed' only (don't disturb in-flight or synced rows),
+    //   - sync_error LIKE '%database is locked%' (the precise libsqlite
+    //     wording — SQLite's default LIKE is ASCII-case-insensitive, so
+    //     this also matches re-cased variants).
+    //
+    // The reset (status='pending', retry_count=0, sync_error=NULL) lets
+    // the next sync tick re-push under WAL mode. The server's
+    // idempotency_key dedup turns any accidental double-send into a
+    // `duplicate` result, which the client treats as success.
+    version: 32,
+    name: 'recover_stuck_offline_receipts_from_db_lock',
+    sql: `
+      UPDATE offline_receipts
+      SET status = 'pending',
+          retry_count = 0,
+          sync_error = NULL
+      WHERE status = 'failed'
+        AND sync_error LIKE '%database is locked%';
+    `,
+  },
 ];
