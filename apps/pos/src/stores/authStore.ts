@@ -54,11 +54,11 @@ interface AuthActions {
     opts?: { signal?: AbortSignal },
   ) => Promise<void>;
   logout: () => void;
-  checkSession: () => Promise<void>;
+  checkSession: (opts?: { signal?: AbortSignal }) => Promise<void>;
   setCompany: (companyId: string) => void;
-  initialize: () => Promise<void>;
+  initialize: (opts?: { signal?: AbortSignal }) => Promise<void>;
   refreshCompanyConfig: () => Promise<void>;
-  fetchCompanies: () => Promise<void>;
+  fetchCompanies: (opts?: { signal?: AbortSignal }) => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -95,7 +95,7 @@ function getServerUrl(): string {
 export const useAuthStore = create<AuthStore>()((set, get) => ({
   ...initialState,
 
-  initialize: async () => {
+  initialize: async (opts?: { signal?: AbortSignal }) => {
     const serverUrl = getServerUrl();
     set({ isLoading: true, serverUrl });
     try {
@@ -115,8 +115,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
         // Validate the token is still valid (only logout on 401, not network errors)
         try {
-          await get().checkSession();
+          await get().checkSession({ signal: opts?.signal });
         } catch (error) {
+          if (opts?.signal?.aborted) return;
           if (error instanceof ApiRequestError && error.status === 401) {
             // Token is genuinely expired/invalid — must re-login
             get().logout();
@@ -129,7 +130,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     } catch (error) {
       console.error('Failed to initialize auth:', error);
     } finally {
-      set({ isLoading: false, isInitialized: true });
+      if (!opts?.signal?.aborted) {
+        set({ isLoading: false, isInitialized: true });
+      }
     }
   },
 
@@ -231,8 +234,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     }
   },
 
-  checkSession: async () => {
-    const response = await apiGet<User>('/auth/me');
+  checkSession: async (opts?: { signal?: AbortSignal }) => {
+    const response = await apiGet<User>('/auth/me', undefined, {
+      signal: opts?.signal,
+    });
+    if (opts?.signal?.aborted) return;
     set({ user: response, isAuthenticated: true });
     await setStoredValue(StorageKeys.USER, response);
   },
@@ -252,8 +258,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   // X-Company-Id pointing at a company the user has been revoked from,
   // AND AppRouter skips the multi-company-selection branch (which gates
   // on `!companyId`) — leaving the user stuck on a phantom company.
-  fetchCompanies: async () => {
-    const companies = await apiGet<Company[]>('/user/companies');
+  fetchCompanies: async (opts?: { signal?: AbortSignal }) => {
+    const companies = await apiGet<Company[]>('/user/companies', undefined, {
+      signal: opts?.signal,
+    });
+    if (opts?.signal?.aborted) return;
     await setStoredValue(StorageKeys.COMPANIES, companies);
 
     const currentCompanyId = get().companyId;

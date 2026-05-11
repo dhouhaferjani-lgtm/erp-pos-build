@@ -66,7 +66,7 @@ interface TerminalState {
 }
 
 interface TerminalActions {
-  initialize: () => Promise<void>;
+  initialize: (opts?: { signal?: AbortSignal }) => Promise<void>;
   fetchAvailable: () => Promise<Terminal[]>;
   claimTerminal: (terminalId: string, hardwareIdentifier: string) => Promise<void>;
   requestTerminal: (locationId: string, suggestedName: string, hardwareIdentifier: string) => Promise<Terminal>;
@@ -278,7 +278,7 @@ export async function seedOfflineHashChain(terminalId: string): Promise<void> {
 export const useTerminalStore = create<TerminalStore>()((set, get) => ({
   ...initialState,
 
-  initialize: async () => {
+  initialize: async (opts?: { signal?: AbortSignal }) => {
     set({ isLoading: true });
     try {
       // 1. Check localStorage for a fully-activated terminal
@@ -297,7 +297,9 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         let resolvedTerminal: Terminal = cachedTerminal;
         try {
           const fresh = await Promise.race([
-            apiGet<Terminal>(`/pos/terminals/${expectedTerminalId}`),
+            apiGet<Terminal>(`/pos/terminals/${expectedTerminalId}`, undefined, {
+              signal: opts?.signal,
+            }),
             new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error('terminal-refresh-timeout')), TERMINAL_REFRESH_TIMEOUT_MS),
             ),
@@ -310,6 +312,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
           // is intentionally omitted: every offline boot would log,
           // and the offline banner state is the documented fallback.
         }
+        if (opts?.signal?.aborted) return;
 
         // Codex round-6/8 P2 — race guard against logout / change-terminal
         // during the refresh await. The previous round-6 guard read
@@ -330,9 +333,11 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         // localStorage gets the next boot the up-to-date state even
         // if the server is unreachable then.
         await setStoredValue(StorageKeys.TERMINAL, resolvedTerminal);
+        if (opts?.signal?.aborted) return;
         set({ terminal: resolvedTerminal });
         // Ensure offline hash chain is seeded (may be missing after DB reset/reinstall)
         await seedOfflineHashChain(resolvedTerminal.id);
+        if (opts?.signal?.aborted) return;
         await get().fetchCurrentShift();
 
         return;
@@ -342,20 +347,26 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       const pendingId = await getStoredValue<string>(StorageKeys.PENDING_TERMINAL_ID);
       if (pendingId) {
         console.log('[Terminal] Found stored pending terminal ID:', pendingId);
+        if (opts?.signal?.aborted) return;
         set({ pendingTerminalId: pendingId });
         // Check if it was activated while we were away
         try {
-          const pending = await apiGet<Terminal>(`/pos/terminals/${pendingId}`);
+          const pending = await apiGet<Terminal>(`/pos/terminals/${pendingId}`, undefined, {
+            signal: opts?.signal,
+          });
+          if (opts?.signal?.aborted) return;
           if (pending.is_active) {
             console.log('[Terminal] Pending terminal is now active:', pending.code);
             await setStoredValue(StorageKeys.TERMINAL, pending);
             await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
             await seedOfflineHashChain(pending.id);
+            if (opts?.signal?.aborted) return;
             set({ terminal: pending, pendingTerminalId: null });
             await get().fetchCurrentShift();
             return;
           }
         } catch (err) {
+          if (opts?.signal?.aborted) return;
           // Terminal may have been deleted, clear pending
           console.warn('[Terminal] Pending terminal check failed, clearing stale ID:', pendingId, err);
           await removeStoredValue(StorageKeys.PENDING_TERMINAL_ID);
@@ -367,21 +378,29 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       // 3. Last resort: check if any terminal is assigned to this device
       try {
         const deviceId = getDeviceId();
-        const found = await apiGet<Terminal | null>(`/pos/terminals/by-device/${deviceId}`);
+        const found = await apiGet<Terminal | null>(
+          `/pos/terminals/by-device/${deviceId}`,
+          undefined,
+          { signal: opts?.signal },
+        );
+        if (opts?.signal?.aborted) return;
         if (found?.is_active) {
           await setStoredValue(StorageKeys.TERMINAL, found);
           await seedOfflineHashChain(found.id);
+          if (opts?.signal?.aborted) return;
           set({ terminal: found });
           await get().fetchCurrentShift();
         } else if (found && !found.is_active) {
           // Found but not yet activated — track it as pending
           await setStoredValue(StorageKeys.PENDING_TERMINAL_ID, found.id);
+          if (opts?.signal?.aborted) return;
           set({ pendingTerminalId: found.id });
         }
       } catch {
         // No terminal for this device, that's fine
       }
     } catch (error) {
+      if (opts?.signal?.aborted) return;
       console.error('Failed to initialize terminal:', error);
     } finally {
       set({ isLoading: false });

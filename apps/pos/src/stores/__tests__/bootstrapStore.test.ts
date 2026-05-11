@@ -702,6 +702,61 @@ describe('bootstrapStore — reset (Codex PR #108 r1 P2: logout escape)', () => 
     expect(useBootstrapStore.getState().phase).toBe('ready');
     expect(useBootstrapStore.getState().lastSuccessfulPhase).toBe('checking-pins');
   });
+
+  it('reset() aborts the currently in-flight phase before clearing bootstrap state', async () => {
+    let abortFired = false;
+    let resolveAuth: (() => void) | undefined;
+    initializeAuth.mockImplementation((opts?: { signal?: AbortSignal }) => {
+      opts?.signal?.addEventListener('abort', () => {
+        abortFired = true;
+      });
+      return new Promise<void>((resolve) => {
+        resolveAuth = resolve;
+      });
+    });
+
+    const startPromise = useBootstrapStore.getState().start();
+    expect(useBootstrapStore.getState().running).toBe(true);
+
+    useBootstrapStore.getState().reset();
+
+    expect(abortFired).toBe(true);
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+
+    resolveAuth?.();
+    await vi.runAllTimersAsync();
+    await startPromise;
+
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+    expect(useBootstrapStore.getState().error).toBeNull();
+  });
+});
+
+describe('bootstrapStore — per-phase abort controller', () => {
+  it('skipWithCache() aborts the timed-out failed phase before continuing with cached data', async () => {
+    let abortFired = false;
+    initializeTerminal.mockImplementation((opts?: { signal?: AbortSignal }) => {
+      opts?.signal?.addEventListener('abort', () => {
+        abortFired = true;
+      });
+      return new Promise<void>(() => {});
+    });
+
+    const startPromise = useBootstrapStore.getState().start();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await startPromise;
+
+    expect(useBootstrapStore.getState().phase).toBe('error');
+    expect(useBootstrapStore.getState().error?.phase).toBe('fetching-terminal');
+    expect(useBootstrapStore.getState().error?.recoverable).toBe(true);
+
+    const skipPromise = useBootstrapStore.getState().skipWithCache();
+    await vi.runAllTimersAsync();
+    await skipPromise;
+
+    expect(abortFired).toBe(true);
+    expect(useBootstrapStore.getState().phase).toBe('ready');
+  });
 });
 
 describe('bootstrapStore — timeout', () => {

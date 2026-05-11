@@ -26,7 +26,7 @@ interface OperatorState {
 interface OperatorActions {
   verifyPin: (pin: string) => Promise<void>;
   setupPin: (pin: string) => Promise<void>;
-  checkHasPins: () => Promise<boolean>;
+  checkHasPins: (opts?: { signal?: AbortSignal }) => Promise<boolean>;
   lock: () => void;
   clearOperator: () => void;
   resetActivityTimer: () => void;
@@ -157,16 +157,27 @@ export const useOperatorStore = create<OperatorStore>()((set) => ({
     }
   },
 
-  checkHasPins: async () => {
+  checkHasPins: async (opts?: { signal?: AbortSignal }) => {
     try {
-      const result = await apiGet<{ has_pins: boolean }>('/pos/auth/has-pins');
+      const result = await apiGet<{ has_pins: boolean }>('/pos/auth/has-pins', undefined, {
+        signal: opts?.signal,
+      });
+      if (opts?.signal?.aborted) {
+        return false;
+      }
       set({ hasPins: result.has_pins });
       return result.has_pins;
-    } catch {
+    } catch (error) {
+      if (opts?.signal?.aborted) {
+        throw error;
+      }
       // Offline fallback: check local SQLite cache
       try {
         const db = await getDb();
         const hasPins = await hasOperatorPins(db);
+        if (opts?.signal?.aborted) {
+          return false;
+        }
         set({ hasPins });
         return hasPins;
       } catch {

@@ -33,6 +33,25 @@ describe('withTimeout', () => {
     });
   });
 
+  it('leaves the caller signal abortable after timeout so the phase owner can cancel late work', async () => {
+    const controller = new AbortController();
+    let abortFired = false;
+    controller.signal.addEventListener('abort', () => {
+      abortFired = true;
+    });
+    const slow = new Promise<never>(() => {});
+
+    const promise = withTimeout('fetching-terminal', slow, 5000, controller.signal);
+    promise.catch(() => {});
+
+    vi.advanceTimersByTime(5001);
+    await expect(promise).rejects.toBeInstanceOf(BootstrapTimeoutError);
+    expect(controller.signal.aborted).toBe(false);
+
+    controller.abort();
+    expect(abortFired).toBe(true);
+  });
+
   it('propagates the underlying rejection (not a timeout) when the wrapped promise rejects first', async () => {
     const inner = new Error('network down');
     inner.name = 'TypeError';

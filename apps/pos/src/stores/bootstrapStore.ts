@@ -138,6 +138,14 @@ const initialState: BootstrapState = {
   running: false,
 };
 
+let currentAbortController: AbortController | null = null;
+let runGeneration = 0;
+
+function abortCurrentPhase(): void {
+  currentAbortController?.abort();
+  currentAbortController = null;
+}
+
 function nextPhaseAfter(phase: RunnablePhase | null): RunnablePhase | null {
   if (phase === null) return RUNNABLE_PHASES[0];
   const idx = RUNNABLE_PHASES.indexOf(phase);
@@ -146,10 +154,19 @@ function nextPhaseAfter(phase: RunnablePhase | null): RunnablePhase | null {
     : null;
 }
 
-async function runPhase(phase: RunnablePhase, timeoutMs: number): Promise<void> {
+async function runPhase(
+  phase: RunnablePhase,
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<void> {
   switch (phase) {
     case 'authenticating':
-      await withTimeout(phase, useAuthStore.getState().initialize(), timeoutMs);
+      await withTimeout(
+        phase,
+        useAuthStore.getState().initialize({ signal }),
+        timeoutMs,
+        signal,
+      );
       return;
     case 'fetching-companies':
       // BootstrapErrorScreen owns empty-company recovery, so this phase is
@@ -158,16 +175,31 @@ async function runPhase(phase: RunnablePhase, timeoutMs: number): Promise<void> 
       if (useAuthStore.getState().companies.length > 0) {
         return;
       }
-      await withTimeout(phase, useAuthStore.getState().fetchCompanies(), timeoutMs);
+      await withTimeout(
+        phase,
+        useAuthStore.getState().fetchCompanies({ signal }),
+        timeoutMs,
+        signal,
+      );
       if (useAuthStore.getState().companies.length === 0) {
         throw new Error('No companies available for authenticated POS user');
       }
       return;
     case 'fetching-terminal':
-      await withTimeout(phase, useTerminalStore.getState().initialize(), timeoutMs);
+      await withTimeout(
+        phase,
+        useTerminalStore.getState().initialize({ signal }),
+        timeoutMs,
+        signal,
+      );
       return;
     case 'checking-pins':
-      await withTimeout(phase, useOperatorStore.getState().checkHasPins(), timeoutMs);
+      await withTimeout(
+        phase,
+        useOperatorStore.getState().checkHasPins({ signal }),
+        timeoutMs,
+        signal,
+      );
       // Codex review (PR #106 round 6, P1): operatorStore.checkHasPins
       // swallows API + SQLite failures and resolves `false` without
       // updating store state. A naive `await` therefore reports the
@@ -238,10 +270,12 @@ async function runFromPhase(
   retryCount: number,
   setState: (partial: Partial<BootstrapState>) => void,
   getState: () => BootstrapState,
+  generation: number,
 ): Promise<void> {
   const startIdx = RUNNABLE_PHASES.indexOf(startPhase);
   for (let i = startIdx; i < RUNNABLE_PHASES.length; i++) {
     const phase = RUNNABLE_PHASES[i]!;
+    if (generation !== runGeneration) return;
     if (!canEnterPhase(phase)) {
       // Codex review (PR #106 round 2, P1): the prerequisite for this phase
       // is not satisfied (logged-out boot, no company selected, no terminal
@@ -251,11 +285,18 @@ async function runFromPhase(
       setState({ phase: 'ready', error: null });
       return;
     }
+    const phaseAbortController = new AbortController();
+    currentAbortController = phaseAbortController;
     setState({ phase, error: null });
     try {
-      await runPhase(phase, getState().timeoutMs);
+      await runPhase(phase, getState().timeoutMs, phaseAbortController.signal);
+      if (generation !== runGeneration) return;
+      if (currentAbortController === phaseAbortController) {
+        currentAbortController = null;
+      }
       setState({ lastSuccessfulPhase: phase });
     } catch (error) {
+      if (generation !== runGeneration) return;
       setState({
         phase: 'error',
         error: {
@@ -280,6 +321,8 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
     // login-time state flip during the still-in-flight cold-boot run would
     // race a second orchestration call against the first.
     if (get().running) return;
+    abortCurrentPhase();
+    const generation = ++runGeneration;
     set({ running: true });
     try {
       // Codex review (PR #106 round 1, P2): clear residual progress so a
@@ -289,7 +332,7 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
       // `lastSuccessfulPhase` in place, and a follow-on retry() would
       // skip past the actually-failing phase and falsely promote to ready.
       set({ lastSuccessfulPhase: null, error: null });
-      await runFromPhase(RUNNABLE_PHASES[0], 0, set, get);
+      await runFromPhase(RUNNABLE_PHASES[0], 0, set, get, generation);
     } finally {
       set({ running: false });
     }
@@ -297,6 +340,8 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
 
   retry: async () => {
     if (get().running) return;
+    abortCurrentPhase();
+    const generation = ++runGeneration;
     set({ running: true });
     try {
       const { lastSuccessfulPhase, error } = get();
@@ -308,13 +353,15 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
         return;
       }
       const nextRetryCount = (error?.retryCount ?? -1) + 1;
-      await runFromPhase(startPhase, nextRetryCount, set, get);
+      await runFromPhase(startPhase, nextRetryCount, set, get, generation);
     } finally {
       set({ running: false });
     }
   },
 
   reset: () => {
+    runGeneration += 1;
+    abortCurrentPhase();
     set({
       phase: 'ready',
       error: null,
@@ -336,6 +383,8 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
         `Bootstrap phase "${error.phase}" is not recoverable; cannot skip with cache.`,
       );
     }
+    abortCurrentPhase();
+    const generation = ++runGeneration;
     set({ running: true });
     try {
       // "Skip" means: pretend the failing phase succeeded (the cached value
@@ -347,7 +396,7 @@ export const useBootstrapStore = create<BootstrapState & BootstrapActions>((set,
         return;
       }
       set({ lastSuccessfulPhase: error.phase });
-      await runFromPhase(nextPhase, error.retryCount + 1, set, get);
+      await runFromPhase(nextPhase, error.retryCount + 1, set, get, generation);
     } finally {
       set({ running: false });
     }
