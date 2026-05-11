@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a46e94476bb1f44d8f690ae8523aa28b0700e27110e1d5f000c9ab34c03bb8f4
+  yaml_sha256: 4acaaf09271d417d6733803de2fa9b101fdaf2884efc8dfa56122d9728adaa0f
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -91792,7 +91792,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-11T06:28:30Z'
     review:
@@ -91801,8 +91801,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 2f8e5b0b
+    regression_test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -91853,6 +91853,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:53:16Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a46e94476bb1f44d8f690ae8523aa28b0700e27110e1d5f000c9ab34c03bb8f4
+        new_yaml_sha256: 241d0ffc9f3fdfc34261965dfa8d1f7565d318e2db586eb94f7f354cfd4adbe7
+        target_ids:
+          - web.tanstack-keys.581
+        from_status: in_progress
+        to_status: under_review
+        commit: 2f8e5b0b
+        test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.582
     stable_key: 'sha256:6611d8cb15070cc4e21533f52fba59c64134f5806817ec8680d8b0a31bca2d8f'
@@ -91870,7 +91886,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-11T06:28:35Z'
     review:
@@ -91879,8 +91895,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 2f8e5b0b
+    regression_test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -91931,6 +91947,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:53:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 241d0ffc9f3fdfc34261965dfa8d1f7565d318e2db586eb94f7f354cfd4adbe7
+        new_yaml_sha256: c630a834bd477360847ccb77f39e8ad7f3a3d949e1501320cf54747201f6a268
+        target_ids:
+          - web.tanstack-keys.582
+        from_status: in_progress
+        to_status: under_review
+        commit: 2f8e5b0b
+        test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.583
     stable_key: 'sha256:d572b00c158ccbcafa1172bddc444c9bf38e01ec995dbf1a0b7a5b8b85a4b52b'
@@ -91948,7 +91980,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-11T06:28:39Z'
     review:
@@ -91957,8 +91989,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 2f8e5b0b
+    regression_test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -92009,6 +92041,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:53:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c630a834bd477360847ccb77f39e8ad7f3a3d949e1501320cf54747201f6a268
+        new_yaml_sha256: 14563fccfef3d35bed10ae43b7c1bff7aab39dd6200e86f9af04f5c75b093b41
+        target_ids:
+          - web.tanstack-keys.583
+        from_status: in_progress
+        to_status: under_review
+        commit: 2f8e5b0b
+        test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.584
     stable_key: 'sha256:6c5483ce2c284fcf4a617454b0efc3fc9c7fec83c68a133d0c6856f8de14ca5f'
@@ -92026,7 +92074,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-11T06:28:45Z'
     review:
@@ -92035,8 +92083,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 2f8e5b0b
+    regression_test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -92087,6 +92135,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:53:24Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 14563fccfef3d35bed10ae43b7c1bff7aab39dd6200e86f9af04f5c75b093b41
+        new_yaml_sha256: 3791e8e522568ba697345688143d5c2294d834e2b29f86265c08196b75a6d96f
+        target_ids:
+          - web.tanstack-keys.584
+        from_status: in_progress
+        to_status: under_review
+        commit: 2f8e5b0b
+        test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.585
     stable_key: 'sha256:9dd2c8bebb73ce0423de840b3c4623aa5cc6edef1eb1467e8e73b0d0ea1d9f6c'
@@ -92104,7 +92168,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: in_progress
+    status: under_review
     owner: codex
     claimed_at: '2026-05-11T06:28:49Z'
     review:
@@ -92113,8 +92177,8 @@ callsites:
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 2f8e5b0b
+    regression_test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
     blocked_reason: null
     history:
       -
@@ -92165,6 +92229,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T06:53:27Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3791e8e522568ba697345688143d5c2294d834e2b29f86265c08196b75a6d96f
+        new_yaml_sha256: 4acaaf09271d417d6733803de2fa9b101fdaf2884efc8dfa56122d9728adaa0f
+        target_ids:
+          - web.tanstack-keys.585
+        from_status: in_progress
+        to_status: under_review
+        commit: 2f8e5b0b
+        test: 'apps/web/src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx::GoodsReceiptListPage tenant-scope regression'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.586
     stable_key: 'sha256:1b452e52941d8e50a7f76ac8ca0e25dd6bcf359663cd7dde4ff3166a16fc57e0'
