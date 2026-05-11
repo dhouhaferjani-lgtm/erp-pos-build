@@ -57,6 +57,9 @@ final class SyncReceiptsRequest extends FormRequest
             'receipts.*.lines' => ['required', 'array', 'min:1'],
             'receipts.*.lines.*.product_id' => ['nullable', 'uuid'],
             'receipts.*.lines.*.composite_item_id' => ['nullable', 'uuid'],
+            // C2 Day 3 — Menu-tenant category context. Optional UUID; non-
+            // Menu tenants and pre-C2 historical sync payloads omit it.
+            'receipts.*.lines.*.menu_category_id' => ['nullable', 'uuid'],
             'receipts.*.lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'receipts.*.lines.*.unit_price' => ['required', 'numeric', 'gte:0'],
             'receipts.*.lines.*.modifiers' => ['nullable', 'array'],

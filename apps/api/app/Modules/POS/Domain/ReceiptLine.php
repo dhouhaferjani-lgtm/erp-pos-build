@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int $line_number
  * @property string|null $product_id
  * @property string|null $composite_item_id
+ * @property string|null $menu_category_id
  * @property string $product_code Product code at time of sale (immutable)
  * @property string $product_name Product name at time of sale (immutable)
  * @property string|null $original_line_id FK to original sale line (set on return lines)
@@ -66,6 +67,11 @@ class ReceiptLine extends Model
         'line_number',
         'product_id',
         'composite_item_id',
+        // C2 Day 3 — menu_category_id surviving the wire roundtrip so the
+        // refund flow can reconstruct the composite the cashier sold
+        // under. Nullable; non-Menu tenants and pre-C2 historical rows
+        // do not populate this column.
+        'menu_category_id',
         'product_code',
         'product_name',
         'product_description',

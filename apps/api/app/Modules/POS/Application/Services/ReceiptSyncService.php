@@ -288,6 +288,15 @@ final class ReceiptSyncService
                     'line_number' => $index + 1,
                     'product_id' => $compositeItemId !== null ? null : $productId,
                     'composite_item_id' => $compositeItemId,
+                    // C2 Day 3 — surface the category context the cashier
+                    // sold under. Persisted nullable; Menu tenants populate
+                    // it post-Day-3, non-Menu tenants and pre-C2 historical
+                    // lines do not. Refund flow uses this to rebuild the
+                    // composite POSProduct id so the recall matches the
+                    // same priced row the cashier originally rang up.
+                    'menu_category_id' => isset($lineData['menu_category_id'])
+                        ? (string) $lineData['menu_category_id']
+                        : null,
                     'product_code' => $sellableCode,
                     'product_name' => $sellableName,
                     'product_description' => null,

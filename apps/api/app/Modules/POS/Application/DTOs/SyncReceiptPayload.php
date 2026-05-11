@@ -17,7 +17,8 @@ final readonly class SyncReceiptPayload
      * @param  string  $receiptNumber  Receipt number generated offline
      * @param  string  $terminalId  Terminal UUID
      * @param  string  $operatorId  Cashier/operator user UUID
-     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     * @param  array<int, array{product_id?: string, composite_item_id?: string, menu_category_id?: string|null, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     *                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       C2 Day 3 — `menu_category_id` is the optional Menu-tenant category context per line. Bare-uuid `product_id` lines from non-Menu tenants and pre-C2 historical sync payloads omit this field.
      * @param  string  $subtotal  Net amount before tax
      * @param  string  $taxAmount  Total tax
      * @param  string  $discountAmount  Transaction-level discount

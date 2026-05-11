@@ -150,6 +150,86 @@ describe('receiptToPayload — composite-id wire-boundary unpack (C2 Day 1)', ()
     expect(wireLines[1]!.product_id).toBe(bareId);
   });
 
+  it('C2 Day 3: surfaces menu_category_id alongside the unpacked bare product_id (composite path)', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      lines: JSON.stringify([
+        {
+          product_id: `${SELLABLE}_${CATEGORY}`,
+          name: 'Coca (Drinks)',
+          quantity: 1,
+          unit_price: '3.00',
+          line_total: '3.00',
+          tax_amount: '0.00',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    const wireLines = wire.lines as Array<Record<string, unknown>>;
+
+    expect(wireLines[0]!.product_id).toBe(SELLABLE);
+    // Day 3 — server-side `pos_receipt_lines.menu_category_id` column
+    // now persists this so the refund flow can rebuild the composite.
+    expect(wireLines[0]!.menu_category_id).toBe(CATEGORY);
+  });
+
+  it('C2 Day 3: surfaces menu_category_id from a composite_item_id line', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      lines: JSON.stringify([
+        {
+          product_id: undefined,
+          composite_item_id: `${SELLABLE}_${CATEGORY}`,
+          name: 'Combo Meal (Lunch)',
+          quantity: 1,
+          unit_price: '8.00',
+          line_total: '8.00',
+          tax_amount: '0.00',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    const wireLines = wire.lines as Array<Record<string, unknown>>;
+
+    expect(wireLines[0]!.composite_item_id).toBe(SELLABLE);
+    expect(wireLines[0]!.menu_category_id).toBe(CATEGORY);
+  });
+
+  it('C2 Day 3: omits menu_category_id for bare-uuid lines (standard-retail tenants)', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const bareId = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+
+    const receipt = makeOfflineReceipt({
+      lines: JSON.stringify([
+        {
+          product_id: bareId,
+          name: 'Bare Widget',
+          quantity: 1,
+          unit_price: '5.00',
+          line_total: '5.00',
+          tax_amount: '0.00',
+        },
+      ]),
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    const wireLines = wire.lines as Array<Record<string, unknown>>;
+
+    expect(wireLines[0]!.product_id).toBe(bareId);
+    // No composite suffix → no menu_category_id. The field is absent
+    // (not null) so the server validator's `nullable, uuid` rule
+    // doesn't see a sentinel; the column persists as NULL.
+    expect('menu_category_id' in wireLines[0]!).toBe(false);
+  });
+
   it('preserves non-id line fields (name, quantity, totals) verbatim', async () => {
     const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
     const { makeOfflineReceipt } = await import('@/test/helpers');

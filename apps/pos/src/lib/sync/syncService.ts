@@ -1723,26 +1723,41 @@ export async function runFullSync(
  * both. We unpack here at the wire boundary so server-side schema is
  * unchanged Day 1.
  *
- * Server-side category context restoration for refund flow (Day 3) will
- * add a `pos_receipt_lines.menu_category_id` column and surface
- * `menu_category_id` on this wire shape; today we drop it on the wire
- * (matching the pre-C2 behavior where the server never saw category
- * context for receipt lines).
+ * C2 Day 3 — server-side `pos_receipt_lines.menu_category_id` column
+ * now exists (migration `2026_05_11_120000_…`); the unpack also writes
+ * the parsed `categoryId` onto the line so the refund flow can
+ * reconstruct the composite the cashier sold under. The category id
+ * is preserved per-line ONLY when the parser actually extracted one
+ * (composite IDs); bare-uuid lines (standard-retail tenants and pre-
+ * C2 historical rows) keep `menu_category_id` absent / null and the
+ * server treats them as the no-category case (graceful degradation
+ * per kickoff Risk #4).
  *
- * Bare-uuid lines (standard-retail tenants) pass through unchanged because
- * `parseMenuCompositeId` returns `{ sellableId: input, categoryId: null }`
- * for any string without a colon.
+ * Bare-uuid lines pass through unchanged because `parseMenuCompositeId`
+ * returns `{ sellableId: input, categoryId: null }` for any string
+ * without the delimiter.
  */
 function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
   return lines.map((line) => {
     if (line === null || typeof line !== 'object') return line;
     const obj = line as Record<string, unknown>;
     const next: Record<string, unknown> = { ...obj };
+    let categoryId: string | null = null;
     if (typeof obj.product_id === 'string') {
-      next.product_id = parseMenuCompositeId(obj.product_id).sellableId;
+      const parsed = parseMenuCompositeId(obj.product_id);
+      next.product_id = parsed.sellableId;
+      categoryId = parsed.categoryId;
     }
     if (typeof obj.composite_item_id === 'string') {
-      next.composite_item_id = parseMenuCompositeId(obj.composite_item_id).sellableId;
+      const parsed = parseMenuCompositeId(obj.composite_item_id);
+      next.composite_item_id = parsed.sellableId;
+      // Don't clobber a product_id-derived categoryId — the v3 XOR
+      // constraint guarantees only one of (product_id, composite_item_id)
+      // is set, so at most one path populates this.
+      categoryId = categoryId ?? parsed.categoryId;
+    }
+    if (categoryId !== null) {
+      next.menu_category_id = categoryId;
     }
     return next;
   });
