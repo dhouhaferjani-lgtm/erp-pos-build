@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { getEcho } from '@/lib/echo';
+import { getEcho, peekEcho } from '@/lib/echo';
 import { useAuthStore } from '@/stores/authStore';
 import { useProductStore } from '@/stores/productStore';
 
@@ -72,11 +72,19 @@ export function useCatalogChannel(): void {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
-      try {
-        const echo = getEcho();
-        echo.leave(channelName);
-      } catch {
-        // Echo may already be disconnected.
+      // Codex r5 P2 — use peekEcho() so cleanup never lazily creates a
+      // fresh Echo instance. On the logout path, authStore.logout() calls
+      // disconnectEcho() before clearing user/companyId, which fires this
+      // effect cleanup; calling getEcho() there would re-create an
+      // unauthenticated WebSocket just to leave a channel that no longer
+      // exists.
+      const echo = peekEcho();
+      if (echo !== null) {
+        try {
+          echo.leave(channelName);
+        } catch {
+          // Echo may already be disconnected.
+        }
       }
     };
   }, [user, companyId, fetchProducts]);

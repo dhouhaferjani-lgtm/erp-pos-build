@@ -34,11 +34,17 @@ const channelChain = {
 const mockPrivate = vi.fn(() => channelChain);
 const mockLeave = vi.fn();
 
+let peekEchoReturns: { private: typeof mockPrivate; leave: typeof mockLeave } | null = {
+  private: mockPrivate,
+  leave: mockLeave,
+};
+
 vi.mock('@/lib/echo', () => ({
   getEcho: () => ({
     private: mockPrivate,
     leave: mockLeave,
   }),
+  peekEcho: () => peekEchoReturns,
 }));
 
 const fetchProductsMock = vi.fn().mockResolvedValue(undefined);
@@ -84,6 +90,7 @@ describe('useCatalogChannel', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     for (const k of Object.keys(mockListenHandlers)) delete mockListenHandlers[k];
+    peekEchoReturns = { private: mockPrivate, leave: mockLeave };
   });
 
   afterEach(() => {
@@ -145,6 +152,23 @@ describe('useCatalogChannel', () => {
     unmount();
 
     expect(mockLeave).toHaveBeenCalledWith('tenant.tenant-1.company.company-1.catalog');
+  });
+
+  it('cleanup does NOT touch echo when peekEcho returns null (logout path)', async () => {
+    // Codex r5 P2 — authStore.logout() calls disconnectEcho() before
+    // clearing user/companyId, so this effect's cleanup must not lazily
+    // re-create an Echo instance just to leave the channel.
+    seedAuth();
+    const { useCatalogChannel } = await import('@/hooks/useCatalogChannel');
+
+    const { unmount } = renderHook(() => useCatalogChannel());
+
+    // Simulate disconnectEcho() being called before this cleanup runs.
+    peekEchoReturns = null;
+
+    unmount();
+
+    expect(mockLeave).not.toHaveBeenCalled();
   });
 
   it('does not call fetchProducts if unmount fires before the debounce settles', async () => {
