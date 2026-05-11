@@ -154,7 +154,7 @@ afterEach(() => {
 })
 
 describe('document component tenant scope', () => {
-  it('scopes document line product/service reads and product invalidation (.147-.149)', async () => {
+  it('scopes document line product/service reads and product invalidation (.159-.161)', async () => {
     const user = userEvent.setup()
     const queryClient = createClient()
     queryClient.setQueryData(['products', 'tenant-A', 'company-1'], ['tenant-A-products'])
@@ -189,7 +189,7 @@ describe('document component tenant scope', () => {
     expect(queryClient.getQueryState(['products', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })
 
-  it('scopes additional cost reads and exact invalidations (.150-.152)', async () => {
+  it('scopes additional cost reads and exact invalidations (.165-.167)', async () => {
     const user = userEvent.setup()
     const queryClient = createClient()
 
