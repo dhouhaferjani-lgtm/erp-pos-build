@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: ef5cf1a3df2975b675a6ef555a29e5ac491a1711c5c276e7f7b1f43308bb5e10
+  yaml_sha256: c89c3d19d5e2df9942fbbad35ac8a9d8a98342ded9ca162a3b454ae51a89a7ff
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -57075,17 +57075,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:13Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57104,6 +57104,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:13Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ef5cf1a3df2975b675a6ef555a29e5ac491a1711c5c276e7f7b1f43308bb5e10
+        new_yaml_sha256: 0c9832fc25adb42494cfa2b660a5d6720eac17d5aad3fd5fc1a204d3ad2afb94
+        target_ids:
+          - web.tanstack-keys.141
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 0c9832fc25adb42494cfa2b660a5d6720eac17d5aad3fd5fc1a204d3ad2afb94
+        new_yaml_sha256: d439c67660e20ba5fed3e8a6948a1b5aa6def4332e65f35e2b269dbf5b6f06f4
+        target_ids:
+          - web.tanstack-keys.141
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d439c67660e20ba5fed3e8a6948a1b5aa6def4332e65f35e2b269dbf5b6f06f4
+        new_yaml_sha256: e364b7e9147d3a52ed2603c7c14316bebf34520f1c98fdc3ce6ec1f825e3f645
+        target_ids:
+          - web.tanstack-keys.141
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.142
     stable_key: 'sha256:41017232a41bf6a7c82a9b1fecee1f92de6b4d65367d8a8ffe9712e636e843f2'
@@ -57121,17 +57169,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:20Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57150,6 +57198,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:21Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: e364b7e9147d3a52ed2603c7c14316bebf34520f1c98fdc3ce6ec1f825e3f645
+        new_yaml_sha256: 85ab69c73c2eaf5a2d1207968f4e4b580af48fd14a557a602ec9b46bd598c9bf
+        target_ids:
+          - web.tanstack-keys.142
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:24Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 85ab69c73c2eaf5a2d1207968f4e4b580af48fd14a557a602ec9b46bd598c9bf
+        new_yaml_sha256: 8635e85089429c721f0b99822620c1d2e0abb68bd9c3a9749dce82278afbc733
+        target_ids:
+          - web.tanstack-keys.142
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:26Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 8635e85089429c721f0b99822620c1d2e0abb68bd9c3a9749dce82278afbc733
+        new_yaml_sha256: ebaba63c24a2c300ab7f81c55c8c6419bcd57daa2c26f7ed4e51bf4af1145a03
+        target_ids:
+          - web.tanstack-keys.142
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.143
     stable_key: 'sha256:dbcdfff823df893841448dda61860a47ea3c868ff75d52bb04503b3d0f3ed6ac'
@@ -57167,17 +57263,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:28Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57196,6 +57292,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:29Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ebaba63c24a2c300ab7f81c55c8c6419bcd57daa2c26f7ed4e51bf4af1145a03
+        new_yaml_sha256: 403e4b1c243d3c16430aa1fb75cb8368b2218ade7eccb3845b17c9e8f005de50
+        target_ids:
+          - web.tanstack-keys.143
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:31Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 403e4b1c243d3c16430aa1fb75cb8368b2218ade7eccb3845b17c9e8f005de50
+        new_yaml_sha256: a4d6d519b7c3234c13d78dd8fc799baae8dfb6665cec100c7b9676588ba87187
+        target_ids:
+          - web.tanstack-keys.143
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:34Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a4d6d519b7c3234c13d78dd8fc799baae8dfb6665cec100c7b9676588ba87187
+        new_yaml_sha256: 3c9f4857b78c8451da317712fe4f8bfcaf5129740f43f3703ccdf076163d4c96
+        target_ids:
+          - web.tanstack-keys.143
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.144
     stable_key: 'sha256:63e2a005f187730bbe1344a2ff0420280f70ca1c14022635d4f3726511c296c0'
@@ -57213,17 +57357,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:36Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57242,6 +57386,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:37Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3c9f4857b78c8451da317712fe4f8bfcaf5129740f43f3703ccdf076163d4c96
+        new_yaml_sha256: 2140ad5621f5a465d5e09ff830d5958c41e82606d38bdfbfb8bc79a5931033e4
+        target_ids:
+          - web.tanstack-keys.144
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:39Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2140ad5621f5a465d5e09ff830d5958c41e82606d38bdfbfb8bc79a5931033e4
+        new_yaml_sha256: d36898de67c8201d5777c8fd4f49b7e9f6bd5c57d4712b7bb7a8c1fa864bda5f
+        target_ids:
+          - web.tanstack-keys.144
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:42Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: d36898de67c8201d5777c8fd4f49b7e9f6bd5c57d4712b7bb7a8c1fa864bda5f
+        new_yaml_sha256: ba03abf1ec3afd57de00e3b97c2ae2f54efe99f8ec7258746e139e1f14c5a862
+        target_ids:
+          - web.tanstack-keys.144
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.145
     stable_key: 'sha256:0f5df4d76c03a3c45b58d718a68480b0c27a24949ee47676c1ac05b345aefa4d'
@@ -57259,17 +57451,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:44Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57288,6 +57480,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:45Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: ba03abf1ec3afd57de00e3b97c2ae2f54efe99f8ec7258746e139e1f14c5a862
+        new_yaml_sha256: f42ff8eb9dd70e256aea8317c89a60edd79518b3dd96eaf6ebf96ff3a759c71a
+        target_ids:
+          - web.tanstack-keys.145
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:47Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: f42ff8eb9dd70e256aea8317c89a60edd79518b3dd96eaf6ebf96ff3a759c71a
+        new_yaml_sha256: 412b27a2f90474462ba3dac53d9afe53ae5fd27a6ceaebe3254f13dc5e53a419
+        target_ids:
+          - web.tanstack-keys.145
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:50Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 412b27a2f90474462ba3dac53d9afe53ae5fd27a6ceaebe3254f13dc5e53a419
+        new_yaml_sha256: cc35a2eb418fb15aa09f0993db475a72a1193dafefd497c7465bf2d423ee4a81
+        target_ids:
+          - web.tanstack-keys.145
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.146
     stable_key: 'sha256:7157729f1fa7a52c260a6f62cc6a0d0cc2834b4b143d6fdeed25db746fb6a9e2'
@@ -57305,17 +57545,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:52Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -57334,6 +57574,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:06:52Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: cc35a2eb418fb15aa09f0993db475a72a1193dafefd497c7465bf2d423ee4a81
+        new_yaml_sha256: 8b6efadfac021f59bf742694ae04ec16dbfa859fba75c2d6797913c80506806a
+        target_ids:
+          - web.tanstack-keys.146
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:06:55Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8b6efadfac021f59bf742694ae04ec16dbfa859fba75c2d6797913c80506806a
+        new_yaml_sha256: fa82dd2e84aaa09801a8f5a16804a4056e2e5de676410c0c4c4aa3aa7693266d
+        target_ids:
+          - web.tanstack-keys.146
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:06:58Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: fa82dd2e84aaa09801a8f5a16804a4056e2e5de676410c0c4c4aa3aa7693266d
+        new_yaml_sha256: 3220c24db8d89d74b1085e988d8b18db6d2fd35114b9c9b7bfcd50ecbd3c55b9
+        target_ids:
+          - web.tanstack-keys.146
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.147
     stable_key: 'sha256:b4f5dfd580c4edd90ef7f368e393899858398b8a8439bdb34d9ff51df04a6cc9'
@@ -58055,17 +58343,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:06:59Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -58084,6 +58372,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:07:00Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3220c24db8d89d74b1085e988d8b18db6d2fd35114b9c9b7bfcd50ecbd3c55b9
+        new_yaml_sha256: cd758ac6d8ce8fe6c5f584ad95a8ebbee6cef2a941cb0d5f79494f8f4e4d4132
+        target_ids:
+          - web.tanstack-keys.155
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:07:03Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: cd758ac6d8ce8fe6c5f584ad95a8ebbee6cef2a941cb0d5f79494f8f4e4d4132
+        new_yaml_sha256: f32f9abefd53268c737f0d9c1fb939a76c2fcc1fefb0fb1a93555dfe7c51343b
+        target_ids:
+          - web.tanstack-keys.155
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:07:05Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: f32f9abefd53268c737f0d9c1fb939a76c2fcc1fefb0fb1a93555dfe7c51343b
+        new_yaml_sha256: c31c6d3551d87bca8b3ad2d1bf78f95c4260fe3f655cb7217e7a8e5dc3222833
+        target_ids:
+          - web.tanstack-keys.155
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.156
     stable_key: 'sha256:3382c8a91eccfc0ecbc86ace5b30ce20098f34d1776d36dbf4b6befbc2a3a425'
@@ -58101,17 +58437,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:07:07Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -58130,6 +58466,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:07:08Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: c31c6d3551d87bca8b3ad2d1bf78f95c4260fe3f655cb7217e7a8e5dc3222833
+        new_yaml_sha256: 33270cd8c1bba94f9576d975b943ae32af9f05bedfe8081be9678e083e8ced99
+        target_ids:
+          - web.tanstack-keys.156
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:07:11Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 33270cd8c1bba94f9576d975b943ae32af9f05bedfe8081be9678e083e8ced99
+        new_yaml_sha256: 5a8298bd2271158de473ec75b6561bdb853b768f99a243fb7577896b566245af
+        target_ids:
+          - web.tanstack-keys.156
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:07:13Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 5a8298bd2271158de473ec75b6561bdb853b768f99a243fb7577896b566245af
+        new_yaml_sha256: 8fc6dc17d09bd7738a74ad781adf0c676897a065f0e75975a9f97bedccde6853
+        target_ids:
+          - web.tanstack-keys.156
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.157
     stable_key: 'sha256:b9a372315c305d2c48e1fb759fe6297f1d12e5b3daca235182defbb8579cb078'
@@ -58147,17 +58531,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: codex
+    claimed_at: '2026-05-11T16:07:15Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 67e8dc12
+    regression_test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
     blocked_reason: null
     history:
       -
@@ -58176,6 +58560,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-11T16:07:16Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8fc6dc17d09bd7738a74ad781adf0c676897a065f0e75975a9f97bedccde6853
+        new_yaml_sha256: 88eb3b2e0a80daeb19aee7285c19796f36c06dcd4ec05e63e402115554dfe915
+        target_ids:
+          - web.tanstack-keys.157
+        from_status: pending
+        to_status: claimed
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-11T16:07:19Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 88eb3b2e0a80daeb19aee7285c19796f36c06dcd4ec05e63e402115554dfe915
+        new_yaml_sha256: 027fa99f033c2f54f641a31a7fae1ef253cac786706a9d1c0146e918f65b9245
+        target_ids:
+          - web.tanstack-keys.157
+        from_status: claimed
+        to_status: in_progress
+        commit: 67e8dc12d9926b3a2d2e69c5aefe6d43fe9e3bc1
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-11T16:07:21Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 027fa99f033c2f54f641a31a7fae1ef253cac786706a9d1c0146e918f65b9245
+        new_yaml_sha256: c89c3d19d5e2df9942fbbad35ac8a9d8a98342ded9ca162a3b454ae51a89a7ff
+        target_ids:
+          - web.tanstack-keys.157
+        from_status: in_progress
+        to_status: under_review
+        commit: 67e8dc12
+        test: 'apps/web/src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx::return and credit note page tenant scope'
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
   -
     id: web.tanstack-keys.158
     stable_key: 'sha256:69db89f199dab5e7f37eaef38ae3d7609499d3dbe6693885328b343d9f351304'
