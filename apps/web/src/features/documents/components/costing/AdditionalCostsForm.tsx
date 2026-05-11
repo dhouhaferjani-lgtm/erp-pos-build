@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, DollarSign } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '../../../../lib/api'
+import { tenantScopedKey } from '../../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../../stores/authStore'
+import { useCompanyStore } from '../../../../stores/companyStore'
 import { Button } from '../../../../components/atoms/Button/Button'
 
 interface AdditionalCost {
@@ -30,6 +33,8 @@ const COST_TYPE_LABELS = {
 export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: AdditionalCostsFormProps) {
   const queryClient = useQueryClient()
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [newCost, setNewCost] = useState<Partial<AdditionalCost>>({
     cost_type: 'shipping',
     amount: 0,
@@ -37,11 +42,12 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
 
   // Fetch existing costs
   const { data: costsData, isLoading } = useQuery({
-    queryKey: ['document-additional-costs', documentId],
+    queryKey: tenantScopedKey(['document-additional-costs', documentId]),
     queryFn: async () => {
       const response = await api.get(`/documents/${documentId}/additional-costs`)
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const costs: AdditionalCost[] = costsData?.data ?? []
@@ -54,8 +60,8 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
     mutationFn: async (cost: Partial<AdditionalCost>) => {
       await api.post(`/documents/${documentId}/additional-costs`, cost)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document-additional-costs', documentId] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document-additional-costs', documentId]) })
       setNewCost({ cost_type: 'shipping', amount: 0 })
       onUpdate?.()
     },
@@ -66,8 +72,8 @@ export function AdditionalCostsForm({ documentId, readonly = false, onUpdate }: 
     mutationFn: async (costId: string) => {
       await api.delete(`/documents/${documentId}/additional-costs/${costId}`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document-additional-costs', documentId] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document-additional-costs', documentId]) })
       onUpdate?.()
     },
   })
