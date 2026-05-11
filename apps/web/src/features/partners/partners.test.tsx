@@ -3,6 +3,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Routes, Route } from 'react-router-dom'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { PartnerListPage } from './PartnerListPage'
 import { PartnerDetailPage } from './PartnerDetailPage'
 import { PartnerForm } from './PartnerForm'
@@ -123,6 +125,35 @@ const mockCountries = [
 describe('Partner Management', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Test User',
+        email: 'test@example.com',
+        tenant_id: 'tenant-A',
+        roles: [],
+        email_verified_at: null,
+      },
+      token: 'test-token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({
+      currentCompanyId: 'company-1',
+      companies: [
+        {
+          id: 'company-1',
+          name: 'Test Company',
+          legalName: 'Test Company LLC',
+          taxId: null,
+          countryCode: 'TN',
+          currency: 'TND',
+          locale: 'en_US',
+          timezone: 'Africa/Tunis',
+        },
+      ],
+      isLoading: false,
+    })
     mockGetCountries.mockResolvedValue([])
   })
 
