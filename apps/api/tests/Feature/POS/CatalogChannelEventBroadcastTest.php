@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -191,6 +192,32 @@ final class CatalogChannelEventBroadcastTest extends TestCase
             fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
                 && $e->companyId === $company->id
                 && $e->reason === 'MenuCategoryItem.sync',
+        );
+    }
+
+    public function test_composite_item_save_dispatches_catalog_channel_event(): void
+    {
+        // Codex r2 P2 closure — composite items surface in the POS
+        // active-menu payload for Menu tenants. CompositeItem changes
+        // must trigger catalog.changed too.
+        Event::fake([CatalogChannelEvent::class]);
+
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        CompositeItem::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CAPPUCCINO',
+            'name' => 'Cappuccino',
+            'base_price' => '5.00',
+        ]);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && str_starts_with($e->reason, 'CompositeItem.'),
         );
     }
 
