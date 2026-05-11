@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 /**
  * Generic Document Search Select Component
@@ -66,12 +69,14 @@ export function DocumentSearchSelect<T extends BaseDocument>({
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const Icon = config.icon
 
   // Fetch documents with search
   const { data: documentsData, isLoading } = useQuery({
-    queryKey: [config.queryKey, searchQuery, partnerId, config.additionalFilters],
+    queryKey: tenantScopedKey([config.queryKey, searchQuery, partnerId, config.additionalFilters]),
     queryFn: async () => {
       const params = new URLSearchParams()
 
@@ -103,7 +108,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
       const response = await api.get<{ data: T[] }>(`${config.endpoint}?${params.toString()}`)
       return response.data
     },
-    enabled: isOpen,
+    enabled: tenantId !== null && companyId !== null && isOpen,
     staleTime: 30000,
   })
 

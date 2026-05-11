@@ -11,6 +11,7 @@ import { Select } from '../../atoms/Select'
 import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 
 type PartnerType = 'customer' | 'supplier' | 'both'
 
@@ -165,8 +166,8 @@ export function AddPartnerModal({
   // React Query mutation
   const mutation = useMutation({
     mutationFn: (data: PartnerFormData) => apiPost<Partner>('/partners', data),
-    onSuccess: (partner) => {
-      void queryClient.invalidateQueries({ queryKey: ['partners'] })
+    onSuccess: async (partner) => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partners']) })
       onSuccess?.(partner)
       onClose()
     },

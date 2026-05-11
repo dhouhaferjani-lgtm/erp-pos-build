@@ -9,7 +9,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/molecules
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { tokens } from '@/lib/designTokens'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useQuery } from '@tanstack/react-query'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchLocations } from '@/features/location/api'
 import { useCompositeItem, useCreateCompositeItem, useUpdateCompositeItem, useDeleteCompositeItem, useCompositeItemAvailability } from '../hooks/useCompositeItems'
 import { useCreateRecipe } from '../hooks/useRecipes'
@@ -30,6 +33,8 @@ export function CompositeItemFormPage() {
   const isEdit = !!id && id !== 'new'
   const { hasPermission } = usePermissions()
   const canDelete = hasPermission('composite-items.delete')
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { config, hasModule } = useCompanyConfig()
   const hasInventory = hasModule('Inventory')
@@ -60,9 +65,9 @@ export function CompositeItemFormPage() {
   const [selectedLocationId, setSelectedLocationId] = useState('')
 
   const { data: locations } = useQuery({
-    queryKey: ['locations'],
+    queryKey: tenantScopedKey(['locations']),
     queryFn: fetchLocations,
-    enabled: isEdit,
+    enabled: tenantId !== null && companyId !== null && isEdit,
     staleTime: 60000,
   })
 
