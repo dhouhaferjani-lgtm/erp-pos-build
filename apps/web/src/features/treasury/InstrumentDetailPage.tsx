@@ -15,6 +15,9 @@ import {
   Landmark,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface PaymentMethod {
   id: string
@@ -86,6 +89,8 @@ export function InstrumentDetailPage() {
   const { t } = useTranslation(['common', 'treasury'])
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -94,20 +99,21 @@ export function InstrumentDetailPage() {
   const [selectedRepositoryId, setSelectedRepositoryId] = useState('')
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['instrument', id],
+    queryKey: tenantScopedKey(['instrument', id]),
     queryFn: async () => {
       const response = await api.get<InstrumentResponse>(`/payment-instruments/${id}`)
       return response.data
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && tenantId !== null && companyId !== null,
   })
 
   const { data: repositoriesData } = useQuery({
-    queryKey: ['repositories'],
+    queryKey: tenantScopedKey(['repositories']),
     queryFn: async () => {
       const response = await api.get<{ data: Repository[] }>('/payment-repositories')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const repositories = repositoriesData?.data ?? []
@@ -117,8 +123,8 @@ export function InstrumentDetailPage() {
     mutationFn: async (repositoryId: string) => {
       return api.post(`/payment-instruments/${id}/deposit`, { repository_id: repositoryId })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['instrument', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', id]) })
       setShowDepositModal(false)
     },
   })
@@ -127,8 +133,8 @@ export function InstrumentDetailPage() {
     mutationFn: async () => {
       return api.post(`/payment-instruments/${id}/clear`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['instrument', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', id]) })
     },
   })
 
@@ -136,8 +142,8 @@ export function InstrumentDetailPage() {
     mutationFn: async (reason: string) => {
       return api.post(`/payment-instruments/${id}/bounce`, { reason })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['instrument', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', id]) })
       setShowBounceModal(false)
       setBounceReason('')
     },
@@ -147,8 +153,8 @@ export function InstrumentDetailPage() {
     mutationFn: async (toRepositoryId: string) => {
       return api.post(`/payment-instruments/${id}/transfer`, { to_repository_id: toRepositoryId })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['instrument', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', id]) })
       setShowTransferModal(false)
       setSelectedRepositoryId('')
     },
