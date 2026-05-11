@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { usePosTenantScope } from './usePosTenantScope'
 
 /**
  * Discount permissions response from backend
@@ -35,10 +37,12 @@ export interface DiscountPermissions {
  * ```
  */
 export function useDiscountPermissions(terminalCode?: string) {
+  const { hasTenantScope } = usePosTenantScope()
+
   const { data: permissions, isLoading, error } = useQuery({
-    queryKey: ['pos', 'discount-permissions', terminalCode],
+    queryKey: tenantScopedKey(['pos', 'discount-permissions', terminalCode]),
     queryFn: () => apiGet<DiscountPermissions>(`/pos/discount-permissions?terminal_code=${encodeURIComponent(terminalCode!)}`),
-    enabled: !!terminalCode,
+    enabled: !!terminalCode && hasTenantScope,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: 1, // Only retry once
   })
