@@ -308,6 +308,108 @@ final class CatalogChannelEventBroadcastTest extends TestCase
         );
     }
 
+    public function test_modifier_group_assign_endpoint_dispatches_catalog_channel_event_despite_pivot_write(): void
+    {
+        // Codex r4 P2 closure — syncWithoutDetaching() on a pivot table
+        // doesn't fire model events on either side, so the observer
+        // never sees the change. The controller now broadcasts
+        // explicitly after the pivot write.
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Owner,
+            'is_active' => true,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        Permission::findOrCreate('composite-items.update', 'sanctum');
+        $user->givePermissionTo('composite-items.update');
+
+        $compositeItem = CompositeItem::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CAP',
+            'name' => 'Cappuccino',
+            'base_price' => '5.00',
+        ]);
+        $group = ModifierGroup::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'SIZE',
+            'name' => 'Size',
+            'selection_type' => 'single',
+        ]);
+
+        Sanctum::actingAs($user);
+        Event::fake([CatalogChannelEvent::class]);
+
+        $response = $this->withHeaders(['X-Company-Id' => $company->id])
+            ->postJson("/api/v1/composite-items/{$compositeItem->id}/modifier-groups", [
+                'modifier_group_id' => $group->id,
+                'display_order' => 0,
+            ]);
+
+        $response->assertStatus(200);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && $e->reason === 'CompositeItemModifierGroup.assigned',
+        );
+    }
+
+    public function test_modifier_group_remove_endpoint_dispatches_catalog_channel_event_despite_pivot_write(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Owner,
+            'is_active' => true,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        Permission::findOrCreate('composite-items.update', 'sanctum');
+        $user->givePermissionTo('composite-items.update');
+
+        $compositeItem = CompositeItem::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'CAP',
+            'name' => 'Cappuccino',
+            'base_price' => '5.00',
+        ]);
+        $group = ModifierGroup::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'SIZE',
+            'name' => 'Size',
+            'selection_type' => 'single',
+        ]);
+        $compositeItem->modifierGroups()->syncWithoutDetaching([$group->id => ['display_order' => 0]]);
+
+        Sanctum::actingAs($user);
+        Event::fake([CatalogChannelEvent::class]);
+
+        $response = $this->withHeaders(['X-Company-Id' => $company->id])
+            ->deleteJson("/api/v1/composite-items/{$compositeItem->id}/modifier-groups/{$group->id}");
+
+        $response->assertStatus(204);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && $e->reason === 'CompositeItemModifierGroup.removed',
+        );
+    }
+
     /**
      * @return array{0: Tenant, 1: Company, 2: User, 3: Menu, 4: MenuCategory}
      */
