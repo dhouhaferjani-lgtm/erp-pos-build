@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\Catalog\Domain\Entities\Modifier;
+use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -218,6 +220,63 @@ final class CatalogChannelEventBroadcastTest extends TestCase
             fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
                 && $e->companyId === $company->id
                 && str_starts_with($e->reason, 'CompositeItem.'),
+        );
+    }
+
+    public function test_modifier_group_save_dispatches_catalog_channel_event(): void
+    {
+        // Codex r3 P2 closure — ModifierGroup is serialized into the POS
+        // active-menu payload via composite items' modifier groups.
+        Event::fake([CatalogChannelEvent::class]);
+
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+
+        ModifierGroup::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'MG-1',
+            'name' => 'Size',
+            'selection_type' => 'single',
+        ]);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && str_starts_with($e->reason, 'ModifierGroup.'),
+        );
+    }
+
+    public function test_modifier_save_dispatches_catalog_channel_event_with_resolved_tenant(): void
+    {
+        // Codex r3 P2 closure — Modifier rows are relation-resolved via
+        // ModifierGroup. Event::listen subscription extracts the parent
+        // group's tenant + company before broadcasting.
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $group = ModifierGroup::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'MG-1',
+            'name' => 'Size',
+            'selection_type' => 'single',
+        ]);
+
+        Event::fake([CatalogChannelEvent::class]);
+
+        Modifier::create([
+            'modifier_group_id' => $group->id,
+            'code' => 'MOD-1',
+            'name' => 'Large',
+            'price_adjustment' => 0,
+        ]);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && str_starts_with($e->reason, 'Modifier.'),
         );
     }
 
