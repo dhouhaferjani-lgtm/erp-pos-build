@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 export interface PaymentRepository {
   id: string
@@ -21,12 +24,16 @@ interface PaymentRepositoriesResponse {
  * @returns Query result with payment repositories list
  */
 export function usePaymentRepositories() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<PaymentRepositoriesResponse>('/payment-repositories')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
@@ -51,13 +58,16 @@ export function useActivePaymentRepositories() {
  * @returns Query result with payment repository details
  */
 export function usePaymentRepository(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['payment-repository', id],
+    queryKey: tenantScopedKey(['payment-repository', id]),
     queryFn: async () => {
       if (!id) return null
       const response = await api.get<{ data: PaymentRepository }>(`/payment-repositories/${id}`)
       return response.data.data
     },
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   })
 }
