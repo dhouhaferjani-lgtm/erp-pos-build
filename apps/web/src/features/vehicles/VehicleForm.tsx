@@ -5,6 +5,9 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { api, apiPost, apiPatch } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 
 interface Partner {
@@ -54,11 +57,29 @@ interface VehicleFormData {
 const fuelTypes = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'LPG', 'CNG']
 const transmissions = ['Manual', 'Automatic', 'CVT', 'Semi-Automatic']
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function VehicleForm() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const isEdit = Boolean(id)
   const vehicleId = id ?? ''
 
@@ -81,22 +102,23 @@ export function VehicleForm() {
 
   // Fetch partners for dropdown
   const { data: partnersData } = useQuery({
-    queryKey: ['partners'],
+    queryKey: tenantScopedKey(['partners']),
     queryFn: async () => {
       const response = await api.get<PartnersResponse>('/partners')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   // Fetch vehicle if editing
   const { data: vehicleData, isLoading: loadingVehicle } = useQuery({
-    queryKey: ['vehicle', id],
+    queryKey: tenantScopedKey(['vehicle', id]),
     queryFn: async () => {
       if (!id) return null
       const response = await api.get<VehicleResponse>(`/vehicles/${id}`)
       return response.data
     },
-    enabled: isEdit,
+    enabled: isEdit && tenantId !== null && companyId !== null,
   })
 
   // Populate form when editing
@@ -135,8 +157,10 @@ export function VehicleForm() {
       transmission: data.transmission || null,
       notes: data.notes || null,
     }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('vehicles', tenantId, companyId),
+      })
       void navigate('/vehicles')
     },
   })
@@ -156,9 +180,13 @@ export function VehicleForm() {
       transmission: data.transmission || null,
       notes: data.notes || null,
     }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['vehicles'] })
-      void queryClient.invalidateQueries({ queryKey: ['vehicle', vehicleId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('vehicles', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['vehicle', vehicleId]) }),
+      ])
       void navigate(`/vehicles/${vehicleId}`)
     },
   })
