@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 14da36f1e80e66bf8984f992181ce5dca46c84ffdfb40acb353aa13544fbe1ed
+  yaml_sha256: 8076b591a4e4777ba5aaf56681091ad5e309b081a5650fb49e9964bf31958c76
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -116533,15 +116533,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:05:59Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:14Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -116610,6 +116610,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:15Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 14da36f1e80e66bf8984f992181ce5dca46c84ffdfb40acb353aa13544fbe1ed
+        new_yaml_sha256: b4c30b28d72b20c497992ddbb9dd449d86a1a6df6c43d580f2772e62b354ade2
+        target_ids:
+          - web.tanstack-keys.670
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.671
     stable_key: 'sha256:e7f1e35f125a33191b385c0d64df867843699c1863fbe33c385dbf9ca0686395'
@@ -116627,15 +116644,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:06:07Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:17Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -116704,6 +116721,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:18Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: b4c30b28d72b20c497992ddbb9dd449d86a1a6df6c43d580f2772e62b354ade2
+        new_yaml_sha256: 395ea19830bcda1eedccac56a9e69df4e894d26022899c629a86d8c269c9a5b2
+        target_ids:
+          - web.tanstack-keys.671
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.672
     stable_key: 'sha256:b4e87d205f4d7177d8c2655248a2fdf2460b9011aa3b637542d62fac978ebad3'
@@ -116721,15 +116755,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:06:15Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:20Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -116798,6 +116832,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:21Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 395ea19830bcda1eedccac56a9e69df4e894d26022899c629a86d8c269c9a5b2
+        new_yaml_sha256: 73f7a743afb839da995a70ac788e268e6fbef48cc67abad2fa4017e697f54a9a
+        target_ids:
+          - web.tanstack-keys.672
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.673
     stable_key: 'sha256:a78a6bd5592c0ffbd5f549529d000fb8c52bb80fe72c7a0faceee36a28721947'
@@ -116815,15 +116866,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:06:23Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:23Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -116892,6 +116943,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:24Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 73f7a743afb839da995a70ac788e268e6fbef48cc67abad2fa4017e697f54a9a
+        new_yaml_sha256: 0301f30fcb2fc1604f227b174b5903fce80e61bf62b8f3bbf68f201f378114a4
+        target_ids:
+          - web.tanstack-keys.673
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.674
     stable_key: 'sha256:f7f108c118a748343a7ae9d8e787d3931debf99fab9de1d69c2ec444a8215a6a'
@@ -116909,15 +116977,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:06:31Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:26Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -116986,6 +117054,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:27Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 0301f30fcb2fc1604f227b174b5903fce80e61bf62b8f3bbf68f201f378114a4
+        new_yaml_sha256: 13044a509275fc7d13158de4fbc8f09e8bcab7daf820a1aed9c623939ab80cee
+        target_ids:
+          - web.tanstack-keys.674
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.675
     stable_key: 'sha256:13751d41d72cb1c95779e64c8fbf068c5253ee61abb378a25d2edb4a17388beb'
@@ -117003,15 +117088,15 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: under_review
+    status: fixed
     owner: codex
     claimed_at: '2026-05-11T15:06:39Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-11T22:26:29Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+      review_commit: bf0d9839
     fix_commit: bf0d9839
     regression_test: 'apps/web/src/features/treasury/__tests__/InstrumentDetailPage.tenantScope.test.tsx::InstrumentDetailPage tenant scope'
     blocked_reason: null
@@ -117080,6 +117165,23 @@ callsites:
         review_file: null
         review_commit: null
         note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-11T22:26:30Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 13044a509275fc7d13158de4fbc8f09e8bcab7daf820a1aed9c623939ab80cee
+        new_yaml_sha256: 8076b591a4e4777ba5aaf56681091ad5e309b081a5650fb49e9964bf31958c76
+        target_ids:
+          - web.tanstack-keys.675
+          - web.tanstack-keys
+        from_status: under_review
+        to_status: fixed
+        commit: 3f363e33c97723526a03f92d80c65884179a61da
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-11-web-tanstack-keys-batch-79-opus-review.md
+        review_commit: bf0d9839
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: web.tanstack-keys.676
     stable_key: 'sha256:3aecb80f5a852be79fb81586d0e1fe0b15cc952e679c82b4fd82c0db59195ded'
