@@ -7,10 +7,22 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { useAccount, useAccounts } from '../useAccounts'
+import { useAgedPayables } from '../useAgedPayables'
+import { useAgedReceivables } from '../useAgedReceivables'
+import { useBalanceSheet } from '../useBalanceSheet'
+import { useFinanceSummary } from '../useFinanceSummary'
 import { useJournalEntry, useJournalEntries as useJournalEntriesRead } from '../useJournalEntries'
 import { useCreateJournalEntry, usePostJournalEntry } from '../useJournalEntryMutations'
 import { useJournalEntries as useLedgerJournalEntries, useLedger } from '../useLedger'
+import { useProfitLoss } from '../useProfitLoss'
+import { useTrialBalance } from '../useTrialBalance'
 
+const mockGetAgedPayables = vi.hoisted(() => vi.fn())
+const mockGetAgedReceivables = vi.hoisted(() => vi.fn())
+const mockGetBalanceSheet = vi.hoisted(() => vi.fn())
+const mockGetFinanceSummary = vi.hoisted(() => vi.fn())
+const mockGetProfitLoss = vi.hoisted(() => vi.fn())
+const mockGetTrialBalance = vi.hoisted(() => vi.fn())
 const mockGetAccounts = vi.hoisted(() => vi.fn())
 const mockGetAccount = vi.hoisted(() => vi.fn())
 const mockCreateAccount = vi.hoisted(() => vi.fn())
@@ -27,11 +39,17 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }))
 vi.mock('../../api', () => ({
   createAccount: mockCreateAccount,
   createJournalEntry: mockCreateJournalEntry,
+  getAgedPayables: mockGetAgedPayables,
+  getAgedReceivables: mockGetAgedReceivables,
   getAccount: mockGetAccount,
   getAccounts: mockGetAccounts,
+  getBalanceSheet: mockGetBalanceSheet,
+  getFinanceSummary: mockGetFinanceSummary,
   getJournalEntries: mockGetJournalEntries,
   getJournalEntry: mockGetJournalEntry,
   getLedger: mockGetLedger,
+  getProfitLoss: mockGetProfitLoss,
+  getTrialBalance: mockGetTrialBalance,
   postJournalEntry: mockPostJournalEntry,
   updateAccount: mockUpdateAccount,
 }))
@@ -69,6 +87,12 @@ beforeEach(() => {
   mockGetJournalEntries.mockResolvedValue([{ id: 'journal-1' }])
   mockGetJournalEntry.mockResolvedValue({ id: 'journal-1' })
   mockGetLedger.mockResolvedValue([{ id: 'ledger-1' }])
+  mockGetAgedPayables.mockResolvedValue({ rows: [{ id: 'payable-1' }] })
+  mockGetAgedReceivables.mockResolvedValue({ rows: [{ id: 'receivable-1' }] })
+  mockGetBalanceSheet.mockResolvedValue({ assets: [] })
+  mockGetFinanceSummary.mockResolvedValue({ revenue: 1 })
+  mockGetProfitLoss.mockResolvedValue({ revenue: [] })
+  mockGetTrialBalance.mockResolvedValue({ rows: [] })
   mockCreateJournalEntry.mockResolvedValue({ id: 'journal-1' })
   mockPostJournalEntry.mockResolvedValue({ id: 'journal-1' })
   mockCreateAccount.mockResolvedValue({ id: 'account-1' })
@@ -156,5 +180,39 @@ describe('finance hooks tenant scope', () => {
 
     expect(queryClient.getQueryData(['journal-entries', 1, 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-list' })
     expect(queryClient.getQueryData(['journal-entry', 'journal-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-detail' })
+  })
+
+  it('wraps finance report query keys and gates missing tenant/company', async () => {
+    const queryClient = createClient()
+    const agedFilters = { as_of_date: '2026-05-11' }
+    const dateFilters = { date_from: '2026-05-01', date_to: '2026-05-11' }
+    const { result } = renderHook(() => ({
+      agedPayables: useAgedPayables(agedFilters),
+      agedReceivables: useAgedReceivables(agedFilters),
+      balanceSheet: useBalanceSheet({ as_of_date: '2026-05-11' }),
+      financeSummary: useFinanceSummary(),
+      profitLoss: useProfitLoss(dateFilters),
+      trialBalance: useTrialBalance({ as_of_date: '2026-05-11' }),
+    }), { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(result.current.agedPayables.isSuccess).toBe(true)
+      expect(result.current.agedReceivables.isSuccess).toBe(true)
+      expect(result.current.balanceSheet.isSuccess).toBe(true)
+      expect(result.current.financeSummary.isSuccess).toBe(true)
+      expect(result.current.profitLoss.isSuccess).toBe(true)
+      expect(result.current.trialBalance.isSuccess).toBe(true)
+    })
+
+    expect(queryClient.getQueryData(['aged-payables', agedFilters, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['aged-receivables', agedFilters, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['balance-sheet', { as_of_date: '2026-05-11' }, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['finance-summary', 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['profit-loss', dateFilters, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['trial-balance', { as_of_date: '2026-05-11' }, 'tenant-A', 'company-1'])).toBeDefined()
+
+    resetTenant()
+    renderHook(() => useFinanceSummary(), { wrapper: wrapper(createClient()) })
+    expect(mockGetFinanceSummary).toHaveBeenCalledTimes(1)
   })
 })
