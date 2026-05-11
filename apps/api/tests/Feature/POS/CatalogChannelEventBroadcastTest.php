@@ -5,13 +5,20 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Menu\Domain\Entities\Menu;
 use App\Modules\Menu\Domain\Entities\MenuCategory;
+use App\Modules\Menu\Domain\Entities\MenuCategoryItem;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogChannelEvent;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -147,5 +154,106 @@ final class CatalogChannelEventBroadcastTest extends TestCase
                 && $e->companyId === $company->id
                 && str_starts_with($e->reason, 'MenuCategory.'),
         );
+    }
+
+    public function test_sync_items_endpoint_dispatches_catalog_channel_event_despite_mass_delete(): void
+    {
+        // Codex r1 P2 — Eloquent's where()->delete() is a mass delete and
+        // bypasses model events. The controller now emits an explicit
+        // CatalogChannelEvent after the bulk rewrite so the POS picks up
+        // the change immediately.
+        [$tenant, $company, $user, $menu, $category] = $this->scaffoldMenuStack();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+        ]);
+
+        Sanctum::actingAs($user);
+        Event::fake([CatalogChannelEvent::class]);
+
+        $response = $this->withHeaders(['X-Company-Id' => $company->id])
+            ->putJson("/api/v1/menu-categories/{$category->id}/items", [
+                'items' => [
+                    [
+                        'sellable_type' => 'product',
+                        'sellable_id' => $product->id,
+                        'display_order' => 1,
+                        'is_available' => true,
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && $e->reason === 'MenuCategoryItem.sync',
+        );
+    }
+
+    public function test_remove_item_endpoint_dispatches_catalog_channel_event_despite_mass_delete(): void
+    {
+        [$tenant, $company, $user, $menu, $category] = $this->scaffoldMenuStack();
+
+        $item = MenuCategoryItem::create([
+            'menu_category_id' => $category->id,
+            'product_id' => null,
+            'composite_item_id' => null,
+            'display_order' => 1,
+            'is_available' => true,
+        ]);
+
+        Sanctum::actingAs($user);
+        Event::fake([CatalogChannelEvent::class]);
+
+        $response = $this->withHeaders(['X-Company-Id' => $company->id])
+            ->deleteJson("/api/v1/menu-categories/{$category->id}/items/{$item->id}");
+
+        $response->assertStatus(204);
+
+        Event::assertDispatched(
+            CatalogChannelEvent::class,
+            fn (CatalogChannelEvent $e): bool => $e->tenantId === $tenant->id
+                && $e->companyId === $company->id
+                && $e->reason === 'MenuCategoryItem.removed',
+        );
+    }
+
+    /**
+     * @return array{0: Tenant, 1: Company, 2: User, 3: Menu, 4: MenuCategory}
+     */
+    private function scaffoldMenuStack(): array
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Owner,
+            'is_active' => true,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        Permission::findOrCreate('menus.manage', 'sanctum');
+        $user->givePermissionTo('menus.manage');
+
+        $menu = Menu::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'name' => 'Lunch Menu',
+            'is_active' => true,
+        ]);
+        $category = MenuCategory::create([
+            'menu_id' => $menu->id,
+            'name' => 'Starters',
+            'display_order' => 1,
+            'is_active' => true,
+        ]);
+
+        return [$tenant, $company, $user, $menu, $category];
     }
 }
