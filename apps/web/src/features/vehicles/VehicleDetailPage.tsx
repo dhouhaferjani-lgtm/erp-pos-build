@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Car, Calendar, Gauge, Fuel, Settings } from 'lucide-react'
 import { apiDelete } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -43,8 +44,8 @@ export function VehicleDetailPage() {
       if (id === undefined || id === '') throw new Error('No vehicle ID')
       return apiDelete(`/vehicles/${id}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['vehicles']) })
       void navigate('/vehicles')
     },
   })

@@ -7,7 +7,9 @@ import { z } from 'zod'
 import { Loader2, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { tokens, textColors } from '../../../lib/designTokens'
+import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 
 /**
@@ -99,6 +101,8 @@ function getPaymentDetailsOverride(countryCode: string | null): LegalOverrideInf
 export function ReceiptSettingsTab() {
   const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const getCurrentCompany = useCompanyStore((state) => state.getCurrentCompany)
   const currentCompany = getCurrentCompany()
   const countryCode = currentCompany?.countryCode ?? null
@@ -109,14 +113,14 @@ export function ReceiptSettingsTab() {
 
   // Fetch receipt settings
   const { data, isLoading, error } = useQuery({
-    queryKey: ['receipt-settings'],
+    queryKey: tenantScopedKey(['receipt-settings']),
     queryFn: async () => {
       const response = await api.get<ReceiptSettingsResponse>(
         `/companies/${currentCompany?.id ?? ''}/pos-settings`
       )
       return response.data.data
     },
-    enabled: !!currentCompany?.id,
+    enabled: tenantId !== null && companyId !== null && !!currentCompany?.id,
   })
 
   const {
@@ -174,8 +178,8 @@ export function ReceiptSettingsTab() {
     mutationFn: async (formData: ReceiptSettingsFormData): Promise<void> => {
       await api.put(`/companies/${currentCompany?.id ?? ''}/receipt-settings`, formData)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['receipt-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['receipt-settings']) })
       toast.success(t('settings:receipt.messages.saved'))
     },
     onError: (err: unknown) => {

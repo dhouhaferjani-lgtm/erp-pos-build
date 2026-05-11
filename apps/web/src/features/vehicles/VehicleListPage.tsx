@@ -4,8 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Car } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { SearchInput } from '../../components/ui/SearchInput'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface Vehicle {
   id: string
@@ -37,10 +40,12 @@ interface VehiclesResponse {
 
 export function VehicleListPage() {
   const { t } = useTranslation(['common', 'vehicles'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['vehicles', searchQuery],
+    queryKey: tenantScopedKey(['vehicles', searchQuery]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -48,6 +53,7 @@ export function VehicleListPage() {
       const response = await api.get<VehiclesResponse>(`/vehicles${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const vehicles = useMemo(() => data?.data ?? [], [data?.data])
