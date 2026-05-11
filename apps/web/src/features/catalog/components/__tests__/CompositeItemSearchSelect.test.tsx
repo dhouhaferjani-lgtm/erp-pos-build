@@ -3,6 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CompositeItemSearchSelect } from '../CompositeItemSearchSelect'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -19,12 +21,15 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-function createWrapper() {
-  const queryClient = new QueryClient({
+function createTestQueryClient() {
+  return new QueryClient({
     defaultOptions: {
       queries: { retry: false },
     },
   })
+}
+
+function createWrapper(queryClient = createTestQueryClient()) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -32,6 +37,21 @@ function createWrapper() {
       </QueryClientProvider>
     )
   }
+}
+
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: [], email_verified_at: null },
+    token: 'token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({ currentCompanyId: companyId, companies: [], isLoading: false })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
 }
 
 describe('CompositeItemSearchSelect', () => {
@@ -42,6 +62,11 @@ describe('CompositeItemSearchSelect', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    setTenant('tenant-A', 'company-1')
+  })
+
+  afterEach(() => {
+    resetTenant()
   })
 
   it('renders with placeholder text when no value is selected', () => {
@@ -218,5 +243,27 @@ describe('CompositeItemSearchSelect', () => {
     await user.click(screen.getByLabelText('Clear selection'))
 
     expect(onChange).toHaveBeenCalledWith('')
+  })
+
+  it('scopes search and selected item query keys by tenant/company', async () => {
+    mockGet.mockResolvedValue({ data: { data: { id: 'selected-id', name: 'Selected Item', code: 'SEL-001' } } })
+    const queryClient = createTestQueryClient()
+
+    render(
+      <CompositeItemSearchSelect value="selected-id" onChange={vi.fn()} />,
+      { wrapper: createWrapper(queryClient) }
+    )
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['composite-item-selected', 'selected-id', 'tenant-A', 'company-1'])).toBeDefined()
+    })
+
+    resetTenant()
+    const calls = mockGet.mock.calls.length
+    render(
+      <CompositeItemSearchSelect value="tenantless-id" onChange={vi.fn()} />,
+      { wrapper: createWrapper(createTestQueryClient()) }
+    )
+    expect(mockGet).toHaveBeenCalledTimes(calls)
   })
 })
