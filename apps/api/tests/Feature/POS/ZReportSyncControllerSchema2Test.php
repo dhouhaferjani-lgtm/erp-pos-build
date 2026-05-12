@@ -95,17 +95,132 @@ final class ZReportSyncControllerSchema2Test extends TestCase
 
         $zReportId = $response->json('data.id');
 
-        // Two denomination entries for the same payment method → aggregated to one row.
         $this->assertDatabaseCount('pos_z_report_counts', 1);
 
         $row = ZReportCount::where('z_report_id', $zReportId)->first();
         $this->assertNotNull($row);
         $this->assertSame($this->cashMethod->id, $row->payment_method_id);
+        $this->assertSame('EUR', $row->currency_code);
+        $this->assertSame('100.0000', $row->expected_amount);
+        $this->assertSame('100.0000', $row->actual_amount);
+        $this->assertSame('0.0000', $row->variance_amount);
+        $this->assertSame('balanced', $row->variance_direction);
+        $this->assertSame(2, $row->transaction_count);
+    }
 
-        // Sum of both denomination counted_amounts: 50.00 + 20.00 = 70.00
-        $this->assertSame('70.0000', $row->actual_amount);
-        // transaction_count = sum of counted_quantities: 5 + 4 = 9
-        $this->assertSame(9, $row->transaction_count);
+    public function test_legacy_denomination_only_cash_counts_payload_is_rejected(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = array_merge($this->buildV1Payload(), [
+            'cash_counts' => [
+                [
+                    'payment_method_id' => $this->cashMethod->id,
+                    'counted_quantity' => 5,
+                    'counted_amount' => '50.00',
+                ],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        foreach ([
+            'cash_counts.0.expected_amount',
+            'cash_counts.0.actual_amount',
+            'cash_counts.0.variance_amount',
+            'cash_counts.0.variance_direction',
+            'cash_counts.0.currency_code',
+            'cash_counts.0.transaction_count',
+        ] as $field) {
+            $this->assertArrayHasKey($field, $errors);
+        }
+    }
+
+    public function test_inconsistent_cash_count_variance_payload_is_rejected_before_persistence(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        $payload['cash_counts'][0]['variance_amount'] = '1.000';
+        $payload['cash_counts'][0]['variance_direction'] = 'over';
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('cash_counts.0.variance_amount', $errors);
+        $this->assertDatabaseCount('pos_z_report_counts', 0);
+    }
+
+    public function test_scientific_notation_cash_count_amounts_are_rejected_before_persistence(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        $payload['cash_counts'][0]['expected_amount'] = '1e3';
+        $payload['cash_counts'][0]['actual_amount'] = '1000.0000';
+        $payload['cash_counts'][0]['variance_amount'] = '0.0000';
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('cash_counts.0.expected_amount', $errors);
+        $this->assertDatabaseCount('pos_z_report_counts', 0);
+    }
+
+    public function test_negative_expected_or_actual_cash_count_amounts_are_rejected_before_persistence(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        $payload['cash_counts'][0]['expected_amount'] = '-1.0000';
+        $payload['cash_counts'][0]['actual_amount'] = '-1.0000';
+        $payload['cash_counts'][0]['variance_amount'] = '0.0000';
+        $payload['cash_counts'][0]['variance_direction'] = 'balanced';
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('cash_counts.0.expected_amount', $errors);
+        $this->assertArrayHasKey('cash_counts.0.actual_amount', $errors);
+        $this->assertDatabaseCount('pos_z_report_counts', 0);
+    }
+
+    public function test_duplicate_cash_count_payment_methods_are_rejected_before_persistence(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        $payload['cash_counts'][] = [
+            'payment_method_id' => $this->cashMethod->id,
+            'currency_code' => 'EUR',
+            'expected_amount' => '50.0000',
+            'actual_amount' => '50.0000',
+            'variance_amount' => '0.0000',
+            'variance_direction' => 'balanced',
+            'transaction_count' => 1,
+        ];
+
+        $response = $this->postJson('/api/v1/pos/reports/z/sync', $payload);
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('cash_counts.1.payment_method_id', $errors);
+        $this->assertDatabaseCount('pos_z_report_counts', 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -124,7 +239,7 @@ final class ZReportSyncControllerSchema2Test extends TestCase
         $this->assertNotNull($shift);
 
         // actual_cash from shift_fields
-        $this->assertSame('70.0000', (string) $shift->actual_cash);
+        $this->assertSame('100.0000', (string) $shift->actual_cash);
         // variance_amount from shift_fields
         $this->assertSame('-5.0000', (string) $shift->variance);
         // variance_severity normalised from 'medium' → 'warning'
@@ -234,25 +349,18 @@ final class ZReportSyncControllerSchema2Test extends TestCase
             'cash_counts' => [
                 [
                     'payment_method_id' => $this->cashMethod->id,
-                    'denomination_id' => null,
-                    'counted_quantity' => 5,
-                    'counted_amount' => '50.00',
-                    'denomination_name' => '10',
-                    'denomination_value' => '10.00',
-                ],
-                [
-                    'payment_method_id' => $this->cashMethod->id,
-                    'denomination_id' => null,
-                    'counted_quantity' => 4,
-                    'counted_amount' => '20.00',
-                    'denomination_name' => '5',
-                    'denomination_value' => '5.00',
+                    'currency_code' => 'EUR',
+                    'expected_amount' => '100.000',
+                    'actual_amount' => '100.000',
+                    'variance_amount' => '0.000',
+                    'variance_direction' => 'balanced',
+                    'transaction_count' => 2,
                 ],
             ],
             'shift_fields' => [
                 'variance_reason' => 'Short count from till reset',
                 'variance_severity' => 'medium',
-                'actual_cash' => '70.0000',
+                'actual_cash' => '100.0000',
                 'variance_amount' => '-5.0000',
             ],
             'manager_user_id' => $this->manager->id,
