@@ -14,7 +14,12 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   getAllOperators: vi.fn().mockResolvedValue([]),
   hasOperatorPins: vi.fn().mockResolvedValue(false),
+  updateOperatorDiscountPermissions: vi.fn().mockResolvedValue(undefined),
   upsertOperators: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/api/discountApi', () => ({
+  fetchDiscountPermissions: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repositories/queuedPinUpdateRepository', () => ({
@@ -45,11 +50,25 @@ vi.mock('@/stores/authStore', () => ({
   },
 }));
 
+let _terminalState: Record<string, unknown> = {
+  terminal: { id: 'term-1', code: 'POS01', max_discount_percent: 10 },
+};
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: {
+    getState: vi.fn(() => _terminalState),
+  },
+}));
+
 // bcryptjs is not mocked — we use the real library for hash verification tests
 import bcrypt from 'bcryptjs';
+import { fetchDiscountPermissions } from '@/api/discountApi';
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
-import { getAllOperators, hasOperatorPins } from '@/lib/db/repositories/operatorPinRepository';
+import {
+  getAllOperators,
+  hasOperatorPins,
+  updateOperatorDiscountPermissions,
+} from '@/lib/db/repositories/operatorPinRepository';
 
 const mockDb = {
   execute: vi.fn().mockResolvedValue({ rowsAffected: 0 }),
@@ -73,6 +92,9 @@ const PIN_1234_HASH = bcrypt.hashSync('1234', 10);
 describe('operatorStore', () => {
   beforeEach(() => {
     _authState = { companyId: 'company-1', user: defaultUser };
+    _terminalState = {
+      terminal: { id: 'term-1', code: 'POS01', max_discount_percent: 10 },
+    };
     useOperatorStore.setState({
       operator: null,
       isLocked: false,
@@ -81,6 +103,16 @@ describe('operatorStore', () => {
     });
     vi.clearAllMocks();
     vi.mocked(getDatabase).mockResolvedValue(mockDb);
+    vi.mocked(fetchDiscountPermissions).mockResolvedValue({
+      canDiscount: true,
+      userCanDiscount: true,
+      userMaxDiscountPercent: null,
+      terminalAllowsDiscounts: true,
+      canApplyLineDiscounts: true,
+      canApplyTransactionDiscounts: true,
+      maxDiscountPercent: 10,
+      requiresReason: false,
+    });
   });
 
   it('has correct initial state', () => {
@@ -102,6 +134,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
 
     await useOperatorStore.getState().verifyPin('1234');
@@ -126,6 +161,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
 
     await useOperatorStore.getState().verifyPin('1234');
@@ -147,6 +185,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
     vi.mocked(apiPost).mockResolvedValue(mockOperator);
 
@@ -154,7 +195,12 @@ describe('operatorStore', () => {
 
     const state = useOperatorStore.getState();
     // API matched on a different operator (mockOperator).
-    expect(state.operator).toEqual(mockOperator);
+    expect(state.operator).toEqual({
+      ...mockOperator,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      discount_permissions_status: 'fresh',
+    });
     expect(state.isLocked).toBe(false);
   });
 
@@ -168,6 +214,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
     vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
 
@@ -187,6 +236,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
     vi.mocked(apiPost).mockRejectedValue(new Error('500 server error'));
 
@@ -210,6 +262,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
 
     await expect(
@@ -231,6 +286,9 @@ describe('operatorStore', () => {
         permissions: ['pos.sell'],
         can_discount: false,
         max_discount_percent: null,
+        discount_permissions_fetched_at: new Date().toISOString(),
+        discount_permissions_terminal_code: 'POS01',
+        discount_permissions_status: 'fresh',
       },
       {
         id: 'op-2',
@@ -241,6 +299,9 @@ describe('operatorStore', () => {
         permissions: ['pos.manage'],
         can_discount: true,
         max_discount_percent: 50,
+        discount_permissions_fetched_at: new Date().toISOString(),
+        discount_permissions_terminal_code: 'POS01',
+        discount_permissions_status: 'fresh',
       },
     ]);
 
@@ -256,7 +317,12 @@ describe('operatorStore', () => {
     await useOperatorStore.getState().setupPin('5678');
 
     const state = useOperatorStore.getState();
-    expect(state.operator).toEqual(mockOperator);
+    expect(state.operator).toEqual({
+      ...mockOperator,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      discount_permissions_status: 'fresh',
+    });
     expect(state.hasPins).toBe(true);
     expect(state.isLocked).toBe(false);
   });
@@ -383,6 +449,9 @@ describe('operatorStore', () => {
       permissions: ['pos.sell'],
       can_discount: true,
       max_discount_percent: 10,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
     }]);
 
     // Under offline-first, the first try must succeed on the local hash
@@ -391,6 +460,293 @@ describe('operatorStore', () => {
       useOperatorStore.getState().verifyPin('1234'),
     ).resolves.toBeUndefined();
     expect(useOperatorStore.getState().operator!.id).toBe('op-1');
+  });
+
+  it('verifyPin uses fresh cached discount permissions for an offline match', async () => {
+    vi.mocked(fetchDiscountPermissions).mockImplementationOnce(() => new Promise<never>(() => {}));
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
+    }]);
+
+    await useOperatorStore.getState().verifyPin('1234');
+
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_status: 'fresh',
+    }));
+  });
+
+  it('verifyPin fails closed when an offline cached permission is stale', async () => {
+    vi.mocked(fetchDiscountPermissions).mockImplementationOnce(() => new Promise<never>(() => {}));
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_fetched_at: '2026-05-10T10:00:00.000Z',
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'stale',
+    }]);
+
+    await useOperatorStore.getState().verifyPin('1234');
+
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: false,
+      max_discount_percent: null,
+      discount_permissions_status: 'stale',
+    }));
+  });
+
+  it('verifyPin fails closed when cached permissions belong to another terminal', async () => {
+    vi.mocked(fetchDiscountPermissions).mockImplementationOnce(() => new Promise<never>(() => {}));
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'OTHER',
+      discount_permissions_status: 'fresh',
+    }]);
+
+    await useOperatorStore.getState().verifyPin('1234');
+
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: false,
+      max_discount_percent: null,
+      discount_permissions_status: 'unavailable',
+    }));
+  });
+
+  it('verifyPin fetches terminal-aware permissions after online API success and caches them', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([]);
+    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+    vi.mocked(fetchDiscountPermissions).mockResolvedValue({
+      canDiscount: true,
+      userCanDiscount: true,
+      userMaxDiscountPercent: null,
+      terminalAllowsDiscounts: true,
+      canApplyLineDiscounts: true,
+      canApplyTransactionDiscounts: true,
+      maxDiscountPercent: 6,
+      requiresReason: true,
+    });
+
+    await useOperatorStore.getState().verifyPin('9999');
+
+    expect(fetchDiscountPermissions).toHaveBeenCalledWith('POS01', 'op-1');
+    expect(updateOperatorDiscountPermissions).toHaveBeenCalledWith(
+      mockDb,
+      'op-1',
+      expect.objectContaining({
+        can_discount: true,
+        max_discount_percent: 6,
+        user_can_discount: true,
+        user_max_discount_percent: null,
+        can_apply_line_discounts: true,
+        can_apply_transaction_discounts: true,
+        fetched_at: expect.any(String),
+        terminal_code: 'POS01',
+        status: 'fresh',
+      }),
+    );
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 6,
+      discount_permissions_status: 'fresh',
+    }));
+  });
+
+  it('verifyPin preserves terminal denial as a hard discount stop', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([]);
+    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+    vi.mocked(fetchDiscountPermissions).mockResolvedValue({
+      canDiscount: false,
+      userCanDiscount: true,
+      userMaxDiscountPercent: null,
+      terminalAllowsDiscounts: false,
+      canApplyLineDiscounts: false,
+      canApplyTransactionDiscounts: false,
+      maxDiscountPercent: 10,
+      requiresReason: false,
+    });
+
+    await useOperatorStore.getState().verifyPin('9999');
+
+    expect(updateOperatorDiscountPermissions).toHaveBeenCalledWith(
+      mockDb,
+      'op-1',
+      expect.objectContaining({
+        can_discount: true,
+        max_discount_percent: 10,
+        user_can_discount: true,
+        user_max_discount_percent: null,
+        can_apply_line_discounts: false,
+        can_apply_transaction_discounts: false,
+        terminal_code: 'POS01',
+        status: 'terminal_denied',
+      }),
+    );
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: true,
+      can_apply_line_discounts: false,
+      can_apply_transaction_discounts: false,
+      max_discount_percent: 10,
+      discount_permissions_status: 'terminal_denied',
+    }));
+  });
+
+  it('verifyPin stores per-type discount denials from terminal-aware permissions', async () => {
+    vi.mocked(getAllOperators).mockResolvedValue([]);
+    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+    vi.mocked(fetchDiscountPermissions).mockResolvedValue({
+      canDiscount: true,
+      userCanDiscount: true,
+      userMaxDiscountPercent: null,
+      terminalAllowsDiscounts: true,
+      canApplyLineDiscounts: false,
+      canApplyTransactionDiscounts: true,
+      maxDiscountPercent: 8,
+      requiresReason: false,
+    });
+
+    await useOperatorStore.getState().verifyPin('9999');
+
+    expect(updateOperatorDiscountPermissions).toHaveBeenCalledWith(
+      mockDb,
+      'op-1',
+      expect.objectContaining({
+        can_discount: true,
+        max_discount_percent: 8,
+        can_apply_line_discounts: false,
+        can_apply_transaction_discounts: true,
+        status: 'fresh',
+      }),
+    );
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: true,
+      can_apply_line_discounts: false,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 8,
+      discount_permissions_status: 'fresh',
+    }));
+  });
+
+  it('verifyPin keeps a fresh cached permission when the background refresh fails', async () => {
+    vi.mocked(fetchDiscountPermissions).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
+    }]);
+
+    await useOperatorStore.getState().verifyPin('1234');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_status: 'fresh',
+    }));
+  });
+
+  it('verifyPin fails closed when the background permission refresh returns an authoritative denial', async () => {
+    vi.mocked(fetchDiscountPermissions).mockRejectedValueOnce(
+      Object.assign(new Error('Operator not found'), { status: 404 }),
+    );
+    vi.mocked(getAllOperators).mockResolvedValue([{
+      id: 'op-1',
+      name: 'Jane Cashier',
+      email: 'jane@example.com',
+      pin_hash: PIN_1234_HASH,
+      roles: ['cashier'],
+      permissions: ['pos.sell'],
+      can_discount: true,
+      can_apply_line_discounts: true,
+      can_apply_transaction_discounts: true,
+      max_discount_percent: 7,
+      discount_permissions_fetched_at: new Date().toISOString(),
+      discount_permissions_terminal_code: 'POS01',
+      discount_permissions_status: 'fresh',
+    }]);
+
+    await useOperatorStore.getState().verifyPin('1234');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: false,
+      can_apply_line_discounts: false,
+      can_apply_transaction_discounts: false,
+      max_discount_percent: null,
+      discount_permissions_status: 'unavailable',
+    }));
+  });
+
+  it('verifyPin fails closed when terminal context is unavailable after online API success', async () => {
+    _terminalState = { terminal: null };
+    vi.mocked(getAllOperators).mockResolvedValue([]);
+    vi.mocked(apiPost).mockResolvedValue(mockOperator);
+
+    await useOperatorStore.getState().verifyPin('9999');
+
+    expect(fetchDiscountPermissions).not.toHaveBeenCalled();
+    expect(useOperatorStore.getState().operator).toEqual(expect.objectContaining({
+      id: 'op-1',
+      can_discount: false,
+      max_discount_percent: null,
+      discount_permissions_status: 'unavailable',
+    }));
   });
 
   it('lock sets isLocked to true', () => {

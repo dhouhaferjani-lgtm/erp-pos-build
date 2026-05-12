@@ -18,6 +18,8 @@ export interface DiscountModalProps {
   }) => void;
   canDiscount: boolean;
   maxDiscountPercent: number;
+  terminalMaxDiscountPercent: number;
+  disabledReason?: string;
   requiresReason: boolean;
 }
 
@@ -30,6 +32,8 @@ export function DiscountModal({
   onApplyTransactionDiscount,
   canDiscount,
   maxDiscountPercent,
+  terminalMaxDiscountPercent,
+  disabledReason,
   requiresReason,
 }: DiscountModalProps) {
   const { t } = useTranslation('pos');
@@ -97,9 +101,10 @@ export function DiscountModal({
   const numericValue = parseFloat(value) || 0;
   const percentageExceeded =
     discountType === 'percentage' && numericValue > maxDiscountPercent;
-  const needsManagerOverride = !canDiscount || percentageExceeded;
+  const isDiscountDisabled = disabledReason !== undefined;
+  const needsManagerOverride = !isDiscountDisabled && (!canDiscount || percentageExceeded);
   const isValid =
-    numericValue > 0 && (!requiresReason || reason.trim().length > 0);
+    !isDiscountDisabled && numericValue > 0 && (!requiresReason || reason.trim().length > 0);
 
   const handleApply = useCallback(() => {
     if (!isValid) return;
@@ -134,7 +139,8 @@ export function DiscountModal({
         return;
       }
 
-      const managerMax = manager.max_discount_percent ?? 100;
+      const managerLimit = manager.max_discount_percent ?? terminalMaxDiscountPercent;
+      const managerMax = Math.min(managerLimit, terminalMaxDiscountPercent);
       if (discountType === 'percentage' && parseFloat(value) > managerMax) {
         setManagerError(t('discount.managerDenied'));
         return;
@@ -155,7 +161,7 @@ export function DiscountModal({
     } finally {
       setVerifyingPin(false);
     }
-  }, [managerPin, discountType, value, reason, onApplyTransactionDiscount, onClose, t]);
+  }, [managerPin, discountType, value, reason, terminalMaxDiscountPercent, onApplyTransactionDiscount, onClose, t]);
 
   if (!isOpen) return null;
 
@@ -265,8 +271,10 @@ export function DiscountModal({
                   <button
                     key={key}
                     onClick={() => handleNumpadPress(key)}
+                    disabled={isDiscountDisabled}
                     className={cn(
                       'flex items-center justify-center rounded-xl text-xl font-semibold transition-colors',
+                      isDiscountDisabled && 'cursor-not-allowed opacity-50',
                       key === 'C'
                         ? 'bg-red-50 text-red-700 hover:bg-red-100'
                         : 'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
@@ -325,6 +333,12 @@ export function DiscountModal({
           ) : (
             <>
               {/* Max exceeded warning — shown as info since manager can override */}
+              {disabledReason && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
+                  {disabledReason}
+                </div>
+              )}
+
               {needsManagerOverride && numericValue > 0 && (
                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-700">
                   {!canDiscount

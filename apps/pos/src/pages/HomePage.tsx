@@ -23,6 +23,7 @@ import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
+import { resolveDiscountAccess } from '@/lib/discountPermissions';
 import { fetchReceipt } from '@/api/receiptApi';
 import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
@@ -198,8 +199,18 @@ export function HomePage() {
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
 
   // Operator discount permissions
-  const canDiscount = operator?.can_discount ?? true;
-  const maxDiscountPct = operator?.max_discount_percent ?? 100;
+  const transactionDiscountAccess = resolveDiscountAccess(
+    operator,
+    terminal?.max_discount_percent,
+    terminal?.allow_transaction_discounts,
+    operator?.can_apply_transaction_discounts,
+  );
+  const lineDiscountAccess = resolveDiscountAccess(
+    operator,
+    terminal?.max_discount_percent,
+    terminal?.allow_line_discounts,
+    operator?.can_apply_line_discounts,
+  );
 
   // Barcode scanner
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -1159,8 +1170,14 @@ export function HomePage() {
         isOpen={showDiscountModal}
         onClose={() => setShowDiscountModal(false)}
         onApplyTransactionDiscount={handleApplyTransactionDiscount}
-        canDiscount={canDiscount}
-        maxDiscountPercent={maxDiscountPct}
+        canDiscount={transactionDiscountAccess.canDiscount}
+        maxDiscountPercent={transactionDiscountAccess.maxDiscountPercent}
+        terminalMaxDiscountPercent={terminal?.max_discount_percent ?? 0}
+        disabledReason={
+          transactionDiscountAccess.disabledReason
+            ? t(`pos:${transactionDiscountAccess.disabledReason}`)
+            : undefined
+        }
         requiresReason={true}
       />
 
@@ -1170,8 +1187,14 @@ export function HomePage() {
         onClose={() => setDiscountItemId(null)}
         onApply={handleApplyLineDiscount}
         itemName={discountItem?.product.name ?? ''}
-        canDiscount={canDiscount}
-        maxDiscountPercent={maxDiscountPct}
+        canDiscount={lineDiscountAccess.canDiscount}
+        maxDiscountPercent={lineDiscountAccess.maxDiscountPercent}
+        terminalMaxDiscountPercent={terminal?.max_discount_percent ?? 0}
+        disabledReason={
+          lineDiscountAccess.disabledReason
+            ? t(`pos:${lineDiscountAccess.disabledReason}`)
+            : undefined
+        }
       />
 
       {/* Modifier selection modal */}

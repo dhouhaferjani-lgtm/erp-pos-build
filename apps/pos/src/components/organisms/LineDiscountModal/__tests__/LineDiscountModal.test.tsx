@@ -19,6 +19,7 @@ function renderModal(overrides: Partial<Parameters<typeof LineDiscountModal>[0]>
     itemName: 'Espresso',
     canDiscount: true,
     maxDiscountPercent: 100,
+    terminalMaxDiscountPercent: 100,
   };
   return render(<LineDiscountModal {...defaults} {...overrides} />);
 }
@@ -88,6 +89,7 @@ describe('LineDiscountModal — focus management (PR #97 follow-up)', () => {
             itemName="Espresso"
             canDiscount
             maxDiscountPercent={100}
+            terminalMaxDiscountPercent={100}
           />
         </>
       );

@@ -36,6 +36,9 @@ export interface Terminal {
    * the cashier never confuses training and production at a glance.
    */
   is_training_mode: boolean;
+  max_discount_percent?: number;
+  allow_line_discounts?: boolean;
+  allow_transaction_discounts?: boolean;
   hardware_identifier: string | null;
   location: {
     id: string;
@@ -96,6 +99,44 @@ const initialState: TerminalState = {
   isLoading: false,
   hashChainReady: false,
 };
+
+async function refreshOperatorDiscountPermissionsAfterTerminalChange(terminalCode: string): Promise<void> {
+  try {
+    const { useOperatorStore } = await import('@/stores/operatorStore');
+    useOperatorStore.getState().invalidateDiscountPermissions();
+  } catch (error) {
+    console.error(
+      '[Terminal] failed to invalidate active operator discount permissions',
+      serializeErrorForLog(error),
+    );
+  }
+
+  const companyId = useAuthStore.getState().companyId;
+  if (companyId) {
+    try {
+      const db = await getDatabase(companyId);
+      const { invalidateTerminalDiscountPermissions } = await import(
+        '@/lib/db/repositories/operatorPinRepository'
+      );
+      await invalidateTerminalDiscountPermissions(db, terminalCode);
+    } catch (error) {
+      console.error(
+        '[Terminal] failed to invalidate cached discount permissions',
+        serializeErrorForLog(error),
+      );
+    }
+  }
+
+  try {
+    const { useOperatorStore } = await import('@/stores/operatorStore');
+    await useOperatorStore.getState().refreshDiscountPermissions();
+  } catch (error) {
+    console.error(
+      '[Terminal] failed to refresh active operator discount permissions',
+      serializeErrorForLog(error),
+    );
+  }
+}
 
 /**
  * Seed the local SQLite terminal_state and Z-chain state from the server.
@@ -599,11 +640,21 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         && stillCurrent.is_active === fresh.is_active
         && stillCurrent.name === fresh.name
         && stillCurrent.code === fresh.code
+        && stillCurrent.max_discount_percent === fresh.max_discount_percent
+        && stillCurrent.allow_line_discounts === fresh.allow_line_discounts
+        && stillCurrent.allow_transaction_discounts === fresh.allow_transaction_discounts
       ) {
         return;
       }
+      const discountSettingsChanged =
+        stillCurrent.max_discount_percent !== fresh.max_discount_percent
+        || stillCurrent.allow_line_discounts !== fresh.allow_line_discounts
+        || stillCurrent.allow_transaction_discounts !== fresh.allow_transaction_discounts;
       await setStoredValue(StorageKeys.TERMINAL, fresh);
       set({ terminal: fresh });
+      if (discountSettingsChanged) {
+        await refreshOperatorDiscountPermissionsAfterTerminalChange(stillCurrent.code);
+      }
     } catch (error) {
       console.error('[Terminal] refreshTerminalRecord failed (non-fatal)', serializeErrorForLog(error));
     }
