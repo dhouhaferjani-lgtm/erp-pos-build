@@ -1,7 +1,9 @@
-# POS Go-Live Plan v2
+# POS Go-Live Plan v2 (+ Codex r2 amendments applied inline)
 
 > **Supersedes:** `2026-05-12-pos-go-live-plan-v1.md`. v1 stays in tree as a historical artefact.
-> v2 closes Codex round-1 findings (REQUEST-CHANGES, 0 BLOCKERs, ~12 P1s, ~7 P2s, 1 NIT). Key changes:
+> v2 closes Codex round-1 findings (REQUEST-CHANGES, 0 BLOCKERs, ~12 P1s, ~7 P2s, 1 NIT).
+> **Codex round-2 amendments applied inline 2026-05-12** (REQUEST-CHANGES, 0 BLOCKERs, 2 P1s, 2 P2s, 2 NITs): Path A test values now match Path B (`100.000`, not `170.000`); cash discriminator uses `payment_method_code = 'CASH'` (NOT `is_physical`); legal-field guards use `trim().is_empty()`; terminal-code source named (`useTerminalStore.getState().terminal?.code`); chain-break B1 SQL **removed from operator runbook** and downgraded to Synerivia-escalation-only; restore-drill row-count syntax fixed to a per-table PowerShell loop.
+> Round-2 review: `docs/superpowers/reviews/2026-05-12-pos-go-live-plan-v2-adversarial-review.md`. Key changes:
 > - **PR #1 scope corrected.** `POST /pos/reports/z` has active web-admin callers (`apps/web/src/features/pos/api/shiftApi.ts:109`). Backend route + service must stay alive; `buildExpectedPerMethod` must be FIXED (not deprecated) to subtract `change_due` for cash. Only the POS-client helper `generateZReportServer` is deprecated.
 > - **PR #2 scope narrowed.** Conditional rendering for existing legal fields only (`name`, `address_line1`, `address_line2`, `city`, `postal_code`, `country`, `tax_id`, `phone`). New legal fields (registration, capital, RC) move to Tunisia legal-pack out-of-band, not PR #2.
 > - **PR #3 wires terminal context.** `fetchDiscountPermissions` needs `X-Terminal-Code` header + Laravel `{ data: ... }` envelope unwrap. Offline-first PIN path gets the same effective-limit resolution as online verify-pin.
@@ -88,10 +90,12 @@ Two code paths produce Z-report cash-count breakdowns server-side, with two diff
 #### TDD steps
 
 1. **Failing backend Feature test for Path A (sync archive)** — `apps/api/tests/Feature/POS/ZReportSyncCashCountBreakdownsTest.php`:
-   - Seed tenant + company + terminal + shift.
+   - Seed tenant + company + terminal + shift (`opening_cash = '0.000'`).
    - Seed 2 cash receipts: exact (total=50, tendered=50, change=0) and over-tender (total=50, tendered=120, change=70).
-   - POST sync payload with `cash_counts: [{ payment_method_id, currency_code: 'TND', expected_amount: '170.000', actual_amount: '170.000', variance_amount: '0.000', variance_direction: 'balanced', transaction_count: 2 }]` — values match the local formula.
+   - Local formula: `opening + Σ(payment.amount) − Σ(change_due) − Σ(refunds) = 0 + (50+120) − (0+70) − 0 = 100.000`.
+   - POST sync payload with `cash_counts: [{ payment_method_id, currency_code: 'TND', expected_amount: '100.000', actual_amount: '100.000', variance_amount: '0.000', variance_direction: 'balanced', transaction_count: 2 }]` — values match the local formula.
    - Assert persisted `pos_cash_count_breakdowns` row matches the payload **verbatim** (not `expected=0`, not `currency='XXX'`).
+   - **Codex r2 P1 closure:** Path A test values now match Path B (`100.000`) — both paths compute the same expected for the same input.
 
 2. **Failing backend test for Path A — old denomination-style payload should 422.** (Codex r1 P1 closure)
    - POST a legacy payload with only `counted_amount` / `counted_quantity` per entry, missing per-method `expected_amount` etc.
@@ -107,9 +111,10 @@ Two code paths produce Z-report cash-count breakdowns server-side, with two diff
 
 5. **Implement Path A fix:** `buildBreakdownsFromSyncPayload` reads supplied fields and constructs `CashCountBreakdownDTO` directly. Currency from payload, not `'XXX'`. Expected/variance from payload, not recomputed.
 
-6. **Implement Path B fix:** `buildExpectedPerMethod` subtracts `change_due` for cash-method receipts. The SQL adds a `LEFT JOIN` on the cash method or a conditional `CASE`-expression in the `SELECT`. Non-cash methods continue with `SUM(amount)` only.
-   - Optimal shape: per-method aggregation with `SUM(amount)` and a per-receipt `change_due` subtraction only when `payment_method.code = 'CASH'` (or `payment_method.is_physical = true`).
-   - Codex must verify which discriminator (`code='CASH'` vs `is_physical=true`) is canonical against `CashCountToleranceVarianceRegressionTest.php`.
+6. **Implement Path B fix:** `buildExpectedPerMethod` subtracts `change_due` for **cash** payment-method receipts only. Non-cash methods continue with `SUM(amount)` only.
+   - **Cash discriminator (Codex r2 P1 closure):** use the immutable snapshot `pos_receipt_payments.payment_method_code = 'CASH'` as the primary discriminator. Fall back to live `payment_methods.code = 'CASH'` only for legacy rows where the snapshot was not set (rare; check `payment_method_code IS NULL OR payment_method_code = ''`). **Do NOT use `is_physical = true`** — that flag covers checks, vouchers, and other physical-but-non-cash tenders; subtracting `change_due` from those would understate them on split tenders.
+   - Implementation shape: per-method aggregation with `SUM(amount)`, and for cash rows additionally subtract the receipt-level `change_due` once per receipt (a `LEFT JOIN` against a per-receipt cash-change subquery, or a conditional aggregation pattern that avoids double-subtraction on split-tender receipts).
+   - Codex verifies the shape against `CashCountToleranceVarianceRegressionTest.php` (tolerance short-pay scenario must still pass — `change_due=0` there, so no arithmetic change).
 
 7. **Frontend wire-payload completeness** — `apps/pos/src/lib/sync/__tests__/zReportSyncPayloadShape.test.ts`: serialize a representative `LocalZReport` and assert every required field is present on each `cash_counts` entry. Confirm property names match server.
 
@@ -170,16 +175,16 @@ Two code paths produce Z-report cash-count breakdowns server-side, with two diff
    - `data.company.phone = Some("")` → output omits the phone line.
    - `data.company.postal_code = ""` AND `city = ""` → omit the combined line.
 
-2. **Apply conditional pattern uniformly** in `receipt_template.rs`:
+2. **Apply conditional pattern uniformly** in `receipt_template.rs`. Use `trim().is_empty()` (Codex r2 NIT closure) so whitespace-only values are also treated as empty:
    ```rust
-   if !data.company.tax_id.is_empty() {
+   if !data.company.tax_id.trim().is_empty() {
        b.text_line(&format!("{} {}", data.label(|l| &l.tax_id, "Tax ID:"), data.company.tax_id));
    }
    ```
-   For Option<String> fields, combine `is_some()` + `!is_empty()`:
+   For `Option<String>` fields, combine `is_some()` + `trim().is_empty()`:
    ```rust
    if let Some(ref addr2) = data.company.address_line2 {
-       if !addr2.is_empty() {
+       if !addr2.trim().is_empty() {
            b.text_line(addr2);
        }
    }
@@ -258,6 +263,7 @@ Three concrete gaps (Codex r1 P1):
 4. **Apply fail-closed default** in `HomePage.tsx`: when operator is null OR `can_discount` is false OR terminal limit unknown/0, render discount UI in disabled state with tooltip.
 
 5. **Wire `fetchDiscountPermissions` with terminal context:** update the signature to take `terminalCode: string`, inject the header, unwrap the envelope. Call from operatorStore after verify-pin success path (BOTH online + offline-cached).
+   - **Terminal-code source (Codex r2 NIT closure):** read from `useTerminalStore.getState().terminal?.code` at the call site. The terminal is loaded before operator-verify-pin via `useTerminalActivation` / pairing flow, so it's safely available. If `terminal` is null at the moment of verify-pin (impossible in normal flow but defensive), fail-closed (operator loads with no terminal-aware discount perms; UI shows the `discount.permissionsUnavailable` tooltip).
 
 6. **Offline cache strategy:**
    - On successful `fetchDiscountPermissions`, persist `{ operator_id, can_discount, max_percent, fetched_at }` to SQLite (extend `operator_pins` row or add a small `operator_discount_perms` table — Codex picks the simpler shape).
@@ -325,8 +331,9 @@ Same rationale as v1 — operator is in TN, not the developer, manual update has
 
 3. **`backup.md`** — what files to copy, where they live on Windows 11 (verified paths), backup frequency, where to store.
 
-4. **`restore.md`** — restore drill procedure with **checksums + row counts**:
-   - Pre-state: list of files + SHA-256 checksum + SQLite row counts per table (`SELECT name, (SELECT COUNT(*) FROM [name]) FROM sqlite_master WHERE type='table';`).
+4. **`restore.md`** — restore drill procedure with **checksums + row counts** (Codex r2 NIT closure on row-count syntax):
+   - Pre-state: list of files + SHA-256 checksum + SQLite row counts per table.
+   - **Row-count capture procedure (NOT a single SQL query):** the operator runs a PowerShell loop (or equivalent script) that enumerates table names via `SELECT name FROM sqlite_master WHERE type='table'` and, for each table, runs `SELECT COUNT(*) FROM <name>` separately. The runbook includes the script verbatim. (Reason: SQLite's `[name]` in a subquery is an identifier literal, not dynamic SQL.)
    - Procedure: copy backup → relaunch → re-check.
    - Diff = expected (only `synced_at` / `updated_at` timestamps may diff for rows updated by post-restore sync; otherwise identical).
    - **The restore drill IS the acceptance evidence** — must be executed on the deployed terminal once it's in TN.
@@ -349,15 +356,16 @@ Same rationale as v1 — operator is in TN, not the developer, manual update has
      - Inspect `sync_log` for recent errors: `SELECT * FROM sync_log WHERE created_at > datetime('now', '-1 hour') ORDER BY created_at DESC;`
      - Check `offline_receipts` for stranded rows: `SELECT id, receipt_number, hash_sequence, status, retry_count, sync_error FROM offline_receipts WHERE status = 'failed' ORDER BY hash_sequence;`
    - **Recovery decision tree:**
-     - **A. Retry-cap saturation only** (`sync_error LIKE '%database is locked%'`) → PR #120's auto-recovery hook handles it on next app launch. Restart the app. Verify rows transition to `pending`.
-     - **B. Hash-chain mismatch** (`sync_error LIKE '%Hash chain%'`) → server-side state is behind local. Two options:
-       - **B1. If the local-only receipts haven't been printed/handed to customer:** mark them voided locally via `UPDATE offline_receipts SET status = 'failed', retry_count = 99, voided = 1, void_reason = 'chain_break_recovery' WHERE id IN (<exact id list>);` — preserves fiscal sequence; rewinds local chain only after confirming receipts not in customer hands. **Manager PIN + Synerivia escalation required.**
-       - **B2. If the local-only receipts WERE handed to customers:** escalate to Synerivia. Reinstall fallback preserves SQLite; the Synerivia team performs server-side reconciliation (out-of-band ops, not in this runbook).
+     - **A. Retry-cap saturation only** (`sync_error LIKE '%database is locked%'`) → PR #120's auto-recovery hook handles it on next app launch. Operator action: restart the app. Verify rows transition to `pending`.
+     - **B. Hash-chain mismatch** (`sync_error LIKE '%Hash chain%'`) → fiscal-state divergence. **Operator action (Codex r2 P2 closure): STOP and escalate to Synerivia.** Do NOT execute any `UPDATE` on `offline_receipts` or `terminal_state` from the operator side. Hash-chain recovery requires reconciling local `terminal_state.last_hash`/`hash_sequence`, subsequent receipts' `previous_hash` values, and local Z-report totals — none of which is safe to attempt from an operational SQL escape hatch. Synerivia performs the reconciliation out-of-band (eventual PR C work, executed manually by Synerivia engineers).
      - **C. Unknown error class** → escalate to Synerivia with log bundle.
-   - **Pre-recovery checklist (always):**
-     - Backup the SQLite file before any UPDATE.
-     - Identify exact receipt IDs + hash_sequences; never UPDATE without a precise WHERE.
-     - Document the action in a recovery log (operator: name, timestamp, action, receipts affected).
+   - **Pre-escalation checklist (always):**
+     - Backup the SQLite database files (`.db` + `.db-wal` + `.db-shm`) BEFORE Synerivia connects.
+     - Run the support log-bundle command (per `support.md`).
+     - Capture: exact receipt IDs in failed state (`SELECT id, receipt_number, hash_sequence, status, retry_count, sync_error FROM offline_receipts WHERE status = 'failed' ORDER BY hash_sequence;`), current `terminal_state.last_hash` + `hash_sequence`, the last 10 entries of `sync_log`.
+     - Email the bundle + capture to `support@otospex.com` (or actual support address) with subject `CHAIN_BREAK <terminal_code> <YYYY-MM-DD>`.
+     - Document the action in a recovery log (operator name, timestamp, captured state).
+   - **Hash-mismatch recovery is Synerivia-only at deploy-phase-1.** A future deploy-phase-2 may ship in-app recovery UX (PR C as drafted in the bugs-cascade plan), but for now the operator's job is back-up + capture + escalate.
 
 #### Acceptance
 
