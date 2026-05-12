@@ -36,6 +36,10 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
       useRefundFlowStore.getState().clearAll();
       useRefundDraftStore.getState().clearDraftState();
       usePaymentStore.getState().clearVoucherTenders();
+      // T0.2 (Codex F-2): shift close ends any in-flight cart submission.
+      // Drop the pending idempotency key so the next shift's first sale
+      // gets a fresh allocation.
+      usePaymentStore.getState().discardPendingSubmission();
       onClose();
       setActualCash('');
     } catch (err) {

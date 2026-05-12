@@ -88,4 +88,31 @@ describe('getOfflineReceiptForPrint', () => {
     expect(result.payments[1]!.payment_type).toBe('unknown');
     expect(result.payments[1]!.payment_method.code).toBe('unknown');
   });
+
+  it('unpacks Menu composite ids from offline receipt lines for FullReceiptResponse shape', async () => {
+    vi.spyOn(repo, 'getReceiptByIdempotencyKey').mockResolvedValueOnce(
+      makeOfflineReceipt({
+        idempotency_key: 'idem-menu',
+        lines: JSON.stringify([
+          {
+            product_id: 'sellable-coca_cat-drinks',
+            name: 'Coca',
+            sku: 'COCA',
+            quantity: 1,
+            unit_price: '3.000',
+            line_total: '3.000',
+            tax_rate: '0',
+            tax_amount: '0.000',
+          },
+        ]),
+        payments_json: JSON.stringify([]),
+      }),
+    );
+
+    const result = await getOfflineReceiptForPrint('idem-menu');
+
+    expect(result.lines[0]!.product_id).toBe('sellable-coca');
+    expect(result.lines[0]!.composite_item_id).toBeNull();
+    expect(result.lines[0]!.menu_category_id).toBe('cat-drinks');
+  });
 });

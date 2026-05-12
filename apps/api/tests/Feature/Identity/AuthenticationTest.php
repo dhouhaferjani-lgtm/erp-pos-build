@@ -12,6 +12,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
 
@@ -518,5 +521,491 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertApiValidationErrors($response, ['password']);
+    }
+
+    /**
+     * T1.4 — POS-tauri client gets a 12-month token instead of the default
+     * 30-day lifetime. Web back-office sessions stay on the default
+     * (sanctum.expiration config). Distinguished by the `X-Client-Type`
+     * request header set in `apps/pos/src/lib/api.ts`.
+     */
+    public function test_t14_pos_client_header_issues_12_month_token(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'POS Cashier',
+            'email' => 'cashier@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $beforeLogin = now();
+
+        // T1.4 Codex round-2 P2 — the long-token gate now requires the
+        // header AND a non-empty device_id AND a desktop platform.
+        // Web back-office logins fail every gate; the Tauri client
+        // sends all three.
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'cashier@example.com',
+                'password' => 'password123',
+                'device_id' => 'pos-tauri-device-uuid-001',
+                'platform' => 'macos',
+            ]);
+
+        $response->assertOk();
+
+        // Locate the row Sanctum just created. There should be exactly one
+        // personal_access_tokens row for this user post-login; assert its
+        // `expires_at` is ~ now + 12 months (within a 5-minute drift band
+        // to cover slow CI machines).
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'POS login should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $this->assertNotNull($row->expires_at, 'POS-issued token must carry a non-null expires_at');
+
+        $expectedExpiry = $beforeLogin->copy()->addYear();
+        $actualExpiry = Carbon::parse($row->expires_at);
+        $driftSeconds = abs($actualExpiry->diffInSeconds($expectedExpiry));
+
+        $this->assertLessThanOrEqual(
+            300,
+            $driftSeconds,
+            "POS-issued token must expire ~12 months out (drift: {$driftSeconds}s)",
+        );
+    }
+
+    /**
+     * T1.4 — without the `X-Client-Type: pos-tauri` header, the token uses
+     * the default sanctum.expiration policy (30 days; tracked via NULL
+     * expires_at column + per-request sanctum middleware check, NOT a
+     * row-level expiry).
+     */
+    public function test_t14_default_login_keeps_30_day_default_no_per_token_expiry(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Web User',
+            'email' => 'web@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'web@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'Default login should produce exactly one Sanctum token');
+
+        // Default behaviour: per-token expires_at is NULL — the lifetime is
+        // enforced by the per-request `sanctum.expiration` config, not a
+        // row-level expiry. Asserting NULL here is the regression guard
+        // that prevents accidentally bumping the global default to 12mo.
+        $this->assertNull(
+            $tokenRows->first()->expires_at,
+            'Web back-office tokens must not carry a per-row expires_at — they use the global sanctum.expiration policy.',
+        );
+    }
+
+    /**
+     * PR #101 follow-up to T1.4 — POS-issued tokens must carry the scoped
+     * `['pos:*']` ability set, not the catch-all `['*']`. Defense-in-depth
+     * on top of the triple-gate: even if the gate is spoofed, the
+     * resulting token cannot pass an `auth:sanctum,*` check that requires
+     * a non-`pos:*` ability.
+     */
+    public function test_t14_pos_client_header_issues_pos_scoped_abilities_token(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'POS Cashier',
+            'email' => 'cashier-abilities@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'cashier-abilities@example.com',
+                'password' => 'password123',
+                'device_id' => 'pos-tauri-device-uuid-abilities',
+                'platform' => 'macos',
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'POS login should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+
+        $this->assertSame(
+            ['pos:*'],
+            $abilities,
+            'POS-issued token must carry exactly [pos:*] abilities, not the catch-all [*].',
+        );
+
+        // Cross-check via Sanctum's PersonalAccessToken model — `tokenCan`
+        // is what every consumer route would call.
+        $token = PersonalAccessToken::query()->find($row->id);
+        $this->assertNotNull($token);
+        $this->assertTrue($token->can('pos:*'), 'POS token must satisfy pos:* ability check');
+        $this->assertFalse($token->can('*'), 'POS token must NOT satisfy the catch-all ability check');
+    }
+
+    /**
+     * PR #101 follow-up to T1.4 — web back-office logins keep the historical
+     * catch-all `['*']` abilities. Narrowing them would silently break
+     * unrelated endpoints since the back-office surface has no consistent
+     * ability scoping yet. This test is the regression guard.
+     */
+    public function test_t14_default_login_keeps_catchall_abilities_for_web_backoffice(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Web User',
+            'email' => 'web-abilities@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'web-abilities@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'Default login should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+
+        $this->assertSame(
+            ['*'],
+            $abilities,
+            'Web back-office tokens must keep the catch-all [*] abilities until the back-office surface adopts scoped abilities.',
+        );
+
+        $token = PersonalAccessToken::query()->find($row->id);
+        $this->assertNotNull($token);
+        $this->assertTrue($token->can('*'), 'Web token must satisfy the catch-all ability check');
+        $this->assertTrue($token->can('pos:*'), 'Catch-all `*` ability also satisfies pos:* (Sanctum semantics)');
+    }
+
+    /**
+     * PR #101 follow-up — verify the same scoping applies to the registration
+     * endpoint. Triple-gate satisfied at register time → POS-flavoured token
+     * with `['pos:*']` abilities + 12-month expiry.
+     */
+    public function test_t14_register_with_pos_client_header_issues_pos_scoped_abilities(): void
+    {
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/register', [
+                'name' => 'Register POS Owner',
+                'email' => 'register-pos-abilities@example.com',
+                'password' => 'MyStr0ng!Pass',
+                'password_confirmation' => 'MyStr0ng!Pass',
+                'company_name' => 'POS Register Co',
+                'country_code' => 'FR',
+                'vertical' => 'retail',
+                'device_id' => 'pos-tauri-register-uuid',
+                'platform' => 'windows',
+            ]);
+
+        $response->assertCreated();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows, 'POS register should produce exactly one Sanctum token');
+
+        $row = $tokenRows->first();
+        $abilities = json_decode((string) $row->abilities, true);
+        $this->assertSame(['pos:*'], $abilities);
+
+        $this->assertNotNull(
+            $row->expires_at,
+            'POS-issued register token must also carry the 12-month expires_at (T1.4 wiring intact).',
+        );
+    }
+
+    /**
+     * T1.4 Codex round-1 P1 — close global-TTL bypass.
+     *
+     * Sanctum's default Guard::isValidAccessToken ANDs the global
+     * SANCTUM_TOKEN_EXPIRATION with the per-token `expires_at`, so a
+     * POS token issued with `expires_at = now()->addYear()` would
+     * still be rejected by the global 30-day TTL. The
+     * AppServiceProvider boot() registers a
+     * `Sanctum::authenticateAccessTokensUsing` callback that lets the
+     * per-token `expires_at` win for POS-issued tokens.
+     *
+     * These tests exercise the callback directly via Sanctum's
+     * `$accessTokenAuthenticationCallback` static property — the
+     * cleanest verification path because it bypasses the
+     * stateful-vs-stateless guard ambiguity that the test client's
+     * session preservation introduces.
+     */
+    public function test_t14_callback_overrides_global_ttl_when_per_token_expiry_is_future(): void
+    {
+        $callback = Sanctum::$accessTokenAuthenticationCallback;
+        $this->assertNotNull($callback, 'AppServiceProvider must register the Sanctum callback');
+
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'POS Cashier',
+            'email' => 'cashier@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        // Simulate a token whose created_at is past the global TTL
+        // (so default $isValid is false) but whose per-row expires_at
+        // is still in the future. Without the callback this token
+        // would be rejected; with it, the override should accept.
+        $token = new PersonalAccessToken;
+        $token->expires_at = now()->addYear();
+        $token->setRelation('tokenable', $user);
+
+        $result = $callback($token, false /* default $isValid (failed global TTL) */);
+
+        $this->assertTrue($result, 'Callback must override global TTL when per-token expires_at is future.');
+    }
+
+    public function test_t14_callback_rejects_token_with_past_per_token_expiry(): void
+    {
+        $callback = Sanctum::$accessTokenAuthenticationCallback;
+        $this->assertNotNull($callback);
+
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'POS Cashier',
+            'email' => 'cashier@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $token = new PersonalAccessToken;
+        $token->expires_at = now()->subHour();
+        $token->setRelation('tokenable', $user);
+
+        // Even if the default $isValid was true (e.g. recent created_at),
+        // a past per-token expires_at must reject.
+        $result = $callback($token, true);
+
+        $this->assertFalse($result, 'Callback must reject when per-token expires_at is in the past.');
+    }
+
+    public function test_t14_callback_falls_through_to_default_when_no_per_token_expiry(): void
+    {
+        $callback = Sanctum::$accessTokenAuthenticationCallback;
+        $this->assertNotNull($callback);
+
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Web User',
+            'email' => 'web@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $token = new PersonalAccessToken;
+        $token->expires_at = null;
+        $token->setRelation('tokenable', $user);
+
+        // No per-row expiry → callback must defer to the default
+        // $isValid (which encodes the global TTL + provider checks).
+        // Pass true → callback returns true; pass false → returns false.
+        $this->assertTrue($callback($token, true));
+        $this->assertFalse($callback($token, false));
+    }
+
+    public function test_t14_callback_rejects_token_with_no_tokenable_even_if_expiry_future(): void
+    {
+        $callback = Sanctum::$accessTokenAuthenticationCallback;
+        $this->assertNotNull($callback);
+
+        $token = new PersonalAccessToken;
+        $token->expires_at = now()->addYear();
+        $token->setRelation('tokenable', null);
+
+        // Provider check defends against orphaned tokens (user deleted).
+        $result = $callback($token, true);
+
+        $this->assertFalse($result, 'Callback must reject orphaned tokens (no tokenable) even with future expiry.');
+    }
+
+    /**
+     * T1.4 Codex round-2 P2 — POS header WITHOUT device_id falls
+     * through. A scripted attacker who learns of the header but not
+     * the device-pairing requirement cannot opt into the longer
+     * lifetime by header alone.
+     */
+    public function test_t14_pos_header_without_device_id_falls_through_to_default(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Header Only',
+            'email' => 'headeronly@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'headeronly@example.com',
+                'password' => 'password123',
+                'platform' => 'macos',
+                // device_id deliberately omitted
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows);
+        $this->assertNull(
+            $tokenRows->first()->expires_at,
+            'POS header without device_id must not trigger the 12-month branch.',
+        );
+    }
+
+    /**
+     * T1.4 Codex round-2 P2 — POS header + device_id but platform=web
+     * (browser) falls through. Tauri runs on desktop only.
+     */
+    public function test_t14_pos_header_with_browser_platform_falls_through(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Browser User',
+            'email' => 'browser@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'browser@example.com',
+                'password' => 'password123',
+                'device_id' => 'browser-spoof-attempt-001',
+                'platform' => 'web',
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows);
+        $this->assertNull(
+            $tokenRows->first()->expires_at,
+            'POS header from a browser platform (Tauri runs on desktop only) must not trigger the 12-month branch.',
+        );
+    }
+
+    /**
+     * T1.4 Codex round-2 P2 — POS header + device_id + mobile platform
+     * (ios/android) falls through. Tauri's desktop runtime targets are
+     * windows/macos/linux only.
+     */
+    public function test_t14_pos_header_with_mobile_platform_falls_through(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Mobile User',
+            'email' => 'mobile@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'mobile@example.com',
+                'password' => 'password123',
+                'device_id' => 'mobile-device-001',
+                'platform' => 'ios',
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows);
+        $this->assertNull(
+            $tokenRows->first()->expires_at,
+            'POS header from a mobile platform (ios/android) must not trigger the 12-month branch — Tauri desktop targets only.',
+        );
+    }
+
+    /**
+     * T1.4 Codex round-2 P2 — windows + linux are also valid Tauri
+     * desktop targets. Pin both branches so a future refactor can't
+     * accidentally drop one.
+     */
+    public function test_t14_pos_long_token_works_for_windows_and_linux_platforms(): void
+    {
+        foreach (['windows', 'linux'] as $platform) {
+            \DB::table('personal_access_tokens')->delete();
+
+            User::where('email', "platform-{$platform}@example.com")->delete();
+            User::create([
+                'tenant_id' => $this->tenant->id,
+                'name' => "Platform {$platform}",
+                'email' => "platform-{$platform}@example.com",
+                'password' => 'password123',
+                'status' => UserStatus::Active,
+            ]);
+
+            $response = $this->withHeaders(['X-Client-Type' => 'pos-tauri'])
+                ->postJson('/api/v1/auth/login', [
+                    'email' => "platform-{$platform}@example.com",
+                    'password' => 'password123',
+                    'device_id' => "device-{$platform}",
+                    'platform' => $platform,
+                ]);
+
+            $response->assertOk();
+
+            $tokenRow = \DB::table('personal_access_tokens')->first();
+            $this->assertNotNull(
+                $tokenRow->expires_at,
+                "Platform {$platform} (Tauri desktop target) must trigger the 12-month branch.",
+            );
+        }
+    }
+
+    /**
+     * T1.4 — a POS-client header on a non-canonical value should NOT
+     * trigger the 12-month branch. The branch is keyed on the exact
+     * literal `pos-tauri`; anything else falls through to the default.
+     * Defends against typos / spoofing bumping the wrong branch.
+     */
+    public function test_t14_unknown_client_type_falls_through_to_default(): void
+    {
+        User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Unknown Client',
+            'email' => 'unknown@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $response = $this->withHeaders(['X-Client-Type' => 'pos-android'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'unknown@example.com',
+                'password' => 'password123',
+            ]);
+
+        $response->assertOk();
+
+        $tokenRows = \DB::table('personal_access_tokens')->get();
+        $this->assertCount(1, $tokenRows);
+        $this->assertNull(
+            $tokenRows->first()->expires_at,
+            'Only the literal X-Client-Type=pos-tauri triggers the 12-month branch.',
+        );
     }
 }

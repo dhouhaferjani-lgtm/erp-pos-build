@@ -18,5 +18,33 @@
   "of": "of",
   "discount": "Discount",
   "noResults": "No results found",
-  "retry": "Retry"
+  "retry": "Retry",
+  "auth": {
+    "bootstrap": {
+      "title": "We couldn't finish setting up your terminal",
+      "message": "The {{phase}} step failed. Try again, or use your cached data if available.",
+      "noCompaniesMessage": "No companies available. We couldn't find any companies for your account. Try refreshing, or sign out to switch users.",
+      "errorHint": "Check your connection and try again. Sign out if the problem keeps happening.",
+      "retry": "Retry",
+      "retrying": "Retrying...",
+      "useCachedData": "Use cached data",
+      "signOut": "Sign out",
+      "viewDetails": "View details",
+      "hideDetails": "Hide details",
+      "phase": {
+        "authenticating": "signing in",
+        "fetching-companies": "loading your shop",
+        "fetching-terminal": "setting up your terminal",
+        "checking-pins": "checking operator PINs"
+      }
+    }
+  },
+  "trainingMode": {
+    "banner": "Training mode",
+    "subtitle": "Test terminal — verify mode before each transaction."
+  },
+  "c2Migration": {
+    "banner": "An in-progress order from before the last update was cleared. Re-enter it if needed.",
+    "dismiss": "Got it"
+  }
 }

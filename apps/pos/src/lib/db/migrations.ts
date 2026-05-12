@@ -706,4 +706,194 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // T2.7 — track training-mode on each offline receipt row.
+    //
+    // Default 0 backfills existing rows as production receipts, which is the
+    // correct interpretation: every pre-T2.7 row was sealed against a
+    // production-mode terminal (the `is_training_mode` flag existed on the
+    // server but the offline-first POS path did not honor it). The wire-shape
+    // builder (`receiptToPayload`) reads this column and emits a boolean
+    // `is_training` field on the sync payload; the server-side T2.7 backend
+    // (PR #103) branches on that flag in `ReceiptSyncService::syncSingleReceipt`.
+    version: 29,
+    name: 'add_is_training_to_offline_receipts',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          'ALTER TABLE offline_receipts ADD COLUMN is_training INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    // C2 Day 1 — Menu-tenant catalog composite primary key.
+    //
+    // Adds two nullable TEXT columns to `products`:
+    //   - `sellable_id`: the underlying sellable UUID (parsed from `id` for
+    //     Menu-tenant rows; NULL for legacy / standard-retail rows).
+    //   - `menu_category_id`: the menu category UUID this row belongs to;
+    //     NULL for non-Menu rows.
+    //
+    // No backfill: pre-v30 rows already have `id` = bare sellable UUID and
+    // continue to work. The flatten path emits both columns going forward
+    // for Menu-tenant tenants, which together with the colon-delimited
+    // composite `id` lets the same sellable cross-listed in two categories
+    // surface as two distinct rows in the local SQLite catalog (closing
+    // the C2 collapse-on-upsert pathology).
+    //
+    // The wire-payload boundary at `syncService.receiptToPayload` unpacks
+    // composite `product_id` / `composite_item_id` to bare sellable IDs
+    // before sending to the server, so this column change is purely
+    // local — `pos_receipt_lines.product_id` continues to be a bare UUID
+    // satisfying the server's existing FK + XOR constraints.
+    version: 30,
+    name: 'add_menu_composite_columns',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE products ADD COLUMN sellable_id TEXT',
+        'ALTER TABLE products ADD COLUMN menu_category_id TEXT',
+      ];
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // C2 post-deploy runtime migration state.
+    //
+    // The destructive held-cart dump cannot run here because this layer
+    // has no company module context. Instead, v31 creates a tiny state
+    // table; AppRouter runs the Menu-aware data migration after bootstrap
+    // and records completion in this table so it is one-shot per terminal
+    // database.
+    version: 31,
+    name: 'create_pos_migration_state',
+    sql: `
+      CREATE TABLE IF NOT EXISTS pos_migration_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
+  {
+    // Bug 5 — retroactive one-shot cleanup for offline_receipts that were
+    // dead-lettered because of the SQLITE_BUSY cascade. The Tauri plugin-sql
+    // layer throws the libsqlite failure as a raw string; the lock-specific
+    // signature is `(code: 5) database is locked`. Before this PR, the sync
+    // error serializer collapsed that string to the literal `'Unknown error'`,
+    // so existing dead-lettered rows are NOT recoverable here by design —
+    // they need PR C's recovery UX (or manual SQLite) since the
+    // `'Unknown error'` signature is ambiguous. From this PR onward,
+    // `coerceSyncError` preserves the lock signature, and the rerunnable
+    // `runStuckReceiptRecovery` hook in `db.ts` (called on every boot AFTER
+    // migrations) re-applies this same UPDATE so any new lock-signature
+    // failure self-heals on the next launch. This migration row remains
+    // as the audit-trail anchor for the initial retroactive sweep.
+    //
+    // The recovery is intentionally narrow:
+    //   - status='failed' only (don't disturb in-flight or synced rows),
+    //   - sync_error LIKE '%database is locked%' (the precise libsqlite
+    //     wording — SQLite's default LIKE is ASCII-case-insensitive, so
+    //     this also matches re-cased variants).
+    //
+    // The reset (status='pending', retry_count=0, sync_error=NULL) lets
+    // the next sync tick re-push under WAL mode. The server's
+    // idempotency_key dedup turns any accidental double-send into a
+    // `duplicate` result, which the client treats as success.
+    version: 32,
+    name: 'recover_stuck_offline_receipts_from_db_lock',
+    sql: `
+      UPDATE offline_receipts
+      SET status = 'pending',
+          retry_count = 0,
+          sync_error = NULL
+      WHERE status = 'failed'
+        AND sync_error LIKE '%database is locked%';
+    `,
+  },
+  {
+    version: 33,
+    name: 'add_operator_discount_permission_cache_timestamp',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_fetched_at TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 34,
+    name: 'add_operator_discount_permission_cache_status',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute("ALTER TABLE operator_pins ADD COLUMN discount_permissions_status TEXT DEFAULT 'unavailable'");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 35,
+    name: 'add_operator_discount_permission_terminal_code',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_terminal_code TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 36,
+    name: 'add_operator_discount_permission_cache_details',
+    sql: '',
+    async run(db) {
+      const columns = [
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_user_can_discount INTEGER',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_user_max_discount_percent REAL',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_can_apply_line_discounts INTEGER',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_can_apply_transaction_discounts INTEGER',
+      ];
+
+      for (const statement of columns) {
+        try {
+          await db.execute(statement);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

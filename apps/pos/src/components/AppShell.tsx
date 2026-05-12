@@ -1,12 +1,14 @@
 import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { Header } from './Header';
+import { TrainingModeBanner } from './TrainingModeBanner';
+import { C2MigrationBanner } from './C2MigrationBanner';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
+import { useCatalogChannel } from '@/hooks/useCatalogChannel';
 
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
@@ -28,15 +30,18 @@ export function AppShell() {
   // Sync cart/checkout state to customer-facing display
   useCustomerDisplaySync();
 
+  // Bug 1 — subscribe to the company-level catalog channel so admin-side
+  // product / menu mutations show up in the POS within ~500ms instead of
+  // waiting for the 60s polling tick. The hook is a no-op if companyId
+  // hasn't been set yet, so mounting unconditionally is safe.
+  useCatalogChannel();
+
   const handleActivity = useCallback(() => {
     resetActivityTimer();
   }, [resetActivityTimer]);
 
-  // Start connectivity monitoring
-  useEffect(() => {
-    const stopMonitoring = useConnectivityStore.getState().startMonitoring();
-    return stopMonitoring;
-  }, []);
+  // T1.1 Step 1.4: connectivity monitoring moved to MainApp so LoginPage
+  // (which mounts BEFORE AppShell in the route tree) can read isOnline.
 
   // Trigger sync when app regains visibility after >1 min
   useEffect(() => {
@@ -86,6 +91,12 @@ export function AppShell() {
   return (
     <div className="flex h-screen flex-col bg-gray-50">
       <Header />
+      {/* T2.5 — sticky training-mode banner. Renders only when the
+          active terminal has is_training_mode=true; otherwise null
+          (no DOM, no layout impact). Sits BETWEEN Header and main so
+          the cashier sees it on every screen, not just HomePage. */}
+      <TrainingModeBanner />
+      <C2MigrationBanner />
       <main className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <Routes>

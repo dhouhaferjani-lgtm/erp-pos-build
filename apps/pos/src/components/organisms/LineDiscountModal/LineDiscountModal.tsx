@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Operator } from '@/stores/operatorStore';
 
 type DiscountType = 'percentage' | 'fixed';
@@ -18,6 +19,8 @@ export interface LineDiscountModalProps {
   itemName: string;
   canDiscount: boolean;
   maxDiscountPercent: number;
+  terminalMaxDiscountPercent: number;
+  disabledReason?: string;
 }
 
 const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'C'];
@@ -30,8 +33,13 @@ export function LineDiscountModal({
   itemName,
   canDiscount,
   maxDiscountPercent,
+  terminalMaxDiscountPercent,
+  disabledReason,
 }: LineDiscountModalProps) {
   const { t } = useTranslation('pos');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap({ isActive: isOpen, containerRef: dialogRef });
+
   const [discountType, setDiscountType] = useState<DiscountType>('percentage');
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('');
@@ -92,8 +100,9 @@ export function LineDiscountModal({
   const numericValue = parseFloat(value) || 0;
   const percentageExceeded =
     discountType === 'percentage' && numericValue > maxDiscountPercent;
-  const needsManagerOverride = !canDiscount || percentageExceeded;
-  const isValid = numericValue > 0;
+  const isDiscountDisabled = disabledReason !== undefined;
+  const needsManagerOverride = !isDiscountDisabled && (!canDiscount || percentageExceeded);
+  const isValid = !isDiscountDisabled && numericValue > 0;
 
   const handleApply = useCallback(() => {
     if (!isValid) return;
@@ -128,7 +137,8 @@ export function LineDiscountModal({
         return;
       }
 
-      const managerMax = manager.max_discount_percent ?? 100;
+      const managerLimit = manager.max_discount_percent ?? terminalMaxDiscountPercent;
+      const managerMax = Math.min(managerLimit, terminalMaxDiscountPercent);
       if (discountType === 'percentage' && parseFloat(value) > managerMax) {
         setManagerError(t('discount.managerDenied'));
         return;
@@ -149,12 +159,19 @@ export function LineDiscountModal({
     } finally {
       setVerifyingPin(false);
     }
-  }, [managerPin, discountType, value, reason, onApply, onClose, t]);
+  }, [managerPin, discountType, value, reason, terminalMaxDiscountPercent, onApply, onClose, t]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="line-discount-modal-title"
+      data-testid="line-discount-modal-dialog"
+      className="fixed inset-0 z-50 flex flex-col bg-gray-50 text-gray-900"
+    >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
         <button
@@ -164,7 +181,7 @@ export function LineDiscountModal({
           <ArrowLeft className="h-4 w-4" />
           {t('discount.cancel')}
         </button>
-        <span className="text-lg font-bold text-gray-900">
+        <span id="line-discount-modal-title" className="text-lg font-bold text-gray-900">
           {t('cart.itemDiscount')}
         </span>
         <div className="w-20" />
@@ -252,8 +269,10 @@ export function LineDiscountModal({
                   <button
                     key={key}
                     onClick={() => handleNumpadPress(key)}
+                    disabled={isDiscountDisabled}
                     className={cn(
                       'flex items-center justify-center rounded-xl text-xl font-semibold transition-colors',
+                      isDiscountDisabled && 'cursor-not-allowed opacity-50',
                       key === 'C'
                         ? 'bg-red-50 text-red-700 hover:bg-red-100'
                         : 'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
@@ -317,6 +336,12 @@ export function LineDiscountModal({
           ) : (
             <>
               {/* Max exceeded warning — shown as info since manager can override */}
+              {disabledReason && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
+                  {disabledReason}
+                </div>
+              )}
+
               {needsManagerOverride && numericValue > 0 && (
                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-700">
                   {!canDiscount

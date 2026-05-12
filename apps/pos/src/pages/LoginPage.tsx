@@ -1,9 +1,17 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, type Company } from '@/stores/authStore';
 import { useConnectivityStore } from '@/stores/connectivityStore';
 import { getErrorMessage } from '@/lib/api';
 import { WifiOff } from 'lucide-react';
+
+// T1.1 Step 1.5: how long to wait before showing the still-trying
+// affordance. Lines up with T0.3's 10s default request timeout — by
+// 8s the user gets a chance to cancel before the timeout would have
+// fired anyway, AND covers captive-portal scenarios that respond
+// after 8-15s with a redirect HTML page (within timeout but visually
+// indistinguishable from a hang).
+const STILL_TRYING_THRESHOLD_MS = 8000;
 
 export function LoginPage() {
   const { t } = useTranslation('pos');
@@ -14,13 +22,39 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showCompanySelect, setShowCompanySelect] = useState(false);
+  const [showStillTrying, setShowStillTrying] = useState(false);
+
+  // T1.1 Step 1.5: stored AbortController so the Cancel button can
+  // abort the in-flight login(). A fresh controller is created on each
+  // submit; the ref is null between attempts. AbortController is
+  // single-use, so re-clicking Sign in after a cancel ALWAYS produces
+  // a new instance — Codex preempt (e) cancel-twice / late-resolve.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Show the still-trying affordance + Cancel button once isLoading has
+  // been true for STILL_TRYING_THRESHOLD_MS.
+  useEffect(() => {
+    if (!isLoading) {
+      setShowStillTrying(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShowStillTrying(true);
+    }, STILL_TRYING_THRESHOLD_MS);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
+    // Always create a fresh controller on each submit — AbortController
+    // is single-use, so a previously-aborted one cannot be reused.
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      await login(email, password);
+      await login(email, password, { signal: controller.signal });
 
       // Check if company selection is needed
       const state = useAuthStore.getState();
@@ -28,8 +62,23 @@ export function LoginPage() {
         setShowCompanySelect(true);
       }
     } catch (err) {
-      setError(getErrorMessage(err));
+      // If the user cancelled, suppress the error message — they know
+      // why nothing happened. Otherwise surface the typed message.
+      if (controller.signal.aborted) {
+        setError(null);
+      } else {
+        setError(getErrorMessage(err));
+      }
+    } finally {
+      // Clear the ref so the next submit starts fresh.
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
+  }
+
+  function handleCancel() {
+    abortControllerRef.current?.abort();
   }
 
   function handleCompanySelect(company: Company) {
@@ -129,6 +178,25 @@ export function LoginPage() {
           >
             {isLoading ? t('auth.signingIn') : t('auth.signIn')}
           </button>
+
+          {showStillTrying && (
+            <>
+              <p
+                data-testid="login-still-trying"
+                className="text-center text-xs text-gray-500"
+              >
+                {t('auth.stillTrying')}
+              </p>
+              <button
+                type="button"
+                data-testid="login-cancel"
+                onClick={handleCancel}
+                className="w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {t('auth.cancel')}
+              </button>
+            </>
+          )}
         </form>
       </div>
     </div>

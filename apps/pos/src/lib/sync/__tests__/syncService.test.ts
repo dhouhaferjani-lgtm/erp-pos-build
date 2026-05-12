@@ -34,6 +34,10 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   upsertProducts: vi.fn().mockResolvedValue(undefined),
   deleteProducts: vi.fn().mockResolvedValue(undefined),
+  // C2 Day 1 — pullActiveMenu now calls reconcileMenuProducts to flatten
+  // the just-pulled menu into the products table; mock returns void so
+  // the existing sync tests stay green.
+  reconcileMenuProducts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/db/repositories/paymentRepository', () => ({
@@ -265,6 +269,53 @@ describe('syncService', () => {
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
+    });
+
+    it('T0.3: FetchTimeoutError reverts the receipt to pending without incrementing retry_count', async () => {
+      // T0.3 round-1 Codex BLOCKER fix: a read-timeout means "unknown sync
+      // state" (server may have committed). The push loop must NOT mark
+      // the receipt as failed or bump retry_count — those bumps drive the
+      // dead-letter path at retry_count >= MAX_SYNC_RETRIES (5), which
+      // would saturate even when the server has been accepting the POSTs
+      // and only the responses are being dropped on the wire. The next
+      // sync tick re-pushes with T0.2's stable idempotency key; the
+      // server-side dedup-on-disk returns 'duplicate' (treated as success
+      // upstream) or accepts fresh.
+      const { FetchTimeoutError } = await import('@/lib/fetchWithTimeout');
+
+      const receipt = makeOfflineReceipt({
+        id: 'r-timeout',
+        idempotency_key: 'idem-timeout',
+        hash_sequence: 1,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockRejectedValueOnce(
+        new FetchTimeoutError('https://x.test/pos/receipts/sync', 30_000, 'POST'),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      // Loop result: NOT counted as failed (no banner / error to user).
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.chainBreak).toBe(false);
+
+      // Receipt status: 'pending' (not 'failed'). Last call to
+      // updateReceiptStatus for this receipt should be 'pending'.
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-timeout',
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+      const lastStatus = statusCalls[statusCalls.length - 1]![2];
+      expect(lastStatus).toBe('pending');
+
+      // Critical invariant: retry_count NOT bumped (this is what protects
+      // the dead-letter cap from saturating on transient timeouts).
+      const incrementCallsForReceipt = vi.mocked(incrementRetryCount).mock.calls.filter(
+        (c) => c[1] === 'r-timeout',
+      );
+      expect(incrementCallsForReceipt).toHaveLength(0);
     });
 
     it('Codex review B3: receiptToPayload preserves method_code, instrument_type, and instrument_serial from payments_json', async () => {
@@ -514,6 +565,327 @@ describe('syncService', () => {
         7,
       );
     });
+
+    it('T0.4: server-duplicate-with-advance reconciles local chain WITHOUT chain-break alert', async () => {
+      // The post-T0.3 timeout-revert path lands here: a receipt that returned
+      // FetchTimeoutError on the first POST gets reverted to 'pending' (no
+      // retry-count bump), the next sync tick re-pushes it with the same
+      // T0.2-stable idempotency key, and the server's dedup-on-disk responds
+      // status='duplicate' carrying the existing receipt's chain anchor
+      // (`terminal_last_hash` + `terminal_hash_sequence`). The client MUST
+      // (1) advance the local hash chain to match the server's anchor,
+      // (2) flip the local receipt to 'synced',
+      // (3) writeback the server-canonical receipt_id,
+      // (4) NOT raise a chain-break alert and NOT append to errors[].
+      //
+      // The positive equality on `advanceHashChain` arguments is the
+      // load-bearing assertion (Codex Section 6.a/e/f preempt): without it,
+      // a regression where the duplicate branch silently skips the reconcile
+      // would still show `chainBreak === false` and pass vacuously.
+      const receipt = makeOfflineReceipt({
+        id: 'r-dup-advance',
+        idempotency_key: 'idem-dup-advance',
+        terminal_id: 'terminal-1',
+        hash_sequence: 10,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([
+          {
+            idempotency_key: 'idem-dup-advance',
+            status: 'duplicate',
+            receipt_id: 'srv-uuid-N+1',
+            terminal_last_hash: 'h-N+1',
+            terminal_hash_sequence: 11,
+          },
+        ]),
+      );
+
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      // Loop result: success, no chain-break, no errors.
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.chainBreak).toBe(false);
+
+      // Local receipt: 'synced' (not 'failed', not still 'syncing').
+      // The receipt receives 'syncing' first then 'synced'; assert the LAST
+      // status update is 'synced' so a regression that flipped the order
+      // (e.g. set 'failed' after 'synced') would fail the test.
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-dup-advance',
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+      expect(statusCalls[statusCalls.length - 1]![2]).toBe('synced');
+
+      // Server-canonical receipt id is written back so HomePage can switch
+      // from local SQLite print to the richer API receipt.
+      expect(setServerReceiptId).toHaveBeenCalledWith(
+        expect.anything(),
+        'idem-dup-advance',
+        'srv-uuid-N+1',
+      );
+
+      // The load-bearing positive assertion: local hash chain advanced to
+      // server's anchor. Without this, the cashier's next sale would chain
+      // off a stale local last_hash and break the chain server-side on the
+      // next push.
+      expect(advanceHashChain).toHaveBeenCalledWith(
+        expect.anything(),
+        'terminal-1',
+        'h-N+1',
+        11,
+      );
+
+      // Defense-in-depth: retry_count must NOT bump on a successful
+      // reconcile (analog to T0.3's no-retry-bump-on-timeout discipline).
+      const incrementCalls = vi.mocked(incrementRetryCount).mock.calls.filter(
+        (c) => c[1] === 'r-dup-advance',
+      );
+      expect(incrementCalls).toHaveLength(0);
+    });
+
+    it('T0.4: server-chain-broken with no reconciliation data still raises chain-break (negative control)', async () => {
+      // The backend's `SyncReceiptResult::chainBroken(...)` factory always
+      // emits `terminal_last_hash = null` and `terminal_hash_sequence = null`.
+      // In this shape the client has no anchor to reconcile against — the
+      // existing alarm path MUST fire so the operator can resolve manually.
+      // T0.4 must NOT regress this defensive behavior while widening the
+      // duplicate-with-advance happy path.
+      const receipt = makeOfflineReceipt({
+        id: 'r-chain-broken',
+        idempotency_key: 'idem-chain-broken',
+        terminal_id: 'terminal-1',
+        hash_sequence: 10,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([
+          {
+            idempotency_key: 'idem-chain-broken',
+            status: 'chain_broken',
+            error: 'genuine divergence',
+            terminal_last_hash: null,
+            terminal_hash_sequence: null,
+          },
+        ]),
+      );
+
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      // Alarm path: chain-break flag flipped, error in result.errors,
+      // receipt counted as failed, retry_count bumped.
+      expect(result.chainBreak).toBe(true);
+      expect(result.failed).toBe(1);
+      expect(result.pushed).toBe(0);
+      expect(result.errors).toContain(`CHAIN_BREAK at receipt ${receipt.receipt_number}`);
+
+      // Receipt status is 'failed' (the loop halted before any 'synced'
+      // could land).
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-chain-broken',
+      );
+      expect(statusCalls.length).toBeGreaterThan(0);
+      expect(statusCalls[statusCalls.length - 1]![2]).toBe('failed');
+      expect(incrementRetryCount).toHaveBeenCalledWith(expect.anything(), 'r-chain-broken');
+
+      // No reconcile attempt — without an anchor the helper cannot run.
+      expect(advanceHashChain).not.toHaveBeenCalled();
+    });
+
+    it('T0.4: server returns duplicate with sequence LOWER than local — local is authoritative, do NOT retreat', async () => {
+      // The offline-first invariant: once a terminal's hash_sequence has
+      // been seeded locally, the client never accepts a server-driven
+      // regression (server BEHIND local). The duplicate branch passes the
+      // server's lower anchor to advanceHashChain, which throws
+      // FiscalRegressionError; the catch swallows it with a "reconcile
+      // skipped (local ahead)" log and the loop continues treating the
+      // receipt as success (the duplicate IS a successful sync — local just
+      // doesn't retreat its chain pointer).
+      const { FiscalRegressionError } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+      vi.mocked(advanceHashChain).mockRejectedValueOnce(
+        new FiscalRegressionError('terminal-1', 'advanceHashChain', 10, 5),
+      );
+
+      const receipt = makeOfflineReceipt({
+        id: 'r-dup-behind',
+        idempotency_key: 'idem-dup-behind',
+        terminal_id: 'terminal-1',
+        hash_sequence: 10,
+      });
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([
+          {
+            idempotency_key: 'idem-dup-behind',
+            status: 'duplicate',
+            receipt_id: 'srv-uuid-old',
+            terminal_last_hash: 'h-stale',
+            terminal_hash_sequence: 5,
+          },
+        ]),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      // Loop result: success — duplicate is a valid sync outcome.
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.chainBreak).toBe(false);
+
+      // Production code DID call advanceHashChain with the server's lower
+      // anchor — the helper's regression guard is what protects us.
+      expect(advanceHashChain).toHaveBeenCalledWith(
+        expect.anything(),
+        'terminal-1',
+        'h-stale',
+        5,
+      );
+
+      // Receipt is still flipped to 'synced' — the duplicate path treats
+      // the receipt as successfully reconciled even when local is ahead.
+      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-dup-behind',
+      );
+      expect(statusCalls[statusCalls.length - 1]![2]).toBe('synced');
+    });
+
+    it('T0.4 integration: post-T0.3 timeout-revert → next-tick re-sync → server-duplicate → reconcile', async () => {
+      // The end-to-end chain that motivates T0.4: a transient network drop
+      // on a successful server commit. The first POST commits server-side
+      // but the response is dropped on the wire; FetchTimeoutError fires;
+      // T0.3 reverts the receipt to 'pending' (no retry-count bump). The
+      // next sync tick re-pushes with the SAME idempotency key (T0.2-stable);
+      // the server's dedup-on-disk returns 'duplicate' carrying the existing
+      // receipt's terminal_last_hash + terminal_hash_sequence; T0.4's
+      // reconcile path advances the local chain to match server WITHOUT a
+      // chain-break alert.
+      //
+      // This integration test exercises the REAL syncService composition
+      // across two ticks — not a single mocked branch. It is the canary
+      // that detects regressions where T0.3's pending-revert and T0.4's
+      // duplicate-with-advance ever drift apart.
+      const { FetchTimeoutError } = await import('@/lib/fetchWithTimeout');
+      const { advanceHashChain } = await import(
+        '@/lib/db/repositories/terminalStateRepository'
+      );
+
+      const receipt = makeOfflineReceipt({
+        id: 'r-e2e',
+        idempotency_key: 'idem-e2e',
+        terminal_id: 'terminal-1',
+        hash_sequence: 10,
+      });
+
+      // ── Tick 1 ──────────────────────────────────────────────────────────
+      // Receipt is pending; server times out (real-world: server committed,
+      // response dropped on wire).
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockRejectedValueOnce(
+        new FetchTimeoutError('https://api.test/pos/receipts/sync', 30_000, 'POST'),
+      );
+
+      const tick1 = await pushOfflineReceipts(db);
+
+      // T0.3 contract: tick1 is a no-op to the cashier — no banner, no
+      // chain-break alert.
+      expect(tick1.pushed).toBe(0);
+      expect(tick1.failed).toBe(0);
+      expect(tick1.errors).toHaveLength(0);
+      expect(tick1.chainBreak).toBe(false);
+
+      // Receipt was reverted to 'pending' (NOT 'failed') so the next tick
+      // picks it up.
+      const statusCallsAfterTick1 = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-e2e',
+      );
+      expect(statusCallsAfterTick1.length).toBeGreaterThan(0);
+      expect(statusCallsAfterTick1[statusCallsAfterTick1.length - 1]![2]).toBe('pending');
+
+      // T0.3 invariant: retry_count NOT bumped on a transient timeout (this
+      // is what protects the dead-letter cap from saturating).
+      const incrementCallsAfterTick1 = vi.mocked(incrementRetryCount).mock.calls.filter(
+        (c) => c[1] === 'r-e2e',
+      );
+      expect(incrementCallsAfterTick1).toHaveLength(0);
+
+      // No reconcile yet — server delivered no anchor (response was dropped).
+      expect(advanceHashChain).not.toHaveBeenCalled();
+
+      // ── Tick 2 ──────────────────────────────────────────────────────────
+      // Scheduler re-runs; the same 'pending' receipt re-pushes with the
+      // same idempotency key. Server dedups on the key and returns
+      // 'duplicate' with the existing receipt's chain anchor.
+      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        syncBatchResponse([
+          {
+            idempotency_key: 'idem-e2e',
+            status: 'duplicate',
+            receipt_id: 'srv-uuid-from-first-commit',
+            terminal_last_hash: 'h-N+1',
+            terminal_hash_sequence: 11,
+          },
+        ]),
+      );
+
+      const tick2 = await pushOfflineReceipts(db);
+
+      // T0.4 reconcile contract: tick2 is the recovery — receipt flips to
+      // 'synced', local chain advances to server's anchor, no alert.
+      expect(tick2.pushed).toBe(1);
+      expect(tick2.failed).toBe(0);
+      expect(tick2.errors).toHaveLength(0);
+      expect(tick2.chainBreak).toBe(false);
+
+      // Receipt's last status is 'synced' (the late-arriving success).
+      const statusCallsAfterTick2 = vi.mocked(updateReceiptStatus).mock.calls.filter(
+        (c) => c[1] === 'r-e2e',
+      );
+      expect(statusCallsAfterTick2[statusCallsAfterTick2.length - 1]![2]).toBe('synced');
+
+      // server_receipt_id from the first commit is written back so HomePage
+      // can switch from local SQLite print to the richer API receipt.
+      expect(setServerReceiptId).toHaveBeenCalledWith(
+        expect.anything(),
+        'idem-e2e',
+        'srv-uuid-from-first-commit',
+      );
+
+      // The load-bearing positive assertion: local chain advanced to N+1
+      // (10 → 11). Without this, the cashier's next sale would chain off a
+      // stale local last_hash and break the chain server-side on the next
+      // push.
+      expect(advanceHashChain).toHaveBeenCalledWith(
+        expect.anything(),
+        'terminal-1',
+        'h-N+1',
+        11,
+      );
+
+      // Defense-in-depth: retry_count NEVER bumped across both ticks. The
+      // dead-letter cap stays clean — a transient timeout that recovered
+      // via duplicate-dedup must not consume a retry slot.
+      const incrementCallsTotal = vi.mocked(incrementRetryCount).mock.calls.filter(
+        (c) => c[1] === 'r-e2e',
+      );
+      expect(incrementCallsTotal).toHaveLength(0);
+    });
   });
 
   describe('pullProducts', () => {
@@ -590,6 +962,39 @@ describe('syncService', () => {
       const result = await pullPaymentConfig(db);
 
       expect(result).toBe(false);
+    });
+
+    it('T0.5: pullPaymentConfig hits canonical /payment-methods + /payment-repositories endpoints, NOT /treasury/* paths', async () => {
+      // The pre-T0.5 implementation called `/treasury/payment-methods` and
+      // `/treasury/payment-repositories` — paths that DO NOT EXIST in the
+      // backend (Treasury routes are registered under `Route::prefix('api/v1')`
+      // with no `treasury/` prefix at
+      // `apps/api/app/Modules/Treasury/Presentation/routes.php:25-66`). The
+      // outer try/catch silently swallowed the 404s, so payment-config
+      // sync was a no-op for the duration of the bug. T0.5 aligns the call
+      // sites on the canonical `/payment-methods` + `/payment-repositories`
+      // pair (already used correctly by paymentApi.ts for the SQLite-first
+      // hydrate at startup).
+      vi.mocked(apiGet)
+        .mockResolvedValueOnce([{ id: 'pm-1', code: 'CASH' }])
+        .mockResolvedValueOnce([{ id: 'repo-1', code: 'CR-001' }]);
+
+      const result = await pullPaymentConfig(db);
+
+      expect(result).toBe(true);
+
+      // Pin the canonical endpoint pair. A regression that re-introduced the
+      // broken `/treasury/...` paths would fail these assertions.
+      expect(apiGet).toHaveBeenCalledWith('/payment-methods');
+      expect(apiGet).toHaveBeenCalledWith('/payment-repositories');
+
+      // Defense-in-depth: verify the broken paths are NOT in the call list.
+      // (`toHaveBeenCalledWith` only asserts at least one matching call, so
+      // a buggy implementation that called BOTH endpoint pairs would pass
+      // the positive assertions above. This negative assertion catches that.)
+      const allCalls = vi.mocked(apiGet).mock.calls.flat();
+      expect(allCalls).not.toContain('/treasury/payment-methods');
+      expect(allCalls).not.toContain('/treasury/payment-repositories');
     });
   });
 
@@ -920,6 +1325,82 @@ describe('pullActiveMenu', () => {
     vi.mocked(apiGet).mockRejectedValueOnce(new Error('offline'));
     expect(await pullActiveMenu(db)).toBe(false);
   });
+
+  it('Codex r6 P1 (Menu tenant): flattens the just-pulled menu and calls reconcileMenuProducts so background sync ticks update the cashier grid', async () => {
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    // Codex r8 P1: the reconcile is now gated on the Menu module.
+    // Set companyConfig to a Menu tenant so the gate fires.
+    useProductStore.setState({
+      companyConfig: {
+        company_id: 'company-1',
+        all_enabled_modules: ['Menu'],
+      } as never,
+    });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      categories: [{
+        id: 'cat-drinks-uuid', name: 'Drinks', position: 0,
+        items: [{
+          id: 'item-coca-drinks', sellable_id: 'sellable-coca', sellable_type: 'product',
+          name: 'Coca', code: 'COCA', barcode: null,
+          base_price: '3.00', effective_price: '3.00', image_url: null,
+          tax_rate: '7.00', display_order: 0, is_available: true,
+        }],
+      }],
+    });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).toHaveBeenCalledTimes(1);
+    const [, freshProducts] = vi.mocked(reconcileMenuProducts).mock.calls[0]!;
+    expect(freshProducts).toHaveLength(1);
+    // Flatten emits composite ids per (sellable, category) pair.
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.id).toBe('sellable-coca_cat-drinks-uuid');
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.sellable_id).toBe('sellable-coca');
+    expect((freshProducts as Array<{ id: string; sellable_id?: string; menu_category_id?: string }>)[0]!.menu_category_id).toBe('cat-drinks-uuid');
+  });
+
+  it('Codex r8 P1: standard-retail tenant — empty /active-menu does NOT wipe the products table', async () => {
+    // Regression guard: a standard-retail tenant's /active-menu can
+    // succeed with categories: []. The reconcile MUST be skipped or
+    // it would call `wipeAllProductRows` and delete the entire
+    // products catalog populated by `pullProducts`.
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    useProductStore.setState({
+      companyConfig: {
+        company_id: 'company-1',
+        all_enabled_modules: ['POS'],
+      } as never,
+    });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ categories: [] });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).not.toHaveBeenCalled();
+  });
+
+  it('Codex r8 P1: companyConfig null — defers the reconcile (does NOT call reconcileMenuProducts)', async () => {
+    // Defer-on-unknown-config matches the pullProducts gate's posture:
+    // skipping is safer than risking a standard-retail catalog wipe.
+    const { pullActiveMenu } = await import('../syncService');
+    const { reconcileMenuProducts } = await import('@/lib/db/repositories/productRepository');
+    const { useProductStore } = await import('@/stores/productStore');
+
+    useProductStore.setState({ companyConfig: null });
+
+    vi.mocked(apiGet).mockResolvedValueOnce({ categories: [] });
+
+    await pullActiveMenu(db);
+
+    expect(reconcileMenuProducts).not.toHaveBeenCalled();
+  });
 });
 
 // ─── zReportToSyncPayload ─────────────────────────────────────────────────────
@@ -994,6 +1475,17 @@ describe('zReportToSyncPayload', () => {
 
     expect(Array.isArray(payload['cash_counts'])).toBe(true);
     expect((payload['cash_counts'] as unknown[]).length).toBe(1);
+    expect(payload['cash_counts']).toEqual([
+      {
+        payment_method_id: 'pm-cash',
+        currency_code: 'EUR',
+        expected_amount: '150.00',
+        actual_amount: '148.00',
+        variance_amount: '-2.00',
+        variance_direction: 'under',
+        transaction_count: 1,
+      },
+    ]);
     expect(payload['shift_fields']).toEqual({
       blind_count_used: true,
       variance_severity: 'warning',
@@ -1153,6 +1645,43 @@ describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', ()
     expect(wire.payments[1]!.method_code).toBe('store_voucher');
     expect(wire.payments[1]!.instrument_type).toBe('store_voucher');
     expect(wire.payments[1]!.instrument_serial).toBe('SV-2026-WIRE-02');
+  });
+});
+
+describe('T2.7: is_training wire payload', () => {
+  // The offline-first compliance gap from PR #99 round-8 closes only when the
+  // SQLite is_training column is forwarded on the wire. Default false stays
+  // backwards-compatible with pre-T2.7 server payloads (the field is
+  // `nullable, boolean` per SyncReceiptsRequest::rules in PR #103).
+
+  it('emits is_training=true when SQLite row has is_training=1', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'TRN-MAIN-T001-2026-deadbeef',
+      idempotency_key: 'idem-train-1',
+      fiscal_schema_version: 2,
+      is_training: 1,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.is_training).toBe(true);
+  });
+
+  it('emits is_training=false when SQLite row has is_training=0 (default backfill)', async () => {
+    const { __test_receiptToPayload } = await import('@/lib/sync/syncService');
+    const { makeOfflineReceipt } = await import('@/test/helpers');
+
+    const receipt = makeOfflineReceipt({
+      receipt_number: 'MAIN-T001-2026-00000001',
+      idempotency_key: 'idem-prod-1',
+      fiscal_schema_version: 2,
+      is_training: 0,
+    });
+
+    const wire = __test_receiptToPayload(receipt);
+    expect(wire.is_training).toBe(false);
   });
 });
 

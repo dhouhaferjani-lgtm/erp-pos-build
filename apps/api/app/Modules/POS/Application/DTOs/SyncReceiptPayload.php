@@ -17,7 +17,8 @@ final readonly class SyncReceiptPayload
      * @param  string  $receiptNumber  Receipt number generated offline
      * @param  string  $terminalId  Terminal UUID
      * @param  string  $operatorId  Cashier/operator user UUID
-     * @param  array<int, array{product_id?: string, composite_item_id?: string, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     * @param  array<int, array{product_id?: string, composite_item_id?: string, menu_category_id?: string|null, quantity: string, unit_price: string, modifiers?: array<int, array{modifier_id: string, modifier_group_id: string, price_adjustment: string}>, discount_amount?: string, discount_type?: string, discount_percent?: string, discount_reason?: string}>  $lines
+     *                                                                                                                                                                                                                                                                                                                                                                           C2 Day 3 — `menu_category_id` is the optional Menu-tenant category context per line. Bare-uuid `product_id` lines from non-Menu tenants and pre-C2 historical sync payloads omit this field.
      * @param  string  $subtotal  Net amount before tax
      * @param  string  $taxAmount  Total tax
      * @param  string  $discountAmount  Transaction-level discount
@@ -49,6 +50,17 @@ final readonly class SyncReceiptPayload
      *                                    Codex review B1 (2026-04-30) removed the legacy default-to-2 fallback so a
      *                                    missing field surfaces as a 422 validation failure instead of silently
      *                                    downgrading a v3 payload.
+     * @param  bool  $isTraining  T2.7 — set true when the cashier sealed this receipt while
+     *                            the terminal was in training mode. Training receipts skip the
+     *                            fiscal chain entirely (no hash chain validation, no finalize,
+     *                            no hash mismatch check, no voucher redemption) and persist
+     *                            with `is_training=true`, `fiscal_status=Fiscalized`,
+     *                            `chain_sequence=0`, and a deterministic
+     *                            `sha256('TRAINING-' || receipt_id)` sentinel hash. Mirrors the
+     *                            online `ReceiptCreationService` training-mode behaviour at
+     *                            `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php`
+     *                            lines 466-485 + 538-540 + 605-608.
+     *                            Default `false` for backwards compat with pre-T2.7 clients.
      */
     public function __construct(
         public string $idempotencyKey,
@@ -76,6 +88,7 @@ final readonly class SyncReceiptPayload
         public ?string $consumptionMode,
         public ?string $tableId,
         public int $fiscalSchemaVersion,
+        public bool $isTraining = false,
     ) {}
 
     /**
@@ -160,6 +173,20 @@ final readonly class SyncReceiptPayload
             consumptionMode: isset($data['consumption_mode']) ? (string) $data['consumption_mode'] : null,
             tableId: isset($data['table_id']) ? (string) $data['table_id'] : null,
             fiscalSchemaVersion: $fiscalSchemaVersion,
+            // T2.7 — defaults to false for backwards compat with pre-T2.7 clients.
+            // Codex round-1 P2 (2026-05-10): the request validator's `boolean`
+            // rule accepts `true`, `false`, `1`, `0`, `'1'`, `'0'`, `'true'`,
+            // `'false'`. A literal `=== true` check would silently downgrade an
+            // accepted-by-validator `is_training: 1` payload to production —
+            // re-enabling chain validation, finalize, and voucher redemption
+            // for what the client meant as training. `FILTER_VALIDATE_BOOL`
+            // matches Laravel's coercion semantics (returns null on rejected
+            // values; we coalesce to false for the conservative default).
+            isTraining: filter_var(
+                $data['is_training'] ?? false,
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE,
+            ) ?? false,
         );
     }
 }

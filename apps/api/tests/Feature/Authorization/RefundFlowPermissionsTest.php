@@ -80,18 +80,24 @@ final class RefundFlowPermissionsTest extends TestCase
     {
         $cashier = Role::where('name', 'cashier')->where('guard_name', 'sanctum')->firstOrFail();
 
-        $managerOnlyPermissions = [
+        // Permissions the seeder grants to manager (and admin) but NOT to cashier.
+        // pos.extend_voucher_expiry is manager-allowed per the spec decision
+        // documented in the test_manager_has_operations_level_refund_permissions
+        // assertion below — it's a frontline customer-service override that
+        // managers are expected to perform without escalating to admin.
+        $managerAndAdminOnlyPermissions = [
             'pos.refund_above_threshold',
             'pos.refund_no_receipt',
             'pos.refund_extend_daily_cap',
             'pos.issue_goodwill_voucher',
             'pos.void_voucher',
+            'pos.extend_voucher_expiry',
             'pos.refund_destination_override',
             'pos.refund_voucher_to_cash',
             'pos.search_customer_full_history',
         ];
 
-        foreach ($managerOnlyPermissions as $permission) {
+        foreach ($managerAndAdminOnlyPermissions as $permission) {
             $this->assertFalse(
                 $cashier->hasPermissionTo($permission),
                 "Cashier should NOT have permission: {$permission}"
@@ -103,10 +109,13 @@ final class RefundFlowPermissionsTest extends TestCase
     {
         $cashier = Role::where('name', 'cashier')->where('guard_name', 'sanctum')->firstOrFail();
 
+        // Permissions the seeder grants ONLY to admin — neither manager nor
+        // cashier has them. After the 2026-05-09 spec realignment,
+        // pos.extend_voucher_expiry moved out of this list and into the
+        // manager-allowed set.
         $adminOnlyPermissions = [
             'pos.search_customer_cross_company',
             'pos.issue_goodwill_voucher_high_value',
-            'pos.extend_voucher_expiry',
             'pos.transfer_voucher',
             'pos.fiscal_schema_cutover',
             'pos.rotate_qr_signing_key',
@@ -128,6 +137,14 @@ final class RefundFlowPermissionsTest extends TestCase
     {
         $manager = Role::where('name', 'manager')->where('guard_name', 'sanctum')->firstOrFail();
 
+        // Operations-level refund-flow permissions the seeder grants to
+        // manager. pos.extend_voucher_expiry is included per the 2026-05-09
+        // spec decision: voucher-expiry extension is a frontline customer-
+        // service override that aligns with typical retail manager authority,
+        // not an admin-gated action. The seeder at
+        // database/seeders/RolesAndPermissionsSeeder.php:410 grants this to
+        // manager since 2026-04-29 (commit 72e4dc9c); this assertion list
+        // now matches that grant.
         $managerPermissions = [
             'pos.search_customer_recent_purchases',
             'pos.search_customer_full_history',
@@ -136,6 +153,7 @@ final class RefundFlowPermissionsTest extends TestCase
             'pos.refund_extend_daily_cap',
             'pos.issue_goodwill_voucher',
             'pos.void_voucher',
+            'pos.extend_voucher_expiry',
             'pos.redeem_voucher',
             'pos.refund_destination_override',
             'pos.refund_voucher_to_cash',
@@ -153,10 +171,14 @@ final class RefundFlowPermissionsTest extends TestCase
     {
         $manager = Role::where('name', 'manager')->where('guard_name', 'sanctum')->firstOrFail();
 
+        // Admin-only permissions — manager must NOT have these. The list
+        // shrunk from 6 to 5 on 2026-05-09 when pos.extend_voucher_expiry
+        // moved into the manager-allowed set per the spec decision (see
+        // test_manager_has_operations_level_refund_permissions for the
+        // rationale).
         $adminOnlyPermissions = [
             'pos.search_customer_cross_company',
             'pos.issue_goodwill_voucher_high_value',
-            'pos.extend_voucher_expiry',
             'pos.transfer_voucher',
             'pos.fiscal_schema_cutover',
             'pos.rotate_qr_signing_key',

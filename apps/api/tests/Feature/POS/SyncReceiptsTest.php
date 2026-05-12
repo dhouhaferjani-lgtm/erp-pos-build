@@ -152,6 +152,54 @@ final class SyncReceiptsTest extends TestCase
         ]);
     }
 
+    public function test_sync_offline_cash_over_tender_round_trip_persists_tendered_amount_and_change(): void
+    {
+        // Bug 2 round-trip regression — proves the full offline cash over-tender
+        // flow survives the wire boundary:
+        //   - payments[].amount = tendered (post-Bug-2 contract)
+        //   - receipt.total < payments[].amount (over-tender)
+        //   - change_due > 0
+        // After sync, the server must persist `pos_receipt_payments.amount`
+        // as the tendered amount and `pos_receipts.change_due` as the change
+        // returned. Fiscal-hash verification must pass (status=synced),
+        // proving the hash input shape is consistent client-side and
+        // server-side under the new contract.
+        $payload = $this->buildReceiptPayload([
+            'idempotency_key' => 'over-tender-roundtrip-1',
+            'total' => '10.00',
+            'tendered_amount' => '20.00',
+            'change_due' => '10.00',
+            'payments' => [
+                [
+                    'payment_method_id' => $this->paymentMethod->id,
+                    'repository_id' => $this->paymentRepo->id,
+                    'amount' => '20.00',
+                    'method_code' => $this->paymentMethod->code,
+                ],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/receipts/sync', $payload);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.results.0.status', 'synced');
+
+        $receipt = Receipt::where('idempotency_key', 'over-tender-roundtrip-1')->first();
+        $this->assertNotNull($receipt);
+        $this->assertEquals('10.000', $receipt->total);
+        $this->assertEquals('10.000', $receipt->change_due);
+
+        $cashPayment = $receipt->payments->firstWhere('payment_method_id', $this->paymentMethod->id);
+        $this->assertNotNull($cashPayment);
+        $this->assertEquals('20.000', $cashPayment->amount);
+
+        // Consistency: cashier-facing expected_cash = opening + Σ(amount) − Σ(change_due)
+        // For this row that's +20 − 10 = +10 net, which equals receipt.total —
+        // the drawer math that fell apart with Bug 2's `amount = total` shape.
+        $netDrawerCashEntry = bcsub((string) $cashPayment->amount, (string) $receipt->change_due, 3);
+        $this->assertEquals($receipt->total, $netDrawerCashEntry);
+    }
+
     public function test_sync_duplicate_receipt_returns_duplicate_status(): void
     {
         $payload = $this->buildReceiptPayload();

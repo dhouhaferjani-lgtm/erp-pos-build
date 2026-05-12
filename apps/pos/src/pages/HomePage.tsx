@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -12,6 +12,9 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
+import { resolveScannedCode } from '@/lib/scan/resolveScannedCode';
+import { setCachedScan } from '@/lib/scan/scanResolutionCache';
+import { BarcodeChooserModal } from '@/components/molecules/BarcodeChooserModal/BarcodeChooserModal';
 import { getDatabase } from '@/lib/db';
 import { getOfflineReceiptById } from '@/lib/db/repositories/offlineReceiptRepository';
 import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
@@ -20,6 +23,7 @@ import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
+import { resolveDiscountAccess } from '@/lib/discountPermissions';
 import { fetchReceipt } from '@/api/receiptApi';
 import { buildEscPosReceiptData } from '@/lib/buildReceiptData';
 import type { ReceiptVisibilitySettings } from '@/lib/buildReceiptData';
@@ -43,6 +47,7 @@ import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
 import { ToastSmartPrompts } from '@/components/organisms/ToastSmartPrompts';
 import { apiGet } from '@/lib/api';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
@@ -194,11 +199,32 @@ export function HomePage() {
   const [discountItemId, setDiscountItemId] = useState<string | null>(null);
 
   // Operator discount permissions
-  const canDiscount = operator?.can_discount ?? true;
-  const maxDiscountPct = operator?.max_discount_percent ?? 100;
+  const transactionDiscountAccess = resolveDiscountAccess(
+    operator,
+    terminal?.max_discount_percent,
+    terminal?.allow_transaction_discounts,
+    operator?.can_apply_transaction_discounts,
+  );
+  const lineDiscountAccess = resolveDiscountAccess(
+    operator,
+    terminal?.max_discount_percent,
+    terminal?.allow_line_discounts,
+    operator?.can_apply_line_discounts,
+  );
 
   // Barcode scanner
-  const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // T2.1 Step B — chooser modal state for collision UX (>1 product matches a code).
+  const [chooserState, setChooserState] = useState<{
+    scannedCode: string;
+    candidates: POSProduct[];
+  } | null>(null);
+
+  // T2.1 Step B — abort controller for in-flight scan resolution. A new
+  // scan aborts any prior in-flight call so the cashier doesn't get a
+  // stale "looking up..." spinner from a superseded scan.
+  const scanControllerRef = useRef<AbortController | null>(null);
 
   // Refund-flow scan dispatcher state (Task 50). The pending entry drives
   // the Receipt-Scan Confirmation Sheet; cart is NEVER mutated here.
@@ -224,19 +250,11 @@ export function HomePage() {
   const [detailsNotLocalWarning, setDetailsNotLocalWarning] = useState(false);
 
   /**
-   * Existing product-barcode handler — extracted so the receipt-token
-   * dispatcher (below) can fall through to it cleanly.
+   * Add a resolved product to the cart with the success-toast UX.
+   * Shared by Tier 1/2/3 hits and chooser-modal picks.
    */
-  const handleProductBarcode = useCallback(
-    (barcode: string) => {
-      const product = products.find(
-        (p) => p.barcode === barcode || p.sku === barcode,
-      );
-      if (!product) {
-        setScanMessage({ text: t('barcode.productNotFound', { code: barcode }), type: 'error' });
-        setTimeout(() => setScanMessage(null), 3000);
-        return;
-      }
+  const addProductToCartWithToast = useCallback(
+    (product: POSProduct) => {
       const { autoAddToCart } = useScannerStore.getState();
       if (autoAddToCart) {
         addItem(product);
@@ -244,7 +262,91 @@ export function HomePage() {
         setTimeout(() => setScanMessage(null), 2000);
       }
     },
-    [products, addItem, t],
+    [addItem, t],
+  );
+
+  /**
+   * T2.1 Step B — three-tier scan resolution. Replaces the in-memory-only
+   * find with `resolveScannedCode(code, { db, products, signal })`:
+   *
+   *   1. In-memory `productStore.products` (preserved barcode OR sku match).
+   *   2. SQLite `getProductByBarcode(db, code)` — covers the cold-start
+   *      window where SQLite has the product but the in-memory snapshot
+   *      doesn't yet.
+   *   3. API `fetchProductByBarcode(code, { timeoutMs: 5000, signal })` —
+   *      covers the case where neither tier has the product (e.g. brand-new
+   *      SKU never synced down). Single result auto-picks; multi-result
+   *      mounts the BarcodeChooserModal for the cashier to resolve.
+   *
+   * Concurrent-scan handling: each call aborts the prior in-flight scan's
+   * AbortController so a rapid re-scan doesn't leave a stale "looking up..."
+   * spinner attached to a superseded code.
+   */
+  const handleProductBarcode = useCallback(
+    (barcode: string) => {
+      // Abort any prior in-flight scan.
+      scanControllerRef.current?.abort();
+      const controller = new AbortController();
+      scanControllerRef.current = controller;
+
+      const companyId = useAuthStore.getState().companyId;
+      // No tenant context → fall back to in-memory only (prevents a
+      // pre-auth crash from racing the cold-start path).
+      if (!companyId) {
+        const product = products.find(
+          (p) => p.barcode === barcode || p.sku === barcode,
+        );
+        if (!product) {
+          setScanMessage({ text: t('barcode.productNotFound', { code: barcode }), type: 'error' });
+          setTimeout(() => setScanMessage(null), 3000);
+          return;
+        }
+        addProductToCartWithToast(product);
+        return;
+      }
+
+      void (async () => {
+        // Show a transient "Looking up..." indicator so the cashier
+        // knows the system is working during Tier 3 (up to 5s on a
+        // slow network). Cleared on result settle (success or miss).
+        setScanMessage({ text: t('barcode.lookingUp'), type: 'info' });
+
+        try {
+          const db = await getDatabase(companyId);
+          const result = await resolveScannedCode(barcode, {
+            db,
+            products,
+            companyId,
+            signal: controller.signal,
+          });
+
+          // Drop the result if a subsequent scan superseded this one.
+          if (controller.signal.aborted) return;
+
+          if (result.kind === 'miss') {
+            setScanMessage({ text: t('barcode.productNotFound', { code: barcode }), type: 'error' });
+            setTimeout(() => setScanMessage(null), 3000);
+            return;
+          }
+          if (result.kind === 'choose') {
+            setScanMessage(null);
+            setChooserState({ scannedCode: barcode, candidates: result.candidates });
+            return;
+          }
+          // result.kind === 'hit'
+          addProductToCartWithToast(result.product);
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          console.error(
+            '[POS][HomePage] scan resolution failed',
+            serializeErrorForLog(err),
+          );
+          setScanMessage({ text: t('barcode.productNotFound', { code: barcode }), type: 'error' });
+          setTimeout(() => setScanMessage(null), 3000);
+        }
+      })();
+    },
+    [products, addProductToCartWithToast, t],
   );
 
   /**
@@ -627,8 +729,12 @@ export function HomePage() {
         if (productData) {
           addItem(productData);
         }
-      } catch {
-        // Silently fail — recommendation add is best-effort
+      } catch (recommendError) {
+        // Best-effort — log so a persistent product-fetch failure isn't invisible.
+        console.error('[POS][HomePage][handleAddRecommendation] failed', {
+          ...serializeErrorForLog(recommendError),
+          productId,
+        });
       }
     },
     [addItem],
@@ -687,8 +793,15 @@ export function HomePage() {
         );
         setShowCashModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore and displayed in the modal
+      } catch (cashError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleCashConfirm] processCashCheckout threw', {
+          ...serializeErrorForLog(cashError),
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          tenderedAmount,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processCashCheckout, isFnB, consumptionMode, selectedTableId],
@@ -713,8 +826,15 @@ export function HomePage() {
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
-      } catch {
-        // Error is stored in paymentStore
+      } catch (advancedError) {
+        // paymentStore.error already holds the user-visible banner, but the
+        // raw throwable was previously unreachable from devtools.
+        console.error('[POS][HomePage][handleAdvancedComplete] processAdvancedCheckout threw', {
+          ...serializeErrorForLog(advancedError),
+          terminalId: terminal.id,
+          cartItemCount: cartItems.length,
+          paymentLineCount: payments.length,
+        });
       }
     },
     [terminal, cartItems, transactionDiscount, processAdvancedCheckout, isFnB, consumptionMode, selectedTableId],
@@ -931,7 +1051,9 @@ export function HomePage() {
           className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
             scanMessage.type === 'success'
               ? 'bg-green-600 text-white'
-              : 'bg-red-600 text-white'
+              : scanMessage.type === 'info'
+                ? 'bg-blue-600 text-white'
+                : 'bg-red-600 text-white'
           }`}
         >
           {scanMessage.text}
@@ -963,6 +1085,7 @@ export function HomePage() {
           onEditModifiers={handleEditModifiers}
           onRemoveDiscount={handleRemoveDiscount}
           paymentMethods={paymentMethods}
+          paymentRepositories={paymentRepositories}
           checkoutDisabled={!hashChainReady || isProcessing}
           netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
         />
@@ -1047,8 +1170,14 @@ export function HomePage() {
         isOpen={showDiscountModal}
         onClose={() => setShowDiscountModal(false)}
         onApplyTransactionDiscount={handleApplyTransactionDiscount}
-        canDiscount={canDiscount}
-        maxDiscountPercent={maxDiscountPct}
+        canDiscount={transactionDiscountAccess.canDiscount}
+        maxDiscountPercent={transactionDiscountAccess.maxDiscountPercent}
+        terminalMaxDiscountPercent={terminal?.max_discount_percent ?? 0}
+        disabledReason={
+          transactionDiscountAccess.disabledReason
+            ? t(`pos:${transactionDiscountAccess.disabledReason}`)
+            : undefined
+        }
         requiresReason={true}
       />
 
@@ -1058,8 +1187,14 @@ export function HomePage() {
         onClose={() => setDiscountItemId(null)}
         onApply={handleApplyLineDiscount}
         itemName={discountItem?.product.name ?? ''}
-        canDiscount={canDiscount}
-        maxDiscountPercent={maxDiscountPct}
+        canDiscount={lineDiscountAccess.canDiscount}
+        maxDiscountPercent={lineDiscountAccess.maxDiscountPercent}
+        terminalMaxDiscountPercent={terminal?.max_discount_percent ?? 0}
+        disabledReason={
+          lineDiscountAccess.disabledReason
+            ? t(`pos:${lineDiscountAccess.disabledReason}`)
+            : undefined
+        }
       />
 
       {/* Modifier selection modal */}
@@ -1074,6 +1209,41 @@ export function HomePage() {
       <VoidReturnModal
         isOpen={showVoidReturnModal}
         onClose={() => setShowVoidReturnModal(false)}
+      />
+
+      {/* T2.1 Step B — barcode collision chooser. Mounts when the scan
+          resolver finds >1 product matching the scanned code (UPC overlap,
+          internal SKU/barcode shared codes, etc.). Cashier picks one →
+          add to cart; cashier dismisses → no-op. */}
+      <BarcodeChooserModal
+        isOpen={chooserState !== null}
+        scannedCode={chooserState?.scannedCode ?? ''}
+        candidates={chooserState?.candidates ?? []}
+        onPick={(product) => {
+          // Remember the cashier's pick for this code so the next scan
+          // of the same colliding barcode skips the chooser entirely
+          // (chooser-pick preference cache; resolves to a Tier 0 LRU
+          // hit). Tenant-scoped via companyId — a pick in company A
+          // can't bleed into company B after a session switch.
+          // Bounded by the cache's session lifetime + LRU eviction
+          // window.
+          if (chooserState !== null) {
+            const companyIdForCache = useAuthStore.getState().companyId;
+            if (companyIdForCache) {
+              // Codex round-3 P3 (PR #98) — trim parity with the
+              // resolver. resolveScannedCode does code = rawCode.trim()
+              // before all cache reads/writes, so caching the
+              // chooser's scannedCode untrimmed would store under a
+              // raw key that the next scan's trimmed lookup never
+              // hits — chooser preference would never take effect for
+              // scanners that emit surrounding whitespace.
+              setCachedScan(chooserState.scannedCode.trim(), product, companyIdForCache);
+            }
+          }
+          setChooserState(null);
+          addProductToCartWithToast(product);
+        }}
+        onDismiss={() => setChooserState(null)}
       />
 
       {/* Quantity numpad */}

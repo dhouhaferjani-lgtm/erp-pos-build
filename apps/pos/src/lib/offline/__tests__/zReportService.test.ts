@@ -169,6 +169,24 @@ describe('generateZReport', () => {
 
       expect(insertZReportCounts).not.toHaveBeenCalled();
     });
+
+    it('T2.7: filters offline_receipts WHERE is_training = 0 (training rows excluded from Z totals)', async () => {
+      // Mirrors the server-side `Terminal::scopeProduction()` exclusion that
+      // NF525 / ReportGenerationService apply on the canonical reporting path.
+      // Without the filter, training receipts created during a shift would
+      // inflate local Z totals + corrupt the local Z-chain.
+      mockQueryAll(db, makeReceiptRows());
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      const calls = vi.mocked(queryAll).mock.calls;
+      const receiptsCall = calls.find((call) => {
+        const sql = String(call[1]);
+        return sql.includes('FROM offline_receipts');
+      });
+      expect(receiptsCall).toBeDefined();
+      expect(String(receiptsCall![1])).toMatch(/is_training\s*=\s*0/);
+    });
   });
 
   describe('with cash counts', () => {

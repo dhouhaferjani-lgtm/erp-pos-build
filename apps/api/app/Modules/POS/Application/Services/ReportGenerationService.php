@@ -471,6 +471,7 @@ final class ReportGenerationService
 
     /**
      * Sum receipt_payments.amount for the shift, grouped by payment_method_id.
+     * Cash methods subtract receipt change_due once per receipt to mirror the POS device formula.
      * Always includes a row for every payment_method_id in $inputs (defaulting to '0.0000').
      *
      * Shift window driven by pos_receipts.posted_at — see REALIGNMENT-LOG 2026-04-26.
@@ -496,6 +497,25 @@ final class ReportGenerationService
             ->groupBy('pos_receipt_payments.payment_method_id')
             ->get();
 
+        $cashReceiptChanges = DB::query()
+            ->fromSub(
+                DB::table('pos_receipt_payments')
+                    ->join('pos_receipts', 'pos_receipt_payments.receipt_id', '=', 'pos_receipts.id')
+                    ->where('pos_receipts.terminal_id', $shift->terminal_id)
+                    ->where('pos_receipts.fiscal_status', FiscalStatus::Fiscalized->value)
+                    ->where('pos_receipts.is_voided', false)
+                    ->where('pos_receipts.is_training', false)
+                    ->whereBetween('pos_receipts.posted_at', [$shift->opened_at, now()])
+                    ->whereRaw('UPPER(pos_receipt_payments.payment_method_code) = ?', ['CASH'])
+                    ->selectRaw('pos_receipt_payments.payment_method_id as payment_method_id, pos_receipts.id as receipt_id, MAX(COALESCE(pos_receipts.change_due, 0)) as change_due')
+                    ->groupBy('pos_receipt_payments.payment_method_id', 'pos_receipts.id'),
+                'cash_receipt_changes',
+            )
+            ->selectRaw('payment_method_id, SUM(change_due) as total_change_due')
+            ->groupBy('payment_method_id')
+            ->get()
+            ->keyBy('payment_method_id');
+
         foreach ($rows as $row) {
             /** @var string $pmId */
             $pmId = $row->payment_method_id;
@@ -503,7 +523,16 @@ final class ReportGenerationService
             $rawTotal = $row->total;
             /** @var numeric-string $totalString */
             $totalString = (string) ($rawTotal ?? '0');
-            $totals[$pmId] = bcadd($totalString, '0', $scale);
+            $total = bcadd($totalString, '0', $scale);
+
+            $changeRow = $cashReceiptChanges->get($pmId);
+            if ($changeRow !== null) {
+                /** @var string|float|int|null $rawChangeDue */
+                $rawChangeDue = $changeRow->total_change_due;
+                $total = bcsub($total, $this->normaliseNumericString($rawChangeDue), $scale);
+            }
+
+            $totals[$pmId] = $total;
         }
 
         // Ensure every input has an entry (default '0.0000' if no receipts yet for that method).
@@ -514,6 +543,18 @@ final class ReportGenerationService
         }
 
         return $totals;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function normaliseNumericString(string|int|float|null $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0';
+        }
+
+        return (string) $value;
     }
 
     /**

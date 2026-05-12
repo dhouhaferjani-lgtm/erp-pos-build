@@ -41,6 +41,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -110,6 +112,26 @@ class AppServiceProvider extends ServiceProvider
         // (api.auth-permissions Invariant A.3 — forward-compat defense; no production
         // endpoint mutates users.tenant_id today)
         User::observe(UserObserver::class);
+
+        // T1.4 — Sanctum's default Guard::isValidAccessToken ANDs the
+        // global SANCTUM_TOKEN_EXPIRATION (30 days) with the per-token
+        // `expires_at` column. So even when AuthController issues a POS
+        // terminal token with `expires_at = now()->addYear()`, the
+        // global 30-day TTL still rejects the token after 30 days,
+        // defeating the 12-month POS lifetime contract.
+        //
+        // Override the validation: when a token has a per-row `expires_at`,
+        // that takes precedence over the global TTL. Tokens without a
+        // per-row expiry (the web back-office default) keep the existing
+        // global-TTL behaviour. The provider check (tokenable still
+        // exists) is preserved on both branches.
+        Sanctum::authenticateAccessTokensUsing(function (PersonalAccessToken $token, bool $isValid) {
+            if ($token->expires_at !== null) {
+                return ! $token->expires_at->isPast() && $token->tokenable !== null;
+            }
+
+            return $isValid;
+        });
     }
 
     /**

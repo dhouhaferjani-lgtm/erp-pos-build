@@ -18,5 +18,33 @@
   "of": "de",
   "discount": "Remise",
   "noResults": "Aucun résultat trouvé",
-  "retry": "Réessayer"
+  "retry": "Réessayer",
+  "auth": {
+    "bootstrap": {
+      "title": "Impossible de finaliser la configuration du terminal",
+      "message": "L'étape « {{phase}} » a échoué. Réessayez ou utilisez les données en cache si disponibles.",
+      "noCompaniesMessage": "Aucune entreprise disponible. Nous n'avons trouvé aucune entreprise pour votre compte. Essayez d'actualiser, ou déconnectez-vous pour changer d'utilisateur.",
+      "errorHint": "Vérifiez votre connexion et réessayez. Déconnectez-vous si le problème persiste.",
+      "retry": "Réessayer",
+      "retrying": "Nouvel essai...",
+      "useCachedData": "Utiliser les données en cache",
+      "signOut": "Se déconnecter",
+      "viewDetails": "Voir les détails",
+      "hideDetails": "Masquer les détails",
+      "phase": {
+        "authenticating": "connexion",
+        "fetching-companies": "chargement de votre boutique",
+        "fetching-terminal": "configuration du terminal",
+        "checking-pins": "vérification des codes opérateur"
+      }
+    }
+  },
+  "trainingMode": {
+    "banner": "Mode formation",
+    "subtitle": "Terminal de test — vérifiez le mode avant chaque transaction."
+  },
+  "c2Migration": {
+    "banner": "Une commande en cours créée avant la dernière mise à jour a été supprimée. Ressaisissez-la si nécessaire.",
+    "dismiss": "Compris"
+  }
 }

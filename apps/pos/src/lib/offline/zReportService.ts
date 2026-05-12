@@ -124,10 +124,14 @@ export async function generateZReport(
   // Receipts are queried by terminal_id + shift open time because offline_receipts
   // does not have a shift_id column. This is acceptable because shifts are sequential
   // per terminal — only one shift can be open at a time.
+  // T2.7 — filter out is_training=1 rows. Training receipts must not enter local
+  // Z-report totals or the Z-chain hash; this mirrors the server-side
+  // `Terminal::scopeProduction()` exclusion that NF525 / ReportGenerationService
+  // already apply on the canonical reporting path.
   const receipts = await queryAll<OfflineReceipt>(
     db,
     `SELECT * FROM offline_receipts
-     WHERE terminal_id = $1 AND created_at >= $2
+     WHERE terminal_id = $1 AND created_at >= $2 AND is_training = 0
      ORDER BY hash_sequence ASC`,
     [terminalId, shiftOpenedAt]
   );

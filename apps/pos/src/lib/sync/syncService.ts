@@ -1,6 +1,12 @@
 import type Database from '@tauri-apps/plugin-sql';
-import { apiGet, apiPost } from '@/lib/api';
-import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
+import { apiGet, apiPost, ApiRequestError } from '@/lib/api';
+import { parseMenuCompositeId } from '@/lib/menu/compositeId';
+import {
+  upsertProducts,
+  deleteProducts,
+  reconcileMenuProducts,
+} from '@/lib/db/repositories/productRepository';
+import { flattenMenuToProducts } from '@/api/productApi';
 import {
   upsertPaymentMethods,
   upsertPaymentRepositories,
@@ -48,6 +54,7 @@ import {
   cleanupSyncedCashDrawerOps,
 } from '@/lib/db/repositories/cashDrawerRepository';
 import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs } from '@/lib/db/repositories/syncLogRepository';
+import { coerceSyncError } from '@/lib/sync/coerceSyncError';
 import {
   upsertVouchers,
   upsertVoucherLedgerEntries,
@@ -63,6 +70,8 @@ import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import { usePaymentStore } from '@/stores/paymentStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
+import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
 
 interface SyncReceiptPayloadPayment {
   payment_method_id: string;
@@ -130,6 +139,17 @@ interface SyncReceiptPayload {
    * the cutover flips them to v3.
    */
   fiscal_schema_version: 2 | 3;
+  /**
+   * T2.7 — true when sealed against a training-mode terminal. Default false
+   * (production) when the field is absent. Server-side
+   * `SyncReceiptsRequest::rules` accepts `nullable, boolean` (PR #103);
+   * `ReceiptSyncService::syncSingleReceipt` branches on this flag to skip
+   * chain validation, year roll-over, finalize, and hash mismatch. Sent on
+   * every payload (rather than omitted-when-false) so the wire shape is
+   * unambiguous and the server-side default-false branch is exercised
+   * deliberately, not by accident of an absent key.
+   */
+  is_training: boolean;
 }
 
 interface SyncReceiptResponseItem {
@@ -200,6 +220,57 @@ export interface SyncResult {
   receiptQrIndexPulled: number;
   chainBreak: boolean;
   errors: string[];
+  /**
+   * T1.3 Step 4.3: tristate sync-indicator signal. True when the tick
+   * completed but with at least one observable failure that the cashier
+   * needs to know about. Drives the amber dot in `SyncButton`.
+   *
+   * Heuristic (canonical Phase-4 spec, line 264 of
+   * pos-offline-first-hardening.md):
+   *   - receiptsFailed > 0  (sales didn't sync)
+   *   - zReportsFailed > 0  (Z-reports didn't sync)
+   *   - !paymentConfigPulled (gate trips downstream)
+   *   - errors.length > 0   (anything else surfaced a string error)
+   *
+   * Explicitly does NOT include `productsPulled === 0` — a tenant
+   * with no products yet is a valid empty state, not degraded
+   * (round-1 false-positive guard from the canonical spec).
+   */
+  degraded: boolean;
+}
+
+/**
+ * T1.3 Step 4.3: compute the `degraded` tristate signal for SyncResult.
+ *
+ * Returns true when the just-completed tick had at least one observable
+ * failure that the cashier needs to know about — drives the amber dot
+ * in `SyncButton`.
+ *
+ * Heuristic (canonical Phase-4 spec, line 264 of
+ * pos-offline-first-hardening.md):
+ *   - receiptsFailed > 0     (sales didn't sync)
+ *   - zReportsFailed > 0     (Z-reports didn't sync)
+ *   - !paymentConfigPulled   (gate trips downstream)
+ *   - errors.length > 0      (anything else surfaced a string error)
+ *
+ * Explicitly excludes `productsPulled === 0` — a tenant with no
+ * products yet is a valid empty state, not degraded.
+ *
+ * Exported for unit testing; production callers compose it inline at
+ * the bottom of `runFullSync`.
+ */
+export function computeDegraded(input: {
+  receiptsFailed: number;
+  zReportsFailed: number;
+  paymentConfigPulled: boolean;
+  errors: string[];
+}): boolean {
+  return (
+    input.receiptsFailed > 0 ||
+    input.zReportsFailed > 0 ||
+    !input.paymentConfigPulled ||
+    input.errors.length > 0
+  );
 }
 
 /**
@@ -233,13 +304,37 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   let chainBreak = false;
   const errors: string[] = [];
 
+  // TODO(go-live-followup): batch receipt push for 1000-receipt offline
+  //   backlogs (Phase 0 deferred). Today the loop pushes one receipt per
+  //   round-trip ("batch-of-one"); a terminal that comes online after a
+  //   long offline period needs N round-trips for N receipts. The server
+  //   already accepts a batch payload — switching the client to chunked
+  //   batches (e.g. 50 per request) would dramatically cut sync wall-time
+  //   on backlog recovery. See
+  //   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+  //   Section 3 Step 5.3 row 8.
   for (const receipt of pending) {
     try {
       await updateReceiptStatus(db, receipt.id, 'syncing');
 
       const payload = receiptToPayload(receipt);
-      // Send as batch-of-one so the response shape is always { results: [...] }
-      const response = await apiPost<SyncReceiptBatchResponse>('/pos/receipts/sync', { receipts: [payload] });
+      // Send as batch-of-one so the response shape is always { results: [...] }.
+      // T0.3: 30s ceiling (vs the 10s default) — the receipt sync path runs
+      // server-side fiscal-hash verification, voucher resolution, and ledger
+      // writes; the longer ceiling matches that worst-case while still
+      // unblocking the JS caller if the response is dropped on the wire.
+      // On FetchTimeoutError, the catch's dedicated `instanceof
+      // FetchTimeoutError` branch reverts the receipt to 'pending' (NOT
+      // 'failed') and does NOT increment retry_count — timeouts mean
+      // "unknown sync state", not "this receipt is poisoned". The next
+      // sync tick re-pushes via T0.2's stable idempotency key; the
+      // server-side dedup-on-disk returns 'duplicate' (treated as success)
+      // or accepts fresh.
+      const response = await apiPost<SyncReceiptBatchResponse>(
+        '/pos/receipts/sync',
+        { receipts: [payload] },
+        { timeoutMs: 30_000 },
+      );
 
       const resultItem = response.results.find((r) => r.idempotency_key === receipt.idempotency_key);
       if (!resultItem) {
@@ -289,6 +384,17 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         }
         await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', resultItem.status);
         pushed++;
+      // T0.4 audit (2026-05-08): chain_broken with terminal info is currently
+      // unreachable. The backend's `SyncReceiptResult::chainBroken()` factory
+      // never populates terminal_last_hash/terminal_hash_sequence (see
+      // apps/api/.../DTOs/SyncReceiptResult.php:99-108), and this client
+      // sends batch-of-one (`{ receipts: [payload] }` above) so server's
+      // `chain_broken` cascade — which only fires on a multi-receipt batch
+      // when an EARLIER receipt failed — cannot apply to the single receipt
+      // in our request. If either contract changes (server populates
+      // terminal info on chain_broken OR client batches > 1), add reconcile
+      // handling here informed by the new contract; do NOT preemptively
+      // harden currently-dead code.
       } else if (resultItem.status === 'chain_broken' || (resultItem.status === 'failed' && isChainBreakError(resultItem.error))) {
         await incrementRetryCount(db, receipt.id);
         await updateReceiptStatus(db, receipt.id, 'failed', resultItem.error ?? 'chain_broken');
@@ -305,7 +411,48 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         failed++;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      // T0.3 round-1 Codex fix: distinguish read-timeout from hard failure.
+      // FetchTimeoutError = "unknown sync state" — the server may have
+      // committed the receipt and the response was just dropped on the wire.
+      // Marking it 'failed' + incrementing retry_count would (a) saturate
+      // the dead-letter cap at 5 attempts even when the server has been
+      // accepting the POSTs, and (b) push a misleading "failed" banner to
+      // the cashier. Instead: revert to 'pending' so the next sync tick
+      // re-pushes the same payload with T0.2's stable idempotency key —
+      // the server-side dedup-on-disk will return the existing receipt as
+      // a 'duplicate' (treated as success at line 270 above), or accept it
+      // fresh if it never landed. Either way, no retry-count bump.
+      if (error instanceof FetchTimeoutError) {
+        console.warn('[POS][sync][pushOfflineReceipts] receipt push timed out — leaving pending for next tick', {
+          ...serializeErrorForLog(error),
+          // FetchTimeoutError keeps message opaque ('Request timed out');
+          // expose the diagnostic url/timeoutMs/method via typed fields so
+          // devtools can see which endpoint stalled. Safe for crash reports
+          // (no cashier banner reads these).
+          url: error.url,
+          timeoutMs: error.timeoutMs,
+          method: error.method,
+          receiptId: receipt.id,
+          receiptNumber: receipt.receipt_number,
+          retryCount: receipt.retry_count,
+          idempotencyKey: receipt.idempotency_key,
+        });
+        await updateReceiptStatus(db, receipt.id, 'pending');
+        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', 'timeout — pending for retry');
+        // Do NOT increment retry_count, do NOT push to errors[], do NOT
+        // mark this loop iteration as a failure. The receipt is in a known
+        // state (pending) and the next sync tick will pick it up.
+        continue;
+      }
+
+      const message = coerceSyncError(error);
+      console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
+        ...serializeErrorForLog(error),
+        receiptId: receipt.id,
+        receiptNumber: receipt.receipt_number,
+        retryCount: receipt.retry_count,
+        idempotencyKey: receipt.idempotency_key,
+      });
       await incrementRetryCount(db, receipt.id);
       await updateReceiptStatus(db, receipt.id, 'failed', message);
       await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', message);
@@ -344,7 +491,7 @@ export async function pushZReports(db: Database): Promise<{
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'success');
       pushed++;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await logSyncOperation(db, 'push', 'z_report', zReport.id, 'error', message);
       errors.push(`Z-Report ${zReport.formatted_z_number}: ${message}`);
       failed++;
@@ -389,7 +536,7 @@ export async function pushCashDrawerOps(db: Database): Promise<{
       await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'success');
       pushed++;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await updateCashDrawerOpStatus(db, op.id, 'failed', message);
       await logSyncOperation(db, 'push', 'cash_drawer_op', op.id, 'error', message);
       errors.push(`Cash drawer ${op.type} ${op.id}: ${message}`);
@@ -433,62 +580,291 @@ export function zReportToSyncPayload(report: LocalZReport): Record<string, unkno
  * `updated_since` is present, removing locally-cached rows for soft-deleted
  * server-side products.
  */
-export async function pullProducts(db: Database): Promise<number> {
-  try {
-    const lastSync = await getSyncMetadata(db, 'products_last_sync');
-    const params: Record<string, string> = { per_page: '500' };
-    if (lastSync) {
-      params['updated_since'] = lastSync;
-    }
+/**
+ * T2.1 Step A — typed error class for `pullProductsCore` rejections.
+ *
+ * Distinguishes the three classes of failure the foreground caller
+ * (`pullProductsForeground` → `productStore.fetchProducts`) needs to
+ * surface to the cashier-facing error banner: HTTP 5xx (server is down /
+ * overloaded), network (Tauri-side fetch failure / no DNS / no route),
+ * and parse (server returned non-JSON or malformed JSON).
+ *
+ * Timeout is propagated as the existing `FetchTimeoutError` (T0.3) — not
+ * wrapped into `PullProductsError` — so callers that already discriminate
+ * timeout vs other errors (e.g. the receipt-sync POST path) continue to
+ * see the same shape.
+ */
+export class PullProductsError extends Error {
+  constructor(
+    public readonly kind: 'http_5xx' | 'network' | 'parse',
+    public readonly cause: unknown,
+    public readonly status?: number,
+  ) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super(`pullProducts ${kind}${status !== undefined ? ` (${String(status)})` : ''}: ${causeMsg}`);
+    this.name = 'PullProductsError';
+  }
+}
 
-    let totalPulled = 0;
-    let page = 1;
-    let hasMore = true;
-    const deletedIdsAccumulator: string[] = [];
+/**
+ * T2.1 Step A — lower-level pagination loop that THROWS typed errors.
+ *
+ * Extracted from the legacy `pullProducts(db)` so the foreground caller
+ * can distinguish timeout / 5xx / network / parse failures (where the
+ * scheduler-side caller still wants the swallow-and-retry-next-tick
+ * semantics — see `pullProducts` below for the bit-equivalent wrapper).
+ *
+ * Idempotency contract:
+ *   - Page upserts happen mid-loop; partial commits survive a mid-pull
+ *     throw.
+ *   - The `products_last_sync` cursor is written ONLY after the full
+ *     loop completes (preserves the legacy per-pull cursor semantics).
+ *     A mid-pull throw therefore does not advance the cursor — the next
+ *     call re-fetches from the same `updated_since` watermark, and the
+ *     idempotent SQLite upserts dedup the already-committed pages.
+ *   - Tombstoning (`deleted_ids` accumulation + final `deleteProducts`)
+ *     also runs only on full-loop completion. A mid-pull throw leaves
+ *     stale rows in SQLite until the next successful pull — acceptable
+ *     for a transient retry; the alternative (delete-on-each-page)
+ *     would risk losing tombstones if the server's `deleted_ids` list
+ *     is split across pages.
+ */
+export async function pullProductsCore(
+  db: Database,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ count: number }> {
+  const lastSync = await getSyncMetadata(db, 'products_last_sync');
+  const params: Record<string, string> = { per_page: '500' };
+  if (lastSync) {
+    params['updated_since'] = lastSync;
+  }
 
-    while (hasMore) {
-      const result = await apiGet<
+  let totalPulled = 0;
+  let page = 1;
+  let hasMore = true;
+  const deletedIdsAccumulator: string[] = [];
+
+  while (hasMore) {
+    let result: POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] };
+    try {
+      result = await apiGet<
         POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] }
-      >('/products', { ...params, page: String(page) });
-
-      const products = Array.isArray(result) ? result : result.data;
-      const deletedIds = Array.isArray(result) ? [] : (result.deleted_ids ?? []);
-
-      if (products.length > 0) {
-        await upsertProducts(db, products);
-        totalPulled += products.length;
+      >('/products', { ...params, page: String(page) }, opts);
+    } catch (err) {
+      // FetchTimeoutError propagates verbatim — callers already
+      // discriminate it via `instanceof` (T0.3 contract).
+      if (err instanceof FetchTimeoutError) throw err;
+      // ApiRequestError carries an HTTP status — classify 5xx vs other.
+      if (err instanceof ApiRequestError) {
+        if (err.status >= 500 && err.status < 600) {
+          throw new PullProductsError('http_5xx', err, err.status);
+        }
+        // 4xx on the catalog endpoint is a programming error, not a
+        // transient retryable — propagate as a network-class typed
+        // error so the cashier-facing banner reads consistently.
+        throw new PullProductsError('network', err, err.status);
       }
-
-      if (deletedIds.length > 0) {
-        deletedIdsAccumulator.push(...deletedIds);
+      // SyntaxError = response body wasn't JSON (server returned HTML
+      // or malformed JSON). Parse class.
+      if (err instanceof SyntaxError) {
+        throw new PullProductsError('parse', err);
       }
-
-      hasMore = products.length === 500;
-      page++;
+      // Default = network-class (TypeError from fetch, undici-style
+      // ECONNRESET, etc.).
+      throw new PullProductsError('network', err);
     }
 
-    if (deletedIdsAccumulator.length > 0) {
-      await deleteProducts(db, deletedIdsAccumulator);
+    const products = Array.isArray(result) ? result : result.data;
+    const deletedIds = Array.isArray(result) ? [] : (result.deleted_ids ?? []);
+
+    if (products.length > 0) {
+      await upsertProducts(db, products);
+      totalPulled += products.length;
     }
 
-    if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
-      await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
+    if (deletedIds.length > 0) {
+      deletedIdsAccumulator.push(...deletedIds);
+    }
+
+    hasMore = products.length === 500;
+    page++;
+  }
+
+  if (deletedIdsAccumulator.length > 0) {
+    await deleteProducts(db, deletedIdsAccumulator);
+  }
+
+  if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
+    await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
+    await logSyncOperation(
+      db,
+      'pull',
+      'products',
+      null,
+      'success',
+      `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
+    );
+  }
+
+  return { count: totalPulled };
+}
+
+/**
+ * T2.1 Step A — scheduler-side thin wrapper around `pullProductsCore`.
+ *
+ * Preserves the bit-equivalent legacy contract: swallows ALL errors
+ * (typed and otherwise), logs to `sync_log`, returns `0`. The
+ * scheduler retries on its next tick; the `isSyncing` guard +
+ * idempotent SQLite upserts cover correctness.
+ *
+ * DO NOT change this wrapper's observable behavior without also
+ * updating the scheduler-side test surface — it's load-bearing for
+ * the every-60s background pull.
+ *
+ * C2 Day 1 — Codex round 1 P1 + round 2 P2 closure: skip the flat
+ * product pull for Menu tenants. Their canonical catalog source is
+ * `/active-menu` (pulled separately by `pullActiveMenu`); the
+ * productStore's Menu fetch path writes composite-id rows. A
+ * concurrent `pullProductsCore` would write bare-id rows for the same
+ * sellables, polluting the local SQLite cache and surfacing as
+ * duplicates in the POS grid.
+ *
+ * Round 2 P2 — when `companyConfig` is unknown (pre-fetch boot or a
+ * failed config refresh), we DO NOT fall through to /products. Treating
+ * null-config as non-Menu would pollute Menu-tenant SQLite during the
+ * boot window. Instead, we attempt to fetch the config inline; if that
+ * fails (network down), we skip this tick — `runFullSync` reruns every
+ * 60s, so deferring is bounded. Standard-retail tenants get their
+ * catalog on the next tick once config is loaded.
+ *
+ * The dynamic import of `productStore` is intentional — `productStore`
+ * already imports `pullProductsForeground` from this module, so a
+ * static import would create a circular dependency.
+ */
+export async function pullProducts(db: Database): Promise<number> {
+  let isMenuTenant = false;
+  let configKnown = false;
+
+  try {
+    const { useProductStore, hasModule } = await import('@/stores/productStore');
+    let config = useProductStore.getState().companyConfig;
+
+    if (config === null) {
+      // Pre-fetch boot — try to load config so we can route correctly.
+      try {
+        const { fetchCompanyConfig } = await import('@/api/productApi');
+        config = await fetchCompanyConfig();
+        useProductStore.setState({ companyConfig: config });
+      } catch {
+        // Config fetch failed (network down, server 5xx, etc.). Defer
+        // this tick rather than guess: a subsequent runFullSync will
+        // retry. Skipping is safer than risking bare-row pollution
+        // for a yet-unknown Menu tenant.
+        await logSyncOperation(
+          db,
+          'pull',
+          'products',
+          null,
+          'error',
+          'companyConfig unknown — deferring /products until next tick',
+        );
+        return 0;
+      }
+    }
+
+    configKnown = true;
+    isMenuTenant = hasModule(config, 'Menu');
+  } catch {
+    // Defensive: dynamic-import failure (test harness boot, module
+    // resolution edge case). Without a known config we cannot make a
+    // routing decision; defer to the next tick rather than risk
+    // pollution.
+    return 0;
+  }
+
+  if (configKnown && isMenuTenant) {
+    return 0;
+  }
+
+  try {
+    const result = await pullProductsCore(db);
+    return result.count;
+  } catch (error) {
+    const message = coerceSyncError(error);
+    await logSyncOperation(db, 'pull', 'products', null, 'error', message);
+    return 0;
+  }
+}
+
+/**
+ * T2.1 Step A — foreground full-catalog pull for `productStore.fetchProducts`.
+ *
+ * Differs from the scheduler-side `pullProducts(db)` wrapper in three ways:
+ *   1. Calls `pullProductsCore` DIRECTLY so typed errors (FetchTimeoutError,
+ *      PullProductsError) propagate to the cashier-facing UI rather than
+ *      being silently swallowed.
+ *   2. Wraps each page request with the foreground 30s per-page timeout
+ *      (caller-overridable via `opts.timeoutMs`).
+ *   3. Deduplicates concurrent foreground calls — if a cashier rapid-taps
+ *      "refresh" while a pull is in flight, the second call awaits the
+ *      same in-flight promise rather than firing a parallel pull.
+ *
+ * Acceptance contract for the foreground/scheduler race (Codex round-2 R1):
+ * `useSyncStore.isSyncing` is set by `SyncScheduler.startSync` (a method
+ * on the scheduler instance), NOT by this free-function wrapper. Therefore
+ * a benign rare double-pull is possible (foreground + scheduler-tick
+ * concurrent). SQLite per-statement atomicity + idempotent upserts cover
+ * correctness; in-memory snapshot is last-write-wins. Future architectural
+ * session can add a free-function-level mutex if the cost becomes
+ * user-visible (rare on Slow-3G + 10K SKUs).
+ */
+let foregroundPullInFlight: Promise<{ ok: true; count: number }> | null = null;
+
+export async function pullProductsForeground(
+  db: Database,
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<{ ok: true; count: number }> {
+  if (foregroundPullInFlight) return foregroundPullInFlight;
+
+  const promise = (async () => {
+    try {
+      const result = await pullProductsCore(db, {
+        timeoutMs: opts.timeoutMs ?? 30_000,
+        signal: opts.signal,
+      });
+      return { ok: true as const, count: result.count };
+    } catch (err) {
+      console.error(
+        '[POS][syncService][pullProductsForeground] pull failed',
+        serializeErrorForLog(err),
+      );
+      // Best-effort log to sync_log_repository for parity with the
+      // scheduler-side `pullProducts` swallow path; never let the log
+      // failure mask the original error.
       await logSyncOperation(
         db,
         'pull',
         'products',
         null,
-        'success',
-        `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
-      );
+        'error',
+        coerceSyncError(err),
+      ).catch(() => undefined);
+      throw err;
     }
+  })();
 
-    return totalPulled;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    await logSyncOperation(db, 'pull', 'products', null, 'error', message);
-    return 0;
-  }
+  foregroundPullInFlight = promise;
+  // Use .then(onFulfilled, onRejected) with the same callback so the
+  // cleanup chain doesn't produce its own unhandled rejection when
+  // `promise` rejects. The original `promise` is what we return to
+  // callers — they catch the rejection there.
+  const cleanup = (): void => {
+    if (foregroundPullInFlight === promise) {
+      foregroundPullInFlight = null;
+    }
+  };
+  promise.then(cleanup, cleanup);
+  return promise;
 }
 
 /**
@@ -496,9 +872,16 @@ export async function pullProducts(db: Database): Promise<number> {
  */
 export async function pullPaymentConfig(db: Database): Promise<boolean> {
   try {
+    // T0.5 (2026-05-08): aligned to the canonical endpoint pair. The
+    // pre-T0.5 path called `/treasury/payment-methods` + `/treasury/payment-
+    // repositories`, which DO NOT EXIST in the backend (Treasury routes
+    // register under `Route::prefix('api/v1')` with no `treasury/` prefix
+    // — see apps/api/.../Treasury/Presentation/routes.php:25-66). The 404s
+    // were silently absorbed by the outer try/catch below, leaving payment-
+    // config sync as a no-op since the bug shipped.
     const [methods, repositories] = await Promise.all([
-      apiGet<PaymentMethod[]>('/treasury/payment-methods'),
-      apiGet<PaymentRepository[]>('/treasury/payment-repositories'),
+      apiGet<PaymentMethod[]>('/payment-methods'),
+      apiGet<PaymentRepository[]>('/payment-repositories'),
     ]);
 
     await upsertPaymentMethods(db, methods);
@@ -507,7 +890,7 @@ export async function pullPaymentConfig(db: Database): Promise<boolean> {
     await logSyncOperation(db, 'pull', 'payment_config', null, 'success');
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'payment_config', null, 'error', message);
     return false;
   }
@@ -524,7 +907,7 @@ export async function pullOperatorPins(db: Database): Promise<number> {
     await logSyncOperation(db, 'pull', 'operators', null, 'success', `${operators.length} operators`);
     return operators.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'operators', null, 'error', message);
     return 0;
   }
@@ -605,7 +988,7 @@ export async function pullTerminalState(
       throw error;
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'terminal_state', terminalId, 'error', message);
     return false;
   }
@@ -674,7 +1057,7 @@ export async function pullZChainState(
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'success');
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'z_chain_state', terminalId, 'error', message);
     return false;
   }
@@ -758,7 +1141,7 @@ export async function pushQueuedPinUpdates(db: Database): Promise<number> {
     await logSyncOperation(db, 'push', 'pin_update', null, 'success', `${pending.length} pin updates`);
     return pending.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     for (const row of pending) {
       await markPinUpdateFailed(db, row.id, message);
     }
@@ -834,7 +1217,7 @@ export async function pullTables(db: Database): Promise<boolean> {
     await logSyncOperation(db, 'pull', 'tables', null, 'success', `${floors.length} floors / ${tableInputs.length} tables`);
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'tables', null, 'error', message);
     return false;
   }
@@ -881,10 +1264,65 @@ export async function pullActiveMenu(db: Database): Promise<boolean> {
     }
 
     await setSyncMetadata(db, 'active_menu_last_sync', new Date().toISOString());
+
+    // C2 Day 1 — Codex round 6 P1 closure (gated by round 8 P1):
+    // flatten the just-pulled menu into the `products` table for Menu
+    // tenants so background sync ticks propagate menu changes
+    // (additions / removals / repricing) to the cashier's POS grid
+    // without waiting for the next foreground fetchProducts. CRITICAL:
+    // round-8 closure — this reconcile MUST be gated on the Menu
+    // module. For a standard-retail tenant, /active-menu can succeed
+    // with `categories: []` (no menu module enabled, server simply
+    // returns empty), and `reconcileMenuProducts(db, [])` would call
+    // `wipeAllProductRows` — deleting the entire products table that
+    // `pullProducts` just populated. The dynamic import of
+    // productStore matches the gate pattern in `pullProducts`
+    // (productStore already imports from this module — static import
+    // would cycle).
+    let isMenuTenant = false;
+    try {
+      const { useProductStore: psModule, hasModule } = await import('@/stores/productStore');
+      const config = psModule.getState().companyConfig;
+      isMenuTenant = config !== null && hasModule(config, 'Menu');
+    } catch {
+      // Defensive: dynamic-import failure (test harness, edge cases).
+      // Fall through with isMenuTenant=false so the reconcile is
+      // skipped — better to defer the Menu-tenant grid update one
+      // tick than risk wiping a standard-retail catalog.
+    }
+    if (isMenuTenant) {
+      const reshapedForFlatten = {
+        categories: response.categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          position: c.position,
+          items: c.items.map((i) => ({
+            id: i.id,
+            sellable_id: i.sellable_id,
+            sellable_type: i.sellable_type,
+            name: i.name,
+            code: i.code,
+            barcode: i.barcode ?? null,
+            base_price: i.base_price,
+            effective_price: i.effective_price,
+            image_url: i.image_url ?? null,
+            tax_rate: i.tax_rate ?? null,
+            display_order: i.display_order,
+            is_available: i.is_available,
+            modifier_groups: Array.isArray(i.modifier_groups)
+              ? (i.modifier_groups as ModifierGroup[])
+              : undefined,
+          })),
+        })),
+      };
+      const freshProducts = flattenMenuToProducts(reshapedForFlatten);
+      await reconcileMenuProducts(db, freshProducts);
+    }
+
     await logSyncOperation(db, 'pull', 'active_menu', null, 'success', `${response.categories.length} categories / ${items.length} items`);
     return true;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'active_menu', null, 'error', message);
     return false;
   }
@@ -953,7 +1391,7 @@ export async function pullVouchers(
     );
     return vouchers.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'vouchers', null, 'error', message);
     return 0;
   }
@@ -994,7 +1432,7 @@ export async function pullVoucherLedger(
     );
     return entries.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'voucher_ledger', null, 'error', message);
     return 0;
   }
@@ -1039,7 +1477,7 @@ export async function pullReceiptQrIndex(
     );
     return entries.length;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = coerceSyncError(error);
     await logSyncOperation(db, 'pull', 'receipt_qr_index', null, 'error', message);
     return 0;
   }
@@ -1158,7 +1596,7 @@ export async function pushVoucherLedgerEntries(
         failed++;
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = coerceSyncError(error);
       await markVoucherLedgerEntryFailed(db, entry.id, message);
       await logSyncOperation(db, 'push', 'voucher_ledger', entry.id, 'error', message);
       errors.push(`Voucher ledger ${entry.id}: ${message}`);
@@ -1233,6 +1671,16 @@ export async function runFullSync(
     await processDownloadQueue(db);
   } catch { /* image caching is non-critical */ }
 
+  // T1.3 Step 4.3: degraded signal for the SyncButton's amber dot.
+  // See SyncResult.degraded docblock for the exact heuristic + the
+  // false-positive-on-empty-catalog rationale.
+  const degraded = computeDegraded({
+    receiptsFailed: failed,
+    zReportsFailed: zFailed,
+    paymentConfigPulled,
+    errors,
+  });
+
   return {
     receiptsPushed: pushed,
     receiptsFailed: failed,
@@ -1253,7 +1701,67 @@ export async function runFullSync(
     receiptQrIndexPulled,
     chainBreak,
     errors,
+    degraded,
   };
+}
+
+/**
+ * C2 Day 1 — wire-boundary unpack for composite Menu-tenant ids.
+ *
+ * The cart-line creator at `receiptService.createOfflineReceipt` writes
+ * `item.product.id` raw into `offline_receipts.lines[].product_id` /
+ * `composite_item_id`. For Menu-tenant POSProducts post-Day-1 this is the
+ * underscore-delimited composite `${sellable_id}_${menu_category_id}`. Local
+ * SQLite intentionally KEEPS the composite — `productSalesAggregate` and
+ * the ProductGrid sort look up against `POSProduct.id` (also composite),
+ * so a composite-keyed local store keeps "frequently sold" working for
+ * Menu tenants.
+ *
+ * Server-side `pos_receipt_lines.product_id` is a `foreignUuid` with
+ * `restrictOnDelete()` referencing `products.id` (a bare UUID) plus a
+ * `_sellable_xor` CHECK that forbids both `product_id` and
+ * `composite_item_id` being set on the same line. A composite would fail
+ * both. We unpack here at the wire boundary so server-side schema is
+ * unchanged Day 1.
+ *
+ * C2 Day 3 — server-side `pos_receipt_lines.menu_category_id` column
+ * now exists (migration `2026_05_11_120000_…`); the unpack also writes
+ * the parsed `categoryId` onto the line so the refund flow can
+ * reconstruct the composite the cashier sold under. The category id
+ * is preserved per-line ONLY when the parser actually extracted one
+ * (composite IDs); bare-uuid lines (standard-retail tenants and pre-
+ * C2 historical rows) keep `menu_category_id` absent / null and the
+ * server treats them as the no-category case (graceful degradation
+ * per kickoff Risk #4).
+ *
+ * Bare-uuid lines pass through unchanged because `parseMenuCompositeId`
+ * returns `{ sellableId: input, categoryId: null }` for any string
+ * without the delimiter.
+ */
+function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
+  return lines.map((line) => {
+    if (line === null || typeof line !== 'object') return line;
+    const obj = line as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...obj };
+    let categoryId: string | null = null;
+    if (typeof obj.product_id === 'string') {
+      const parsed = parseMenuCompositeId(obj.product_id);
+      next.product_id = parsed.sellableId;
+      categoryId = parsed.categoryId;
+    }
+    if (typeof obj.composite_item_id === 'string') {
+      const parsed = parseMenuCompositeId(obj.composite_item_id);
+      next.composite_item_id = parsed.sellableId;
+      // Don't clobber a product_id-derived categoryId — the v3 XOR
+      // constraint guarantees only one of (product_id, composite_item_id)
+      // is set, so at most one path populates this.
+      categoryId = categoryId ?? parsed.categoryId;
+    }
+    if (categoryId !== null) {
+      next.menu_category_id = categoryId;
+    }
+    return next;
+  });
 }
 
 function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
@@ -1341,7 +1849,7 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     receipt_number: receipt.receipt_number,
     terminal_id: receipt.terminal_id,
     operator_id: receipt.operator_id,
-    lines: JSON.parse(receipt.lines) as unknown[],
+    lines: unpackCompositeIdsOnLines(JSON.parse(receipt.lines) as unknown[]),
     subtotal: receipt.subtotal,
     tax_amount: receipt.tax_amount,
     discount_amount: receipt.discount_amount,
@@ -1361,6 +1869,10 @@ function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
     consumption_mode: receipt.consumption_mode,
     table_id: receipt.table_id,
     fiscal_schema_version: fiscalSchemaVersion,
+    // T2.7 — coerce SQLite-native 0|1 to boolean. The column is NOT NULL
+    // DEFAULT 0, so a strict `=== 1` test correctly emits false for legacy
+    // pre-T2.7 rows that were backfilled with 0.
+    is_training: receipt.is_training === 1,
   };
 }
 

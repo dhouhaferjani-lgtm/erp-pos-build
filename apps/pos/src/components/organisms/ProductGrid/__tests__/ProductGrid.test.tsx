@@ -58,6 +58,16 @@ vi.mock('@/components/molecules/ProductCard', () => ({
 // The virtualizer returns 0 rows in jsdom because the scroll container has no
 // layout height. Mock it to render every row passed to it so product cards
 // appear in the DOM for assertions.
+//
+// T2.1 Step C prereq (Codex round-1 m3): the mock now also exposes
+// `scrollToIndex` and `measure` spies + a settable scroll-offset, so
+// Step C's filter-state-guard tests can assert against them.
+const virtualizerSpies = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
+  measure: vi.fn(),
+  scrollOffset: 0,
+}));
+
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (opts: { count: number; estimateSize: () => number }) => ({
     getVirtualItems: () =>
@@ -68,6 +78,9 @@ vi.mock('@tanstack/react-virtual', () => ({
         size: opts.estimateSize(),
       })),
     getTotalSize: () => opts.count * opts.estimateSize(),
+    scrollToIndex: virtualizerSpies.scrollToIndex,
+    measure: virtualizerSpies.measure,
+    scrollOffset: virtualizerSpies.scrollOffset,
   }),
 }));
 
@@ -249,5 +262,241 @@ describe('ProductGrid most-sold sort + popular-row removal', () => {
     renderGrid();
     expect(screen.queryByText(/^popular$/i)).toBeNull();
     expect(screen.queryByText(/^populaires$/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T2.1 Step C — filter-state guards (selectedCategory invalidation +
+// virtualizer composite-resetKey reset). Codex round-1 m1/m2/m3 fixes:
+//   - resetKey must include identity (firstId/lastId), not just length.
+//   - C.4 uses a stale `categories` prop, not a click on a nonexistent
+//     button.
+//   - The mock above (line 61-79) is extended with scrollToIndex +
+//     measure spies BEFORE these tests run, so each RED comes from
+//     production-behavior reasons (effect not wired) rather than a
+//     missing-mock-API reason.
+// ---------------------------------------------------------------------------
+
+describe('ProductGrid — T2.1 Step C filter-state guards', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    virtualizerSpies.scrollToIndex.mockClear();
+    virtualizerSpies.measure.mockClear();
+    virtualizerSpies.scrollOffset = 0;
+    mockT.mockImplementation((key: string) => {
+      const map: Record<string, string> = {
+        'products.allCategories': 'All',
+        'products.searchPlaceholder': 'Search',
+        'products.clearSearch': 'Clear search',
+        'products.notFound': 'No products found',
+        'products.tryAdjusting': 'Try adjusting filters',
+      };
+      return map[key] ?? key;
+    });
+  });
+
+  function makeProducts(specs: Array<{ id: string; cat: string }>): POSProduct[] {
+    return specs.map((s) =>
+      makeProduct({
+        id: s.id,
+        name: `Product ${s.id}`,
+        sku: s.id,
+        sale_price: '10.00',
+        stock_quantity: 10,
+        category: s.cat,
+      }),
+    );
+  }
+
+  it('C.1: selectedCategory resets to null when the previously-selected category disappears from products[]', () => {
+    const initial = makeProducts([
+      { id: 'p1', cat: 'catA' },
+      { id: 'p2', cat: 'catB' },
+    ]);
+    const { rerender } = render(
+      <ProductGrid
+        products={initial}
+        categories={['catA', 'catB']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    // Click catA tab → selectedCategory becomes 'catA'.
+    const catAButton = screen.getByRole('button', { name: /catA\s*\(1\)/ });
+    fireEvent.click(catAButton);
+    // Visible card: only p1.
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p2')).not.toBeInTheDocument();
+
+    // Sync tick: catA disappears, replaced with catC.
+    const next = makeProducts([
+      { id: 'p2', cat: 'catB' },
+      { id: 'p3', cat: 'catC' },
+    ]);
+    rerender(
+      <ProductGrid
+        products={next}
+        categories={['catB', 'catC']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    // selectedCategory must reset to null (= "all categories"), so both
+    // p2 and p3 are visible. Pre-T2.1: selectedCategory='catA' is stale,
+    // filteredProducts is empty, both p2/p3 hidden behind the empty UI.
+    expect(screen.getByTestId('product-p2')).toBeInTheDocument();
+    expect(screen.getByTestId('product-p3')).toBeInTheDocument();
+  });
+
+  it('C.2: selectedCategory persists when the category set is unchanged across renders', () => {
+    const initial = makeProducts([
+      { id: 'p1', cat: 'catA' },
+      { id: 'p2', cat: 'catB' },
+    ]);
+    const { rerender } = render(
+      <ProductGrid
+        products={initial}
+        categories={['catA', 'catB']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /catA\s*\(1\)/ }));
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+
+    // Re-render with the same categories (catA still present).
+    const next = makeProducts([
+      { id: 'p1', cat: 'catA' },
+      { id: 'p2', cat: 'catB' },
+      { id: 'p3', cat: 'catA' },
+    ]);
+    rerender(
+      <ProductGrid
+        products={next}
+        categories={['catA', 'catB']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    // selectedCategory persists → only catA products visible.
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+    expect(screen.getByTestId('product-p3')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p2')).not.toBeInTheDocument();
+  });
+
+  it('C.3: virtualizer scrollToIndex(0) + measure() fire when the filter changes the visible subset', () => {
+    const initial = makeProducts([
+      { id: 'p1', cat: 'catA' },
+      { id: 'p2', cat: 'catA' },
+      { id: 'p3', cat: 'catB' },
+    ]);
+    render(
+      <ProductGrid
+        products={initial}
+        categories={['catA', 'catB']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    // Baseline: ignore mount-time invocations.
+    virtualizerSpies.scrollToIndex.mockClear();
+    virtualizerSpies.measure.mockClear();
+
+    // Click catB → filter narrows to {p3}; first/last id boundary changes.
+    fireEvent.click(screen.getByRole('button', { name: /catB\s*\(1\)/ }));
+
+    expect(virtualizerSpies.scrollToIndex).toHaveBeenCalledWith(0);
+    expect(virtualizerSpies.measure).toHaveBeenCalled();
+  });
+
+  it('C.4: empty-state UI renders when filteredProducts is empty (stale category prop preserved)', () => {
+    // Stale categories prop includes catEmpty even though no product
+    // belongs to that category. With selectedCategory=catEmpty the
+    // virtualizer scroll container must NOT mount.
+    const products = makeProducts([{ id: 'p1', cat: 'catA' }]);
+    render(
+      <ProductGrid
+        products={products}
+        categories={['catA', 'catEmpty']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /catEmpty/ }));
+
+    expect(screen.getByText('No products found')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-grid-scroll')).not.toBeInTheDocument();
+  });
+
+  it('C.5: rapid A→B→A category switching produces correct visible range each time', () => {
+    const products = makeProducts([
+      { id: 'p1', cat: 'catA' },
+      { id: 'p2', cat: 'catA' },
+      { id: 'p3', cat: 'catB' },
+    ]);
+    render(
+      <ProductGrid
+        products={products}
+        categories={['catA', 'catB']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /catA\s*\(2\)/ }));
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p3')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /catB\s*\(1\)/ }));
+    expect(screen.getByTestId('product-p3')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p1')).not.toBeInTheDocument();
+
+    virtualizerSpies.measure.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /catA\s*\(2\)/ }));
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-p3')).not.toBeInTheDocument();
+    // Third transition triggers measure (composite resetKey changed).
+    expect(virtualizerSpies.measure).toHaveBeenCalled();
+  });
+
+  it('C.6: virtualizer resets on same-length-different-shape transition (firstId/lastId in resetKey)', () => {
+    const initial = makeProducts([
+      { id: 'a1', cat: 'catA' },
+      { id: 'a2', cat: 'catA' },
+      { id: 'a3', cat: 'catA' },
+      { id: 'a4', cat: 'catA' },
+    ]);
+    const { rerender } = render(
+      <ProductGrid
+        products={initial}
+        categories={['catA']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+    virtualizerSpies.scrollToIndex.mockClear();
+
+    // Re-render with same length (4) but all-different ids — composite
+    // resetKey must catch this via firstId/lastId.
+    const next = makeProducts([
+      { id: 'b1', cat: 'catA' },
+      { id: 'b2', cat: 'catA' },
+      { id: 'b3', cat: 'catA' },
+      { id: 'b4', cat: 'catA' },
+    ]);
+    rerender(
+      <ProductGrid
+        products={next}
+        categories={['catA']}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+      />,
+    );
+
+    expect(virtualizerSpies.scrollToIndex).toHaveBeenCalledWith(0);
   });
 });

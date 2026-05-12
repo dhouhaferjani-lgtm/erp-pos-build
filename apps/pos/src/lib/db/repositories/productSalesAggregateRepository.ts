@@ -36,9 +36,12 @@ export async function aggregateProductSales(
   { sinceDays }: AggregateOptions,
 ): Promise<Map<string, number>> {
   const rows = await db.select<{ lines: string }[]>(
+    // T2.7 — exclude training receipts so the "frequently sold" projection
+    // does not pollute production analytics with cashier-test purchases.
     `SELECT lines FROM offline_receipts
      WHERE created_at >= datetime('now', $1)
-       AND COALESCE(voided, 0) = 0`,
+       AND COALESCE(voided, 0) = 0
+       AND is_training = 0`,
     [`-${sinceDays} days`],
   );
 

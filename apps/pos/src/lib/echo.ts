@@ -108,6 +108,16 @@ export function getEcho(): Echo<'reverb'> {
 }
 
 /**
+ * Read the existing Echo instance without lazily creating one. Use this
+ * in cleanup paths (e.g. effect teardown after logout) where calling
+ * `getEcho()` would risk re-creating a fresh unauthenticated WebSocket
+ * just to leave a channel that has already been torn down.
+ */
+export function peekEcho(): Echo<'reverb'> | null {
+  return window.Echo ?? null;
+}
+
+/**
  * Disconnect and clean up the Echo instance.
  */
 export function disconnectEcho(): void {

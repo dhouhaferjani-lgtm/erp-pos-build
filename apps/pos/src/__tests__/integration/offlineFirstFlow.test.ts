@@ -225,7 +225,9 @@ describe('offline-first POS lifecycle (integration)', () => {
     expect(payments[0]).toMatchObject({
       payment_method_id: 'pm-cash',
       repository_id: 'repo-cash',
-      amount: '50.00',
+      // Bug 2 fix: payments[].amount is the cashier's tendered amount
+      // (100, passed to processCashCheckout above), not the cart total (50).
+      amount: '100.00',
     });
 
     // Metadata fields
@@ -361,6 +363,7 @@ describe('offline-first POS lifecycle (integration)', () => {
         name: 'Counter 1',
         type: 'fixed',
         is_active: true,
+        is_training_mode: false,
         hardware_identifier: null,
         location: { id: 'loc1', name: 'Main', code: 'MAIN' },
       },

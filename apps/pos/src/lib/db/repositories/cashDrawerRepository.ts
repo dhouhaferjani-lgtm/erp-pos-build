@@ -80,3 +80,56 @@ export async function cleanupSyncedCashDrawerOps(db: Database): Promise<void> {
     "DELETE FROM offline_cash_drawer_ops WHERE status = 'synced' AND synced_at < datetime('now', '-30 days')",
   );
 }
+
+/**
+ * Boot-time recovery for stranded `'syncing'` cash-drawer ops — same shape
+ * as the offline-receipt recovery shipped in PR #94 (T2.1 Step D), with
+ * one targeted addition (`retry_count` decrement) to compensate for an
+ * asymmetry in the cash-drawer status-update path.
+ *
+ * `syncService.pushCashDrawerOps` advances a row to `'syncing'` BEFORE the
+ * sync HTTP call. A SIGKILL / power-cut / OS-level kill BETWEEN the status
+ * update and the response handler leaves the row at `'syncing'`
+ * permanently. `getPendingCashDrawerOps` filters
+ *   `WHERE status IN ('pending', 'failed') AND retry_count < 5`
+ * so the orphan is invisible to every retry. Net effect: a deposit/payout
+ * that the cashier counted on for till reconciliation is silently dropped.
+ *
+ * This recovery demotes any `'syncing'` row back to `'pending'` so the
+ * next sync tick re-attempts it. Idempotent across multiple boots —
+ * subsequent calls find no `'syncing'` rows and are no-ops.
+ *
+ * **Why retry_count must decrement (Codex round-1 P2):** unlike
+ * `offlineReceiptRepository.updateReceiptStatus` which never increments
+ * retry_count on non-`'synced'` status changes, the cash-drawer status
+ * update increments retry_count for every non-`'synced'` transition
+ * (including `'syncing'`). Without compensation, a row at `retry_count
+ * = 4` that crashes mid-sync ends up with `retry_count = 5` even after
+ * the recovery demotes status — `getPendingCashDrawerOps`'s
+ * `retry_count < 5` filter would then skip it forever, defeating the
+ * whole point of the recovery on the final attempt. Decrementing by 1
+ * (with a `MAX(0, retry_count - 1)` floor for safety) subtracts the
+ * spurious increment from the syncing transition and restores the row
+ * to its pre-attempt state, eligible for one more genuine retry.
+ *
+ * Idempotency reasoning matches Step D — a row at `'syncing'` is in one of
+ * three post-crash states:
+ *   1. HTTP request never left the device → server has nothing →
+ *      retry as fresh send. ✓
+ *   2. HTTP request succeeded server-side but response was lost →
+ *      retry → server detects via T0.2 idempotency_key and returns
+ *      the prior result → client advances to `'synced'`. ✓
+ *   3. HTTP request succeeded AND response landed but the local
+ *      status update failed → retry → same as (2). ✓
+ *
+ * Returns the number of rows demoted (for boot-time observability).
+ */
+export async function recoverStrandedSyncingCashDrawerOps(
+  db: Database,
+): Promise<number> {
+  const result = await execute(
+    db,
+    "UPDATE offline_cash_drawer_ops SET status = 'pending', retry_count = MAX(0, retry_count - 1) WHERE status = 'syncing'",
+  );
+  return result.rowsAffected;
+}

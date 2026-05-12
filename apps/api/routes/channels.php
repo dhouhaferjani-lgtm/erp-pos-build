@@ -87,6 +87,26 @@ Broadcast::channel('tenant.{tenantId}.company.{companyId}.pos.terminal.{terminal
 });
 
 /**
+ * POS Catalog Changed Channel
+ *
+ * Private channel for real-time POS catalog refresh signals.
+ *
+ * Channel pattern: private-tenant.{tenantId}.company.{companyId}.catalog
+ * Event: catalog.changed (coarse — payload carries only `reason` + `timestamp`)
+ *
+ * @cross-tenant-anchored Channel name embeds tenantId + companyId. Auth callback
+ *   delegates to User::canAccessCompanyChannel which verifies tenant_id match +
+ *   active status + active UserCompanyMembership in companyId. Company-level
+ *   fan-out for catalog mutations (Product / MenuCategory / MenuCategoryItem);
+ *   the POS frontend debounces incoming events and refetches via the REST API,
+ *   so per-entity routing is unnecessary. Architecture test enforces this
+ *   annotation OR a known-tenant-anchored auth-helper call in the closure body.
+ */
+Broadcast::channel('tenant.{tenantId}.company.{companyId}.catalog', function (User $user, string $tenantId, string $companyId) {
+    return $user->canAccessCompanyChannel($tenantId, $companyId);
+});
+
+/**
  * POS Kitchen Display Channel
  *
  * Private channel for real-time kitchen display system updates.

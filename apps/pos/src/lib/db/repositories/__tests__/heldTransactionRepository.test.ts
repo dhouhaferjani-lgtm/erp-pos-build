@@ -10,7 +10,9 @@ import { queryAll, execute } from '@/lib/db';
 import {
   insertHeldTransaction,
   listHeldTransactions,
+  listAllHeldTransactions,
   deleteHeldTransaction,
+  deleteHeldTransactionsByIds,
   type HeldTransactionRow,
 } from '../heldTransactionRepository';
 
@@ -72,5 +74,31 @@ describe('heldTransactionRepository', () => {
     const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
     expect(sql).toMatch(/DELETE FROM held_transactions WHERE id = \$1/);
     expect(params).toEqual(['held-1']);
+  });
+
+  it('listAllHeldTransactions orders every held transaction by held_at DESC', async () => {
+    vi.mocked(queryAll).mockResolvedValue([]);
+
+    await listAllHeldTransactions(db);
+
+    expect(queryAll).toHaveBeenCalledTimes(1);
+    const [, sql, params] = vi.mocked(queryAll).mock.calls[0]!;
+    expect(sql).toMatch(/SELECT \* FROM held_transactions ORDER BY held_at DESC/);
+    expect(params).toEqual([]);
+  });
+
+  it('deleteHeldTransactionsByIds deletes all ids in one statement', async () => {
+    await deleteHeldTransactionsByIds(db, ['held-1', 'held-2']);
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    const [, sql, params] = vi.mocked(execute).mock.calls[0]!;
+    expect(sql).toMatch(/DELETE FROM held_transactions WHERE id IN \(\$1, \$2\)/);
+    expect(params).toEqual(['held-1', 'held-2']);
+  });
+
+  it('deleteHeldTransactionsByIds is a no-op for an empty id list', async () => {
+    await deleteHeldTransactionsByIds(db, []);
+
+    expect(execute).not.toHaveBeenCalled();
   });
 });

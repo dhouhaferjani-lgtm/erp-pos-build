@@ -9,6 +9,8 @@ import {
 } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
+  scheduleDebouncedSync,
+  getReceiptByIdempotencyKey,
   type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
@@ -18,6 +20,8 @@ import {
   type VoucherStatus,
 } from '@/lib/offline/voucherRepository';
 import type { CartItem } from '@/types/cart';
+import { serializeErrorForLog } from '@/lib/errorLogging';
+import { useSyncStore } from '@/stores/syncStore';
 
 interface OfflineReceiptInput {
   terminalId: string;
@@ -30,6 +34,16 @@ interface OfflineReceiptInput {
   /** Primary payment repository (first entry in `payments`) */
   paymentRepositoryId: string;
   tenderedAmount: number;
+  /**
+   * T0.2: Caller-allocated idempotency key for this cart submission attempt.
+   * Optional for backward compatibility; if omitted, a fresh `crypto.randomUUID()`
+   * is allocated internally (legacy behavior). Production callers in
+   * paymentStore allocate the key once per submission attempt and pass it on
+   * every retry, so a cashier double-click writes two SQLite rows that share
+   * the same key — the server-side dedup-on-disk catches the second POST as
+   * a duplicate and returns the existing receipt instead of creating a new one.
+   */
+  idempotencyKey?: string;
   transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
   /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
   payments: Array<{
@@ -54,6 +68,17 @@ interface OfflineReceiptInput {
   consumptionMode?: string;
   /** F&B: table UUID — omit for retail or takeout */
   tableId?: string;
+  /**
+   * T2.7 — set true when the active terminal is in training mode (caller
+   * reads `useTerminalStore.getState().terminal?.is_training_mode`). Training
+   * receipts skip the local fiscal-hash chain advance, use a TRN- prefixed
+   * receipt number with a UUID-derived suffix (no shared sequence with
+   * production), and persist `is_training=1` on the SQLite row. The server's
+   * offline-sync path (PR #103) honors the wire flag and skips chain
+   * validation, year roll-over, finalize, and hash mismatch checks.
+   * Default false preserves the production path byte-for-byte.
+   */
+  isTraining?: boolean;
 }
 
 export interface OfflineReceiptResult {
@@ -113,6 +138,29 @@ function generateReceiptNumber(
   const year = new Date().getFullYear();
   const paddedSeq = String(sequence).padStart(8, '0');
   return `${locationCode}-${terminalCode}-${year}-${paddedSeq}`;
+}
+
+/**
+ * Generate a training receipt number with a TRN- prefix and a UUID-derived
+ * 16-hex (64-bit) suffix. We deliberately do NOT share the production
+ * `terminal_state.hash_sequence` counter — advancing it would either move
+ * the production fiscal chain (wrong) or require a separate counter column
+ * (more invasive). Instead, the suffix derives from the receipt's own UUID.
+ *
+ * 64 bits gives ~18.4 quintillion combinations — collision probability is
+ * negligible even across decades of repeated training-mode test runs at a
+ * single terminal (Codex review PR #105 round-1 P3 closure: 32-bit suffix
+ * was tractable enough to collide on cumulative installations, 64-bit is
+ * not).
+ */
+function generateTrainingReceiptNumber(
+  locationCode: string,
+  terminalCode: string,
+  receiptId: string,
+): string {
+  const year = new Date().getFullYear();
+  const suffix = receiptId.replace(/-/g, '').slice(0, 16).toLowerCase();
+  return `TRN-${locationCode}-${terminalCode}-${year}-${suffix}`;
 }
 
 /**
@@ -234,10 +282,49 @@ async function resolveLocalVouchers(
   return out;
 }
 
+/**
+ * T2.7 — offline-first training-aware receipt creator.
+ *
+ * Branches on `input.isTraining` (default false): training receipts use a
+ * TRN- prefixed receipt number with a UUID-derived suffix, skip the local
+ * fiscal-hash chain advance, and persist `is_training=1` on the SQLite row.
+ * The `receiptToPayload` builder reads the column and emits a boolean
+ * `is_training` field on the sync wire shape; the server-side
+ * `ReceiptSyncService::syncSingleReceipt` (PR #103) honors the flag and
+ * skips chain validation, year roll-over, finalize, and hash mismatch.
+ *
+ * Caller (paymentStore) reads `useTerminalStore.getState().terminal?.is_training_mode`
+ * and forwards the flag here. Receipt-creation is a service layer; we keep
+ * it free of store coupling to preserve testability.
+ */
 export async function createOfflineReceipt(
   db: Database,
   input: OfflineReceiptInput,
 ): Promise<OfflineReceiptResult> {
+  // T0.2 (Codex review F-1): if a caller-provided idempotency key already has
+  // a persisted row, return the existing receipt without re-running the
+  // SQLite INSERT (which would throw SQLITE_CONSTRAINT_UNIQUE on
+  // offline_receipts.idempotency_key), the hash-chain advance, or the
+  // voucher-balance updates. This is the offline-side mirror of the server's
+  // dedup-on-disk: a retry with the same key returns the prior result rather
+  // than corrupting it.
+  if (input.idempotencyKey) {
+    const existing = await getReceiptByIdempotencyKey(db, input.idempotencyKey);
+    if (existing) {
+      return {
+        receiptNumber: existing.receipt_number,
+        total: existing.total,
+        subtotal: existing.subtotal,
+        taxAmount: existing.tax_amount,
+        discountAmount: existing.discount_amount,
+        changeDue: parseFloat(existing.change_due ?? '0'),
+        fiscalHash: existing.fiscal_hash,
+        idempotencyKey: existing.idempotency_key,
+        localId: existing.id,
+      };
+    }
+  }
+
   const decimals = getCurrencyDecimals(input.currency);
 
   // 1. Read terminal state
@@ -264,9 +351,30 @@ export async function createOfflineReceipt(
   const rawTotal = bcsub(subtotal, transactionDiscountAmount);
   const total = bccomp(rawTotal, '0') >= 0 ? rawTotal : '0';
 
-  // 3. Generate receipt number
+  // T2.7 — read training-mode early so the rest of the function can branch.
+  // We pre-allocate `receiptId` to use as the suffix in the training receipt
+  // number (training does NOT share a sequence counter with production).
+  const isTraining = input.isTraining === true;
+  const receiptId = crypto.randomUUID();
+
+  // 3. Generate receipt number.
+  // Production: continues to use terminalState.hash_sequence + 1 (advanced
+  // by advanceHashChain inside the transaction).
+  // Training: uses a TRN- prefix with an 8-hex suffix derived from receiptId.
+  // The suffix is unique by construction so two sequential training receipts
+  // never collide on the server's receipt_number UNIQUE index.
   const newSequence = terminalState.hash_sequence + 1;
-  const receiptNumber = generateReceiptNumber(terminalState.location_code, terminalState.terminal_code, newSequence);
+  const receiptNumber = isTraining
+    ? generateTrainingReceiptNumber(
+        terminalState.location_code,
+        terminalState.terminal_code,
+        receiptId,
+      )
+    : generateReceiptNumber(
+        terminalState.location_code,
+        terminalState.terminal_code,
+        newSequence,
+      );
 
   // 4. Compute fiscal hash with real VAT breakdown.
   //
@@ -279,6 +387,12 @@ export async function createOfflineReceipt(
   //     `apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/` proves the
   //     parity; the test in `canonicalPayload.test.ts` runs every CI build.
   //
+  // T2.7: training receipts skip both hash services and use a deterministic
+  // sha256('TRAINING-' || receiptId) placeholder. This mirrors the server-side
+  // training row (ReceiptCreationService + ReceiptSyncService PR #103). The
+  // local fiscal chain is NOT advanced for training (no advanceHashChain
+  // call below), so the placeholder hash never enters the chain at all.
+  //
   // posted_at: ISO 8601 UTC with trailing Z (matches the v3 PHP builder's
   // `Y-m-d\TH:i:s\Z` formatter — bare `toISOString()` already produces this
   // shape for UTC values).
@@ -286,8 +400,11 @@ export async function createOfflineReceipt(
   const vatBreakdown = computeVatBreakdown(input.cartItems, decimals);
   const totalFormatted = bcformat(total, decimals);
   const fiscalSchemaVersion = terminalState.fiscal_schema_version;
-  const fiscalHash = fiscalSchemaVersion === 3
-    ? await computeV3FiscalHash({
+  let fiscalHash: string;
+  if (isTraining) {
+    fiscalHash = await sha256Hex(`TRAINING-${receiptId}`);
+  } else if (fiscalSchemaVersion === 3) {
+    fiscalHash = await computeV3FiscalHash({
       previousHash: terminalState.last_hash,
       receiptNumber,
       postedAt,
@@ -296,8 +413,9 @@ export async function createOfflineReceipt(
       vatBreakdown,
       payments: input.payments,
       decimals,
-    })
-    : await computeFiscalHash({
+    });
+  } else {
+    fiscalHash = await computeFiscalHash({
       previousHash: terminalState.last_hash,
       receiptNumber,
       postedAt,
@@ -306,10 +424,13 @@ export async function createOfflineReceipt(
       vatBreakdown,
       payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
     });
+  }
 
   // 5. Store offline receipt
-  const receiptId = crypto.randomUUID();
-  const idempotencyKey = crypto.randomUUID();
+  // T0.2: prefer caller-provided key (paymentStore allocates once per cart
+  // submission attempt and reuses on retry); fall back to a fresh UUID for
+  // legacy callers (e.g. test fixtures) that don't supply one.
+  const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
   // tenderedAmount is a number (UI input), subtracted from string total via bcformat round-trip
   const changeDueRaw = bcsub(String(input.tenderedAmount), total);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
@@ -380,6 +501,7 @@ export async function createOfflineReceipt(
     consumption_mode: input.consumptionMode ?? null,
     table_id: input.tableId ?? null,
     fiscal_schema_version: fiscalSchemaVersion,
+    is_training: isTraining ? 1 : 0,
   };
 
   // 5b. Codex review B5 (2026-05-01): pre-resolve every store_voucher payment
@@ -395,7 +517,19 @@ export async function createOfflineReceipt(
   //     server cannot map the redemption to a real voucher either. This is
   //     the offline analogue of `VoucherRedemptionService` throwing
   //     `VoucherInvalidStatusException` for an unknown code.
-  const voucherTenders = collectStoreVoucherPayments(input.payments);
+  // T2.7 — for training receipts the server-side sync path does NOT call
+  // VoucherRedemptionService::redeem (PR #103). If we still decremented the
+  // local voucher balance here, the cashier's mirror would diverge from the
+  // server's canonical balance until the next pullVoucherLedger overwrite
+  // (which itself never sees the redemption because it never happened
+  // server-side). Skipping voucher resolution + mutation entirely on
+  // training keeps the local mirror authoritative.
+  // Note: the voucher tender row is still preserved in payments_json on the
+  // receipt, so the server sees the cashier's intent — it just doesn't
+  // create a redemption ledger entry for it.
+  const voucherTenders = isTraining
+    ? []
+    : collectStoreVoucherPayments(input.payments);
   const resolvedVouchers = await resolveLocalVouchers(db, voucherTenders);
 
   // 5c. Wrap receipt insert + hash chain advance + voucher balance updates
@@ -406,7 +540,13 @@ export async function createOfflineReceipt(
   await db.execute('BEGIN TRANSACTION');
   try {
     await insertOfflineReceipt(db, offlineReceipt);
-    await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+    // T2.7 — training receipts never enter the local fiscal hash chain. The
+    // server's training-aware sync path (PR #103) likewise skips chain
+    // validation, so leaving terminal_state untouched is the consistent
+    // shape end-to-end. Production receipts continue to advance the chain.
+    if (!isTraining) {
+      await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
+    }
 
     // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
     // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
@@ -458,9 +598,34 @@ export async function createOfflineReceipt(
 
     await db.execute('COMMIT');
   } catch (error) {
-    await db.execute('ROLLBACK');
+    console.error('[POS][offline][receipt] tx body threw — rolling back', {
+      ...serializeErrorForLog(error),
+      receiptNumber,
+      hashSequence: newSequence,
+      previousHash: terminalState.last_hash,
+      terminalId: input.terminalId,
+    });
+    try {
+      await db.execute('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('[POS][offline][receipt] ROLLBACK also threw — connection may be in bad state', {
+        ...serializeErrorForLog(rollbackError),
+        receiptNumber,
+        terminalId: input.terminalId,
+      });
+    }
     throw error;
   }
+
+  // T2.2 Step 5.1: update sync UI state and fire the debounced sync trigger
+  // AFTER the COMMIT has durably persisted. Pre-T2.2 the trigger lived inside
+  // insertOfflineReceipt, letting the 250 ms debounced syncStore read race
+  // the commit under load.
+  // Catch-block above re-throws on any pre-COMMIT failure, so reaching this
+  // line means the receipt + chain advance + voucher balances are all
+  // durably persisted.
+  useSyncStore.getState().incrementPendingCount();
+  scheduleDebouncedSync();
 
   return {
     receiptNumber,

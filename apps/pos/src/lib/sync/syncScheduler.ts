@@ -4,7 +4,9 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useProductStore } from '@/stores/productStore';
+import { usePaymentStore } from '@/stores/paymentStore';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { serializeErrorForLog } from '@/lib/errorLogging';
 
 const BASE_INTERVAL_MS = 60_000; // 1 minute
 const MAX_INTERVAL_MS = 5 * 60_000; // 5 minutes
@@ -74,7 +76,35 @@ export class SyncScheduler {
 
       // Refresh in-memory product store from SQLite after sync pulls new data
       useProductStore.getState().refreshFromSQLite().catch((err: unknown) => {
-        console.error('[SyncScheduler] refreshFromSQLite failed:', err);
+        console.error('[SyncScheduler] productStore refreshFromSQLite failed:', err);
+      });
+      // T0.5: rehydrate paymentStore from SQLite alongside productStore.
+      // Fire-and-forget in parallel — independent failure modes (e.g. a
+      // transient SQLite lock on one shouldn't starve the other). Each
+      // refresh has its own internal try/catch that uses
+      // `serializeErrorForLog`, so reaching this `.catch` would mean the
+      // promise itself rejected (extremely unlikely given the inner guard).
+      // T0.5 Codex round-1 (g): outer `.catch` uses `serializeErrorForLog`
+      // to bound the log payload — a raw `err` reference could spread an
+      // axios-shaped error with `config.url` / auth headers into devtools.
+      usePaymentStore.getState().refreshFromSQLite().catch((err: unknown) => {
+        console.error('[SyncScheduler] paymentStore refreshFromSQLite failed', {
+          ...serializeErrorForLog(err),
+        });
+      });
+
+      // T2.5 / Codex round-7 P2 (PR #99) — refresh the in-memory
+      // terminal record so back-office training-mode toggles take
+      // effect mid-session (when allowed: no-open-shift). The
+      // refresh has its own internal race guard + diff-gate, so it
+      // only writes localStorage / triggers a re-render when the
+      // server actually changed something. Fire-and-forget alongside
+      // the product/payment store refreshes; independent failure
+      // modes.
+      useTerminalStore.getState().refreshTerminalRecord().catch((err: unknown) => {
+        console.error('[SyncScheduler] terminalStore refreshTerminalRecord failed', {
+          ...serializeErrorForLog(err),
+        });
       });
 
       if (result.chainBreak) {
@@ -85,6 +115,49 @@ export class SyncScheduler {
       }
 
       useSyncStore.getState().completeSync(result);
+
+      // T1.3 Step 4.1: hydrate pendingReceiptCount from SQLite (source-
+      // of-truth — counts status IN ('pending','failed')) instead of
+      // result.receiptsFailed (which only reflects this tick's failures
+      // and drifts from reality across ticks). On failure leave the
+      // store's prior value untouched rather than writing a stale 0.
+      try {
+        const { getPendingReceiptCount } = await import(
+          '@/lib/db/repositories/offlineReceiptRepository'
+        );
+        const pendingCount = await getPendingReceiptCount(this.db);
+        useSyncStore.getState().setPendingCount(pendingCount);
+      } catch (err) {
+        console.error(
+          '[POS][syncScheduler] getPendingReceiptCount failed; leaving prior count',
+          serializeErrorForLog(err),
+        );
+      }
+
+      // T1.3 Step 4.2: persist lastSyncAt to sync_metadata so the
+      // SyncButton's "X minutes ago" affordance survives app restarts.
+      // The completeSync above already wrote Date.now() in-memory; we
+      // now mirror that to SQLite. Use the SAME timestamp the in-memory
+      // state got — fetch it back via getState() to keep them in sync.
+      try {
+        const { setSyncMetadata } = await import(
+          '@/lib/db/repositories/syncLogRepository'
+        );
+        const ts = useSyncStore.getState().lastSyncAt;
+        // Defensive: completeSync above writes Date.now(), so ts is
+        // always a number in production. Guard with typeof so an
+        // unexpected null/undefined never persists the literal string
+        // "null" / "undefined" — the mirror would corrupt boot
+        // hydration the next session.
+        if (typeof ts === 'number') {
+          await setSyncMetadata(this.db, 'last_sync_at', String(ts));
+        }
+      } catch (err) {
+        console.error(
+          '[POS][syncScheduler] setSyncMetadata(last_sync_at) failed',
+          serializeErrorForLog(err),
+        );
+      }
 
       // After any sync that pulled terminal_state, refresh the hashChainReady flag so
       // cold-start banners disappear as soon as the terminal is bootstrapped.
@@ -104,8 +177,15 @@ export class SyncScheduler {
           if (sessionError instanceof ApiRequestError && sessionError.status === 401) {
             console.warn('[SyncScheduler] Token confirmed expired — logging out');
             useAuthStore.getState().logout();
+          } else {
+            // Network error → token might still be valid when server is reachable.
+            // Log at warn so intermittent outages don't drown devtools in errors
+            // (Codex review 2026-05-08 finding (h)). checkSession runs every
+            // sync tick (~30s); a 10-min outage produces ~20 entries.
+            console.warn('[POS][syncScheduler] checkSession failed (non-401, transient)', {
+              ...serializeErrorForLog(sessionError),
+            });
           }
-          // Network error → ignore, token might still be valid when server is reachable
         }
       }
 
@@ -118,6 +198,10 @@ export class SyncScheduler {
 
       return result;
     } catch (error) {
+      console.error('[POS][syncScheduler] tick threw', {
+        ...serializeErrorForLog(error),
+        currentInterval: this.currentInterval,
+      });
       const message = error instanceof Error ? error.message : 'Sync failed';
       useSyncStore.getState().failSync(message);
       this.backoff();

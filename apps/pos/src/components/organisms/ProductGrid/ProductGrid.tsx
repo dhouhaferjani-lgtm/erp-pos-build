@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -151,6 +151,82 @@ export function ProductGrid({
     estimateSize: () => rowHeight + GAP,
     overscan: 3,
   });
+
+  /**
+   * T2.1 Step C — selectedCategory invalidation.
+   *
+   * Watches the SET of distinct categories derived from `products`.
+   * If a sync tick (or a stale `categories` prop) drops the currently-
+   * selected category, reset to null (= "all categories"). This fixes
+   * the "tap a category that no longer exists silently produces an
+   * empty grid" symptom (audit C3).
+   *
+   * Effect-loop avoidance: uses a `useRef` to remember the previous
+   * category-set HASH (sorted-string-join). The reset only fires when
+   * the set actually changes; identical category sets across renders
+   * (e.g. same products + same categories) are no-ops.
+   */
+  const previousCategorySetHash = useRef<string>('');
+  useEffect(() => {
+    const currentCategorySet = new Set<string>();
+    for (const p of products) {
+      if (p.category) currentCategorySet.add(p.category);
+    }
+    const currentHash = Array.from(currentCategorySet).sort().join('|');
+    if (currentHash !== previousCategorySetHash.current) {
+      previousCategorySetHash.current = currentHash;
+      if (selectedCategory && !currentCategorySet.has(selectedCategory)) {
+        setSelectedCategory(null);
+      }
+    }
+  }, [products, selectedCategory]);
+
+  /**
+   * T2.1 Step C — virtualizer composite-resetKey effect.
+   *
+   * Fixes the stale-window symptom (audit C4 + Codex round-1 m1):
+   * `useVirtualizer` keeps its scroll range and measure cache across
+   * `products[]` changes. After a category switch — or a sync tick
+   * that swaps row identity at the same length — the virtualizer can
+   * render a stale window (empty rows where products should be).
+   *
+   * The composite resetKey includes:
+   *   - displayMode | columns | rowHeight (UI variables)
+   *   - selectedCategory | searchQuery (filter variables)
+   *   - filteredProducts.length | firstId | lastId (identity boundary)
+   *
+   * Length-only is insufficient — same-length-different-shape
+   * transitions would slip through. The first/last id pair catches
+   * this cheaply without hashing the full array.
+   *
+   * Empty-state branch: when `filteredProducts.length === 0`, the
+   * empty-state UI mounts and the virtualizer scroll container
+   * unmounts. `scrollToIndex(0)` on a zero-row virtualizer is a no-op
+   * but avoid the call defensively to keep the spy assertions clean.
+   */
+  const resetKey = useMemo(() => {
+    const firstId = filteredProducts[0]?.id ?? '';
+    const lastId = filteredProducts[filteredProducts.length - 1]?.id ?? '';
+    return [
+      displayMode,
+      String(columns),
+      String(rowHeight),
+      selectedCategory ?? '',
+      searchQuery,
+      String(filteredProducts.length),
+      firstId,
+      lastId,
+    ].join('|');
+  }, [displayMode, columns, rowHeight, selectedCategory, searchQuery, filteredProducts]);
+
+  useEffect(() => {
+    if (filteredProducts.length === 0) return;
+    virtualizer.scrollToIndex(0);
+    virtualizer.measure();
+    // virtualizer is intentionally omitted — it's a new instance every
+    // render; the resetKey captures the change-trigger we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
 
   if (isLoading) {
     return (

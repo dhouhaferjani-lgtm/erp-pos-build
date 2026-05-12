@@ -6,7 +6,12 @@ export type OfflineReceiptStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 // Module-level debounce handle — one pending sync at most.
 let pendingSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
-function scheduleDebouncedSync(): void {
+// T2.2 Step 5.1: exported so the service layer can fire it AFTER
+// db.execute('COMMIT'). The trigger used to live inside insertOfflineReceipt
+// (i.e. inside the BEGIN/COMMIT window) which let the debounced syncStore
+// read race the COMMIT under load. Callers must invoke this only after the
+// transaction has durably committed.
+export function scheduleDebouncedSync(): void {
   if (pendingSyncTimer !== null) {
     clearTimeout(pendingSyncTimer);
   }
@@ -58,6 +63,15 @@ export interface OfflineReceipt {
    * hard-reject if the terminal's current version drifted (Codex review B1).
    */
   fiscal_schema_version: 2 | 3;
+  /**
+   * T2.7 — when the cashier sealed this receipt against a terminal in
+   * training mode. SQLite-native 0 or 1 (mirrors `voided`); the wire-shape
+   * builder converts to a boolean before sending. Training receipts skip the
+   * local fiscal-hash chain advance and persist with a placeholder fiscal
+   * hash; the server-side sync ingest path (PR #103) honors the flag and
+   * skips chain validation, year roll-over, finalize, and hash mismatch.
+   */
+  is_training: 0 | 1;
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
@@ -75,8 +89,8 @@ export async function insertOfflineReceipt(
       total, currency, fiscal_hash, previous_hash, hash_sequence,
       transaction_discount_amount, transaction_discount_reason,
       tendered_amount, change_due, payment_method_id, payment_repository_id, status,
-      payments_json, consumption_mode, table_id, fiscal_schema_version
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
+      payments_json, consumption_mode, table_id, fiscal_schema_version, is_training
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
     [
       receipt.id, receipt.idempotency_key, receipt.receipt_number,
       receipt.terminal_id, receipt.terminal_code,
@@ -88,13 +102,13 @@ export async function insertOfflineReceipt(
       receipt.change_due, receipt.payment_method_id, receipt.payment_repository_id,
       receipt.status,
       receipt.payments_json, receipt.consumption_mode, receipt.table_id,
-      receipt.fiscal_schema_version,
+      receipt.fiscal_schema_version, receipt.is_training,
     ]
   );
-
-  // Fire-and-forget debounced sync. Must not block caller — payment success UI
-  // depends on this function returning immediately.
-  scheduleDebouncedSync();
+  // T2.2 Step 5.1: this function is now transactionally pure. The
+  // scheduleDebouncedSync trigger has moved to receiptService.createOfflineReceipt,
+  // fired after `db.execute('COMMIT')`, so the scheduler never reads SQLite
+  // before the commit has durably persisted.
 }
 
 export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]> {
@@ -104,12 +118,60 @@ export async function getPendingReceipts(db: Database): Promise<OfflineReceipt[]
   );
 }
 
+// TODO(go-live-followup): stranded-receipt operator/admin UI (Phase 0
+//   deferred). Today a 'failed' row is visible in the badge count but has no
+//   surface for an operator to inspect, retry, or void. Pre-go-live this is
+//   acceptable because failures are rare and the cashier can rely on the next
+//   automatic retry; post-go-live we want a manager-screen tile listing
+//   stranded receipts with their last sync error and a retry/abandon action.
+//   See docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
+//   Section 3 Step 5.3 row 6.
 export async function getPendingReceiptCount(db: Database): Promise<number> {
   const result = await queryOne<{ count: number }>(
     db,
     "SELECT COUNT(*) as count FROM offline_receipts WHERE status IN ('pending', 'failed')"
   );
   return result?.count ?? 0;
+}
+
+/**
+ * T2.1 Step D — boot-time recovery for stranded `'syncing'` rows.
+ *
+ * `syncService.updateReceiptStatus(... 'syncing')` advances a receipt's
+ * status BEFORE the sync HTTP call completes. On success the response
+ * handler advances to `'synced'`; on failure to `'failed'`. A
+ * SIGKILL / power-cut / OS-level kill BETWEEN the status update and
+ * the response handler leaves the row at `'syncing'` permanently —
+ * `getPendingReceiptsForSync` filters `WHERE status IN ('pending',
+ * 'failed')`, so the orphan is invisible to every subsequent retry.
+ * Net effect: a fiscal record with a hash-chain advance but no
+ * server-side counterpart, never retried, eventually visible only via
+ * `php artisan pos:verify-chains` as a chain break.
+ *
+ * This recovery demotes any `'syncing'` row back to `'pending'` so the
+ * next sync tick re-attempts it. Idempotent across multiple boots —
+ * subsequent calls find no `'syncing'` rows and are no-ops.
+ *
+ * Idempotency reasoning: a row at `'syncing'` is in one of three
+ * states post-crash:
+ *   1. HTTP request never left the device → server has nothing →
+ *      retry as fresh send. ✓
+ *   2. HTTP request succeeded server-side but response was lost →
+ *      retry → server detects via T0.2 idempotency_key and returns
+ *      the prior result → client advances to `'synced'`. ✓
+ *   3. HTTP request succeeded AND response landed but the local
+ *      status update failed → retry → same as (2). ✓
+ *
+ * Returns the number of rows demoted (for boot-time observability).
+ */
+export async function recoverStrandedSyncingReceipts(
+  db: Database,
+): Promise<number> {
+  const result = await execute(
+    db,
+    "UPDATE offline_receipts SET status = 'pending' WHERE status = 'syncing'",
+  );
+  return result.rowsAffected;
 }
 
 export async function updateReceiptStatus(

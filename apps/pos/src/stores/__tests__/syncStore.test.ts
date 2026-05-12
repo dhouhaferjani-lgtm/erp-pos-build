@@ -23,6 +23,7 @@ function makeSyncResult(overrides: Partial<SyncResult> = {}): SyncResult {
     receiptQrIndexPulled: 0,
     chainBreak: false,
     errors: [],
+    degraded: false,
     ...overrides,
   };
 }
@@ -62,7 +63,6 @@ describe('syncStore', () => {
     expect(state.lastSyncAt).not.toBeNull();
     expect(state.lastSyncResult).toEqual(result);
     expect(state.lastError).toBeNull();
-    expect(state.pendingReceiptCount).toBe(0);
   });
 
   it('completeSync captures first error from result', () => {
@@ -75,7 +75,41 @@ describe('syncStore', () => {
 
     const state = useSyncStore.getState();
     expect(state.lastError).toBe('Receipt R-001: timeout');
-    expect(state.pendingReceiptCount).toBe(2);
+  });
+
+  // T1.3 Step 4.1: pendingReceiptCount reads SQLite truth, not
+  // result.receiptsFailed. completeSync MUST leave pendingReceiptCount
+  // untouched — the scheduler's post-completeSync hook is responsible
+  // for the SQLite read + setPendingCount call. Without this contract,
+  // the badge drifts from the real "needs sync attention" count after
+  // the first tick that fails to queue new receipts.
+  it('T1.3: completeSync does NOT overwrite pendingReceiptCount with result.receiptsFailed', () => {
+    // Seed an externally-set count (as if startup hydration or the
+    // scheduler's post-completeSync hook has already written it).
+    useSyncStore.getState().setPendingCount(7);
+
+    const result = makeSyncResult({ receiptsFailed: 2 });
+    useSyncStore.getState().completeSync(result);
+
+    // Pre-fix: pendingReceiptCount would now be 2 (overwritten).
+    // Post-fix: pendingReceiptCount stays at 7 — the scheduler's
+    // SQLite hydration step is the only writer.
+    expect(useSyncStore.getState().pendingReceiptCount).toBe(7);
+  });
+
+  // T1.3 Step 4.2: persistent lastSyncAt entry point. completeSync's
+  // existing in-memory write is preserved; the new setLastSyncAt action
+  // is for hydration from SQLite on app boot (so the SyncButton's
+  // "X minutes ago" affordance survives restarts).
+  it('T1.3: setLastSyncAt updates the timestamp directly', () => {
+    useSyncStore.getState().setLastSyncAt(1717891200000);
+    expect(useSyncStore.getState().lastSyncAt).toBe(1717891200000);
+  });
+
+  it('T1.3: setLastSyncAt accepts null to clear the value', () => {
+    useSyncStore.setState({ lastSyncAt: 1717891200000 });
+    useSyncStore.getState().setLastSyncAt(null);
+    expect(useSyncStore.getState().lastSyncAt).toBeNull();
   });
 
   it('failSync records error without clearing sync state', () => {
@@ -90,6 +124,16 @@ describe('syncStore', () => {
   it('setPendingCount updates pending receipt count', () => {
     useSyncStore.getState().setPendingCount(5);
     expect(useSyncStore.getState().pendingReceiptCount).toBe(5);
+  });
+
+  it('T2.2 follow-up: pendingReceiptCount increments optimistically after a durable offline insert', () => {
+    useSyncStore.getState().setPendingCount(0);
+
+    useSyncStore.getState().incrementPendingCount();
+    expect(useSyncStore.getState().pendingReceiptCount).toBe(1);
+
+    useSyncStore.getState().incrementPendingCount();
+    expect(useSyncStore.getState().pendingReceiptCount).toBe(2);
   });
 
   it('reset returns to initial state', () => {

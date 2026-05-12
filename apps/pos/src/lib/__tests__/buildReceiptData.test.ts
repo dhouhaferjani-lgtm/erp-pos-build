@@ -68,6 +68,9 @@ function makeReceipt(overrides: Partial<FullReceiptResponse> = {}): FullReceiptR
       {
         id: 'line-1',
         line_number: 1,
+        product_id: null,
+        composite_item_id: null,
+        menu_category_id: null,
         product_code: 'PROD-1',
         product_name: 'Coffee',
         quantity: '1',
@@ -246,6 +249,19 @@ describe('buildEscPosReceiptData', () => {
     const result = buildEscPosReceiptData(receipt);
     expect(result.is_reprint).toBeUndefined();
   });
+
+  it('keeps blank company tax_id as an empty string for Rust-side omission', () => {
+    const receipt = makeReceipt({
+      company: {
+        ...makeReceipt().company,
+        tax_id: null,
+      },
+    });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.company.tax_id).toBe('');
+  });
 });
 
 // ── Phase H Block 2 — receipt QR token + refund metadata ─────────────────────
@@ -369,6 +385,9 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
         {
           id: 'line-1',
           line_number: 1,
+          product_id: null,
+          composite_item_id: null,
+          menu_category_id: null,
           product_code: 'P1',
           product_name: 'Widget',
           quantity: '2.000',
@@ -468,6 +487,9 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
         {
           id: 'line-1',
           line_number: 1,
+          product_id: null,
+          composite_item_id: null,
+          menu_category_id: null,
           product_code: 'P1',
           product_name: 'Item',
           quantity: '1.000',

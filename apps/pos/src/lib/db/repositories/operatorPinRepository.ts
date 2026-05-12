@@ -1,5 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll, queryOne, execute } from '@/lib/db';
+import { resolveCachedDiscountStatus } from '@/lib/discountPermissions';
+import type { DiscountPermissionStatus } from '@/lib/discountPermissions';
 
 export interface CachedOperator {
   id: string;
@@ -9,7 +11,12 @@ export interface CachedOperator {
   roles: string[];
   permissions: string[];
   can_discount: boolean;
+  can_apply_line_discounts?: boolean;
+  can_apply_transaction_discounts?: boolean;
   max_discount_percent: number | null;
+  discount_permissions_fetched_at: string | null;
+  discount_permissions_terminal_code: string | null;
+  discount_permissions_status: DiscountPermissionStatus;
 }
 
 interface OperatorPinRow {
@@ -21,9 +28,22 @@ interface OperatorPinRow {
   permissions: string;
   can_discount: number;
   max_discount_percent: number | null;
+  discount_permissions_fetched_at?: string | null;
+  discount_permissions_terminal_code?: string | null;
+  discount_permissions_status?: DiscountPermissionStatus | null;
+  discount_permissions_user_can_discount?: number | null;
+  discount_permissions_user_max_discount_percent?: number | null;
+  discount_permissions_can_apply_line_discounts?: number | null;
+  discount_permissions_can_apply_transaction_discounts?: number | null;
 }
 
 function rowToOperator(row: OperatorPinRow): CachedOperator {
+  const cacheStatus = resolveCachedDiscountStatus(row.discount_permissions_fetched_at);
+  const permissionStatus =
+    cacheStatus === 'fresh' && row.discount_permissions_status === 'terminal_denied'
+      ? 'terminal_denied'
+      : cacheStatus;
+
   return {
     id: row.id,
     name: row.name,
@@ -32,7 +52,12 @@ function rowToOperator(row: OperatorPinRow): CachedOperator {
     roles: JSON.parse(row.roles) as string[],
     permissions: JSON.parse(row.permissions) as string[],
     can_discount: row.can_discount === 1,
+    can_apply_line_discounts: row.discount_permissions_can_apply_line_discounts === 1,
+    can_apply_transaction_discounts: row.discount_permissions_can_apply_transaction_discounts === 1,
     max_discount_percent: row.max_discount_percent,
+    discount_permissions_fetched_at: row.discount_permissions_fetched_at ?? null,
+    discount_permissions_terminal_code: row.discount_permissions_terminal_code ?? null,
+    discount_permissions_status: permissionStatus,
   };
 }
 
@@ -66,12 +91,92 @@ export async function upsertOperators(
   for (const op of operators) {
     await execute(
       db,
-      `INSERT INTO operator_pins (id, name, email, pin_hash, roles, permissions, can_discount, max_discount_percent, synced_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))
+      `INSERT INTO operator_pins (id, name, email, pin_hash, roles, permissions, can_discount, max_discount_percent, synced_at, discount_permissions_fetched_at, discount_permissions_terminal_code, discount_permissions_status, discount_permissions_user_can_discount, discount_permissions_user_max_discount_percent, discount_permissions_can_apply_line_discounts, discount_permissions_can_apply_transaction_discounts)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), NULL, NULL, 'unavailable', NULL, NULL, NULL, NULL)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name, email = excluded.email, pin_hash = excluded.pin_hash,
          roles = excluded.roles, permissions = excluded.permissions,
-         can_discount = excluded.can_discount, max_discount_percent = excluded.max_discount_percent,
+         can_discount = excluded.can_discount,
+         max_discount_percent = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.max_discount_percent
+           ELSE excluded.max_discount_percent
+         END,
+         discount_permissions_fetched_at = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_fetched_at
+           ELSE NULL
+         END,
+         discount_permissions_terminal_code = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_terminal_code
+           ELSE NULL
+         END,
+         discount_permissions_status = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_status
+           ELSE 'unavailable'
+         END,
+         discount_permissions_user_can_discount = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_user_can_discount
+           ELSE NULL
+         END,
+         discount_permissions_user_max_discount_percent = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_user_max_discount_percent
+           ELSE NULL
+         END,
+         discount_permissions_can_apply_line_discounts = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_can_apply_line_discounts
+           ELSE NULL
+         END,
+         discount_permissions_can_apply_transaction_discounts = CASE
+           WHEN discount_permissions_fetched_at IS NOT NULL
+             AND discount_permissions_user_can_discount = excluded.can_discount
+             AND (
+               (discount_permissions_user_max_discount_percent IS NULL AND excluded.max_discount_percent IS NULL)
+               OR discount_permissions_user_max_discount_percent = excluded.max_discount_percent
+             )
+           THEN operator_pins.discount_permissions_can_apply_transaction_discounts
+           ELSE NULL
+         END,
          synced_at = datetime('now')`,
       [
         op.id, op.name, op.email, op.pin_hash,
@@ -80,6 +185,70 @@ export async function upsertOperators(
       ]
     );
   }
+}
+
+export async function updateOperatorDiscountPermissions(
+  db: Database,
+  operatorId: string,
+  permissions: {
+    can_discount: boolean;
+    max_discount_percent: number | null;
+    user_can_discount: boolean;
+    user_max_discount_percent: number | null;
+    can_apply_line_discounts: boolean;
+    can_apply_transaction_discounts: boolean;
+    fetched_at: string;
+    terminal_code: string;
+    status: Extract<DiscountPermissionStatus, 'fresh' | 'terminal_denied'>;
+  },
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE operator_pins
+     SET can_discount = $1,
+         max_discount_percent = $2,
+         discount_permissions_fetched_at = $3,
+         discount_permissions_terminal_code = $4,
+         discount_permissions_status = $5,
+         discount_permissions_user_can_discount = $6,
+         discount_permissions_user_max_discount_percent = $7,
+         discount_permissions_can_apply_line_discounts = $8,
+         discount_permissions_can_apply_transaction_discounts = $9,
+         synced_at = datetime('now')
+     WHERE id = $10`,
+    [
+      permissions.can_discount ? 1 : 0,
+      permissions.max_discount_percent,
+      permissions.fetched_at,
+      permissions.terminal_code,
+      permissions.status,
+      permissions.user_can_discount ? 1 : 0,
+      permissions.user_max_discount_percent,
+      permissions.can_apply_line_discounts ? 1 : 0,
+      permissions.can_apply_transaction_discounts ? 1 : 0,
+      operatorId,
+    ],
+  );
+}
+
+export async function invalidateTerminalDiscountPermissions(
+  db: Database,
+  terminalCode: string,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE operator_pins
+     SET can_discount = COALESCE(discount_permissions_user_can_discount, can_discount),
+         max_discount_percent = discount_permissions_user_max_discount_percent,
+         discount_permissions_fetched_at = NULL,
+         discount_permissions_terminal_code = NULL,
+         discount_permissions_status = 'unavailable',
+         discount_permissions_can_apply_line_discounts = NULL,
+         discount_permissions_can_apply_transaction_discounts = NULL,
+         synced_at = datetime('now')
+     WHERE discount_permissions_terminal_code = $1`,
+    [terminalCode],
+  );
 }
 
 export async function hasOperatorPins(db: Database): Promise<boolean> {

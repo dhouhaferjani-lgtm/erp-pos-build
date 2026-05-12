@@ -3,6 +3,7 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 vi.mock('@/api/receiptApi', () => ({
@@ -108,10 +109,73 @@ describe('paymentStore offline-first cash checkout', () => {
         operatorId: 'op-1',
         operatorName: 'Cashier Alice',
         currency: 'EUR',
+        // Bug 2 fix: payments[].amount is the tendered amount (100), not
+        // the cart total (50). See CashCountToleranceVarianceRegressionTest.
         payments: expect.arrayContaining([
-          expect.objectContaining({ methodCode: 'CASH', amount: '50.00' }),
+          expect.objectContaining({ methodCode: 'CASH', amount: '100.00' }),
         ]),
       }),
+    );
+  });
+
+  it('forwards isTraining=true to createOfflineReceipt when terminal is in training mode (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: true,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+    } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: true }),
+    );
+  });
+
+  it('forwards isTraining=false to createOfflineReceipt when terminal is in production mode (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: false,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+    } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: false }),
+    );
+  });
+
+  it('defaults isTraining=false when terminal is null (production fallback) (T2.7)', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    useTerminalStore.setState({ terminal: null } as never);
+
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTraining: false }),
     );
   });
 
@@ -127,6 +191,228 @@ describe('paymentStore offline-first cash checkout', () => {
 
     expect(usePaymentStore.getState().isProcessing).toBe(false);
     expect(usePaymentStore.getState().error).toMatch(/Terminal hash chain not initialized/);
+  });
+
+  it('preserves error class name in paymentStore.error when underlying error has empty message', async () => {
+    // T0.1 regression: Tauri SQLite plugin can reject with Error subclasses that
+    // carry a class name but empty `.message`. Old fallback collapsed this to
+    // an empty string — the cashier saw "Échec du paiement" with zero clue what
+    // failed and the console showed nothing because the catch was silent.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    class SqliteBusyError extends Error {
+      constructor() {
+        super('');
+        this.name = 'SqliteBusyError';
+      }
+    }
+    vi.mocked(createOfflineReceipt).mockRejectedValueOnce(new SqliteBusyError());
+
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBeInstanceOf(SqliteBusyError);
+
+    expect(usePaymentStore.getState().error).toContain('SqliteBusyError');
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
+  it('keeps the cashier banner opaque when checkout rejects with a non-Error string', async () => {
+    // T0.1 + Codex review 2026-05-08 finding (b): Tauri IPC rejects with raw
+    // strings (e.g. "error returned from database: NOT NULL constraint failed:
+    // offline_receipts.payment_method_id"). Those strings can carry SQL fragments,
+    // table names, file paths, or query data — content that does NOT belong in
+    // the cashier UI. The banner stays opaque (generic i18n only); raw detail is
+    // surfaced via console.error to devtools, not the user.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    const i18n = (await import('@/lib/i18n')).default;
+    const expectedOpaqueBanner = i18n.t('errors.checkoutFailed', { ns: 'pos' });
+
+    vi.mocked(createOfflineReceipt).mockRejectedValueOnce(
+      'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
+    );
+
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBe(
+      'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
+    );
+
+    const banner = usePaymentStore.getState().error;
+    // Codex round-2 finding: previous test would have passed vacuously if
+    // banner were null/empty. Lock the exact expected opaque value so a
+    // regression that drops the banner entirely also fails this test.
+    expect(banner).toBe(expectedOpaqueBanner);
+    expect(banner).not.toContain('NOT NULL constraint failed');
+    expect(banner).not.toContain('offline_receipts.payment_method_id');
+    expect(banner).not.toContain('payment_method_id');
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
+  it('reuses the same idempotency_key across two checkout attempts on the same cart', async () => {
+    // T0.2 regression: every checkout retry currently mints a fresh
+    // `crypto.randomUUID()` inside createOfflineReceipt. If the cashier clicks
+    // Confirm twice on the same cart submission attempt (e.g. mis-interprets a
+    // stalled-sync banner as failure), two distinct receipts ride two distinct
+    // keys to the server, both succeed, both finalize → direct double-billing.
+    //
+    // Fix contract: idempotency_key is allocated once when Confirm is first
+    // pressed and reused on retry until the cart is explicitly cleared (post-
+    // success or manual cancel) or a new sale is opened. Server-side dedup
+    // catches the second POST as a duplicate and returns the existing receipt.
+    //
+    // This test asserts the POSITIVE invariant: BOTH calls of createOfflineReceipt
+    // for the same cart submission attempt write the SAME idempotency_key.
+    // The mock here mirrors the real createOfflineReceipt's contract by echoing
+    // the caller-provided idempotencyKey input (if present) and otherwise
+    // generating a fresh UUID per call, so the test fails on dev tip (where
+    // there's no input field — both calls get fresh UUIDs) and passes after
+    // the paymentStore allocate-once fix.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      const inputKey = (input as { idempotencyKey?: string }).idempotencyKey;
+      const idempotencyKey = inputKey ?? crypto.randomUUID();
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey,
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    // First Confirm click: should allocate a fresh key.
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const firstKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    // Second Confirm click on the same cart submission attempt (cart NOT
+    // cleared between calls, no clearLastReceipt() in between).
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    expect(firstKey).toBeTruthy();
+    expect(secondKey).toBeTruthy();
+    expect(firstKey).toBe(secondKey);
+  });
+
+  it('gates concurrent processCashCheckout calls so only one createOfflineReceipt fires', async () => {
+    // T0.2 (Codex round-2 finding F-1 residual): two overlapping
+    // processCashCheckout calls must not race past the existence check
+    // inside createOfflineReceipt. With the isProcessing gate, the second
+    // call bails before reaching createReceiptLocalFirst, so only one
+    // SQLite INSERT runs. Without the gate, both calls would `await
+    // getReceiptByIdempotencyKey`, both observe no row, both proceed to
+    // INSERT, and one would hit SQLITE_CONSTRAINT_UNIQUE.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    let resolveFirst!: (value: unknown) => void;
+    const firstCallPending = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    let callCount = 0;
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      callCount++;
+      // First call: hang until we explicitly resolve. This holds isProcessing
+      // = true while the test fires the second call.
+      await firstCallPending;
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey: input.idempotencyKey ?? 'fallback-key',
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    // Fire two overlapping checkout calls. Don't `await` between them.
+    const firstCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondCallPromise = usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+
+    // Let the second call's synchronous prefix run (it should hit the
+    // isProcessing gate and bail synchronously without ever calling
+    // createOfflineReceipt).
+    await Promise.resolve();
+
+    // The first call is still hanging; the second has already returned.
+    // Only one createOfflineReceipt call must have fired.
+    expect(callCount).toBe(1);
+
+    // Now release the first call so the test can clean up.
+    resolveFirst(undefined);
+    await Promise.all([firstCallPromise, secondCallPromise]);
+
+    // Final invariant: exactly one createOfflineReceipt invocation total.
+    expect(callCount).toBe(1);
+    expect(usePaymentStore.getState().isProcessing).toBe(false);
+  });
+
+  it('allocates a fresh idempotency_key after clearLastReceipt is called', async () => {
+    // T0.2 lifecycle contract: clearLastReceipt is called by HomePage's
+    // handleNewSale on success-modal-dismiss / new-sale-opened / manual-cancel.
+    // After clear, the next Confirm click MUST allocate a fresh key — otherwise
+    // a successful sale's key would leak into the next sale's first POST,
+    // causing the new sale to be (incorrectly) deduped server-side as a replay.
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    vi.mocked(createOfflineReceipt).mockImplementation(async (_db, input) => {
+      const inputKey = (input as { idempotencyKey?: string }).idempotencyKey;
+      const idempotencyKey = inputKey ?? crypto.randomUUID();
+      return {
+        receiptNumber: 'MAIN-T001-2026-00000001',
+        total: '50.00',
+        subtotal: '50.00',
+        taxAmount: '0.00',
+        discountAmount: '0.00',
+        changeDue: 50,
+        fiscalHash: 'mock-hash',
+        idempotencyKey,
+        localId: crypto.randomUUID(),
+      };
+    });
+
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const firstSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+    // Lifecycle event: cart cleared + receipt acknowledged (= new sale starts)
+    usePaymentStore.getState().clearLastReceipt();
+
+    await usePaymentStore.getState().processCashCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      100,
+    );
+    const secondSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
+
+    expect(firstSaleKey).toBeTruthy();
+    expect(secondSaleKey).toBeTruthy();
+    expect(firstSaleKey).not.toBe(secondSaleKey);
   });
 
   it('forwards consumption_mode and table_id when provided', async () => {
@@ -164,7 +450,9 @@ describe('paymentStore offline-first cash checkout', () => {
       expect.anything(),
       expect.objectContaining({
         currency: 'TND',
-        payments: [expect.objectContaining({ methodCode: 'CASH', amount: '50.000' })],
+        // Bug 2 fix: amount is the tendered amount (60.000 in TND scale 3),
+        // not the cart total (50.000).
+        payments: [expect.objectContaining({ methodCode: 'CASH', amount: '60.000' })],
       }),
     );
   });

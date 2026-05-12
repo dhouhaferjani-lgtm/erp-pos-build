@@ -193,6 +193,43 @@ describe('authStore', () => {
     expect(removeStoredValue).toHaveBeenCalledWith('auth_token');
   });
 
+  it('resets bootstrap state on logout (Codex PR #108 r1 P2 — sign-out escape hatch)', async () => {
+    const { useBootstrapStore } = await import('@/stores/bootstrapStore');
+
+    // Pre-set bootstrap into the error state — the trap scenario the
+    // fix targets. AppRouter's early-return checks `phase === 'error'`
+    // before the `!isAuthenticated` LoginPage branch, so without the
+    // logout-side reset the cashier stays on BootstrapErrorScreen
+    // after signing out.
+    useBootstrapStore.setState({
+      phase: 'error',
+      error: {
+        phase: 'fetching-terminal',
+        errorName: 'FetchTimeoutError',
+        recoverable: true,
+        retryCount: 2,
+      },
+      lastSuccessfulPhase: 'fetching-companies',
+      running: false,
+    } as never);
+
+    useAuthStore.getState().logout();
+
+    // The reset wiring uses a dynamic import (avoids cyclic static
+    // bootstrap → auth → bootstrap dependency). Wait for the import
+    // promise to settle and its .then() to run; one macrotask flush is
+    // enough because the module was pre-imported above so it is cached.
+    await vi.waitFor(() => {
+      expect(useBootstrapStore.getState().phase).toBe('ready');
+    });
+
+    const state = useBootstrapStore.getState();
+    expect(state.phase).toBe('ready');
+    expect(state.error).toBeNull();
+    expect(state.lastSuccessfulPhase).toBeNull();
+    expect(state.running).toBe(false);
+  });
+
   it('checkSession updates user from server', async () => {
     const updatedUser = { ...mockUser, name: 'Updated Name' };
     vi.mocked(apiGet).mockResolvedValue(updatedUser);
@@ -278,6 +315,174 @@ describe('authStore', () => {
 
     await expect(useAuthStore.getState().refreshCompanyConfig()).resolves.toBeUndefined();
     expect(useProductStore.getState().companyConfig?.all_enabled_modules).toEqual(['POS']);
+  });
+
+  // T1.1 Step 1.1: login transactional — persists must happen ONLY after
+  // /user/companies resolves successfully. Otherwise a network drop after
+  // the POST returns leaves TOKEN+USER persisted in Tauri Store with
+  // companies:[] in state, and the next boot routes to TerminalSetupPage
+  // which immediately throws because companyId is null.
+  it('T1.1: login transactional — companies-fetch failure leaves no persisted state', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      user: mockUser,
+      token: 'jwt-token-123',
+      tokenType: 'Bearer',
+      deviceId: 'device-123',
+    });
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('Network drop after login POST'));
+
+    await expect(
+      useAuthStore.getState().login('test@example.com', 'password'),
+    ).rejects.toThrow('Network drop after login POST');
+
+    // Persistence must NOT have happened
+    expect(setStoredValue).not.toHaveBeenCalledWith('auth_token', expect.anything());
+    expect(setStoredValue).not.toHaveBeenCalledWith('user', expect.anything());
+    expect(setStoredValue).not.toHaveBeenCalledWith('companies', expect.anything());
+
+    // In-memory auth must NOT flip to authenticated
+    const state = useAuthStore.getState();
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.token).toBeNull();
+    expect(state.user).toBeNull();
+    expect(state.companies).toEqual([]);
+    expect(state.isLoading).toBe(false);
+  });
+
+  it('T1.1: login successful — persists in correct order (after companies-fetch resolves)', async () => {
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      user: mockUser,
+      token: 'jwt-token-123',
+      tokenType: 'Bearer',
+      deviceId: 'device-123',
+    });
+    vi.mocked(apiGet).mockResolvedValueOnce(mockCompanies);
+
+    await useAuthStore.getState().login('test@example.com', 'password');
+
+    const setStoredValueMock = vi.mocked(setStoredValue);
+    const apiGetMock = vi.mocked(apiGet);
+
+    // Find the invocation orders. mock.invocationCallOrder is a global counter
+    // across all vi.fn() calls within the test, so we can compare.
+    const tokenPersistCall = setStoredValueMock.mock.calls.findIndex(
+      (call) => call[0] === 'auth_token',
+    );
+    const userPersistCall = setStoredValueMock.mock.calls.findIndex(
+      (call) => call[0] === 'user',
+    );
+    expect(tokenPersistCall).toBeGreaterThanOrEqual(0);
+    expect(userPersistCall).toBeGreaterThanOrEqual(0);
+
+    const tokenPersistOrder = setStoredValueMock.mock.invocationCallOrder[tokenPersistCall]!;
+    const userPersistOrder = setStoredValueMock.mock.invocationCallOrder[userPersistCall]!;
+    const companiesFetchOrder = apiGetMock.mock.invocationCallOrder[0]!;
+
+    // Both TOKEN and USER persists must happen AFTER apiGet('/user/companies')
+    expect(tokenPersistOrder).toBeGreaterThan(companiesFetchOrder);
+    expect(userPersistOrder).toBeGreaterThan(companiesFetchOrder);
+  });
+
+  // Codex round-1 finding (c): a failed companies-fetch must restore the
+  // prior in-memory auth state verbatim. Re-attempting login() over an
+  // already-valid session must not corrupt token / user / companies /
+  // companyId / isAuthenticated when the second login's companies-fetch
+  // fails.
+  it('T1.1: login over existing session — companies-fetch failure restores prior in-memory auth', async () => {
+    // Seed an existing valid session.
+    useAuthStore.setState({
+      user: mockUser,
+      token: 'jwt-prior-token',
+      serverUrl: 'http://localhost:8002',
+      companyId: 'company-1',
+      companies: mockCompanies,
+      isAuthenticated: true,
+      isLoading: false,
+      isInitialized: true,
+    });
+
+    // Second login attempt: POST resolves with NEW token + user; GET
+    // /user/companies fails.
+    const newUser: User = { ...mockUser, id: 'user-2', name: 'Second User' };
+    vi.mocked(apiPost).mockResolvedValueOnce({
+      user: newUser,
+      token: 'jwt-new-token-failure',
+      tokenType: 'Bearer',
+      deviceId: null,
+    });
+    vi.mocked(apiGet).mockRejectedValueOnce(new Error('companies fetch failed'));
+
+    await expect(
+      useAuthStore.getState().login('second@example.com', 'pass'),
+    ).rejects.toThrow('companies fetch failed');
+
+    const state = useAuthStore.getState();
+    // Prior session must be intact — token was NOT reset to null.
+    expect(state.token).toBe('jwt-prior-token');
+    expect(state.user).toEqual(mockUser);
+    expect(state.companies).toEqual(mockCompanies);
+    expect(state.companyId).toBe('company-1');
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isLoading).toBe(false);
+  });
+
+  // Codex round-1 finding (b): fetchCompanies must clear a stale
+  // companyId when the refreshed list no longer contains it.
+  it('T1.1: fetchCompanies — clears stale companyId when not in refreshed companies', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      companyId: 'company-stale-old',
+      companies: [],
+    });
+
+    const refreshed: Company[] = [
+      { ...mockCompanies[0]!, id: 'company-A', name: 'A' },
+      { ...mockCompanies[0]!, id: 'company-B', name: 'B' },
+    ];
+    vi.mocked(apiGet).mockResolvedValueOnce(refreshed);
+
+    await useAuthStore.getState().fetchCompanies();
+
+    const state = useAuthStore.getState();
+    expect(state.companies).toEqual(refreshed);
+    expect(state.companyId).toBeNull();
+    expect(removeStoredValue).toHaveBeenCalledWith('company_id');
+  });
+
+  it('T1.1: fetchCompanies — keeps companyId when still valid in refreshed companies', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      companyId: 'company-A',
+      companies: [],
+    });
+
+    const refreshed: Company[] = [
+      { ...mockCompanies[0]!, id: 'company-A', name: 'A' },
+      { ...mockCompanies[0]!, id: 'company-B', name: 'B' },
+    ];
+    vi.mocked(apiGet).mockResolvedValueOnce(refreshed);
+
+    await useAuthStore.getState().fetchCompanies();
+
+    expect(useAuthStore.getState().companyId).toBe('company-A');
+    expect(removeStoredValue).not.toHaveBeenCalledWith('company_id');
+  });
+
+  it('T1.1: fetchCompanies — auto-selects single returned company when prior selection was stale', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      companyId: 'company-stale',
+      companies: [],
+    });
+
+    const refreshed: Company[] = [
+      { ...mockCompanies[0]!, id: 'company-only', name: 'Only' },
+    ];
+    vi.mocked(apiGet).mockResolvedValueOnce(refreshed);
+
+    await useAuthStore.getState().fetchCompanies();
+
+    expect(useAuthStore.getState().companyId).toBe('company-only');
   });
 
   it('logs out when checkSession returns 401 (token expired)', async () => {

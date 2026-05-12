@@ -51,7 +51,8 @@
     "transactionRef": "Reference",
     "morePaymentMethods": "More...",
     "processingQuickCheckout": "Processing cash payment...",
-    "pendingSyncCount": "{{count}} sale(s) pending sync"
+    "pendingSyncCount": "{{count}} sale(s) pending sync",
+    "configNotLoaded": "Payment config not loaded — try Sync Now"
   },
   "cashPayment": {
     "back": "Back",
@@ -78,7 +79,15 @@
     "productAdded": "{{name}} added to cart",
     "inputPlaceholder": "Scan or type barcode / SKU...",
     "inputLabel": "Barcode or SKU lookup",
-    "clearInput": "Clear barcode input"
+    "clearInput": "Clear barcode input",
+    "lookingUp": "Looking up..."
+  },
+  "barcodeChooser": {
+    "title": "Multiple products match this code",
+    "subtitle": "Select the product to add (scanned: {{code}})",
+    "stock": "{{count}} in stock",
+    "cancel": "Cancel",
+    "dismiss": "Close"
   },
   "receiptScan": {
     "title": "Sale receipt detected",
@@ -156,6 +165,8 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
+    "stillTrying": "Still working… check your connection.",
+    "cancel": "Cancel",
     "selectCompany": "Select Company",
     "noConnection": "No Internet Connection",
     "noConnectionMessage": "An internet connection is required to sign in. Please check your connection and try again."
@@ -227,7 +238,8 @@
     "syncNow": "Sync Now",
     "receiptQueued": "Receipt saved locally — will sync when online",
     "lastSync": "Last sync: {{time}}",
-    "debounceBlocked": "Hold on — still processing the previous sync."
+    "debounceBlocked": "Hold on — still processing the previous sync.",
+    "degradedTitle": "Last sync had errors — click to retry"
   },
   "fiscal": {
     "regressionBlocked": "Fiscal chain integrity preserved. Local data is newer than the server response."
@@ -266,6 +278,9 @@
     "maxExceeded": "Maximum discount is {{max}}%",
     "transactionDiscount": "Transaction Discount",
     "notAllowed": "You are not allowed to apply discounts. Please ask a manager.",
+    "requiresOperator": "Sign in with an operator PIN before applying discounts.",
+    "permissionsUnavailable": "Discount permissions are unavailable for this terminal.",
+    "permissionsStale": "Discount permissions are stale. Go online to refresh before applying discounts.",
     "removeLineDiscount": "Remove discount",
     "managerApproval": "Manager Approval Required",
     "enterManagerPin": "Enter manager PIN to authorize this discount",

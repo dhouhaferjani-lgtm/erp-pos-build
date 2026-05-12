@@ -51,7 +51,8 @@
     "transactionRef": "Référence",
     "morePaymentMethods": "Plus...",
     "processingQuickCheckout": "Traitement du paiement...",
-    "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation"
+    "pendingSyncCount": "{{count}} vente(s) en attente de synchronisation",
+    "configNotLoaded": "Configuration de paiement non chargée — essayez Synchroniser maintenant"
   },
   "cashPayment": {
     "back": "Retour",
@@ -78,7 +79,15 @@
     "productAdded": "{{name}} ajouté au panier",
     "inputPlaceholder": "Scanner ou saisir code-barres / SKU...",
     "inputLabel": "Recherche code-barres ou SKU",
-    "clearInput": "Effacer"
+    "clearInput": "Effacer",
+    "lookingUp": "Recherche..."
+  },
+  "barcodeChooser": {
+    "title": "Plusieurs produits correspondent à ce code",
+    "subtitle": "Sélectionnez le produit à ajouter (scanné : {{code}})",
+    "stock": "{{count}} en stock",
+    "cancel": "Annuler",
+    "dismiss": "Fermer"
   },
   "receiptScan": {
     "title": "Reçu de vente détecté",
@@ -156,6 +165,8 @@
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion...",
+    "stillTrying": "Toujours en cours… vérifiez votre connexion.",
+    "cancel": "Annuler",
     "selectCompany": "Sélectionner l'entreprise",
     "noConnection": "Pas de connexion Internet",
     "noConnectionMessage": "Une connexion Internet est nécessaire pour se connecter. Veuillez vérifier votre connexion et réessayer."
@@ -227,7 +238,8 @@
     "syncNow": "Synchroniser",
     "receiptQueued": "Ticket enregistré localement — sera synchronisé en ligne",
     "lastSync": "Dernière synchro : {{time}}",
-    "debounceBlocked": "Un instant — synchronisation en cours."
+    "debounceBlocked": "Un instant — synchronisation en cours.",
+    "degradedTitle": "La dernière synchro a échoué — cliquez pour réessayer"
   },
   "fiscal": {
     "regressionBlocked": "Intégrité de la chaîne fiscale préservée. Les données locales sont plus récentes que le serveur."
@@ -266,6 +278,9 @@
     "maxExceeded": "La remise maximale est de {{max}}%",
     "transactionDiscount": "Remise sur transaction",
     "notAllowed": "Vous n'êtes pas autorisé à appliquer des remises. Veuillez demander à un responsable.",
+    "requiresOperator": "Connectez-vous avec un PIN opérateur avant d'appliquer des remises.",
+    "permissionsUnavailable": "Les autorisations de remise ne sont pas disponibles pour ce terminal.",
+    "permissionsStale": "Les autorisations de remise sont expirées. Connectez-vous pour les actualiser avant d'appliquer des remises.",
     "removeLineDiscount": "Supprimer la remise",
     "managerApproval": "Approbation du responsable requise",
     "enterManagerPin": "Entrez le PIN du responsable pour autoriser cette remise",

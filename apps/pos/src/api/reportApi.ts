@@ -196,7 +196,12 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
   };
 }
 
-/** Server-only Z-report generation (for admin dashboard fallback). */
+/**
+ * Server-only Z-report generation for admin/tooling fallback.
+ *
+ * @deprecated POS close is offline-first. Keep this helper out of the cashier close path;
+ * web admin still uses the backend route through apps/web.
+ */
 export async function generateZReportServer(terminalId: string): Promise<ZReportResponse> {
   return apiPost<ZReportResponse>('/pos/reports/z', { terminal_id: terminalId });
 }

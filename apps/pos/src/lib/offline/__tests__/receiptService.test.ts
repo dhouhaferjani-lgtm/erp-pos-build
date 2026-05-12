@@ -12,6 +12,18 @@ vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
   insertOfflineReceipt: vi.fn().mockResolvedValue(undefined),
+  // T2.2 Step 5.1: scheduleDebouncedSync moved from inside insertOfflineReceipt
+  // to receiptService.createOfflineReceipt (post-COMMIT). Test mock now includes it.
+  scheduleDebouncedSync: vi.fn(),
+}));
+
+const incrementPendingCountSpy = vi.fn();
+vi.mock('@/stores/syncStore', () => ({
+  useSyncStore: {
+    getState: () => ({
+      incrementPendingCount: incrementPendingCountSpy,
+    }),
+  },
 }));
 
 // Codex review B5 (2026-05-01): mock the local voucher repository so the
@@ -27,7 +39,10 @@ vi.mock('@/lib/offline/voucherRepository', () => ({
 import { createOfflineReceipt } from '../receiptService';
 import { computeFiscalHash } from '@/lib/fiscal/hashService';
 import { getTerminalState, advanceHashChain } from '@/lib/db/repositories/terminalStateRepository';
-import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  insertOfflineReceipt,
+  scheduleDebouncedSync,
+} from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   findByCode as findVoucherByCode,
   insertPendingVoucherLedgerRow,
@@ -1083,6 +1098,257 @@ describe('receiptService - B5 voucher tender redemption (offline)', () => {
 
     expect(findVoucherByCode).not.toHaveBeenCalled();
     expect(insertPendingVoucherLedgerRow).not.toHaveBeenCalled();
+    expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('T2.2 Step 5.1: post-COMMIT sync trigger', () => {
+  // Pre-T2.2 the sync trigger lived inside the SQLite transaction
+  // (offlineReceiptRepository.insertOfflineReceipt called scheduleDebouncedSync
+  // before COMMIT). Step 5.1 moves the trigger to the service layer, fired
+  // immediately after a successful db.execute('COMMIT'). The contract:
+  //   - Successful path: trigger fires AFTER COMMIT, not before.
+  //   - Repository function: never fires the trigger (regression-guarded in
+  //     offlineReceiptRepository.insert.test.ts).
+  //   - COMMIT-throw path: trigger does NOT fire — the receipt did not
+  //     durably persist, so the scheduler must not be told about it.
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(getTerminalState).mockResolvedValue(terminalState);
+    vi.mocked(findVoucherByCode).mockResolvedValue(null);
+  });
+
+  function makeBaseInput() {
+    return {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      cartItems: [makeCartItem()],
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 20,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+    };
+  }
+
+  it('fires scheduleDebouncedSync AFTER db.execute(\'COMMIT\') on the happy path', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      callOrder.push(`db.execute(${sql})`);
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+    vi.mocked(scheduleDebouncedSync).mockImplementation(() => {
+      callOrder.push('scheduleDebouncedSync');
+    });
+
+    await createOfflineReceipt(db, makeBaseInput());
+
+    const commitIdx = callOrder.indexOf("db.execute(COMMIT)");
+    const triggerIdx = callOrder.indexOf('scheduleDebouncedSync');
+    expect(commitIdx).toBeGreaterThanOrEqual(0);
+    expect(triggerIdx).toBeGreaterThanOrEqual(0);
+    expect(triggerIdx).toBeGreaterThan(commitIdx);
+    expect(scheduleDebouncedSync).toHaveBeenCalledOnce();
+  });
+
+  it('increments pendingReceiptCount AFTER db.execute(\'COMMIT\') on the happy path', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      callOrder.push(`db.execute(${sql})`);
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+    incrementPendingCountSpy.mockImplementation(() => {
+      callOrder.push('incrementPendingCount');
+    });
+
+    await createOfflineReceipt(db, makeBaseInput());
+
+    const commitIdx = callOrder.indexOf("db.execute(COMMIT)");
+    const incrementIdx = callOrder.indexOf('incrementPendingCount');
+    expect(commitIdx).toBeGreaterThanOrEqual(0);
+    expect(incrementIdx).toBeGreaterThanOrEqual(0);
+    expect(incrementIdx).toBeGreaterThan(commitIdx);
+    expect(incrementPendingCountSpy).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT fire scheduleDebouncedSync when db.execute(\'COMMIT\') throws', async () => {
+    vi.mocked(db.execute).mockImplementation(async (sql: string) => {
+      if (sql === 'COMMIT') {
+        throw new Error('disk full');
+      }
+      return { rowsAffected: 1, lastInsertId: 0 };
+    });
+
+    await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('disk full');
+
+    expect(scheduleDebouncedSync).not.toHaveBeenCalled();
+    expect(incrementPendingCountSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire scheduleDebouncedSync when insertOfflineReceipt fails (transaction rolls back before COMMIT)', async () => {
+    vi.mocked(insertOfflineReceipt).mockRejectedValueOnce(new Error('insert failed'));
+
+    await expect(createOfflineReceipt(db, makeBaseInput())).rejects.toThrow('insert failed');
+
+    expect(scheduleDebouncedSync).not.toHaveBeenCalled();
+    expect(incrementPendingCountSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('T2.7: offline training-aware receipt creation', () => {
+  // Closes the offline-first compliance gap from PR #99 round-8: the cashier's
+  // training-mode banner makes the mode visible, but pre-T2.7 every offline
+  // receipt synced as production. This test block locks the T2.7 contract:
+  //   - isTraining=true → skip chain advance, skip computeFiscalHash, use
+  //     TRN- prefixed receipt number with UUID-derived suffix (no shared
+  //     sequence with production), persist is_training=1.
+  //   - isTraining=false (and unset) → unchanged production behaviour.
+  //   - Two sequential training receipts produce distinct receipt numbers
+  //     (the UUID-derived suffix prevents collision on the server's
+  //     receipt_number UNIQUE index).
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+    vi.mocked(getTerminalState).mockResolvedValue(terminalState);
+    vi.mocked(findVoucherByCode).mockResolvedValue(null);
+  });
+
+  function makeBaseInput(overrides: Partial<Parameters<typeof createOfflineReceipt>[1]> = {}) {
+    return {
+      terminalId: 'terminal-1',
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      cartItems: [makeCartItem()],
+      currency: 'EUR',
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 20,
+      payments: [{ methodCode: 'CASH', amount: '10.00' }],
+      ...overrides,
+    };
+  }
+
+  it('skips advanceHashChain when isTraining is true', async () => {
+    await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+
+    expect(advanceHashChain).not.toHaveBeenCalled();
+  });
+
+  it('uses TRN- prefix on receipt number when isTraining is true', async () => {
+    const result = await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+
+    // Format: TRN-{location_code}-{terminal_code}-{year}-{16-hex-suffix}
+    // The 64-bit suffix derives from the receipt UUID — collision probability
+    // is negligible even across decades of cumulative training-mode runs at
+    // a single terminal (Codex review PR #105 round-1 P3 closure raised the
+    // suffix from 32 → 64 bits).
+    const year = new Date().getFullYear();
+    expect(result.receiptNumber).toMatch(
+      new RegExp(`^TRN-MAIN-T001-${year}-[0-9a-f]{16}$`),
+    );
+  });
+
+  it('skips computeFiscalHash and produces a sha256(TRAINING-||localId) placeholder hash', async () => {
+    const result = await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+
+    // Training receipts never call the fiscal-hash service — they don't
+    // enter the chain. The placeholder hash is a deterministic sha256 of
+    // 'TRAINING-' || receipt-id, mirroring the server-side training row
+    // produced by ReceiptCreationService and ReceiptSyncService::syncSingleReceipt.
+    expect(computeFiscalHash).not.toHaveBeenCalled();
+    expect(result.fiscalHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('persists is_training=1 on the SQLite row when isTraining is true', async () => {
+    await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+
+    expect(insertOfflineReceipt).toHaveBeenCalledTimes(1);
+    const persistedReceipt = vi.mocked(insertOfflineReceipt).mock.calls[0]![1];
+    expect(persistedReceipt.is_training).toBe(1);
+  });
+
+  it('production-mode regression: isTraining=false path is unchanged', async () => {
+    await createOfflineReceipt(db, makeBaseInput({ isTraining: false }));
+
+    expect(advanceHashChain).toHaveBeenCalledOnce();
+    expect(computeFiscalHash).toHaveBeenCalledOnce();
+    const persistedReceipt = vi.mocked(insertOfflineReceipt).mock.calls[0]![1];
+    expect(persistedReceipt.is_training).toBe(0);
+    const year = new Date().getFullYear();
+    expect(persistedReceipt.receipt_number).toBe(`MAIN-T001-${year}-00000006`);
+  });
+
+  it('production-mode regression: isTraining unset defaults to production behaviour', async () => {
+    await createOfflineReceipt(db, makeBaseInput());
+
+    expect(advanceHashChain).toHaveBeenCalledOnce();
+    expect(computeFiscalHash).toHaveBeenCalledOnce();
+    const persistedReceipt = vi.mocked(insertOfflineReceipt).mock.calls[0]![1];
+    expect(persistedReceipt.is_training).toBe(0);
+  });
+
+  it('two sequential training receipts produce distinct receipt numbers', async () => {
+    const first = await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+    const second = await createOfflineReceipt(db, makeBaseInput({ isTraining: true }));
+
+    // The UUID-derived suffix prevents collision on the server-side
+    // receipt_number UNIQUE index (mirrors the bug PR #104 surfaced on the
+    // online path).
+    expect(first.receiptNumber).not.toBe(second.receiptNumber);
+  });
+
+  it('skips voucher mirror update for training even when payment includes a store_voucher (PR #105 r1 P2)', async () => {
+    // The server's training-aware sync path does NOT call
+    // VoucherRedemptionService::redeem (PR #103). If we still decremented the
+    // local voucher balance here, the cashier's mirror would diverge from the
+    // server's canonical balance until the next pullVoucherLedger overwrite —
+    // but pullVoucherLedger never sees a redemption that didn't happen
+    // server-side, so the mirror would stay diverged.
+    const voucherSerial = 'SV-TRAIN-001';
+    vi.mocked(findVoucherByCode).mockResolvedValueOnce({
+      id: 'voucher-mirror-1',
+      code: voucherSerial,
+      initial_balance: '100.00',
+      current_balance: '50.00',
+      currency: 'EUR',
+      status: 'PartiallyRedeemed' as const,
+      redemption_mode: 'Bearer' as const,
+      voucher_kind: 'MPV',
+      source: 'Refund' as const,
+      issued_at: '2026-01-01T00:00:00Z',
+      expires_at: null,
+      partner_id: null,
+      issued_to_partner_id: null,
+      redeemable_at_terminal_id: 'terminal-1',
+      notes: null,
+      synced_at: '2026-04-30T00:00:00Z',
+    } as LocalVoucher);
+
+    await createOfflineReceipt(
+      db,
+      makeBaseInput({
+        isTraining: true,
+        payments: [
+          {
+            methodCode: 'STORE_VOUCHER',
+            amount: '10.00',
+            instrumentType: 'store_voucher',
+            instrumentSerial: voucherSerial,
+          },
+        ],
+      }),
+    );
+
+    // The voucher mirror MUST stay at the pre-receipt balance — no resolve,
+    // no balance update. (We don't assert on findByCode because the
+    // training short-circuit happens BEFORE the resolver even runs, but
+    // the durable contract is the absence of the mutation.)
     expect(updateVoucherBalanceAndStatus).not.toHaveBeenCalled();
   });
 });

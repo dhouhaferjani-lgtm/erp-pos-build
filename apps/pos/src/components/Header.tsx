@@ -335,6 +335,10 @@ export function Header() {
     useRefundFlowStore.getState().clearAll();
     useRefundDraftStore.getState().clearDraftState();
     usePaymentStore.getState().clearVoucherTenders();
+    // T0.2: drop any in-flight idempotency key so the next operator's first
+    // sale gets a fresh allocation. Without this, a stale key from a void/
+    // failed attempt would leak across operator switches.
+    usePaymentStore.getState().discardPendingSubmission();
     clearOperator();
   }
 

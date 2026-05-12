@@ -83,22 +83,47 @@ final class DiscountController extends Controller
             ], 404);
         }
 
+        $discountUser = $user;
+        $operatorId = $request->query('operator_id');
+        if (is_string($operatorId) && $operatorId !== '') {
+            $operator = User::where('tenant_id', $user->tenant_id)
+                ->whereKey($operatorId)
+                ->first();
+
+            if (! $operator instanceof User) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'OPERATOR_NOT_FOUND',
+                        'message' => 'Operator not found',
+                    ],
+                ], 404);
+            }
+
+            $discountUser = $operator;
+        }
+
+        $isAdmin = $discountUser->hasRole(['super_admin', 'admin']);
+        $canUserDiscount = $isAdmin || $discountUser->can_discount;
+        $userMaxDiscountPercent = $isAdmin ? 100.0 : $discountUser->max_discount_percent;
+
         // Calculate effective limit (most restrictive)
-        $effectiveLimit = $this->calculateEffectiveLimit($terminal, $user);
+        $effectiveLimit = $this->calculateEffectiveLimit($terminal, $discountUser, $isAdmin);
 
         // User can discount only if:
         // 1. User has can_discount permission
         // 2. Terminal allows discounts
-        $canDiscount = $user->can_discount && (
-            $terminal->allow_line_discounts ||
-            $terminal->allow_transaction_discounts
-        );
+        $terminalAllowsDiscounts = $terminal->allow_line_discounts ||
+            $terminal->allow_transaction_discounts;
+        $canDiscount = $canUserDiscount && $terminalAllowsDiscounts;
 
         return response()->json([
             'data' => [
                 'canDiscount' => $canDiscount,
-                'canApplyLineDiscounts' => $user->can_discount && $terminal->allow_line_discounts,
-                'canApplyTransactionDiscounts' => $user->can_discount && $terminal->allow_transaction_discounts,
+                'userCanDiscount' => $canUserDiscount,
+                'userMaxDiscountPercent' => $userMaxDiscountPercent,
+                'terminalAllowsDiscounts' => $terminalAllowsDiscounts,
+                'canApplyLineDiscounts' => $canUserDiscount && $terminal->allow_line_discounts,
+                'canApplyTransactionDiscounts' => $canUserDiscount && $terminal->allow_transaction_discounts,
                 'maxDiscountPercent' => $effectiveLimit,
                 'requiresReason' => $effectiveLimit > 10.00,
                 'effectiveLimit' => $effectiveLimit,
@@ -184,16 +209,14 @@ final class DiscountController extends Controller
 
     /**
      * Calculate the effective discount limit (most restrictive)
-     *
-     * @param  User  $user
      */
-    private function calculateEffectiveLimit(Terminal $terminal, $user): float
+    private function calculateEffectiveLimit(Terminal $terminal, User $user, bool $isAdmin): float
     {
         // Terminal limit
         $terminalLimit = $terminal->max_discount_percent;
 
         // User limit (null means no individual limit, use terminal limit)
-        $userLimit = $user->max_discount_percent ?? $terminalLimit;
+        $userLimit = $isAdmin ? 100.0 : ($user->max_discount_percent ?? $terminalLimit);
 
         // Return the most restrictive (minimum of the two)
         return min($terminalLimit, $userLimit);

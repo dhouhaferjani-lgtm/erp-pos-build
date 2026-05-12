@@ -79,6 +79,9 @@ final class SyncReceiptsRequest extends FormRequest
                 'nullable', 'uuid',
                 ScopedExists::tenantAndCompany('composite_items', $tenantId, $companyId),
             ],
+            // C2 Day 3 — Menu-tenant category context. Optional UUID; non-
+            // Menu tenants and pre-C2 historical sync payloads omit it.
+            'receipts.*.lines.*.menu_category_id' => ['nullable', 'uuid'],
             'receipts.*.lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'receipts.*.lines.*.unit_price' => ['required', 'numeric', 'gte:0'],
             'receipts.*.lines.*.modifiers' => ['nullable', 'array'],
@@ -138,6 +141,15 @@ final class SyncReceiptsRequest extends FormRequest
             // missing field surfaces as 422 here rather than silently downgrading
             // a v3 payload (which the server would later reject as a chain break).
             'receipts.*.fiscal_schema_version' => ['required', 'integer', 'in:2,3'],
+            // T2.7 — training-mode flag. Optional + defaults false on the wire so
+            // pre-T2.7 clients (which don't send the field) continue to behave as
+            // production. When true, the server skips hash chain validation, the
+            // finalize call, the offline-fiscal-hash mismatch check, and voucher
+            // redemption — matching the online `ReceiptCreationService`'s training
+            // path. The terminal's runtime `is_training_mode` flag is informational
+            // here; receipt-time mode is the source of truth (the cashier may have
+            // toggled the terminal before sync).
+            'receipts.*.is_training' => ['nullable', 'boolean'],
         ];
     }
 
