@@ -32,7 +32,6 @@ use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWor
 use App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCancelled;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderClosed;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompletedV2;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused;
