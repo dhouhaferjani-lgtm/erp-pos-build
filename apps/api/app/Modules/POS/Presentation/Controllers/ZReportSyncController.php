@@ -76,12 +76,18 @@ final class ZReportSyncController extends Controller
 
             // ── Schema v2 fields ──────────────────────────────────────────────
             'cash_counts' => ['sometimes', 'array'],
-            'cash_counts.*.payment_method_id' => ['required_with:cash_counts', 'uuid'],
+            'cash_counts.*.payment_method_id' => ['required', 'uuid', 'distinct'],
             'cash_counts.*.denomination_id' => ['sometimes', 'nullable', 'uuid'],
-            'cash_counts.*.counted_quantity' => ['required_with:cash_counts', 'integer', 'min:0'],
-            'cash_counts.*.counted_amount' => ['required_with:cash_counts', 'string'],
+            'cash_counts.*.counted_quantity' => ['sometimes', 'integer', 'min:0'],
+            'cash_counts.*.counted_amount' => ['sometimes', 'string'],
             'cash_counts.*.denomination_name' => ['sometimes', 'nullable', 'string'],
             'cash_counts.*.denomination_value' => ['sometimes', 'nullable', 'string'],
+            'cash_counts.*.currency_code' => ['required', 'string', 'size:3'],
+            'cash_counts.*.expected_amount' => ['required', 'regex:/^\d+(?:\.\d{1,4})?$/'],
+            'cash_counts.*.actual_amount' => ['required', 'regex:/^\d+(?:\.\d{1,4})?$/'],
+            'cash_counts.*.variance_amount' => ['required', 'regex:/^-?\d+(?:\.\d{1,4})?$/'],
+            'cash_counts.*.variance_direction' => ['required', 'string', Rule::in(['over', 'under', 'balanced'])],
+            'cash_counts.*.transaction_count' => ['required', 'integer', 'min:0'],
 
             'shift_fields' => ['sometimes', 'nullable', 'array'],
             'shift_fields.variance_reason' => ['sometimes', 'nullable', 'string'],
@@ -98,6 +104,21 @@ final class ZReportSyncController extends Controller
         ]);
 
         $companyId = $this->companyContext->getCompanyId();
+
+        /** @var array<int, array<string, mixed>> $cashCountsForValidation */
+        $cashCountsForValidation = isset($validated['cash_counts']) && is_array($validated['cash_counts'])
+            ? $validated['cash_counts']
+            : [];
+        $cashCountErrors = $this->validateCashCountBreakdownArithmetic($cashCountsForValidation);
+        if ($cashCountErrors !== []) {
+            return response()->json([
+                'error' => [
+                    'code' => 'VALIDATION_ERROR',
+                    'message' => 'The synced cash-count breakdown is internally inconsistent.',
+                    'errors' => $cashCountErrors,
+                ],
+            ], 422);
+        }
 
         // Verify terminal belongs to company
         /** @var Terminal $terminal */
@@ -213,62 +234,82 @@ final class ZReportSyncController extends Controller
     }
 
     /**
-     * Aggregate denomination-level cash_counts by payment_method_id and build
-     * CashCountBreakdownDTO instances that the repository can persist.
-     *
-     * Because the sync payload only carries the counted (actual) amount —
-     * the expected amount is not transmitted as a separate per-method figure —
-     * we store expected_amount = 0.0000 and derive variance = actual - 0.
-     * The DB CHECK constraint (variance_amount = actual_amount - expected_amount)
-     * is satisfied when expected_amount = 0 and variance_amount = actual_amount.
+     * Build CashCountBreakdownDTO instances from the POS-device Z-report payload.
+     * The offline POS is the source of truth for this path, so the server archives
+     * each per-method breakdown verbatim instead of recomputing expected/variance.
      *
      * @param  array<int, array<string, mixed>>  $cashCounts
      * @return array<int, CashCountBreakdownDTO>
      */
     private function buildBreakdownsFromSyncPayload(array $cashCounts): array
     {
-        /** @var array<string, array{amount: numeric-string, qty: int}> $perMethod */
-        $perMethod = [];
-
-        foreach ($cashCounts as $entry) {
-            $methodId = (string) $entry['payment_method_id'];
-            /** @var numeric-string $rawAmount */
-            $rawAmount = is_numeric($entry['counted_amount'] ?? '0')
-                ? (string) ($entry['counted_amount'] ?? '0')
-                : '0';
-            $qty = (int) ($entry['counted_quantity'] ?? 0);
-
-            if (! isset($perMethod[$methodId])) {
-                $perMethod[$methodId] = ['amount' => '0.0000', 'qty' => 0];
-            }
-
-            /** @var numeric-string $runningAmount */
-            $runningAmount = $perMethod[$methodId]['amount'];
-            $perMethod[$methodId]['amount'] = bcadd($runningAmount, $rawAmount, 4);
-            $perMethod[$methodId]['qty'] += $qty;
-        }
-
         $breakdowns = [];
 
-        foreach ($perMethod as $methodId => $totals) {
-            /** @var numeric-string $actualAmount */
-            $actualAmount = $totals['amount'];
-            $expectedAmount = '0.0000';
-            // variance = actual - expected = actual - 0 (satisfies DB CHECK)
-            $varianceAmount = $actualAmount;
+        foreach ($cashCounts as $entry) {
+            $expectedAmount = $this->normaliseNumericString($entry['expected_amount'] ?? null);
+            $actualAmount = $this->normaliseNumericString($entry['actual_amount'] ?? null);
+            $varianceAmount = $this->normaliseNumericString($entry['variance_amount'] ?? null);
 
             $breakdowns[] = new CashCountBreakdownDTO(
-                paymentMethodId: $methodId,
-                currencyCode: 'XXX', // currency not transmitted per-method in sync payload
-                expectedAmount: $expectedAmount,
-                actualAmount: $actualAmount,
-                varianceAmount: $varianceAmount,
-                varianceDirection: VarianceDirection::fromSignedAmount($varianceAmount),
-                transactionCount: $totals['qty'],
+                paymentMethodId: (string) $entry['payment_method_id'],
+                currencyCode: (string) $entry['currency_code'],
+                expectedAmount: bcadd($expectedAmount, '0', 4),
+                actualAmount: bcadd($actualAmount, '0', 4),
+                varianceAmount: bcadd($varianceAmount, '0', 4),
+                varianceDirection: VarianceDirection::from((string) $entry['variance_direction']),
+                transactionCount: (int) $entry['transaction_count'],
             );
         }
 
         return $breakdowns;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $cashCounts
+     * @return array<string, list<string>>
+     */
+    private function validateCashCountBreakdownArithmetic(array $cashCounts): array
+    {
+        $errors = [];
+
+        foreach ($cashCounts as $index => $entry) {
+            $expectedAmount = $this->normaliseNumericString($entry['expected_amount'] ?? null);
+            $actualAmount = $this->normaliseNumericString($entry['actual_amount'] ?? null);
+            $varianceAmount = $this->normaliseNumericString($entry['variance_amount'] ?? null);
+            $calculatedVariance = bcsub($actualAmount, $expectedAmount, 4);
+            $normalisedVariance = bcadd($varianceAmount, '0', 4);
+
+            if (bccomp($calculatedVariance, $normalisedVariance, 4) !== 0) {
+                $errors["cash_counts.{$index}.variance_amount"] = [
+                    'The variance_amount must equal actual_amount minus expected_amount.',
+                ];
+            }
+
+            $direction = is_string($entry['variance_direction'] ?? null)
+                ? $entry['variance_direction']
+                : '';
+            $expectedDirection = VarianceDirection::fromSignedAmount($calculatedVariance)->value;
+
+            if ($direction !== $expectedDirection) {
+                $errors["cash_counts.{$index}.variance_direction"] = [
+                    'The variance_direction must match the sign of actual_amount minus expected_amount.',
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function normaliseNumericString(string|int|float|null $value): string
+    {
+        if (! is_numeric($value)) {
+            return '0';
+        }
+
+        return (string) $value;
     }
 
     /**
