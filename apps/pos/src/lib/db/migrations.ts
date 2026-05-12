@@ -827,4 +827,73 @@ export const migrations: Migration[] = [
         AND sync_error LIKE '%database is locked%';
     `,
   },
+  {
+    version: 33,
+    name: 'add_operator_discount_permission_cache_timestamp',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_fetched_at TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 34,
+    name: 'add_operator_discount_permission_cache_status',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute("ALTER TABLE operator_pins ADD COLUMN discount_permissions_status TEXT DEFAULT 'unavailable'");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 35,
+    name: 'add_operator_discount_permission_terminal_code',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute('ALTER TABLE operator_pins ADD COLUMN discount_permissions_terminal_code TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    version: 36,
+    name: 'add_operator_discount_permission_cache_details',
+    sql: '',
+    async run(db) {
+      const columns = [
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_user_can_discount INTEGER',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_user_max_discount_percent REAL',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_can_apply_line_discounts INTEGER',
+        'ALTER TABLE operator_pins ADD COLUMN discount_permissions_can_apply_transaction_discounts INTEGER',
+      ];
+
+      for (const statement of columns) {
+        try {
+          await db.execute(statement);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

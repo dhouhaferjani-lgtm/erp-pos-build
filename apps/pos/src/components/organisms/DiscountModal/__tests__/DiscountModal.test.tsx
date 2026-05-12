@@ -18,6 +18,7 @@ function renderModal(overrides: Partial<Parameters<typeof DiscountModal>[0]> = {
     onApplyTransactionDiscount: vi.fn(),
     canDiscount: true,
     maxDiscountPercent: 100,
+    terminalMaxDiscountPercent: 100,
     requiresReason: false,
   };
   return render(<DiscountModal {...defaults} {...overrides} />);
@@ -109,6 +110,7 @@ describe('DiscountModal — focus management (PR #97 follow-up)', () => {
             onApplyTransactionDiscount={vi.fn()}
             canDiscount
             maxDiscountPercent={100}
+            terminalMaxDiscountPercent={100}
             requiresReason={false}
           />
         </>
