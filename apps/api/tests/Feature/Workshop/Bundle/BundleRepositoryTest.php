@@ -45,6 +45,52 @@ final class BundleRepositoryTest extends TestCase
         $this->assertCount(1, $loaded->vehicleApplicabilities);
     }
 
+    public function test_find_by_id_for_scope_rejects_foreign_scope(): void
+    {
+        $foreignTenant = Tenant::factory()->create();
+        $foreignCompany = Company::factory()->for($foreignTenant)->create();
+        $foreignBundle = ServiceBundle::factory()
+            ->forCompany($foreignTenant->id, $foreignCompany->id)
+            ->create();
+
+        $this->assertNull($this->repository->findByIdForScope(
+            $this->tenant->id,
+            $this->company->id,
+            $foreignBundle->id,
+        ));
+        $this->assertNotNull($this->repository->findByIdForScope(
+            $foreignTenant->id,
+            $foreignCompany->id,
+            $foreignBundle->id,
+        ));
+    }
+
+    public function test_find_with_components_and_applicabilities_for_scope_rejects_foreign_scope(): void
+    {
+        $foreignTenant = Tenant::factory()->create();
+        $foreignCompany = Company::factory()->for($foreignTenant)->create();
+        $foreignBundle = ServiceBundle::factory()
+            ->forCompany($foreignTenant->id, $foreignCompany->id)
+            ->create();
+        ServiceBundleVehicleApplicability::factory()->forBundle($foreignBundle)->universal()->create();
+
+        $this->assertNull($this->repository->findWithComponentsAndApplicabilitiesForScope(
+            $this->tenant->id,
+            $this->company->id,
+            $foreignBundle->id,
+        ));
+
+        $loaded = $this->repository->findWithComponentsAndApplicabilitiesForScope(
+            $foreignTenant->id,
+            $foreignCompany->id,
+            $foreignBundle->id,
+        );
+
+        $this->assertNotNull($loaded);
+        $this->assertTrue($loaded->relationLoaded('components'));
+        $this->assertTrue($loaded->relationLoaded('vehicleApplicabilities'));
+    }
+
     public function test_applicable_for_vehicle_returns_universal_and_matching(): void
     {
         $vehicleId = Str::uuid()->toString();

@@ -24,5 +24,7 @@ final readonly class UpdateBundleCommand
         public ?int $service_interval_km,
         public ?int $service_interval_months,
         public ?bool $is_active,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

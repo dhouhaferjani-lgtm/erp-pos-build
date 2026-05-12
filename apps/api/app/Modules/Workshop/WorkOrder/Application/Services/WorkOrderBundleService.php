@@ -51,10 +51,10 @@ final readonly class WorkOrderBundleService
     public function addBundle(AddBundleCommand $command): array
     {
         return $this->db->transaction(function () use ($command): array {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
-            $expansion = $this->bundles->expand($command->bundle_id, $command->quantity, $command->vehicle_id);
-            $pricingMode = $this->bundles->pricingModeOf($command->bundle_id);
+            $expansion = $this->bundles->expand($wo->tenant_id, $wo->company_id, $command->bundle_id, $command->quantity, $command->vehicle_id);
+            $pricingMode = $this->bundles->pricingModeOf($wo->tenant_id, $wo->company_id, $command->bundle_id);
             if ($pricingMode === null) {
                 throw new RuntimeException("Bundle {$command->bundle_id} not found.");
             }
@@ -168,9 +168,9 @@ final readonly class WorkOrderBundleService
         $this->workOrders->save($wo);
     }
 
-    private function requireMutableWorkOrder(string $workOrderId): WorkOrder
+    private function requireMutableWorkOrder(string $tenantId, string $companyId, string $workOrderId): WorkOrder
     {
-        $wo = $this->workOrders->findForUpdate($workOrderId);
+        $wo = $this->workOrders->findForUpdateForScope($tenantId, $companyId, $workOrderId);
         if ($wo === null) {
             throw new RuntimeException("WorkOrder {$workOrderId} not found.");
         }

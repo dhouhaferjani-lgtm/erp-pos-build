@@ -66,12 +66,12 @@ final readonly class BundleExpansionService
      *
      * @return Collection<int, BundleExpansionLine>
      */
-    public function expandForWorkOrder(string $bundleId, string $quantity, ?string $vehicleId): Collection
+    public function expandForWorkOrder(string $tenantId, string $companyId, string $bundleId, string $quantity, ?string $vehicleId): Collection
     {
         // Discard: see @todo on docblock. Referenced for static-analysis parity.
         unset($vehicleId);
 
-        $bundle = $this->bundles->findWithComponentsAndApplicabilities($bundleId);
+        $bundle = $this->bundles->findWithComponentsAndApplicabilitiesForScope($tenantId, $companyId, $bundleId);
         if ($bundle === null) {
             throw BundleExpansionException::bundleNotFound($bundleId);
         }
@@ -80,7 +80,7 @@ final readonly class BundleExpansionService
         $normalizedQty = CurrencyScale::bcformat($quantity, $scale);
 
         /** @var list<BundleExpansionLine> $lines */
-        $lines = $this->expandBundle($bundle, $normalizedQty, $scale, depth: 0);
+        $lines = $this->expandBundle($tenantId, $companyId, $bundle, $normalizedQty, $scale, depth: 0);
 
         return new Collection($lines);
     }
@@ -99,27 +99,27 @@ final readonly class BundleExpansionService
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandBundle(ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
     {
         if ($depth >= self::MAX_NESTING_DEPTH) {
             throw BundleExpansionException::maxDepthExceeded(self::MAX_NESTING_DEPTH);
         }
 
         if ($bundle->pricing_mode === BundlePricingMode::FixedBundle) {
-            return $this->expandFixedBundle($bundle, $quantity, $scale, $depth);
+            return $this->expandFixedBundle($tenantId, $companyId, $bundle, $quantity, $scale, $depth);
         }
 
-        return $this->expandStandard($bundle, $quantity, $scale, $depth);
+        return $this->expandStandard($tenantId, $companyId, $bundle, $quantity, $scale, $depth);
     }
 
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandStandard(ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandStandard(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
     {
         $lines = [];
         foreach ($bundle->components as $component) {
-            foreach ($this->expandComponent($component, $quantity, $scale, $depth) as $line) {
+            foreach ($this->expandComponent($tenantId, $companyId, $component, $quantity, $scale, $depth) as $line) {
                 $lines[] = $line;
             }
         }
@@ -130,7 +130,7 @@ final readonly class BundleExpansionService
     /**
      * @return list<BundleExpansionLine>
      */
-    private function expandFixedBundle(ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
+    private function expandFixedBundle(string $tenantId, string $companyId, ServiceBundle $bundle, string $quantity, int $scale, int $depth): array
     {
         $this->assertSingleVatRate($bundle);
 
@@ -155,7 +155,7 @@ final readonly class BundleExpansionService
         );
 
         foreach ($bundle->components as $component) {
-            foreach ($this->expandComponentInformational($component, $quantity, $scale, $depth) as $line) {
+            foreach ($this->expandComponentInformational($tenantId, $companyId, $component, $quantity, $scale, $depth) as $line) {
                 $lines[] = $line;
             }
         }
@@ -169,17 +169,17 @@ final readonly class BundleExpansionService
      *
      * @return list<BundleExpansionLine>
      */
-    private function expandComponent(ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
+    private function expandComponent(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
     {
         $lineQty = $this->multiplyScaled(CurrencyScale::bcformat($component->quantity, $scale), $quantity, $scale);
 
         if ($component->component_type === BundleComponentType::NestedBundle && $component->nested_bundle_id !== null) {
-            $nested = $this->bundles->findWithComponentsAndApplicabilities($component->nested_bundle_id);
+            $nested = $this->bundles->findWithComponentsAndApplicabilitiesForScope($tenantId, $companyId, $component->nested_bundle_id);
             if ($nested === null) {
                 throw BundleExpansionException::missingComponent($component->nested_bundle_id);
             }
 
-            return $this->expandBundle($nested, $lineQty, $scale, $depth + 1);
+            return $this->expandBundle($tenantId, $companyId, $nested, $lineQty, $scale, $depth + 1);
         }
 
         if ($component->component_type === BundleComponentType::Part && $component->product_id !== null) {
@@ -237,13 +237,13 @@ final readonly class BundleExpansionService
      *
      * @return list<BundleExpansionLine>
      */
-    private function expandComponentInformational(ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
+    private function expandComponentInformational(string $tenantId, string $companyId, ServiceBundleComponent $component, string $quantity, int $scale, int $depth): array
     {
         $lineQty = $this->multiplyScaled(CurrencyScale::bcformat($component->quantity, $scale), $quantity, $scale);
         $zero = CurrencyScale::bcformat('0', $scale);
 
         if ($component->component_type === BundleComponentType::NestedBundle && $component->nested_bundle_id !== null) {
-            $nested = $this->bundles->findWithComponentsAndApplicabilities($component->nested_bundle_id);
+            $nested = $this->bundles->findWithComponentsAndApplicabilitiesForScope($tenantId, $companyId, $component->nested_bundle_id);
             if ($nested === null) {
                 throw BundleExpansionException::missingComponent($component->nested_bundle_id);
             }
@@ -251,7 +251,7 @@ final readonly class BundleExpansionService
             // bundle's components at the next depth.
             $lines = [];
             foreach ($nested->components as $inner) {
-                foreach ($this->expandComponentInformational($inner, $lineQty, $scale, $depth + 1) as $l) {
+                foreach ($this->expandComponentInformational($tenantId, $companyId, $inner, $lineQty, $scale, $depth + 1) as $l) {
                     $lines[] = $l;
                 }
             }

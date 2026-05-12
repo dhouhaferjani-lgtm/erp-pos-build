@@ -13,7 +13,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderApproved;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCancelled;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderClosed;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompletedV2;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderDiagnosed;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderInvoiced;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
@@ -63,7 +63,7 @@ final readonly class WorkOrderTransitionService
     public function transition(TransitionStatusCommand $command): WorkOrder
     {
         return $this->db->transaction(function () use ($command): WorkOrder {
-            $wo = $this->loadForUpdate($command->work_order_id, $command->expected_updated_at);
+            $wo = $this->loadForUpdate($command->tenant_id, $command->company_id, $command->work_order_id, $command->expected_updated_at);
 
             $from = $wo->status;
             $to = $command->to_status;
@@ -130,7 +130,7 @@ final readonly class WorkOrderTransitionService
     {
         // Embed the approval evidence on the WO header BEFORE transitioning.
         return $this->db->transaction(function () use ($command): WorkOrder {
-            $wo = $this->loadForUpdate($command->work_order_id, $command->expected_updated_at);
+            $wo = $this->loadForUpdate($command->tenant_id, $command->company_id, $command->work_order_id, $command->expected_updated_at);
             $wo->approval_method = $command->approval_method;
             $wo->approval_captured_at = Carbon::instance($command->approval_captured_at);
             $wo->approval_captured_by_user_id = $command->approval_captured_by_user_id;
@@ -143,6 +143,8 @@ final readonly class WorkOrderTransitionService
                 reason_code: null,
                 triggered_by_user_id: $command->approval_captured_by_user_id,
                 occurred_at: $command->approval_captured_at,
+                tenant_id: $command->tenant_id,
+                company_id: $command->company_id,
                 context: [
                     'approval_method' => $command->approval_method->value,
                     'approval_reference' => $command->approval_reference,
@@ -153,9 +155,9 @@ final readonly class WorkOrderTransitionService
         });
     }
 
-    private function loadForUpdate(string $workOrderId, ?\DateTimeImmutable $expectedUpdatedAt): WorkOrder
+    private function loadForUpdate(string $tenantId, string $companyId, string $workOrderId, ?\DateTimeImmutable $expectedUpdatedAt): WorkOrder
     {
-        $wo = $this->workOrders->findForUpdate($workOrderId);
+        $wo = $this->workOrders->findForUpdateForScope($tenantId, $companyId, $workOrderId);
         if ($wo === null) {
             throw new RuntimeException("WorkOrder {$workOrderId} not found.");
         }
@@ -262,8 +264,10 @@ final readonly class WorkOrderTransitionService
                 needs: [],
                 recorded_at: $occurredAt,
             ),
-            WorkOrderStatus::Completed => new WorkOrderCompleted(
+            WorkOrderStatus::Completed => new WorkOrderCompletedV2(
                 work_order_id: $wo->id,
+                tenant_id: $wo->tenant_id,
+                company_id: $wo->company_id,
                 completion_mileage: isset($command->context['completion_mileage'])
                     && is_int($command->context['completion_mileage'])
                     ? $command->context['completion_mileage']

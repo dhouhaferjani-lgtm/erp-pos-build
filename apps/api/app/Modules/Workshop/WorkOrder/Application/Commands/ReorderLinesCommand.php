@@ -16,5 +16,7 @@ final readonly class ReorderLinesCommand
     public function __construct(
         public string $work_order_id,
         public array $ordered_line_ids,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

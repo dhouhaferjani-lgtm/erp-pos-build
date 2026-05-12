@@ -63,7 +63,7 @@ final class ExpansionFixedBundleModeTest extends TestCase
         ServiceBundleComponent::factory()->forBundle($bundle)->part($oil, '4.000')->create(['unit_id' => $this->unit->id]);
         ServiceBundleComponent::factory()->forBundle($bundle)->part($filter, '1.000')->create(['unit_id' => $this->unit->id]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '1', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
 
         $this->assertCount(3, $lines);
 
@@ -102,7 +102,7 @@ final class ExpansionFixedBundleModeTest extends TestCase
         ]);
         ServiceBundleComponent::factory()->forBundle($bundle)->part($oil, '1.000')->create(['unit_id' => $this->unit->id]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '2', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '2', null);
         $header = $lines->first();
         $this->assertNotNull($header);
 

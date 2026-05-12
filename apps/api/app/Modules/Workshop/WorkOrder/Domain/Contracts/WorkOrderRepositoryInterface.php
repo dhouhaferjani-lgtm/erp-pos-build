@@ -19,13 +19,22 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 interface WorkOrderRepositoryInterface
 {
+    /**
+     * @deprecated Use findByIdForScope() so callers prove tenant/company scope.
+     */
     public function findById(string $id): ?WorkOrder;
+
+    public function findByIdForScope(string $tenantId, string $companyId, string $id): ?WorkOrder;
 
     /**
      * Lock the row for update (`SELECT ... FOR UPDATE`). Used by
      * WorkOrderTransitionService to serialize concurrent transitions.
+     *
+     * @deprecated Use findForUpdateForScope() so callers prove tenant/company scope.
      */
     public function findForUpdate(string $id): ?WorkOrder;
+
+    public function findForUpdateForScope(string $tenantId, string $companyId, string $id): ?WorkOrder;
 
     public function save(WorkOrder $workOrder): WorkOrder;
 

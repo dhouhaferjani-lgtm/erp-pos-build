@@ -42,7 +42,7 @@ final class WorkOrderTransitionController extends Controller
 
     public function transition(TransitionRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $workOrder = $this->requireWorkOrder($id);
         $userId = $this->userId($request);
 
         /** @var array<string, mixed> $data */
@@ -55,6 +55,8 @@ final class WorkOrderTransitionController extends Controller
                 reason_code: isset($data['reason_code']) && is_string($data['reason_code']) ? $data['reason_code'] : null,
                 triggered_by_user_id: $userId,
                 occurred_at: new \DateTimeImmutable,
+                tenant_id: $workOrder->tenant_id,
+                company_id: $workOrder->company_id,
                 context: isset($data['context']) && is_array($data['context']) ? $data['context'] : null,
                 expected_updated_at: isset($data['expected_updated_at']) && is_string($data['expected_updated_at']) ? new \DateTimeImmutable($data['expected_updated_at']) : null,
             ));
@@ -74,7 +76,7 @@ final class WorkOrderTransitionController extends Controller
 
     public function approve(CaptureApprovalRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $workOrder = $this->requireWorkOrder($id);
         $userId = $this->userId($request);
 
         /** @var array<string, mixed> $data */
@@ -87,6 +89,8 @@ final class WorkOrderTransitionController extends Controller
                 approval_captured_by_user_id: $userId,
                 approval_reference: isset($data['approval_reference']) && is_string($data['approval_reference']) ? $data['approval_reference'] : null,
                 approval_captured_at: isset($data['approval_captured_at']) && is_string($data['approval_captured_at']) ? new \DateTimeImmutable($data['approval_captured_at']) : new \DateTimeImmutable,
+                tenant_id: $workOrder->tenant_id,
+                company_id: $workOrder->company_id,
                 expected_updated_at: isset($data['expected_updated_at']) && is_string($data['expected_updated_at']) ? new \DateTimeImmutable($data['expected_updated_at']) : null,
             ));
         } catch (StaleWorkOrderException $e) {
@@ -103,7 +107,7 @@ final class WorkOrderTransitionController extends Controller
 
     public function cancel(CancelRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $workOrder = $this->requireWorkOrder($id);
         $userId = $this->userId($request);
 
         /** @var array<string, mixed> $data */
@@ -116,6 +120,8 @@ final class WorkOrderTransitionController extends Controller
                 reason_code: (string) $data['reason_code'],
                 triggered_by_user_id: $userId,
                 occurred_at: new \DateTimeImmutable,
+                tenant_id: $workOrder->tenant_id,
+                company_id: $workOrder->company_id,
                 context: isset($data['note']) && is_string($data['note']) ? ['note' => $data['note']] : null,
                 expected_updated_at: isset($data['expected_updated_at']) && is_string($data['expected_updated_at']) ? new \DateTimeImmutable($data['expected_updated_at']) : null,
             ));
@@ -133,7 +139,7 @@ final class WorkOrderTransitionController extends Controller
 
     public function complete(CompleteRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $workOrder = $this->requireWorkOrder($id);
         $userId = $this->userId($request);
 
         /** @var array<string, mixed> $data */
@@ -148,6 +154,8 @@ final class WorkOrderTransitionController extends Controller
                 reason_code: null,
                 triggered_by_user_id: $userId,
                 occurred_at: new \DateTimeImmutable,
+                tenant_id: $workOrder->tenant_id,
+                company_id: $workOrder->company_id,
                 context: $context,
                 expected_updated_at: isset($data['expected_updated_at']) && is_string($data['expected_updated_at']) ? new \DateTimeImmutable($data['expected_updated_at']) : null,
             ));
@@ -163,16 +171,19 @@ final class WorkOrderTransitionController extends Controller
         return $this->detail($request, $wo);
     }
 
-    private function requireWorkOrder(string $id): void
+    private function requireWorkOrder(string $id): WorkOrder
     {
         if (! Str::isUuid($id)) {
             abort(404);
         }
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $wo = $this->workOrders->findById($id);
-        if ($wo === null || $wo->company_id !== $companyId) {
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($wo === null) {
             abort(404);
         }
+
+        return $wo;
     }
 
     private function userId(Request $request): string

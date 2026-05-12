@@ -52,7 +52,7 @@ final class MixedVatRejectionTest extends TestCase
         $service = $this->app->make(BundleExpansionService::class);
 
         $this->expectException(MixedVatInFixedBundleException::class);
-        $service->expandForWorkOrder($bundle->id, '1', null);
+        $service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
     }
 
     public function test_standard_mode_tolerates_mixed_vat(): void
@@ -83,7 +83,7 @@ final class MixedVatRejectionTest extends TestCase
         ServiceBundleComponent::factory()->forBundle($bundle)->part($at7, '1.000')->create(['unit_id' => $unit->id]);
 
         $service = $this->app->make(BundleExpansionService::class);
-        $lines = $service->expandForWorkOrder($bundle->id, '1', null);
+        $lines = $service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
 
         $this->assertCount(2, $lines);
     }

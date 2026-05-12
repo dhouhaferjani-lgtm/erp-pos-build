@@ -16,12 +16,10 @@ use App\Modules\Workshop\Technician\Domain\Enums\TimeEntrySource;
 use App\Modules\Workshop\Technician\Domain\Enums\TimeEntryType;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\Technician\Domain\TechnicianTimeEntry;
-use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
-use Mockery;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -79,30 +77,16 @@ final class TechnicianTimeEntryControllerTest extends TestCase
 
     private function bindWorkOrderStatus(?string $workOrderId, ?WorkOrderStatus $status): void
     {
-        $repo = Mockery::mock(WorkOrderRepositoryInterface::class);
         if ($workOrderId === null || $status === null) {
-            /** @var Mockery\Expectation $expectation */
-            $expectation = $repo->shouldReceive('findById');
-            $expectation->andReturn(null);
-        } else {
-            // The controller only reads `->status` and `->id` from the value
-            // returned by `findById`. We stub a WorkOrder mock with those two
-            // properties hydrated. Importing the WorkOrder model in this
-            // Technician-module test is a Rule #6 exemption: tests are not
-            // production code, so cross-module imports here do not constitute
-            // a runtime cross-module edge.
-            /** @var Mockery\MockInterface&WorkOrder $wo */
-            $wo = Mockery::mock(WorkOrder::class)->makePartial();
-            $wo->id = $workOrderId;
-            $wo->status = $status;
-            /** @var Mockery\Expectation $matchExpectation */
-            $matchExpectation = $repo->shouldReceive('findById');
-            $matchExpectation->with($workOrderId)->andReturn($wo);
-            /** @var Mockery\Expectation $fallbackExpectation */
-            $fallbackExpectation = $repo->shouldReceive('findById');
-            $fallbackExpectation->andReturn(null);
+            return;
         }
-        $this->app->instance(WorkOrderRepositoryInterface::class, $repo);
+
+        WorkOrder::factory()->create([
+            'id' => $workOrderId,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'status' => $status,
+        ]);
     }
 
     public function test_index_lists_entries_with_date_filter(): void
@@ -171,6 +155,32 @@ final class TechnicianTimeEntryControllerTest extends TestCase
         $response->assertCreated();
     }
 
+    public function test_store_rejects_foreign_work_order_id(): void
+    {
+        $foreignTenant = Tenant::factory()->create(['vertical' => Vertical::Mechanic]);
+        $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
+        $foreignWorkOrder = WorkOrder::factory()->create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+
+        $response = $this->postJson(
+            "/api/v1/workshop/technicians/{$this->profile->id}/time-entries",
+            [
+                'work_order_id' => $foreignWorkOrder->id,
+                'started_at' => '2026-06-15T09:00:00Z',
+                'ended_at' => '2026-06-15T11:00:00Z',
+                'entry_type' => TimeEntryType::WorkOrder->value,
+            ]
+        );
+
+        $response->assertStatus(422);
+        $this->assertDatabaseMissing('workshop_technician_time_entries', [
+            'technician_profile_id' => $this->profile->id,
+            'work_order_id' => $foreignWorkOrder->id,
+        ]);
+    }
+
     public function test_update_patches_time_entry(): void
     {
         $this->bindWorkOrderStatus(null, null);
@@ -190,6 +200,34 @@ final class TechnicianTimeEntryControllerTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.notes', 'updated');
+    }
+
+    public function test_update_rejects_foreign_work_order_id(): void
+    {
+        $foreignTenant = Tenant::factory()->create(['vertical' => Vertical::Mechanic]);
+        $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
+        $foreignWorkOrder = WorkOrder::factory()->create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+
+        $entry = TechnicianTimeEntry::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'technician_profile_id' => $this->profile->id,
+            'work_order_id' => null,
+        ]);
+
+        $response = $this->patchJson(
+            "/api/v1/workshop/technicians/{$this->profile->id}/time-entries/{$entry->id}",
+            ['work_order_id' => $foreignWorkOrder->id]
+        );
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('workshop_technician_time_entries', [
+            'id' => $entry->id,
+            'work_order_id' => null,
+        ]);
     }
 
     public function test_update_on_completed_work_order_is_locked(): void

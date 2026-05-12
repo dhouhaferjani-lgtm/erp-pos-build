@@ -56,6 +56,7 @@ final class TechnicianTimeEntryController extends Controller
         if ($profile === null || $profile->company_id !== $companyId) {
             abort(404);
         }
+        $tenantId = $profile->tenant_id;
 
         $query = TechnicianTimeEntry::query()
             ->where('technician_profile_id', $technicianId)
@@ -91,7 +92,7 @@ final class TechnicianTimeEntryController extends Controller
 
                 continue;
             }
-            $wo = $this->workOrders->findById($workOrderId);
+            $wo = $this->workOrders->findByIdForScope($tenantId, $companyId, $workOrderId);
             $statusByWorkOrderId[$workOrderId] = $wo?->status;
         }
 
@@ -271,7 +272,8 @@ final class TechnicianTimeEntryController extends Controller
         if (! is_string($workOrderId) || ! Str::isUuid($workOrderId)) {
             return null;
         }
-        $wo = $this->workOrders->findById($workOrderId);
+        $company = $this->companyContext->requireCompany();
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $company->id, $workOrderId);
 
         return $wo?->status;
     }

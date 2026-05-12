@@ -114,3 +114,41 @@ manual_callsites:
     fiscal_path: false
     cross_module: true
     expected_fix: "Document::find($wo->quote_document_id) is unscoped; scope by wo.tenant_id + wo.company_id."
+
+  - cluster_id: api.workshop
+    slug: eloquent-bundle-repository-find-by-id-unscoped
+    file: apps/api/app/Modules/Workshop/Bundle/Infrastructure/Persistence/EloquentBundleRepository.php
+    line: 25
+    symbol: 'App\Modules\Workshop\Bundle\Infrastructure\Persistence\EloquentBundleRepository::findById'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add and migrate callers to a tenant+company-scoped bundle finder so foreign bundle ids cannot pass through BundleRepository consumers."
+
+  - cluster_id: api.workshop
+    slug: eloquent-bundle-repository-find-with-components-unscoped
+    file: apps/api/app/Modules/Workshop/Bundle/Infrastructure/Persistence/EloquentBundleRepository.php
+    line: 38
+    symbol: 'App\Modules\Workshop\Bundle\Infrastructure\Persistence\EloquentBundleRepository::findWithComponentsAndApplicabilities'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    expected_fix: "Add and migrate callers to a tenant+company-scoped eager-loading bundle finder so foreign bundle ids cannot pass through BundleRepository consumers."
+
+  - cluster_id: api.workshop
+    slug: technician-time-entry-work-order-id-body-unscoped
+    file: apps/api/app/Modules/Workshop/Technician/Presentation/Requests/StoreTimeEntryRequest.php
+    symbol: 'App\Modules\Workshop\Technician\Presentation\Requests\StoreTimeEntryRequest|UpdateTimeEntryRequest'
+    pattern_type: unscoped_body_foreign_key
+    resource: workshop_work_orders
+    expected_scope: tenant_and_company
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    expected_fix: "Validate body work_order_id with tenant+company ScopedExists and keep technician lookupStatus scoped as defense in depth."

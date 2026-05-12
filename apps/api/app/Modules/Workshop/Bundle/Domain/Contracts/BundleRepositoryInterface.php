@@ -16,13 +16,26 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 interface BundleRepositoryInterface
 {
+    /**
+     * @deprecated Use findByIdForScope() so callers prove tenant/company scope.
+     */
     public function findById(string $bundleId): ?ServiceBundle;
+
+    public function findByIdForScope(string $tenantId, string $companyId, string $bundleId): ?ServiceBundle;
 
     /**
      * Load a bundle with its components and vehicle applicabilities
      * eagerly attached. Returns null if the bundle is missing.
+     *
+     * @deprecated Use findWithComponentsAndApplicabilitiesForScope() so callers prove tenant/company scope.
      */
     public function findWithComponentsAndApplicabilities(string $bundleId): ?ServiceBundle;
+
+    public function findWithComponentsAndApplicabilitiesForScope(
+        string $tenantId,
+        string $companyId,
+        string $bundleId,
+    ): ?ServiceBundle;
 
     /**
      * @param  array{active?: bool, search?: string}  $filters

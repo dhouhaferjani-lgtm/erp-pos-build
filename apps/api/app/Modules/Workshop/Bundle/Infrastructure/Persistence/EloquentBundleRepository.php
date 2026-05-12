@@ -27,9 +27,35 @@ final class EloquentBundleRepository implements BundleRepositoryInterface
         return ServiceBundle::query()->find($bundleId);
     }
 
+    public function findByIdForScope(string $tenantId, string $companyId, string $bundleId): ?ServiceBundle
+    {
+        return ServiceBundle::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($bundleId);
+    }
+
     public function findWithComponentsAndApplicabilities(string $bundleId): ?ServiceBundle
     {
         return ServiceBundle::query()
+            ->with([
+                'components.product',
+                'components.service',
+                'components.nestedBundle',
+                'components.unit',
+                'vehicleApplicabilities',
+            ])
+            ->find($bundleId);
+    }
+
+    public function findWithComponentsAndApplicabilitiesForScope(
+        string $tenantId,
+        string $companyId,
+        string $bundleId,
+    ): ?ServiceBundle {
+        return ServiceBundle::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with([
                 'components.product',
                 'components.service',

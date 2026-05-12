@@ -36,6 +36,8 @@ final class TransitionServiceTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
 
@@ -60,6 +62,8 @@ final class TransitionServiceTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
     }
@@ -78,6 +82,8 @@ final class TransitionServiceTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
             expected_updated_at: $stale,
         ));
@@ -94,6 +100,8 @@ final class TransitionServiceTest extends TestCase
             approval_captured_by_user_id: $wo->opened_by_user_id,
             approval_reference: 'Ref-123',
             approval_captured_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertSame(WorkOrderStatus::Approved, $updated->status);
@@ -114,6 +122,8 @@ final class TransitionServiceTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
 

@@ -23,5 +23,7 @@ final readonly class UpdateLineCommand
         public ?string $labor_hours_actual,
         public ?string $assigned_technician_profile_id,
         public ?bool $is_completed,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

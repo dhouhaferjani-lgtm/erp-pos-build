@@ -107,6 +107,8 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
                         bundle_id: $planned->service_ref_id,
                         quantity: '1',
                         vehicle_id: $vehicleId,
+                        tenant_id: $tenantId,
+                        company_id: $companyId,
                     ));
 
                     continue;
@@ -133,6 +135,8 @@ final readonly class WorkOrderCreationService implements WorkOrderCreationServic
                     labor_hours_estimated: '1',
                     assigned_technician_profile_id: null,
                     is_customer_supplied: false,
+                    tenant_id: $tenantId,
+                    company_id: $companyId,
                 ));
             }
 

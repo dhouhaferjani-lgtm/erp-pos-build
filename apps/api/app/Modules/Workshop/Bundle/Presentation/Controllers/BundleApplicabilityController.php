@@ -28,9 +28,10 @@ class BundleApplicabilityController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($bundleId);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $bundleId);
+        if ($bundle === null) {
             abort(404);
         }
 
@@ -49,9 +50,11 @@ class BundleApplicabilityController extends Controller
         $this->authoring->setVehicleApplicabilities(new SetVehicleApplicabilitiesCommand(
             bundle_id: $bundleId,
             applicabilities: $rows,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         ));
 
-        $fresh = $this->bundles->findWithComponentsAndApplicabilities($bundleId);
+        $fresh = $this->bundles->findWithComponentsAndApplicabilitiesForScope($bundle->tenant_id, $bundle->company_id, $bundleId);
 
         return response()->json([
             'data' => $fresh !== null

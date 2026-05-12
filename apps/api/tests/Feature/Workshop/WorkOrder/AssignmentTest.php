@@ -35,6 +35,8 @@ final class AssignmentTest extends TestCase
             is_lead: true,
             assigned_by_user_id: $user->id,
             notes: 'Main tech',
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertTrue($assignment->is_lead);
@@ -58,6 +60,8 @@ final class AssignmentTest extends TestCase
             is_lead: true,
             assigned_by_user_id: $user->id,
             notes: null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
         $service->assign(new AssignTechnicianCommand(
             work_order_id: $wo->id,
@@ -65,6 +69,8 @@ final class AssignmentTest extends TestCase
             is_lead: true,
             assigned_by_user_id: $user->id,
             notes: null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertSame(
@@ -94,11 +100,15 @@ final class AssignmentTest extends TestCase
             is_lead: true,
             assigned_by_user_id: $user->id,
             notes: null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $service->unassign(new UnassignTechnicianCommand(
             work_order_id: $wo->id,
             assignment_id: $assignment->id,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertNull(WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);
@@ -119,6 +129,8 @@ final class AssignmentTest extends TestCase
             is_lead: true,
             assigned_by_user_id: $user->id,
             notes: null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
         // tech2 assigned non-lead
         $service->assign(new AssignTechnicianCommand(
@@ -127,11 +139,15 @@ final class AssignmentTest extends TestCase
             is_lead: false,
             assigned_by_user_id: $user->id,
             notes: null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $service->setPrimary(new SetPrimaryTechnicianCommand(
             work_order_id: $wo->id,
             technician_profile_id: $tech2->id,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertSame($tech2->id, WorkOrder::query()->findOrFail($wo->id)->primary_technician_profile_id);

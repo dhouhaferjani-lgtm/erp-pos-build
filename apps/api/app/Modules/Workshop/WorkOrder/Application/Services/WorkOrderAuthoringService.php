@@ -86,7 +86,7 @@ final readonly class WorkOrderAuthoringService
     public function updateHeader(UpdateWorkOrderHeaderCommand $command): WorkOrder
     {
         return $this->db->transaction(function () use ($command): WorkOrder {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
             if ($command->primary_technician_profile_id !== null) {
                 $wo->primary_technician_profile_id = $command->primary_technician_profile_id;
@@ -114,16 +114,16 @@ final readonly class WorkOrderAuthoringService
     public function recordDiagnosis(RecordDiagnosisCommand $command): WorkOrder
     {
         return $this->db->transaction(function () use ($command): WorkOrder {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
             $wo->diagnosis = $command->diagnosis;
 
             return $this->workOrders->save($wo);
         });
     }
 
-    private function requireMutableWorkOrder(string $workOrderId): WorkOrder
+    private function requireMutableWorkOrder(string $tenantId, string $companyId, string $workOrderId): WorkOrder
     {
-        $wo = $this->workOrders->findForUpdate($workOrderId);
+        $wo = $this->workOrders->findForUpdateForScope($tenantId, $companyId, $workOrderId);
         if ($wo === null) {
             throw new RuntimeException("WorkOrder {$workOrderId} not found.");
         }

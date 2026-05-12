@@ -12,5 +12,7 @@ final readonly class RecordDiagnosisCommand
     public function __construct(
         public string $work_order_id,
         public string $diagnosis,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

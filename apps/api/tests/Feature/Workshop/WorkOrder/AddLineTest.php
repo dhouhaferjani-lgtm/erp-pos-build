@@ -47,6 +47,8 @@ final class AddLineTest extends TestCase
             labor_hours_estimated: null,
             assigned_technician_profile_id: null,
             is_customer_supplied: false,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         $this->assertSame(WorkOrderLineType::Part, $line->line_type);
@@ -90,6 +92,8 @@ final class AddLineTest extends TestCase
             labor_hours_estimated: null,
             assigned_technician_profile_id: null,
             is_customer_supplied: false,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
     }
 
@@ -116,6 +120,8 @@ final class AddLineTest extends TestCase
             labor_hours_estimated: null,
             assigned_technician_profile_id: null,
             is_customer_supplied: false,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
     }
 

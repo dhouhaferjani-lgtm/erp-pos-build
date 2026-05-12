@@ -17,9 +17,27 @@ final readonly class EloquentWorkOrderRepository implements WorkOrderRepositoryI
         return WorkOrder::query()->find($id);
     }
 
+    public function findByIdForScope(string $tenantId, string $companyId, string $id): ?WorkOrder
+    {
+        return WorkOrder::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($id);
+    }
+
     public function findForUpdate(string $id): ?WorkOrder
     {
         return WorkOrder::query()->whereKey($id)->lockForUpdate()->first();
+    }
+
+    public function findForUpdateForScope(string $tenantId, string $companyId, string $id): ?WorkOrder
+    {
+        return WorkOrder::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($id)
+            ->lockForUpdate()
+            ->first();
     }
 
     public function save(WorkOrder $workOrder): WorkOrder

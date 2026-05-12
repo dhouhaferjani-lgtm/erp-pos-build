@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-09T21:54:37Z'
+  generated_at: '2026-05-12T11:21:46Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+  yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -138611,6 +138611,144 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-10-web-tanstack-keys-batch-3-codex-rereview.md
         review_commit: '9387e775'
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+  -
+    id: api.workshop.008
+    stable_key: 'manual:api.workshop:eloquent-bundle-repository-find-by-id-unscoped'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/Bundle/Infrastructure/Persistence/EloquentBundleRepository.php
+    line: 25
+    symbol: 'App\Modules\Workshop\Bundle\Infrastructure\Persistence\EloquentBundleRepository::findById'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    expected_fix: 'Add and migrate callers to a tenant+company-scoped bundle finder so foreign bundle ids cannot pass through BundleRepository consumers.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-12T11:21:46Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        new_yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
+        target_ids:
+          - api.workshop.008
+        from_status: null
+        to_status: pending
+        commit: a5ec7fd10703f664d7cdfaa5ebddd598ed99b4fb
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.workshop.009
+    stable_key: 'manual:api.workshop:eloquent-bundle-repository-find-with-components-unscoped'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/Bundle/Infrastructure/Persistence/EloquentBundleRepository.php
+    line: 38
+    symbol: 'App\Modules\Workshop\Bundle\Infrastructure\Persistence\EloquentBundleRepository::findWithComponentsAndApplicabilities'
+    pattern_type: unscoped_eloquent_find
+    resource: ServiceBundle
+    expected_scope: tenant_and_company
+    expected_fix: 'Add and migrate callers to a tenant+company-scoped eager-loading bundle finder so foreign bundle ids cannot pass through BundleRepository consumers.'
+    severity: low
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-12T11:21:46Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        new_yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
+        target_ids:
+          - api.workshop.009
+        from_status: null
+        to_status: pending
+        commit: a5ec7fd10703f664d7cdfaa5ebddd598ed99b4fb
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.workshop.010
+    stable_key: 'manual:api.workshop:technician-time-entry-work-order-id-body-unscoped'
+    surface: api
+    cluster_id: api.workshop
+    scanner: manual
+    file: apps/api/app/Modules/Workshop/Technician/Presentation/Requests/StoreTimeEntryRequest.php
+    line: null
+    symbol: App\Modules\Workshop\Technician\Presentation\Requests\StoreTimeEntryRequest|UpdateTimeEntryRequest
+    pattern_type: unscoped_body_foreign_key
+    resource: workshop_work_orders
+    expected_scope: tenant_and_company
+    expected_fix: 'Validate body work_order_id with tenant+company ScopedExists and keep technician lookupStatus scoped as defense in depth.'
+    severity: high
+    fiscal_path: false
+    cross_module: true
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-12T11:21:46Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        new_yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
+        target_ids:
+          - api.workshop.010
+        from_status: null
+        to_status: pending
+        commit: a5ec7fd10703f664d7cdfaa5ebddd598ed99b4fb
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
 progress:
   total_callsites: 0
   total_clusters: 29

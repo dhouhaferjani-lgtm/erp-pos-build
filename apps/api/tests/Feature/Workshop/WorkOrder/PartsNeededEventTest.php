@@ -46,8 +46,12 @@ final class PartsNeededEventTest extends TestCase
                 return $r;
             }
 
-            public function releaseForWorkOrder(string $workOrderId, string $reasonCode): int
-            {
+            public function releaseForWorkOrder(
+                string $workOrderId,
+                string $reasonCode,
+                ?string $expectedTenantId = null,
+                ?string $expectedCompanyId = null,
+            ): int {
                 return 0;
             }
         });
@@ -66,6 +70,8 @@ final class PartsNeededEventTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
 
@@ -105,8 +111,12 @@ final class PartsNeededEventTest extends TestCase
                 throw new \RuntimeException('no parts, should not be called');
             }
 
-            public function releaseForWorkOrder(string $workOrderId, string $reasonCode): int
-            {
+            public function releaseForWorkOrder(
+                string $workOrderId,
+                string $reasonCode,
+                ?string $expectedTenantId = null,
+                ?string $expectedCompanyId = null,
+            ): int {
                 return 0;
             }
         });
@@ -122,6 +132,8 @@ final class PartsNeededEventTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
 

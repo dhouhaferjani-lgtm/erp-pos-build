@@ -12,6 +12,7 @@ use App\Modules\Workshop\WorkOrder\Application\Commands\UnassignTechnicianComman
 use App\Modules\Workshop\WorkOrder\Application\DTOs\WorkOrderAssignmentData;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderAssignmentService;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\AssignTechnicianRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\SetPrimaryTechnicianRequest;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,7 @@ final class WorkOrderAssignmentController extends Controller
 
     public function store(AssignTechnicianRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
 
         $userId = (string) $request->user()?->id;
         if ($userId === '') {
@@ -44,6 +45,8 @@ final class WorkOrderAssignmentController extends Controller
             is_lead: (bool) ($data['is_lead'] ?? false),
             assigned_by_user_id: $userId,
             notes: isset($data['notes']) && is_string($data['notes']) ? $data['notes'] : null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json([
@@ -56,7 +59,7 @@ final class WorkOrderAssignmentController extends Controller
         if (! $request->user()?->can('work-orders.assign')) {
             abort(403);
         }
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
         if (! Str::isUuid($assignmentId)) {
             abort(404);
         }
@@ -64,6 +67,8 @@ final class WorkOrderAssignmentController extends Controller
         $this->assignments->unassign(new UnassignTechnicianCommand(
             work_order_id: $id,
             assignment_id: $assignmentId,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json(null, 204);
@@ -71,7 +76,7 @@ final class WorkOrderAssignmentController extends Controller
 
     public function setPrimary(SetPrimaryTechnicianRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
 
         /** @var array<string, mixed> $data */
         $data = $request->validated();
@@ -79,6 +84,8 @@ final class WorkOrderAssignmentController extends Controller
         $assignment = $this->assignments->setPrimary(new SetPrimaryTechnicianCommand(
             work_order_id: $id,
             technician_profile_id: (string) $data['technician_profile_id'],
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json([
@@ -86,15 +93,18 @@ final class WorkOrderAssignmentController extends Controller
         ]);
     }
 
-    private function requireWorkOrder(string $id): void
+    private function requireWorkOrder(string $id): WorkOrder
     {
         if (! Str::isUuid($id)) {
             abort(404);
         }
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $wo = $this->workOrders->findById($id);
-        if ($wo === null || $wo->company_id !== $companyId) {
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($wo === null) {
             abort(404);
         }
+
+        return $wo;
     }
 }

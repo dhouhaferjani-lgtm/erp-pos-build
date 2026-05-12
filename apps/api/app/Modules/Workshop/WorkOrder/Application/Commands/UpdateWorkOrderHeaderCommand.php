@@ -18,5 +18,7 @@ final readonly class UpdateWorkOrderHeaderCommand
         public ?\DateTimeImmutable $scheduled_start_at,
         public ?\DateTimeImmutable $scheduled_end_at,
         public ?\DateTimeImmutable $promised_at,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }
