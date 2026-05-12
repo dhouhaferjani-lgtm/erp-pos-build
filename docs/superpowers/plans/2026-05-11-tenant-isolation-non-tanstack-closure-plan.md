@@ -262,7 +262,7 @@ This resolves `api.loyalty.006-.013` (`LoyaltyMemberController` at lines 87, 124
 
 `TENANT_ONLY_TABLES` allowlist (introduced in this PR — keep small): `loyalty_members` (only model documented at `LoyaltyMemberController.php:83` with the canonical "tenant_id only" comment). Adding to this list requires a documented schema reason.
 
-**Policy fallback** (per Codex Finding 5): if the value-source allowlist proves too constraining and would falsely-reject more than 10% of legitimate scoped chains in this codebase, abandon the visitor enhancement for this PR and resolve `api.loyalty.006-.013` via Task 5 Step 2 fallback options (repository refactor OR attribute allowlist). Scanner acceptance is NOT sufficient on its own to close inventory rows — each closed row must also have an HTTP-level cross-tenant regression test passing in `LoyaltyTenantIsolationTest`.
+**Policy fallback** (per Codex Finding 5): if the value-source allowlist proves too constraining and would falsely-reject more than 10% of legitimate scoped chains in this codebase, abandon the visitor enhancement for this PR and resolve `api.loyalty.006-.013` via Task 5 Step 2 fallback (repository refactor). Scanner acceptance is NOT sufficient on its own to close inventory rows — each closed row must also have an HTTP-level cross-tenant regression test passing in `LoyaltyTenantIsolationTest`.
 
 - [ ] **Step 4: Add scanner regression tests (positive AND negative fixtures)**
 
@@ -442,7 +442,17 @@ Required endpoint matrix (Codex Finding 3). Each row must have a cross-tenant 40
 | DELETE | `/api/v1/workshop/work-orders/{id}/assignments/{assignmentId}` | URL segment | 404 |
 | PUT | `/api/v1/workshop/work-orders/{id}/primary-technician` | URL segment | 404 |
 | POST | `/api/v1/workshop/work-orders/{id}/approval` | URL segment | 404 |
-| (Bundle endpoints) | per `Bundle/Presentation/routes.php:21-31` | URL segment | 404 |
+| POST | `/api/v1/workshop/work-orders/{id}/transition` | URL segment | 404 |
+| POST | `/api/v1/workshop/work-orders/{id}/cancel` | URL segment | 404 |
+| POST | `/api/v1/workshop/work-orders/{id}/complete` | URL segment | 404 |
+| GET | `/api/v1/workshop/bundles/{id}` | URL segment | 404 |
+| PATCH | `/api/v1/workshop/bundles/{id}` | URL segment | 404 |
+| DELETE | `/api/v1/workshop/bundles/{id}` | URL segment | 404 |
+| GET | `/api/v1/workshop/bundles/{id}/expansion` | URL segment | 404 |
+| POST | `/api/v1/workshop/bundles/{id}/components` | URL segment | 404 |
+| PATCH | `/api/v1/workshop/bundles/{id}/components/{componentId}` | URL segment | 404 |
+| DELETE | `/api/v1/workshop/bundles/{id}/components/{componentId}` | URL segment | 404 |
+| PUT | `/api/v1/workshop/bundles/{id}/vehicle-applicabilities` | URL segment | 404 |
 | POST | `/api/v1/workshop/technicians/{technicianId}/time-entries` | **body** `work_order_id` (Step 3b) | 422 |
 | PATCH | `/api/v1/workshop/technicians/{technicianId}/time-entries/{timeEntryId}` | **body** `work_order_id` (Step 3b) | 422 |
 
