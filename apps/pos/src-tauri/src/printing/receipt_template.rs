@@ -239,7 +239,10 @@ pub fn format_receipt(data: &ReceiptData) -> Vec<u8> {
 }
 
 /// Format receipt with optional print settings.
-pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintSettings>) -> Vec<u8> {
+pub fn format_receipt_with_settings(
+    data: &ReceiptData,
+    settings: Option<&PrintSettings>,
+) -> Vec<u8> {
     let columns = settings.map_or(42, |s| s.columns);
     let mut b = EscPosBuilder::with_columns(columns);
 
@@ -262,25 +265,50 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
 
     b.text_line(&data.company.address_line1);
     if let Some(ref addr2) = data.company.address_line2 {
-        b.text_line(addr2);
+        if let Some(line) = non_empty_trimmed(addr2) {
+            b.text_line(line);
+        }
     }
-    b.text_line(&format!(
-        "{} {}",
-        data.company.postal_code, data.company.city
-    ));
+
+    let postal_city = [data.company.postal_code.trim(), data.company.city.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !postal_city.is_empty() {
+        b.text_line(&postal_city);
+    }
+
     if let Some(ref phone) = data.company.phone {
-        b.text_line(&format!("{} {}", data.label(|l| &l.tel, "Tel:"), phone));
+        if let Some(value) = non_empty_trimmed(phone) {
+            b.text_line(&format!("{} {}", data.label(|l| &l.tel, "Tel:"), value));
+        }
     }
-    b.text_line(&format!("{} {}", data.label(|l| &l.tax_id, "Tax ID:"), data.company.tax_id));
+    if let Some(tax_id) = non_empty_trimmed(&data.company.tax_id) {
+        b.text_line(&format!(
+            "{} {}",
+            data.label(|l| &l.tax_id, "Tax ID:"),
+            tax_id
+        ));
+    }
 
     b.align(Alignment::Left);
     b.separator('-');
 
     // ── Receipt Meta ──
-    b.two_column(&data.label(|l| &l.receipt, "Receipt:"), &data.receipt_number);
+    b.two_column(
+        &data.label(|l| &l.receipt, "Receipt:"),
+        &data.receipt_number,
+    );
     b.two_column(&data.label(|l| &l.date, "Date:"), &data.date_time);
-    b.two_column(&data.label(|l| &l.terminal, "Terminal:"), &data.terminal_name);
-    b.two_column(&data.label(|l| &l.operator, "Operator:"), &data.operator_name);
+    b.two_column(
+        &data.label(|l| &l.terminal, "Terminal:"),
+        &data.terminal_name,
+    );
+    b.two_column(
+        &data.label(|l| &l.operator, "Operator:"),
+        &data.operator_name,
+    );
 
     if data.show_customer.unwrap_or(true) {
         if let Some(ref customer) = data.customer_name {
@@ -387,20 +415,33 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.separator('=');
 
     // ── Totals ──
-    b.two_column(&data.label(|l| &l.subtotal, "Subtotal:"), &format!("{}{}", data.currency_symbol, data.subtotal));
+    b.two_column(
+        &data.label(|l| &l.subtotal, "Subtotal:"),
+        &format!("{}{}", data.currency_symbol, data.subtotal),
+    );
 
     if data.discount_amount != "0.00" && data.discount_amount != "0" {
         b.two_column(
-            &format!("{}:", data.label(|l| &l.discount, "Discount").trim_end_matches(':')),
+            &format!(
+                "{}:",
+                data.label(|l| &l.discount, "Discount")
+                    .trim_end_matches(':')
+            ),
             &format!("-{}{}", data.currency_symbol, data.discount_amount),
         );
     }
 
-    b.two_column(&data.label(|l| &l.tax, "Tax:"), &format!("{}{}", data.currency_symbol, data.tax_amount));
+    b.two_column(
+        &data.label(|l| &l.tax, "Tax:"),
+        &format!("{}{}", data.currency_symbol, data.tax_amount),
+    );
 
     b.bold(true);
     b.font_size(FontSize::DoubleHeight);
-    b.two_column(&data.label(|l| &l.total, "TOTAL:"), &format!("{}{}", data.currency_symbol, data.total));
+    b.two_column(
+        &data.label(|l| &l.total, "TOTAL:"),
+        &format!("{}{}", data.currency_symbol, data.total),
+    );
     b.font_size(FontSize::Normal);
     b.bold(false);
 
@@ -526,7 +567,13 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     b.empty_line();
     let default_thank_you = data.label(|l| &l.thank_you, "Thank you for your purchase!");
     let footer = settings
-        .and_then(|s| if s.footer_text.is_empty() { None } else { Some(s.footer_text.clone()) })
+        .and_then(|s| {
+            if s.footer_text.is_empty() {
+                None
+            } else {
+                Some(s.footer_text.clone())
+            }
+        })
         .unwrap_or(default_thank_you);
     b.text_line(&footer);
     b.empty_line();
@@ -552,7 +599,13 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
             if let Some(agg) = &data.aggregate_variance {
                 let has_over = counts.iter().any(|r| r.direction == "over");
                 let has_under = counts.iter().any(|r| r.direction == "under");
-                let dir = if has_over { "+" } else if has_under { "-" } else { " " };
+                let dir = if has_over {
+                    "+"
+                } else if has_under {
+                    "-"
+                } else {
+                    " "
+                };
                 b.text_line(&format!(
                     "{} {} {}",
                     data.label(|l| &l.cash_count_total_variance, "Total variance:"),
@@ -587,6 +640,15 @@ pub fn format_receipt_with_settings(data: &ReceiptData, settings: Option<&PrintS
     }
 
     b.build()
+}
+
+fn non_empty_trimmed(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 fn format_cash_count_header(data: &ReceiptData, cols: usize) -> String {
@@ -710,7 +772,9 @@ pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
     // Column ruler
     b.align(Alignment::Left);
     b.select_font(true);
-    let ruler: String = (0..cols as u32).map(|i| char::from(b'0' + ((i % 10) as u8))).collect();
+    let ruler: String = (0..cols as u32)
+        .map(|i| char::from(b'0' + ((i % 10) as u8)))
+        .collect();
     b.text_line(&ruler);
     b.select_font(false);
 
@@ -787,7 +851,125 @@ mod tests_z_cash_counts {
         let text = String::from_utf8_lossy(&bytes);
         assert!(text.contains("CASH"), "should contain tender code CASH");
         assert!(text.contains("Jean"), "should contain manager name");
-        assert!(text.contains("till miscount"), "should contain variance reason");
+        assert!(
+            text.contains("till miscount"),
+            "should contain variance reason"
+        );
+    }
+
+    #[test]
+    fn receipt_header_omits_blank_optional_legal_fields() {
+        let mut company = make_company();
+        company.name = "Test Shop".to_string();
+        company.address_line1 = "12 Main Street".to_string();
+        company.address_line2 = Some("   ".to_string());
+        company.city = " ".to_string();
+        company.postal_code = "".to_string();
+        company.tax_id = "  ".to_string();
+        company.phone = Some("\t".to_string());
+
+        let data = ReceiptData {
+            company,
+            receipt_number: "R001".to_string(),
+            date_time: "2026-05-12T10:00:00Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "0.00".to_string(),
+            discount_amount: "0.00".to_string(),
+            tax_amount: "0.00".to_string(),
+            total: "0.00".to_string(),
+            currency_symbol: "€".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![],
+            change_due: "0.00".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
+            fiscal_hash: None,
+            fiscal_signature: None,
+            customer_name: None,
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(false),
+            show_customer: Some(false),
+            is_reprint: Some(false),
+            cash_counts: None,
+            manager_name: None,
+            variance_reason: None,
+            variance_severity: None,
+            aggregate_variance: None,
+            qr_token: None,
+            receipt_kind: None,
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
+        };
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Test Shop"));
+        assert!(text.contains("12 Main Street"));
+        assert!(!text.contains("Tax ID:"));
+        assert!(!text.contains("Tel:"));
+    }
+
+    #[test]
+    fn receipt_header_trims_present_optional_legal_fields() {
+        let mut company = make_company();
+        company.address_line1 = "12 Main Street".to_string();
+        company.address_line2 = Some(" Suite 4 ".to_string());
+        company.city = " Paris ".to_string();
+        company.postal_code = " 75001 ".to_string();
+        company.tax_id = " FR123 ".to_string();
+        company.phone = Some(" 0102030405 ".to_string());
+
+        let data = ReceiptData {
+            company,
+            receipt_number: "R001".to_string(),
+            date_time: "2026-05-12T10:00:00Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "0.00".to_string(),
+            discount_amount: "0.00".to_string(),
+            tax_amount: "0.00".to_string(),
+            total: "0.00".to_string(),
+            currency_symbol: "€".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![],
+            change_due: "0.00".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
+            fiscal_hash: None,
+            fiscal_signature: None,
+            customer_name: None,
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(false),
+            show_customer: Some(false),
+            is_reprint: Some(false),
+            cash_counts: None,
+            manager_name: None,
+            variance_reason: None,
+            variance_severity: None,
+            aggregate_variance: None,
+            qr_token: None,
+            receipt_kind: None,
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
+        };
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("Suite 4"));
+        assert!(text.contains("75001 Paris"));
+        assert!(text.contains("Tax ID: FR123"));
+        assert!(text.contains("Tel: 0102030405"));
     }
 }
 
