@@ -555,9 +555,9 @@ Scenarios: 58 mm + 80 mm × cash exact / cash over-tender / cash tolerance short
 | **Vehicle selection in POS receipt flow** | Otospex (automotive) | Critical MVP gap, not built | `project_otospex_pos.md` |
 | **Customer lookup by phone / email / loyalty card at till** | IziPOS (standard-retail) | Phase 1 scope, deferred from PR #76 | `project_refund_flow_phases.md` |
 
-### Verified quote from `project_otospex_brand.md`:
+### Summary of `project_otospex_brand.md`:
 
-> Canonical spelling: **"Otospex"** (NOT "OtospEx" or variants). Theme: **pink**. Tunisia deployment.
+> Canonical spelling: **"Otospex"** (capital O, lowercase rest — not "otospex", not "Otospexx", not "Otospexsolutions"). Theme: **pink**. IziPOS is the sibling retail product (copper theme). Tunisia deployment.
 
 ### Questions
 
@@ -735,7 +735,7 @@ Each flow gets a section in the findings doc with: steps executed, expected arte
 ### Phase 0 — Target-device profile (deliverable already specified in §0)
 
 **Output:** `audit/phase-0-target-device-profile.md` with the filled table.
-**Acceptance:** All 10 attributes captured. Otherwise §1, §3, §11, §13, §14 cannot proceed.
+**Acceptance:** All 10 attributes captured. §1, §3, §11, §13, §14 cannot proceed without these. §2 may proceed device-agnostically for the capability/CSP/threat-model analysis, with OS-specific follow-up items deferred to a Phase 0 sub-block once the target OS is captured.
 
 ### Phase 1 — Inventory + audit-setup findings (Codex r2 P1 — corrected from v2)
 
