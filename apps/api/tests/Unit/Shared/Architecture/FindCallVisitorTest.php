@@ -52,13 +52,16 @@ PHP);
         $this->assertSame('findOrFail', $violations[0]['method']);
     }
 
-    public function test_does_not_flag_chain_with_explicit_tenant_where(): void
+    public function test_does_not_flag_chain_with_explicit_tenant_and_company_where(): void
     {
         $violations = $this->scan(<<<'PHP'
 <?php
 class Service {
-    public function get(string $id, string $tid) {
-        return Document::query()->where('tenant_id', $tid)->find($id);
+    public function get(string $id, string $tenantId, string $companyId) {
+        return Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($id);
     }
 }
 PHP);

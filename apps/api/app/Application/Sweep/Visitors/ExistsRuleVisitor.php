@@ -271,6 +271,9 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
 
             $this->collectConjunctiveScopeColumns($node->var, $isDisjunctive, $columns);
             foreach ($node->args as $arg) {
+                if (! $arg instanceof Node\Arg) {
+                    continue;
+                }
                 $this->collectConjunctiveScopeColumns($arg->value, $isDisjunctive, $columns);
             }
 

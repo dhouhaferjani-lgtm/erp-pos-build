@@ -353,11 +353,18 @@ final class FindCallVisitor extends NodeVisitorAbstract
 
     private function whereValueArgument(MethodCall|StaticCall $call): ?Node
     {
-        if (isset($call->args[2]) && ($call->args[1]->value ?? null) instanceof String_) {
+        if (isset($call->args[1], $call->args[2])
+            && $call->args[1] instanceof Node\Arg
+            && $call->args[2] instanceof Node\Arg
+            && $call->args[1]->value instanceof String_) {
             return $call->args[2]->value;
         }
 
-        return $call->args[1]->value ?? null;
+        if (isset($call->args[1]) && $call->args[1] instanceof Node\Arg) {
+            return $call->args[1]->value;
+        }
+
+        return null;
     }
 
     private function isAllowedScopeValue(Node $value, string $column): bool
@@ -459,9 +466,6 @@ final class FindCallVisitor extends NodeVisitorAbstract
     private function nodeName(Node|Identifier $node): ?string
     {
         if ($node instanceof Identifier) {
-            return $node->toString();
-        }
-        if ($node instanceof Node\VarLikeIdentifier) {
             return $node->toString();
         }
 
