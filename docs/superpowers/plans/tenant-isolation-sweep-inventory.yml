@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-09T21:54:37Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+  yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -39293,7 +39293,7 @@ callsites:
       review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
       review_commit: dc67bcdb
     fix_commit: dc67bcdb
-    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -39377,6 +39377,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-12T10:11:18Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:metadata-fix'
+        previous_yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+        new_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        target_ids:
+          - api.broadcast-channels.001
+        from_status: fixed
+        to_status: fixed
+        commit: 6ec4c6a857279521240ea21011af0586a75e7654
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'metadata-only regression_test correction before manual-stub prune: tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified -> tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
   -
     id: api.broadcast-channels.002
     stable_key: 'manual:api.broadcast-channels:imports-channel-cross-tenant-anchored'
@@ -39404,7 +39420,7 @@ callsites:
       review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
       review_commit: dc67bcdb
     fix_commit: dc67bcdb
-    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -39488,6 +39504,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-12T10:11:18Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:metadata-fix'
+        previous_yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+        new_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        target_ids:
+          - api.broadcast-channels.002
+        from_status: fixed
+        to_status: fixed
+        commit: 6ec4c6a857279521240ea21011af0586a75e7654
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'metadata-only regression_test correction before manual-stub prune: tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified -> tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
   -
     id: api.broadcast-channels.003
     stable_key: 'manual:api.broadcast-channels:partners-channel-cross-tenant-anchored'
@@ -39515,7 +39547,7 @@ callsites:
       review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
       review_commit: dc67bcdb
     fix_commit: dc67bcdb
-    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -39599,6 +39631,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-12T10:11:18Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:metadata-fix'
+        previous_yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+        new_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        target_ids:
+          - api.broadcast-channels.003
+        from_status: fixed
+        to_status: fixed
+        commit: 6ec4c6a857279521240ea21011af0586a75e7654
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'metadata-only regression_test correction before manual-stub prune: tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified -> tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
   -
     id: api.broadcast-channels.004
     stable_key: 'manual:api.broadcast-channels:pos-terminal-channel-cross-tenant-anchored'
@@ -39626,7 +39674,7 @@ callsites:
       review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
       review_commit: dc67bcdb
     fix_commit: dc67bcdb
-    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -39710,6 +39758,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-12T10:11:18Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:metadata-fix'
+        previous_yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+        new_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        target_ids:
+          - api.broadcast-channels.004
+        from_status: fixed
+        to_status: fixed
+        commit: 6ec4c6a857279521240ea21011af0586a75e7654
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'metadata-only regression_test correction before manual-stub prune: tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified -> tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
   -
     id: api.broadcast-channels.005
     stable_key: 'manual:api.broadcast-channels:pos-kitchen-channel-cross-tenant-anchored'
@@ -39737,7 +39801,7 @@ callsites:
       review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
       review_commit: dc67bcdb
     fix_commit: dc67bcdb
-    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified'
+    regression_test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
     blocked_reason: null
     history:
       -
@@ -39821,6 +39885,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-08-api-broadcast-channels-cluster-codex-round4-review.md
         review_commit: dc67bcdb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-12T10:11:18Z'
+        actor: codex
+        action: edit_applied
+        command: 'sweep:inventory:metadata-fix'
+        previous_yaml_sha256: 320906444eaa3efcea1800b6f2be86bbcc1eff24bbf842c8db6f2f12d4f06377
+        new_yaml_sha256: 8c62fef376e310adabedc9eb2d3d2449b02dc51c454db7ce1acc82eb694a1103
+        target_ids:
+          - api.broadcast-channels.005
+        from_status: fixed
+        to_status: fixed
+        commit: 6ec4c6a857279521240ea21011af0586a75e7654
+        test: 'tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
+        review_file: null
+        review_commit: null
+        note: 'metadata-only regression_test correction before manual-stub prune: tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_is_tenant_classified -> tests/Architecture/BroadcastChannelTenantContextTest.php::test_every_broadcast_channel_in_routes_channels_php_is_tenant_classified'
   -
     id: api.broadcast-channels.006
     stable_key: 'manual:api.broadcast-channels:product-cost-price-updated-broadcast-cross-tenant-anchored'
