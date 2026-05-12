@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-12T11:21:46Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
+  yaml_sha256: a84fec1d9ac033e4c1aa5c225d5cd36db2736d100c0e4df8e0a8f1322cfc8ad6
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -4263,14 +4263,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-05T00:14:12Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      reviewed_at: '2026-05-12T14:06:06Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
       review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
@@ -4373,6 +4373,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:06:07Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: b45088b008b6f37eeef7727bd5fab09a0e6339f93a1a0b0fbc2930348fb76097
+        new_yaml_sha256: 35217d01e325dc0d6e328e73d76ff9768c0d9127b9275563a548784d878745e3
+        target_ids:
+          - api.taxation.007
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
+        review_commit: e7a2f543
+        note: 'Relevant scanner no longer emits this stable key; targeted taxation HTTP and PHPStan gates passed.'
   -
     id: api.document.001
     stable_key: 'sha256:747409ac7d11e21a4c7ec45453e305b5b0e4d9fa831e30b2d4456a4030fc3e36'
@@ -4723,14 +4739,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:34Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:42Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -4833,6 +4849,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:05:43Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 036b71081a4e009a61ce67c3d106641fbdf67fd2ebe9f2d72123070b36057dbf
+        new_yaml_sha256: 65d6370c49ae31de1f2393822e82e29d7f9a9972579eea7ed33d9ce696e8ad4f
+        target_ids:
+          - api.loyalty.001
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.002
     stable_key: 'sha256:da21fb02f4c0dc67a11cef5eafee822bd9e7b4f2406e1d6bd03410b24d15f6de'
@@ -4961,14 +4993,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:36Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:45Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -5071,6 +5103,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:05:46Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 65d6370c49ae31de1f2393822e82e29d7f9a9972579eea7ed33d9ce696e8ad4f
+        new_yaml_sha256: 104880b0e069fdbbf74ab87b160fa95fd690877f99c5f404066f630c4b1a1d64
+        target_ids:
+          - api.loyalty.003
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.004
     stable_key: 'sha256:9f2c35dbda30c2c16e41b0dccce74649d5e95ad79f0cfd8675053469803050e1'
@@ -14338,14 +14386,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-05T00:14:13Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      reviewed_at: '2026-05-12T14:08:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
       review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
@@ -14448,6 +14496,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:08:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 35217d01e325dc0d6e328e73d76ff9768c0d9127b9275563a548784d878745e3
+        new_yaml_sha256: c44be2b8060e7e1e0f344af337e364f5fc7cb456b5ba1fd4a9344740661e2b14
+        target_ids:
+          - api.taxation.008
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
+        review_commit: e7a2f543
+        note: 'Relevant scanner no longer emits this stable key after country-scoped TaxConfiguration was removed from guarded find models; targeted taxation HTTP and PHPStan gates passed.'
   -
     id: api.taxation.009
     stable_key: 'sha256:cea9cf5f7a88a95ee256ed0bb76362dc47ac6ff07e9ddc0b72523400a0bd5a5b'
@@ -14465,14 +14529,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-05T00:14:13Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      reviewed_at: '2026-05-12T14:08:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
       review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
@@ -14575,6 +14639,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:08:57Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: c44be2b8060e7e1e0f344af337e364f5fc7cb456b5ba1fd4a9344740661e2b14
+        new_yaml_sha256: 16eef0510acfd1321965dc5c8eea485b4720d3722acb0b2d9dc7444b9c9dff9c
+        target_ids:
+          - api.taxation.009
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
+        review_commit: e7a2f543
+        note: 'Relevant scanner no longer emits this stable key after country-scoped TaxConfiguration was removed from guarded find models; targeted taxation HTTP and PHPStan gates passed.'
   -
     id: api.taxation.010
     stable_key: 'sha256:63fc81b2759e4f8c96d6bc398c54400772a225ea7b45dee14ed1c14b7ac2a9e1'
@@ -14592,14 +14672,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-05T00:14:14Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
+      reviewed_at: '2026-05-12T14:09:00Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
       review_commit: e7a2f543
     fix_commit: e7a2f543
     regression_test: tests/Feature/Taxation/TaxationTenantIsolationTest.php
@@ -14702,6 +14782,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:09:00Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 16eef0510acfd1321965dc5c8eea485b4720d3722acb0b2d9dc7444b9c9dff9c
+        new_yaml_sha256: 83ac139a7402a91d7886ab787dfaecb7408d130c72e1d21915b3efa6917a046c
+        target_ids:
+          - api.taxation.010
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-taxation-cluster-claude-review.md
+        review_commit: e7a2f543
+        note: 'Relevant scanner no longer emits this stable key after country-scoped TaxConfiguration was removed from guarded find models; targeted taxation HTTP and PHPStan gates passed.'
   -
     id: api.taxation.011
     stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
@@ -19207,14 +19303,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:38Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:49Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -19333,6 +19429,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:05:49Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 104880b0e069fdbbf74ab87b160fa95fd690877f99c5f404066f630c4b1a1d64
+        new_yaml_sha256: 0cfdb89021a35663698fed6046dd34b2f9d6bbca07acb717144f67e5f5177ccb
+        target_ids:
+          - api.loyalty.006
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.007
     stable_key: 'sha256:b1737131161c1c4a1b2ed832d10f94cbfac9ebb9f04aeb686723f694ada75b47'
@@ -19350,14 +19462,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:38Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:52Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -19476,6 +19588,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:05:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 0cfdb89021a35663698fed6046dd34b2f9d6bbca07acb717144f67e5f5177ccb
+        new_yaml_sha256: 94767b5c0a7e35afde1322b86a3555e95d3a7d6f7d06c4d1cba13fbab9ca6253
+        target_ids:
+          - api.loyalty.007
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.008
     stable_key: 'sha256:47108d2f9a0b5b4cdbfa14cd79d94086f43f4648d7bdadf99022be8d6dae8937'
@@ -19493,14 +19621,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:39Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:56Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -19603,6 +19731,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:05:56Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 94767b5c0a7e35afde1322b86a3555e95d3a7d6f7d06c4d1cba13fbab9ca6253
+        new_yaml_sha256: 49689ddafbe9deaa0fd1ffb8798f5edd90718eada22d8d571b7c0c782c0af137
+        target_ids:
+          - api.loyalty.008
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.009
     stable_key: 'sha256:e3e835fecdf12f81411b8227b9ea6a2d50575a97494fd8b4d69b64546f22d247'
@@ -19620,14 +19764,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:40Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:05:59Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -19730,6 +19874,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:06:00Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 49689ddafbe9deaa0fd1ffb8798f5edd90718eada22d8d571b7c0c782c0af137
+        new_yaml_sha256: 9d576084e686f46c4dfc35112777371098856425224432e563bba4529507f7b7
+        target_ids:
+          - api.loyalty.009
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.loyalty.010
     stable_key: 'sha256:d8124cb311d178a6d5643b7503367af7fa6598db86877bf6f4ddfa34acd23952'
@@ -19747,14 +19907,14 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: needs_recheck
+    status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:05Z'
     review:
       reviewer: claude
       verdict: APPROVE
-      reviewed_at: '2026-05-04T22:08:40Z'
-      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      reviewed_at: '2026-05-12T14:06:02Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
       review_commit: 74ffc022
     fix_commit: 74ffc022
     regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
@@ -19857,6 +20017,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
+      -
+        at: '2026-05-12T14:06:03Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:recheck-clear'
+        previous_yaml_sha256: 9d576084e686f46c4dfc35112777371098856425224432e563bba4529507f7b7
+        new_yaml_sha256: b45088b008b6f37eeef7727bd5fab09a0e6339f93a1a0b0fbc2930348fb76097
+        target_ids:
+          - api.loyalty.010
+        from_status: needs_recheck
+        to_status: fixed
+        commit: 94d41edd120be4e74a47de8f61d053be83a33156
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-loyalty-cluster-claude-review.md
+        review_commit: 74ffc022
+        note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.unmapped.017
     stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
@@ -32796,17 +32972,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:12:01Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:12:10Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      review_commit: 74ffc022
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -32825,6 +33001,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:12:02Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 83ac139a7402a91d7886ab787dfaecb7408d130c72e1d21915b3efa6917a046c
+        new_yaml_sha256: ef38b637d8a61fd5b2d260bf6f4a02b9c175252d4984b8cb649e487122b58140
+        target_ids:
+          - api.loyalty.011
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:12:05Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: ef38b637d8a61fd5b2d260bf6f4a02b9c175252d4984b8cb649e487122b58140
+        new_yaml_sha256: 4e9b437fa0719d734bd8744387e1ccf501c6dd8f61f23ad3a108801c8a4f7472
+        target_ids:
+          - api.loyalty.011
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:12:08Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 4e9b437fa0719d734bd8744387e1ccf501c6dd8f61f23ad3a108801c8a4f7472
+        new_yaml_sha256: c42deb7d004f60a14a3056fa1c27166782c6a5ef2f1420f7ceb55904fff0da39
+        target_ids:
+          - api.loyalty.011
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:12:10Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: c42deb7d004f60a14a3056fa1c27166782c6a5ef2f1420f7ceb55904fff0da39
+        new_yaml_sha256: 8167c17cd9979ea926b43ca9c9e93fc66e3753c0f95d9c5ed67c075f654030cd
+        target_ids:
+          - api.loyalty.011
+          - api.loyalty
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+        review_commit: 74ffc022
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.012
     stable_key: 'sha256:08ea23c8a6837cce6c129a87280ee5ad61c9f75ab3bc373ee10d8fcff9e4edf8'
@@ -32842,17 +33083,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:12:12Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:12:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      review_commit: 74ffc022
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -32871,6 +33112,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:12:13Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8167c17cd9979ea926b43ca9c9e93fc66e3753c0f95d9c5ed67c075f654030cd
+        new_yaml_sha256: 39981801af8d34cf87ffc38f8b7f59d7e905d97cda6dd078fba6648ec7f5599b
+        target_ids:
+          - api.loyalty.012
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:12:16Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 39981801af8d34cf87ffc38f8b7f59d7e905d97cda6dd078fba6648ec7f5599b
+        new_yaml_sha256: 589e8ae171227d449f7fe4fba44ceb89c340f005cb887ad8e710bb175856e676
+        target_ids:
+          - api.loyalty.012
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:12:19Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 589e8ae171227d449f7fe4fba44ceb89c340f005cb887ad8e710bb175856e676
+        new_yaml_sha256: 2bbdc60a4cc35509558c4369bbda4d21bd06ffbe5fa7e8d552d72bfc03b678d9
+        target_ids:
+          - api.loyalty.012
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:12:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 2bbdc60a4cc35509558c4369bbda4d21bd06ffbe5fa7e8d552d72bfc03b678d9
+        new_yaml_sha256: 80c68886654143994fa00ffefae6aacb96b6947cfff7b0eaaffbb4ddcc465f1e
+        target_ids:
+          - api.loyalty.012
+          - api.loyalty
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+        review_commit: 74ffc022
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.loyalty.013
     stable_key: 'sha256:f93dacd02dec9c9e87a80bece19624d20c113aa704525c558f56e5a2c0c77103'
@@ -32888,17 +33194,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:12:23Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:12:32Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+      review_commit: 74ffc022
+    fix_commit: 74ffc022
+    regression_test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -32917,6 +33223,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:12:24Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 80c68886654143994fa00ffefae6aacb96b6947cfff7b0eaaffbb4ddcc465f1e
+        new_yaml_sha256: 4ce87bb5f02aee3c32773335d0cdf3acd794a7728d9bcdb66a136cc1b69dcf47
+        target_ids:
+          - api.loyalty.013
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:12:27Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4ce87bb5f02aee3c32773335d0cdf3acd794a7728d9bcdb66a136cc1b69dcf47
+        new_yaml_sha256: 10f514d6d7ed40bfc265468f30b8b70e5d557dfb4cf19e62650fc314f3f4c20d
+        target_ids:
+          - api.loyalty.013
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:12:30Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 10f514d6d7ed40bfc265468f30b8b70e5d557dfb4cf19e62650fc314f3f4c20d
+        new_yaml_sha256: 428debe21f8e166246a6765a3cbcae19328efd9a6c5c55a78097aae0f1fef390
+        target_ids:
+          - api.loyalty.013
+        from_status: in_progress
+        to_status: under_review
+        commit: 74ffc022
+        test: tests/Feature/Loyalty/LoyaltyTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:12:33Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 428debe21f8e166246a6765a3cbcae19328efd9a6c5c55a78097aae0f1fef390
+        new_yaml_sha256: f51490c6ce4acdfe6680d8bbd05dea6accc521b1051603f25a48c32eefdd9df2
+        target_ids:
+          - api.loyalty.013
+          - api.loyalty
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-04-api-loyalty-cluster-opus-round3-review.md
+        review_commit: 74ffc022
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.043
     stable_key: 'manual:api.document:draft-persistence-add-lines-batch-product-unscoped'
@@ -32934,17 +33305,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:14:44Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:14:53Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+      review_commit: dd56691b
+    fix_commit: dd56691b
+    regression_test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -32963,6 +33334,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:14:45Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: f51490c6ce4acdfe6680d8bbd05dea6accc521b1051603f25a48c32eefdd9df2
+        new_yaml_sha256: 2e7c2ce6a2d4faf97bacd0f910c02d4c3c4de08305737f3fc712c31b7b25c00d
+        target_ids:
+          - api.document.043
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:14:48Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 2e7c2ce6a2d4faf97bacd0f910c02d4c3c4de08305737f3fc712c31b7b25c00d
+        new_yaml_sha256: b8d5c0d1dab0c51a14ed01e5c78b41b013bc0071c61b63db513657bd76d297dd
+        target_ids:
+          - api.document.043
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:14:51Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b8d5c0d1dab0c51a14ed01e5c78b41b013bc0071c61b63db513657bd76d297dd
+        new_yaml_sha256: aec96da611d0628503a9d5e56f704e4fbb1694b33f70d6916c09e10262469da3
+        target_ids:
+          - api.document.043
+        from_status: in_progress
+        to_status: under_review
+        commit: dd56691b
+        test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:14:53Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: aec96da611d0628503a9d5e56f704e4fbb1694b33f70d6916c09e10262469da3
+        new_yaml_sha256: 66fb19350ab92fbc8c44f40fa9ed50733001f94e7cc9f1a13c56274f3645169f
+        target_ids:
+          - api.document.043
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
+        review_commit: dd56691b
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.044
     stable_key: 'manual:api.document:draft-persistence-add-lines-batch-service-unscoped'
@@ -32980,17 +33416,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:14:55Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:15:05Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+      review_commit: '5174e756'
+    fix_commit: '5174e756'
+    regression_test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -33009,6 +33445,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:14:56Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 66fb19350ab92fbc8c44f40fa9ed50733001f94e7cc9f1a13c56274f3645169f
+        new_yaml_sha256: 499882b63d964b52bb68b4d98c7f2bafbedeecdf5b0bcb5c57767075bb008796
+        target_ids:
+          - api.document.044
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:14:59Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 499882b63d964b52bb68b4d98c7f2bafbedeecdf5b0bcb5c57767075bb008796
+        new_yaml_sha256: ba5d8950ae46dce7947bac1543e69eea950fcfb23823cb030d72de70067a6944
+        target_ids:
+          - api.document.044
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:15:02Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ba5d8950ae46dce7947bac1543e69eea950fcfb23823cb030d72de70067a6944
+        new_yaml_sha256: 6b5c947fa8e4acb105aa4b36004238251d31e4ce8b5752b5ae2527409bd09fdc
+        target_ids:
+          - api.document.044
+        from_status: in_progress
+        to_status: under_review
+        commit: '5174e756'
+        test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:15:07Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 6b5c947fa8e4acb105aa4b36004238251d31e4ce8b5752b5ae2527409bd09fdc
+        new_yaml_sha256: cfd7526a43f63c148af5f3e212ea1a0f72d5fc9967f18f94d52d21c6a81eaac6
+        target_ids:
+          - api.document.044
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
+        review_commit: '5174e756'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.045
     stable_key: 'manual:api.document:draft-persistence-persists-raw-foreign-product-service-fk'
@@ -33026,17 +33527,17 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:15:09Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:15:18Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+      review_commit: 8bd2b13a
+    fix_commit: 8bd2b13a
+    regression_test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
     blocked_reason: null
     history:
       -
@@ -33055,6 +33556,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:15:10Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: cfd7526a43f63c148af5f3e212ea1a0f72d5fc9967f18f94d52d21c6a81eaac6
+        new_yaml_sha256: 3fb83034aae8d3d8fcddf5563267d36286f63b142a3bd21295765963c76a7e51
+        target_ids:
+          - api.document.045
+        from_status: pending
+        to_status: claimed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:15:13Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3fb83034aae8d3d8fcddf5563267d36286f63b142a3bd21295765963c76a7e51
+        new_yaml_sha256: b6c2e60e5508de122f1ee110d17600e46c8944b47586f75c2fa495dce04a3f21
+        target_ids:
+          - api.document.045
+        from_status: claimed
+        to_status: in_progress
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:15:16Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: b6c2e60e5508de122f1ee110d17600e46c8944b47586f75c2fa495dce04a3f21
+        new_yaml_sha256: fd1bd3dfbe16a6033c31fe6f3de679e6c266de5f6c73dca2c56c8a5580ccd69b
+        target_ids:
+          - api.document.045
+        from_status: in_progress
+        to_status: under_review
+        commit: 8bd2b13a
+        test: tests/Feature/Document/RefundResidualTenantIsolationTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:15:19Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: fd1bd3dfbe16a6033c31fe6f3de679e6c266de5f6c73dca2c56c8a5580ccd69b
+        new_yaml_sha256: a84fec1d9ac033e4c1aa5c225d5cd36db2736d100c0e4df8e0a8f1322cfc8ad6
+        target_ids:
+          - api.document.045
+          - api.document
+        from_status: under_review
+        to_status: fixed
+        commit: 5f7d7a74424da532ffa68f458eb0ce70a90d6f6f
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
+        review_commit: 8bd2b13a
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.catalog.018
     stable_key: 'manual:api.catalog:composite-item-controller-bare-where-chains'
