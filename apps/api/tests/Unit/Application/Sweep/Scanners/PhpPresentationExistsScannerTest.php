@@ -146,6 +146,39 @@ class PhpPresentationExistsScannerTest extends TestCase
         $this->assertSame('php_presentation_exists', $scanner->name());
     }
 
+    public function test_default_guarded_tables_do_not_include_country_scoped_tax_tables(): void
+    {
+        $fixture = $this->materializeFixture(<<<'PHP'
+<?php
+namespace Tests\Fixtures\Sweep\Taxation\Modules\Taxation\Presentation\Requests;
+
+class TaxConfigurationRequest
+{
+    public function rules(): array
+    {
+        return [
+            'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
+            'tax_rate_id' => ['nullable', 'uuid', 'exists:tax_rates,id'],
+        ];
+    }
+}
+PHP);
+
+        try {
+            $scanner = new PhpPresentationExistsScanner(
+                scanRoot: $fixture,
+                repoRoot: $fixture,
+                clusterResolver: new ClusterResolver(['Taxation' => 'api.taxation'], 'api.identity-company'),
+            );
+
+            $rows = $scanner->scan();
+
+            $this->assertSame([], $rows);
+        } finally {
+            $this->cleanupFixture($fixture);
+        }
+    }
+
     /**
      * @param  array<string, string>  $moduleMap
      */
@@ -157,5 +190,37 @@ class PhpPresentationExistsScannerTest extends TestCase
             clusterResolver: new ClusterResolver($moduleMap, $fallback),
             guardedTables: ['payment_methods', 'partners'],
         );
+    }
+
+    private function materializeFixture(string $code): string
+    {
+        $base = sys_get_temp_dir().'/sweep-exists-fixture-'.bin2hex(random_bytes(6));
+        $path = $base.'/Modules/Taxation/Presentation/Requests';
+        mkdir($path, 0o755, true);
+        file_put_contents($path.'/TaxConfigurationRequest.php', $code);
+
+        return $base;
+    }
+
+    private function cleanupFixture(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $iter = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($iter as $entry) {
+            if (! $entry instanceof \SplFileInfo) {
+                continue;
+            }
+            if ($entry->isDir()) {
+                rmdir($entry->getPathname());
+            } else {
+                unlink($entry->getPathname());
+            }
+        }
+        rmdir($dir);
     }
 }

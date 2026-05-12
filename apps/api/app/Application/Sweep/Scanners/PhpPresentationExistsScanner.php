@@ -75,8 +75,6 @@ final class PhpPresentationExistsScanner implements Scanner
         'services',
         'stock_levels',
         'stock_movements',
-        'tax_configurations',
-        'tax_rates',
         'users', // Identity cluster — added per Opus Treasury Finding 3
         'voucher_ledger',
         'vouchers',

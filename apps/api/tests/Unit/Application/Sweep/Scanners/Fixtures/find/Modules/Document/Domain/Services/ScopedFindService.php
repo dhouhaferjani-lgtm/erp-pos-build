@@ -11,16 +11,18 @@ use App\Modules\Document\Domain\Document;
  */
 class ScopedFindService
 {
-    public function fetch(int $id, int $tenantId): mixed
+    public function fetch(int $id, int $tenantId, int $companyId): mixed
     {
         return Document::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->find($id);
     }
 
-    public function fetchOrFail(int $id, int $companyId): mixed
+    public function fetchOrFail(int $id, int $tenantId, int $companyId): mixed
     {
         return Document::query()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->findOrFail($id);
     }
