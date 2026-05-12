@@ -87,10 +87,6 @@ class EventServiceProvider extends ServiceProvider
         WorkOrderResumed::class => [
             ReopenTimeEntryOnWorkOrderResumed::class,
         ],
-        WorkOrderCompleted::class => [
-            CloseTimeEntryOnWorkOrderCompleted::class,
-            MirrorAppointmentOnWorkOrderCompleted::class,
-        ],
         WorkOrderCompletedV2::class => [
             CloseTimeEntryOnWorkOrderCompleted::class,
             WriteMileageReadingFromWorkOrderCompleted::class,
