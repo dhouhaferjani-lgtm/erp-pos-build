@@ -249,6 +249,19 @@ describe('buildEscPosReceiptData', () => {
     const result = buildEscPosReceiptData(receipt);
     expect(result.is_reprint).toBeUndefined();
   });
+
+  it('keeps blank company tax_id as an empty string for Rust-side omission', () => {
+    const receipt = makeReceipt({
+      company: {
+        ...makeReceipt().company,
+        tax_id: null,
+      },
+    });
+
+    const result = buildEscPosReceiptData(receipt);
+
+    expect(result.company.tax_id).toBe('');
+  });
 });
 
 // ── Phase H Block 2 — receipt QR token + refund metadata ─────────────────────
