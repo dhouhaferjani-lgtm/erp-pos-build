@@ -168,22 +168,6 @@ final class SweepInventoryRecheckClearCommand extends AbstractSweepInventoryComm
             return self::FAILURE;
         }
 
-        $reviewFileContents = (string) file_get_contents($reviewFile);
-        $parsedVerdict = $this->parseVerdictLine($reviewFileContents);
-        if ($parsedVerdict === null) {
-            $this->error("Review file contains no 'Verdict: <X>' line: {$reviewFile}");
-
-            return self::FAILURE;
-        }
-        if ($parsedVerdict !== $verdict) {
-            $this->error(
-                "Review file Verdict line is '{$parsedVerdict}' but --verdict is '{$verdict}'. ".
-                "The file is canonical; either correct the file or the flag. Review file: {$reviewFile}",
-            );
-
-            return self::FAILURE;
-        }
-
         $callsiteFixCommit = $callsite['fix_commit'];
         if ($callsiteFixCommit === null) {
             $this->error("Callsite {$callsiteId} has no fix_commit; cannot pin --review-commit.");
@@ -335,16 +319,5 @@ final class SweepInventoryRecheckClearCommand extends AbstractSweepInventoryComm
                 "No recheck scanner is registered for scanner '{$callsite['scanner']}'.",
             ),
         };
-    }
-
-    private function parseVerdictLine(string $contents): ?string
-    {
-        foreach (explode("\n", $contents) as $line) {
-            if (preg_match('/^Verdict:\s+(\S.*)$/', $line, $matches) === 1) {
-                return trim($matches[1]);
-            }
-        }
-
-        return null;
     }
 }

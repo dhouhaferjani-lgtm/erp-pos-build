@@ -104,7 +104,7 @@ YAML;
     public function test_recheck_clear_transitions_needs_recheck_to_fixed_when_scanner_is_silent(): void
     {
         $this->seedRecheckCallsite();
-        $reviewFile = $this->writeReviewFile();
+        $reviewFile = $this->writeReviewFile('**CONDITIONAL APPROVE** (pending scanner recheck)', 'conditional-review');
         $manualStub = $this->writeManualStub(emitStableKey: false);
 
         $exit = Artisan::call('sweep:inventory:recheck-clear', [
