@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-12T11:21:46Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: a84fec1d9ac033e4c1aa5c225d5cd36db2736d100c0e4df8e0a8f1322cfc8ad6
+  yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -35768,17 +35768,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:42:59Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:43:08Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
     blocked_reason: null
     history:
       -
@@ -35797,6 +35797,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:43:00Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a84fec1d9ac033e4c1aa5c225d5cd36db2736d100c0e4df8e0a8f1322cfc8ad6
+        new_yaml_sha256: be06085d3144b79a7a340ebb5eb3bb788d01293833f4a06a7b0b7984df4e4904
+        target_ids:
+          - api.workshop.005
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:43:03Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: be06085d3144b79a7a340ebb5eb3bb788d01293833f4a06a7b0b7984df4e4904
+        new_yaml_sha256: a153d44dca06611528f592f654044df3fb966e334070ac214202dc4f19cccafc
+        target_ids:
+          - api.workshop.005
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:43:06Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a153d44dca06611528f592f654044df3fb966e334070ac214202dc4f19cccafc
+        new_yaml_sha256: d1818619aa55f0000ff31cbad1a1a5ad77db69e743c6bcb897a1f27ab9dc9fbd
+        target_ids:
+          - api.workshop.005
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:43:09Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: d1818619aa55f0000ff31cbad1a1a5ad77db69e743c6bcb897a1f27ab9dc9fbd
+        new_yaml_sha256: 98fb16bf12e081b734269dda0f6179f76a684311e718ca41d873f025fa1213e6
+        target_ids:
+          - api.workshop.005
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.workshop.006
     stable_key: 'manual:api.workshop:bundle-expansion-adapter-raw-find'
@@ -35814,17 +35879,17 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:43:11Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:43:21Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
     blocked_reason: null
     history:
       -
@@ -35843,6 +35908,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:43:12Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 98fb16bf12e081b734269dda0f6179f76a684311e718ca41d873f025fa1213e6
+        new_yaml_sha256: e884af02addf9ef1faa2f75e34ee5b50913ea62f35cae5f908ea019e1c1a6d3d
+        target_ids:
+          - api.workshop.006
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:43:15Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e884af02addf9ef1faa2f75e34ee5b50913ea62f35cae5f908ea019e1c1a6d3d
+        new_yaml_sha256: 660c3aca748ace7ea77ce5624d4306bf4df1620d287ad5621a8dbebfb2de0feb
+        target_ids:
+          - api.workshop.006
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:43:18Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 660c3aca748ace7ea77ce5624d4306bf4df1620d287ad5621a8dbebfb2de0feb
+        new_yaml_sha256: a2feb4dcde624c111cbe6d5b131bd7a22677dcd582201ce0403ccface7d76e78
+        target_ids:
+          - api.workshop.006
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:43:22Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: a2feb4dcde624c111cbe6d5b131bd7a22677dcd582201ce0403ccface7d76e78
+        new_yaml_sha256: 233a469900203afabab03ef51f3ef4f7a6884a5fe51555595f39f512d96604d6
+        target_ids:
+          - api.workshop.006
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.workshop.007
     stable_key: 'manual:api.workshop:document-generation-adapter-raw-find'
@@ -35860,17 +35990,17 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:43:24Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:43:33Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
     blocked_reason: null
     history:
       -
@@ -35889,6 +36019,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:43:25Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 233a469900203afabab03ef51f3ef4f7a6884a5fe51555595f39f512d96604d6
+        new_yaml_sha256: 927aad37fef42c6df0ad52e58cc77e87e43dc9573b12016bb61842db1353d6cb
+        target_ids:
+          - api.workshop.007
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:43:28Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 927aad37fef42c6df0ad52e58cc77e87e43dc9573b12016bb61842db1353d6cb
+        new_yaml_sha256: 843669e58a5725591e9aae3957a008a0bfee5de97f9657b9390a24afc2be7b32
+        target_ids:
+          - api.workshop.007
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:43:31Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 843669e58a5725591e9aae3957a008a0bfee5de97f9657b9390a24afc2be7b32
+        new_yaml_sha256: 80afdd99fa571a91f382b8eb83a4a17284c1ce1df5da3749209e46eb200bfcd4
+        target_ids:
+          - api.workshop.007
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:43:34Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 80afdd99fa571a91f382b8eb83a4a17284c1ce1df5da3749209e46eb200bfcd4
+        new_yaml_sha256: 55bf4012bf467fc6fc89d4171d4020ab7710dc174c537463a8d9096ed2eda664
+        target_ids:
+          - api.workshop.007
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.pos-stabilization.034
     stable_key: 'manual:api.pos-stabilization:loyalty-pos-controller-preview-earning-unscoped-enrollment'
@@ -139194,17 +139389,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:43:36Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:43:46Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
     blocked_reason: null
     history:
       -
@@ -139223,6 +139418,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:43:37Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 55bf4012bf467fc6fc89d4171d4020ab7710dc174c537463a8d9096ed2eda664
+        new_yaml_sha256: 045d51d06d08c600a1c7f6569e973b2db9f6bd06e4322c17e95475a563b2c025
+        target_ids:
+          - api.workshop.008
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:43:40Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 045d51d06d08c600a1c7f6569e973b2db9f6bd06e4322c17e95475a563b2c025
+        new_yaml_sha256: a7f45f027e2bcba9d6f9faa8aafce8cca61b6f4d72f4bb972d451d574423622e
+        target_ids:
+          - api.workshop.008
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:43:43Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a7f45f027e2bcba9d6f9faa8aafce8cca61b6f4d72f4bb972d451d574423622e
+        new_yaml_sha256: ca8fb66d140f73e1cfe505f4381c6216e1f06b22eded70438e3414c0d60f0f82
+        target_ids:
+          - api.workshop.008
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:43:46Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: ca8fb66d140f73e1cfe505f4381c6216e1f06b22eded70438e3414c0d60f0f82
+        new_yaml_sha256: 1ee2c398dac06f2cc8ee0e422f1e5b8d02c4d8ec8c14a0527909252708bd9c42
+        target_ids:
+          - api.workshop.008
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.workshop.009
     stable_key: 'manual:api.workshop:eloquent-bundle-repository-find-with-components-unscoped'
@@ -139240,17 +139500,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:43:48Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:43:57Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
     blocked_reason: null
     history:
       -
@@ -139269,6 +139529,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:43:49Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 1ee2c398dac06f2cc8ee0e422f1e5b8d02c4d8ec8c14a0527909252708bd9c42
+        new_yaml_sha256: e6b5b83a3d3aa75ed327495da1159ff6c7992d9b441167e79d8715d67bf7b683
+        target_ids:
+          - api.workshop.009
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:43:52Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e6b5b83a3d3aa75ed327495da1159ff6c7992d9b441167e79d8715d67bf7b683
+        new_yaml_sha256: a82c89b0a7fe12db09ec221963a8545e3c2104d255a98813a103033d462e3bc9
+        target_ids:
+          - api.workshop.009
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:43:55Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a82c89b0a7fe12db09ec221963a8545e3c2104d255a98813a103033d462e3bc9
+        new_yaml_sha256: 943c93562d33993fbfbb58bcd9242d61bbf64cc441b706ad88bf3f86e256aa24
+        target_ids:
+          - api.workshop.009
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/WorkOrder/WorkshopHttpTenantIsolationMatrixTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:43:58Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: 943c93562d33993fbfbb58bcd9242d61bbf64cc441b706ad88bf3f86e256aa24
+        new_yaml_sha256: 8216fd2193e5e35c4414598321a1db1e2d7dedc8f630f0db4383cd0e915d4d44
+        target_ids:
+          - api.workshop.009
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.workshop.010
     stable_key: 'manual:api.workshop:technician-time-entry-work-order-id-body-unscoped'
@@ -139286,17 +139611,17 @@ callsites:
     fiscal_path: false
     cross_module: true
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: fixed
+    owner: codex
+    claimed_at: '2026-05-12T14:44:01Z'
     review:
-      reviewer: null
-      verdict: null
-      reviewed_at: null
-      review_file: null
-      review_commit: null
-    fix_commit: null
-    regression_test: null
+      reviewer: claude
+      verdict: APPROVE
+      reviewed_at: '2026-05-12T14:44:10Z'
+      review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+      review_commit: '01574841'
+    fix_commit: '01574841'
+    regression_test: tests/Feature/Workshop/Technician/TechnicianTimeEntryControllerTest.php
     blocked_reason: null
     history:
       -
@@ -139315,6 +139640,71 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-12T14:44:01Z'
+        actor: codex
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8216fd2193e5e35c4414598321a1db1e2d7dedc8f630f0db4383cd0e915d4d44
+        new_yaml_sha256: c122dfed069bed554a4d7c3de6a6b0ba2f8dabde640a6f9c27d8b439846369cb
+        target_ids:
+          - api.workshop.010
+        from_status: pending
+        to_status: claimed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by codex via sweep:inventory:claim'
+      -
+        at: '2026-05-12T14:44:04Z'
+        actor: codex
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: c122dfed069bed554a4d7c3de6a6b0ba2f8dabde640a6f9c27d8b439846369cb
+        new_yaml_sha256: 150bbda333e7560e26291581d3eeaaf5d57780fd3f43e83781c94ee69301c590
+        target_ids:
+          - api.workshop.010
+        from_status: claimed
+        to_status: in_progress
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by codex via sweep:inventory:start'
+      -
+        at: '2026-05-12T14:44:08Z'
+        actor: codex
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 150bbda333e7560e26291581d3eeaaf5d57780fd3f43e83781c94ee69301c590
+        new_yaml_sha256: cfbb58bba0d0bea102e58c8bbadc9a31961c3fdaf33741bee8144d1d894b32da
+        target_ids:
+          - api.workshop.010
+        from_status: in_progress
+        to_status: under_review
+        commit: '01574841'
+        test: tests/Feature/Workshop/Technician/TechnicianTimeEntryControllerTest.php
+        review_file: null
+        review_commit: null
+        note: 'submitted by codex via sweep:inventory:submit'
+      -
+        at: '2026-05-12T14:44:11Z'
+        actor: claude
+        action: review
+        command: 'sweep:inventory:review'
+        previous_yaml_sha256: cfbb58bba0d0bea102e58c8bbadc9a31961c3fdaf33741bee8144d1d894b32da
+        new_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        target_ids:
+          - api.workshop.010
+          - api.workshop
+        from_status: under_review
+        to_status: fixed
+        commit: 1b3854f522c3220f3f6b791fe2188e6ecb724593
+        test: null
+        review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
+        review_commit: '01574841'
+        note: 'review verdict=APPROVE by claude via sweep:inventory:review'
 progress:
   total_callsites: 0
   total_clusters: 29

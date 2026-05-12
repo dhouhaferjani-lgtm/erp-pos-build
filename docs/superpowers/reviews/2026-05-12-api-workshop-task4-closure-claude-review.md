@@ -2,7 +2,7 @@
 
 Commit reviewed: 01574841
 Plan: docs/superpowers/plans/2026-05-11-tenant-isolation-non-tanstack-closure-plan.md (Task 4)
-Verdict: **APPROVE**
+Verdict: APPROVE
 
 Reviewer: claude (opus)
 Implementer: codex
