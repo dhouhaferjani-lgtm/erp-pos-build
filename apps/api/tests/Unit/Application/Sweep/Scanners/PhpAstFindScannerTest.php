@@ -135,6 +135,40 @@ class PhpAstFindScannerTest extends TestCase
         $this->assertSame('php_ast_find', $scanner->name());
     }
 
+    public function test_default_guarded_models_do_not_include_country_scoped_tax_models(): void
+    {
+        $fixture = $this->materializeTaxFixture(<<<'PHP'
+<?php
+namespace Tests\Fixtures\Sweep\Taxation\Modules\Taxation\Presentation\Controllers;
+
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
+use App\Modules\Taxation\Domain\Entities\TaxRate;
+
+class TaxConfigurationController
+{
+    public function show(string $configurationId, string $rateId): mixed
+    {
+        return [
+            TaxConfiguration::where('country_code', 'TN')->findOrFail($configurationId),
+            TaxRate::where('country_code', 'TN')->findOrFail($rateId),
+        ];
+    }
+}
+PHP);
+
+        try {
+            $scanner = new PhpAstFindScanner(
+                scanRoot: $fixture,
+                repoRoot: $fixture,
+                clusterResolver: new ClusterResolver(['Taxation' => 'api.taxation'], 'api.identity-company'),
+            );
+
+            $this->assertSame([], $scanner->scan());
+        } finally {
+            $this->cleanupFixture($fixture);
+        }
+    }
+
     public function test_renaming_enclosing_method_changes_stable_key(): void
     {
         // Codex Phase 1 review #1 acceptance criterion: a method rename in
@@ -180,6 +214,16 @@ PHP);
         $appPath = $base.'/Modules/Document/Application';
         mkdir($appPath, 0o755, true);
         file_put_contents($appPath.'/RenameProbeService.php', $code);
+
+        return $base;
+    }
+
+    private function materializeTaxFixture(string $code): string
+    {
+        $base = sys_get_temp_dir().'/sweep-tax-find-fixture-'.bin2hex(random_bytes(6));
+        $appPath = $base.'/Modules/Taxation/Presentation/Controllers';
+        mkdir($appPath, 0o755, true);
+        file_put_contents($appPath.'/TaxConfigurationController.php', $code);
 
         return $base;
     }
