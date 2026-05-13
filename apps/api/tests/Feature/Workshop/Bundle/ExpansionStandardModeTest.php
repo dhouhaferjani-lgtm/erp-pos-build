@@ -82,7 +82,7 @@ final class ExpansionStandardModeTest extends TestCase
             'unit_id' => $this->unit->id,
         ]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '1', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
 
         $this->assertCount(3, $lines);
 
@@ -108,7 +108,7 @@ final class ExpansionStandardModeTest extends TestCase
             ->overridePrice('10.000')
             ->create(['unit_id' => $this->unit->id]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '1', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
 
         $this->assertCount(1, $lines);
         $line = $lines->first();
@@ -132,7 +132,7 @@ final class ExpansionStandardModeTest extends TestCase
         ServiceBundleComponent::factory()->forBundle($bundle)->part($oil, '2.000')
             ->create(['unit_id' => $this->unit->id]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '3', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '3', null);
 
         $this->assertCount(1, $lines);
         $line = $lines->first();
@@ -156,7 +156,7 @@ final class ExpansionStandardModeTest extends TestCase
         ServiceBundleComponent::factory()->forBundle($bundle)->part($oil, '1.000')
             ->create(['unit_id' => $this->unit->id]);
 
-        $lines = $this->service->expandForWorkOrder($bundle->id, '1', null);
+        $lines = $this->service->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundle->id, '1', null);
         $line = $lines->first();
         $this->assertNotNull($line);
         $this->assertSame($oil->id, $line->component_id);

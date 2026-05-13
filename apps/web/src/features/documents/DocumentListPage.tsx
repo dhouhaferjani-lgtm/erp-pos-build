@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, FileText, Calendar } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { SearchInput } from '../../components/ui/SearchInput'
@@ -92,6 +94,8 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const { t } = useTranslation()
   usePageTitle('documents.title', 'sales')
   const location = useLocation()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -116,7 +120,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
   const getStatusLabel = (status: string) => t(`status.${status}`, status)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['documents', effectiveType, searchQuery, statusFilter],
+    queryKey: tenantScopedKey(['documents', effectiveType, searchQuery, statusFilter]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -125,7 +129,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
       const response = await api.get<DocumentsResponse>(`${apiEndpoint}${queryString ? `?${queryString}` : ''}`)
       return response.data
     },
-    enabled: apiEndpoint !== '/documents',
+    enabled: tenantId !== null && companyId !== null && apiEndpoint !== '/documents',
   })
 
   // Apply payment status filter (client-side for now)

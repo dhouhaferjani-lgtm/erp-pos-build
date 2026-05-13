@@ -239,4 +239,179 @@ final class ExistsRuleVisitorTest extends TestCase
 
         $this->assertSame([], $violations);
     }
+
+    public function test_parent_scoped_modifier_subquery_closure_is_not_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Support\Facades\DB;
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                $tenantId = 'tenant-a';
+                $companyId = 'company-a';
+
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) use ($tenantId, $companyId) {
+                            $query->whereIn(
+                                'modifier_group_id',
+                                DB::table('modifier_groups')
+                                    ->select('id')
+                                    ->where('tenant_id', $tenantId)
+                                    ->where('company_id', $companyId)
+                            );
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertSame([], $violations);
+    }
+
+    public function test_rule_exists_closure_without_tenant_or_company_predicate_is_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) {
+                            $query->where('is_active', true);
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('modifiers', $violations[0][1]);
+    }
+
+    public function test_rule_exists_closure_with_tenant_only_inside_or_branch_is_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                $tenantId = 'tenant-a';
+
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) use ($tenantId) {
+                            $query->where('is_active', true)
+                                ->orWhere(function ($q) use ($tenantId) {
+                                    $q->where('tenant_id', $tenantId);
+                                });
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('modifiers', $violations[0][1]);
+    }
+
+    public function test_rule_exists_closure_with_tenant_and_company_inside_or_branch_is_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                $tenantId = 'tenant-a';
+                $companyId = 'company-a';
+
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) use ($tenantId, $companyId) {
+                            $query->where('is_active', true)
+                                ->orWhere(function ($q) use ($tenantId, $companyId) {
+                                    $q->where('tenant_id', $tenantId)
+                                        ->where('company_id', $companyId);
+                                });
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('modifiers', $violations[0][1]);
+    }
+
+    public function test_rule_exists_closure_with_where_raw_tenant_predicate_is_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                $tenantId = 'tenant-a';
+
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) use ($tenantId) {
+                            $query->whereRaw('tenant_id = ?', [$tenantId]);
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('modifiers', $violations[0][1]);
+    }
+
+    public function test_rule_exists_closure_with_helper_scope_is_flagged(): void
+    {
+        $code = <<<'PHP'
+        <?php
+        use Illuminate\Validation\Rule;
+
+        class Foo {
+            public function rules(): array {
+                $tenantId = 'tenant-a';
+
+                return [
+                    'modifier_id' => [
+                        Rule::exists('modifiers', 'id')->where(function ($query) use ($tenantId) {
+                            $query->scopedToTenant($tenantId);
+                        }),
+                    ],
+                ];
+            }
+        }
+        PHP;
+
+        $violations = $this->runVisitor($code, ['modifiers']);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('modifiers', $violations[0][1]);
+    }
 }

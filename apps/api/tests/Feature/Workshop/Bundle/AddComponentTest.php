@@ -57,6 +57,8 @@ final class AddComponentTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         ));
 
         $this->assertSame($product->id, $component->product_id);
@@ -84,6 +86,8 @@ final class AddComponentTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         ));
 
         $this->assertSame($laborService->id, $component->service_id);
@@ -111,6 +115,8 @@ final class AddComponentTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         ));
     }
 
@@ -132,9 +138,16 @@ final class AddComponentTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         ));
 
-        $this->service->removeComponent(new RemoveComponentCommand($bundle->id, $component->id));
+        $this->service->removeComponent(new RemoveComponentCommand(
+            bundle_id: $bundle->id,
+            component_id: $component->id,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
+        ));
 
         $this->assertDatabaseMissing('workshop_service_bundle_components', ['id' => $component->id]);
     }

@@ -4,6 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Shield, Check, X, Plus, Pencil, Trash2, Users, Lock } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { Button } from '../../components/atoms/Button/Button'
 import { toast } from 'sonner'
 
@@ -34,9 +37,27 @@ const translateAction = (t: (key: string, fallback: string) => string, module: s
   return t('permissions.actions.' + action, action)
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function RolesPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingRole, setEditingRole] = useState<Role | null>(null)
@@ -45,19 +66,21 @@ export function RolesPage() {
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
 
   const { data: rolesData, isLoading: loadingRoles, error: rolesError } = useQuery({
-    queryKey: ['roles'],
+    queryKey: tenantScopedKey(['roles']),
     queryFn: async () => {
       const response = await api.get<RolesResponse>('/roles')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data: permissionsData, isLoading: loadingPermissions } = useQuery({
-    queryKey: ['permissions'],
+    queryKey: tenantScopedKey(['permissions']),
     queryFn: async () => {
       const response = await api.get<PermissionsResponse>('/permissions')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const createMutation = useMutation({
@@ -65,8 +88,10 @@ export function RolesPage() {
       const response = await api.post('/roles', data)
       return response.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('roles', tenantId, companyId),
+      })
       toast.success(t('roles.messages.created'))
       closeModal()
     },
@@ -80,8 +105,10 @@ export function RolesPage() {
       const response = await api.patch(`/roles/${id}`, data)
       return response.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('roles', tenantId, companyId),
+      })
       toast.success(t('roles.messages.updated'))
       closeModal()
     },
@@ -94,8 +121,10 @@ export function RolesPage() {
     mutationFn: async (id: number) => {
       await api.delete(`/roles/${id}`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('roles', tenantId, companyId),
+      })
       toast.success(t('roles.messages.deleted'))
       setDeleteRole(null)
     },

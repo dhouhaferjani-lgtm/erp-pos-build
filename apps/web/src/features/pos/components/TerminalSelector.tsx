@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { Monitor, MapPin, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,10 +29,13 @@ export interface TerminalSelectorProps {
  */
 export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorProps) {
   const { t } = useTranslation(['pos'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data: terminals = [], isLoading } = useQuery({
-    queryKey: ['pos', 'terminals'],
+    queryKey: tenantScopedKey(['pos', 'terminals']),
     queryFn: () => apiGet<Terminal[]>('/pos/terminals'),
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const activeTerminals = terminals.filter((term) => term.is_active && term.type !== 'web')

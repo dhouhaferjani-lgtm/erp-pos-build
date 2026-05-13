@@ -18,6 +18,16 @@ interface RewardRepositoryInterface
     public function findById(string $id): ?Reward;
 
     /**
+     * Determine whether a reward belongs to the given program and tenant.
+     */
+    public function existsForProgramInTenant(string $id, string $programId, string $tenantId): bool;
+
+    /**
+     * Determine whether a reward belongs to any program in the given tenant.
+     */
+    public function existsInTenant(string $id, string $tenantId): bool;
+
+    /**
      * Get all rewards for a program
      *
      * @return Collection<int, Reward>

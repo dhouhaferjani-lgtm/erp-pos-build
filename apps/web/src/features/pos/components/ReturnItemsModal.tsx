@@ -6,7 +6,10 @@ import { getReceiptDetail, processReturn } from '../api/receiptApi'
 import type { ProcessReturnRequest } from '../api/receiptApi'
 import { Loader2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface ReturnLineState {
   lineId: string
@@ -45,14 +48,16 @@ export function ReturnItemsModal({
 }: ReturnItemsModalProps) {
   const { t } = useTranslation(['pos', 'common'])
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [returnLines, setReturnLines] = useState<ReturnLineState[]>([])
   const [returnReason, setReturnReason] = useState<ReturnReasonValue>('customer_changed_mind')
   const [notes, setNotes] = useState('')
 
   const { data: receipt, isLoading } = useQuery({
-    queryKey: ['pos', 'receipt-detail', receiptId],
+    queryKey: tenantScopedKey(['pos', 'receipt-detail', receiptId]),
     queryFn: () => getReceiptDetail(receiptId),
-    enabled: isOpen && !!receiptId,
+    enabled: tenantId !== null && companyId !== null && isOpen && !!receiptId,
   })
 
   // Initialize return lines when receipt loads

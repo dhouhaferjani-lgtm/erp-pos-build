@@ -111,13 +111,10 @@ final class WorkOrderController extends Controller
             abort(404);
         }
 
-        $wo = $this->workOrders->findById($id);
-        if ($wo === null) {
-            abort(404);
-        }
-
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        if ($wo->company_id !== $companyId) {
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($wo === null) {
             abort(404);
         }
 
@@ -175,9 +172,10 @@ final class WorkOrderController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $wo = $this->workOrders->findById($id);
-        if ($wo === null || $wo->company_id !== $companyId) {
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($wo === null) {
             abort(404);
         }
 
@@ -192,6 +190,8 @@ final class WorkOrderController extends Controller
             scheduled_start_at: isset($data['scheduled_start_at']) && is_string($data['scheduled_start_at']) ? new \DateTimeImmutable($data['scheduled_start_at']) : null,
             scheduled_end_at: isset($data['scheduled_end_at']) && is_string($data['scheduled_end_at']) ? new \DateTimeImmutable($data['scheduled_end_at']) : null,
             promised_at: isset($data['promised_at']) && is_string($data['promised_at']) ? new \DateTimeImmutable($data['promised_at']) : null,
+            tenant_id: $company->tenant_id,
+            company_id: $companyId,
         ));
 
         $user = $request->user();

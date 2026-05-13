@@ -4,11 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Loyalty\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Loyalty\Domain\Repositories\RewardRepositoryInterface;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class CreateStampCardRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+        private readonly RewardRepositoryInterface $rewardRepository,
+    ) {
+        parent::__construct();
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -24,14 +33,6 @@ class CreateStampCardRequest extends FormRequest
      */
     public function rules(): array
     {
-        // Route is POST /loyalty/programs/{programId}/stamp-cards. Scoping
-        // reward_id by the route's program_id is tighter than tenant-scoping
-        // and matches the cluster invariant: the reward MUST belong to the
-        // same program the stamp card is being created under. The controller
-        // separately validates the route programId belongs to the current
-        // tenant (StampCardController::validateProgramAccess).
-        $programId = $this->route('programId');
-
         return [
             'name' => ['required', 'string', 'max:100'],
             'stamps_required' => ['required', 'integer', 'min:1', 'max:50'],
@@ -46,11 +47,32 @@ class CreateStampCardRequest extends FormRequest
             'reward_id' => [
                 'required',
                 'uuid',
-                Rule::exists('loyalty_rewards', 'id')->where('program_id', $programId),
             ],
             'max_active_cards' => ['nullable', 'integer', 'min:1'],
             'expiry_days' => ['nullable', 'integer', 'min:1'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $rewardId = $this->input('reward_id');
+            if (! is_string($rewardId) || $rewardId === '') {
+                return;
+            }
+
+            $programId = $this->route('programId');
+            if (! is_string($programId) || $programId === '') {
+                $validator->errors()->add('reward_id', 'Selected reward does not exist');
+
+                return;
+            }
+
+            $tenantId = $this->companyContext->requireCompany()->tenant_id;
+            if (! $this->rewardRepository->existsForProgramInTenant($rewardId, $programId, $tenantId)) {
+                $validator->errors()->add('reward_id', 'Selected reward does not exist');
+            }
+        });
     }
 
     /**

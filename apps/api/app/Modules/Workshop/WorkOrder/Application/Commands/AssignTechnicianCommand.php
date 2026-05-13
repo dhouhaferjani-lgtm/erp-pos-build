@@ -12,5 +12,7 @@ final readonly class AssignTechnicianCommand
         public bool $is_lead,
         public string $assigned_by_user_id,
         public ?string $notes,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

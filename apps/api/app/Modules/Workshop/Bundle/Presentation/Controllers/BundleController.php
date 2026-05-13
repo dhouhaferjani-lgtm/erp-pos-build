@@ -103,13 +103,10 @@ class BundleController extends Controller
             abort(404);
         }
 
-        $bundle = $this->bundles->findWithComponentsAndApplicabilities($id);
-        if ($bundle === null) {
-            abort(404);
-        }
-
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        if ($bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findWithComponentsAndApplicabilitiesForScope($company->tenant_id, $companyId, $id);
+        if ($bundle === null) {
             abort(404);
         }
 
@@ -124,9 +121,10 @@ class BundleController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($id);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($bundle === null) {
             abort(404);
         }
 
@@ -144,6 +142,8 @@ class BundleController extends Controller
             service_interval_km: isset($data['service_interval_km']) ? (int) $data['service_interval_km'] : null,
             service_interval_months: isset($data['service_interval_months']) ? (int) $data['service_interval_months'] : null,
             is_active: isset($data['is_active']) ? (bool) $data['is_active'] : null,
+            tenant_id: $company->tenant_id,
+            company_id: $companyId,
         ));
 
         return response()->json([
@@ -160,9 +160,10 @@ class BundleController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($id);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($bundle === null) {
             abort(404);
         }
 

@@ -16,6 +16,7 @@ use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderBundleService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderLineType;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\AddBundleRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\AddLineRequest;
 use App\Modules\Workshop\WorkOrder\Presentation\Requests\ReorderLinesRequest;
@@ -35,7 +36,7 @@ final class WorkOrderLineController extends Controller
 
     public function store(AddLineRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
 
         /** @var array<string, mixed> $data */
         $data = $request->validated();
@@ -56,6 +57,8 @@ final class WorkOrderLineController extends Controller
             labor_hours_estimated: isset($data['labor_hours_estimated']) ? (string) $data['labor_hours_estimated'] : null,
             assigned_technician_profile_id: isset($data['assigned_technician_profile_id']) && is_string($data['assigned_technician_profile_id']) ? $data['assigned_technician_profile_id'] : null,
             is_customer_supplied: (bool) ($data['is_customer_supplied'] ?? false),
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json([
@@ -65,7 +68,7 @@ final class WorkOrderLineController extends Controller
 
     public function storeBundle(AddBundleRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
 
         /** @var array<string, mixed> $data */
         $data = $request->validated();
@@ -75,6 +78,8 @@ final class WorkOrderLineController extends Controller
             bundle_id: (string) $data['bundle_id'],
             quantity: (string) $data['quantity'],
             vehicle_id: isset($data['vehicle_id']) && is_string($data['vehicle_id']) ? $data['vehicle_id'] : null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json([
@@ -87,7 +92,7 @@ final class WorkOrderLineController extends Controller
 
     public function update(UpdateLineRequest $request, string $id, string $lineId): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
         if (! Str::isUuid($lineId)) {
             abort(404);
         }
@@ -107,6 +112,8 @@ final class WorkOrderLineController extends Controller
             labor_hours_actual: isset($data['labor_hours_actual']) ? (string) $data['labor_hours_actual'] : null,
             assigned_technician_profile_id: isset($data['assigned_technician_profile_id']) && is_string($data['assigned_technician_profile_id']) ? $data['assigned_technician_profile_id'] : null,
             is_completed: isset($data['is_completed']) ? (bool) $data['is_completed'] : null,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json([
@@ -119,7 +126,7 @@ final class WorkOrderLineController extends Controller
         if (! $request->user()?->can('work-orders.update')) {
             abort(403);
         }
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
         if (! Str::isUuid($lineId)) {
             abort(404);
         }
@@ -127,6 +134,8 @@ final class WorkOrderLineController extends Controller
         $this->lines->removeLine(new RemoveLineCommand(
             work_order_id: $id,
             line_id: $lineId,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json(null, 204);
@@ -134,7 +143,7 @@ final class WorkOrderLineController extends Controller
 
     public function reorder(ReorderLinesRequest $request, string $id): JsonResponse
     {
-        $this->requireWorkOrder($id);
+        $wo = $this->requireWorkOrder($id);
 
         /** @var array<string, mixed> $data */
         $data = $request->validated();
@@ -151,20 +160,25 @@ final class WorkOrderLineController extends Controller
         $this->lines->reorderLines(new ReorderLinesCommand(
             work_order_id: $id,
             ordered_line_ids: $lineIds,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
         ));
 
         return response()->json(null, 204);
     }
 
-    private function requireWorkOrder(string $id): void
+    private function requireWorkOrder(string $id): WorkOrder
     {
         if (! Str::isUuid($id)) {
             abort(404);
         }
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $wo = $this->workOrders->findById($id);
-        if ($wo === null || $wo->company_id !== $companyId) {
+        $wo = $this->workOrders->findByIdForScope($company->tenant_id, $companyId, $id);
+        if ($wo === null) {
             abort(404);
         }
+
+        return $wo;
     }
 }

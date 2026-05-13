@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { clearAllAppState } from '../../lib/clearAppState'
 
@@ -48,7 +49,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const wasAuthenticated = useRef(false)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['auth', 'me'],
+    queryKey: tenantScopedKey(['auth', 'me']),
     queryFn: async () => {
       const response = await api.get<MeResponse>('/auth/me')
       return response.data.data
@@ -126,4 +127,3 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   return <>{children}</>
 }
-

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -13,6 +14,8 @@ import { CreateReturnNoteForm } from '../components/CreateReturnNoteForm'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | null
@@ -23,6 +26,8 @@ export function DeliveryNoteDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -35,20 +40,20 @@ export function DeliveryNoteDetailPage() {
   })
 
   const { data: deliveryNote, isLoading, error } = useQuery<Document>({
-    queryKey: ['document', id],
+    queryKey: tenantScopedKey(['document', id]),
     queryFn: async () => {
       const response = await api.get(`/documents/${id}`)
       return response.data.data
     },
-    enabled: !!id,
+    enabled: tenantId !== null && companyId !== null && !!id,
   })
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
       return apiPost(`/documents/${id}/confirm`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['document', id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', id]) })
       toast.success(t('deliveryNotes.confirmed'))
       setConfirmAction(null)
     },
@@ -353,7 +358,7 @@ export function DeliveryNoteDetailPage() {
             sourceType="delivery_note"
             onSuccess={() => {
               setShowReturnNoteForm(false)
-              queryClient.invalidateQueries({ queryKey: ['document', deliveryNote.id] })
+              void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', deliveryNote.id]) })
             }}
             onCancel={() => { setShowReturnNoteForm(false); }}
           />

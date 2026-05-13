@@ -30,5 +30,7 @@ final readonly class UpdateComponentCommand
         public ?int $display_order,
         public ?string $notes,
         public bool $notes_provided,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

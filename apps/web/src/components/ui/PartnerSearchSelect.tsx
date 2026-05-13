@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, Plus, User } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface Partner {
   id: string
@@ -40,10 +43,12 @@ export function PartnerSearchSelect({
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch partners with search
   const { data: partnersData, isLoading } = useQuery({
-    queryKey: ['partners-search', partnerType, searchQuery],
+    queryKey: tenantScopedKey(['partners-search', partnerType, searchQuery]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (partnerType) {
@@ -56,18 +61,18 @@ export function PartnerSearchSelect({
       const response = await api.get<PartnersResponse>(`/partners${query ? `?${query}` : ''}`)
       return response.data
     },
-    enabled: isOpen,
+    enabled: tenantId !== null && companyId !== null && isOpen,
     staleTime: 30000,
   })
 
   // Fetch selected partner for display
   const { data: selectedPartnerData } = useQuery({
-    queryKey: ['partner', value],
+    queryKey: tenantScopedKey(['partner', value]),
     queryFn: async () => {
       const response = await api.get<{ data: Partner }>(`/partners/${value}`)
       return response.data.data
     },
-    enabled: Boolean(value) && !isOpen,
+    enabled: tenantId !== null && companyId !== null && Boolean(value) && !isOpen,
     staleTime: 60000,
   })
 

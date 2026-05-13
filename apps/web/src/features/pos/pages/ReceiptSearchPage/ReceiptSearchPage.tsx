@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { Receipt as ReceiptIcon, Loader2, Search, Ban, Printer, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -10,6 +11,8 @@ import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal/M
 import { ReturnItemsModal } from '../../components/ReturnItemsModal'
 import { getOrCreateWebTerminal } from '../../api/terminalApi'
 import { useLocation } from '@/hooks/useLocation'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface Terminal {
   id: string
@@ -56,11 +59,29 @@ interface PaginatedReceipts {
   }
 }
 
+function scopedPosReceiptsPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 4 &&
+      k[0] === 'pos' &&
+      k[1] === 'receipts' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function ReceiptSearchPage() {
   const { t } = useTranslation(['pos', 'common'])
   const queryClient = useQueryClient()
   const { printReceipt } = useReceiptPrint()
   const { currentLocationId } = useLocation()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [filters, setFilters] = useState<ReceiptSearchFilters>({ page: 1, per_page: 20 })
   const [searchInput, setSearchInput] = useState('')
   const [voidTarget, setVoidTarget] = useState<ReceiptItem | null>(null)
@@ -80,12 +101,13 @@ export function ReceiptSearchPage() {
   }, [currentLocationId])
 
   const { data: terminals = [] } = useQuery({
-    queryKey: ['pos', 'terminals'],
+    queryKey: tenantScopedKey(['pos', 'terminals']),
     queryFn: () => apiGet<Terminal[]>('/pos/terminals'),
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pos', 'receipts', filters],
+    queryKey: tenantScopedKey(['pos', 'receipts', filters]),
     queryFn: () => {
       const params = new URLSearchParams()
       if (filters.terminal_id) params.set('terminal_id', filters.terminal_id)
@@ -99,16 +121,19 @@ export function ReceiptSearchPage() {
       const query = params.toString()
       return apiGet<PaginatedReceipts>(`/pos/receipts${query ? `?${query}` : ''}`)
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const voidMutation = useMutation({
     mutationFn: (data: { id: string; reason: string }) =>
       apiPost(`/pos/receipts/${data.id}/void`, { reason: data.reason }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('pos:receiptSearch.voidSuccess'))
       setVoidTarget(null)
       setVoidReason('')
-      void queryClient.invalidateQueries({ queryKey: ['pos', 'receipts'] })
+      await queryClient.invalidateQueries({
+        predicate: scopedPosReceiptsPredicate(tenantId, companyId),
+      })
     },
     onError: () => {
       toast.error(t('pos:receiptSearch.voidError'))
@@ -400,7 +425,9 @@ export function ReceiptSearchPage() {
           terminalId={webTerminalMutation.data.id}
           onSuccess={() => {
             toast.success(t('pos:returns.success'))
-            void queryClient.invalidateQueries({ queryKey: ['pos', 'receipts'] })
+            void queryClient.invalidateQueries({
+              predicate: scopedPosReceiptsPredicate(tenantId, companyId),
+            })
           }}
         />
       )}

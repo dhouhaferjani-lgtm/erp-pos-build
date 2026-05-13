@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { MapPin } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface Location {
   id: string
@@ -28,16 +31,18 @@ export function LocationBadge({
   size = 'md',
 }: LocationBadgeProps) {
   const { t } = useTranslation()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch location details
   const { data: locationData, isLoading } = useQuery({
-    queryKey: ['location', locationId],
+    queryKey: tenantScopedKey(['location', locationId]),
     queryFn: async () => {
       if (!locationId) return null
       const response = await api.get<{ data: Location }>(`/locations/${locationId}`)
       return response.data.data
     },
-    enabled: Boolean(locationId),
+    enabled: tenantId !== null && companyId !== null && Boolean(locationId),
     staleTime: 60000,
   })
 

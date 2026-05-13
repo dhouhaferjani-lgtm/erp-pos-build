@@ -36,9 +36,10 @@ class BundleComponentController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($bundleId);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $bundleId);
+        if ($bundle === null) {
             abort(404);
         }
 
@@ -55,6 +56,8 @@ class BundleComponentController extends Controller
                 is_optional: (bool) ($data['is_optional'] ?? false),
                 display_order: (int) ($data['display_order'] ?? 0),
                 notes: $data['notes'] ?? null,
+                tenant_id: $bundle->tenant_id,
+                company_id: $bundle->company_id,
             ));
         } catch (BundleCycleException $e) {
             return response()->json([
@@ -83,13 +86,15 @@ class BundleComponentController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($bundleId);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $bundleId);
+        if ($bundle === null) {
             abort(404);
         }
 
         $exists = ServiceBundleComponent::query()
+            ->where('tenant_id', $bundle->tenant_id)
             ->where('bundle_id', $bundleId)
             ->where('id', $componentId)
             ->exists();
@@ -118,6 +123,8 @@ class BundleComponentController extends Controller
             display_order: array_key_exists('display_order', $data) ? (int) $data['display_order'] : null,
             notes: $data['notes'] ?? null,
             notes_provided: array_key_exists('notes', $data),
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
         );
 
         try {
@@ -152,13 +159,19 @@ class BundleComponentController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($bundleId);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $bundleId);
+        if ($bundle === null) {
             abort(404);
         }
 
-        $this->authoring->removeComponent(new RemoveComponentCommand($bundleId, $componentId));
+        $this->authoring->removeComponent(new RemoveComponentCommand(
+            bundle_id: $bundleId,
+            component_id: $componentId,
+            tenant_id: $bundle->tenant_id,
+            company_id: $bundle->company_id,
+        ));
 
         return response()->json(null, 204);
     }

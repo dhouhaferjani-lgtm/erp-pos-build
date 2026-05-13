@@ -7,13 +7,12 @@ namespace App\Modules\Scheduling\Infrastructure\Listeners;
 use App\Modules\Scheduling\Application\Services\AppointmentTransitionService;
 use App\Modules\Scheduling\Domain\Contracts\AppointmentRepositoryInterface;
 use App\Modules\Scheduling\Domain\Enums\AppointmentStatus;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
 use Psr\Log\LoggerInterface;
 
 /**
  * Mirrors a WorkOrder -> Completed transition onto the linked appointment.
  *
- * Subscribes directly to Plan B's `WorkOrderCompleted` event. Target
+ * Subscribes directly to Plan B's versioned work-order completion events. Target
  * state is {@see AppointmentStatus::Completed} via the system-mirror path.
  *
  * If no appointment is linked (walk-in WO), logs-and-returns.
@@ -26,13 +25,15 @@ final readonly class MirrorAppointmentOnWorkOrderCompleted
         private LoggerInterface $logger,
     ) {}
 
-    public function handle(WorkOrderCompleted $event): void
+    public function handle(object $event): void
     {
-        $appointment = $this->appointments->findByWorkOrderId($event->work_order_id);
+        /** @var string $workOrderId */
+        $workOrderId = $event->work_order_id; // @phpstan-ignore property.notFound
+        $appointment = $this->appointments->findByWorkOrderId($workOrderId);
         if ($appointment === null) {
             $this->logger->info(
                 'MirrorAppointmentOnWorkOrderCompleted: no appointment linked to work_order',
-                ['work_order_id' => $event->work_order_id],
+                ['work_order_id' => $workOrderId],
             );
 
             return;

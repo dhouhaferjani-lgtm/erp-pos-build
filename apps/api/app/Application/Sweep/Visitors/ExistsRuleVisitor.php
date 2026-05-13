@@ -214,8 +214,9 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
 
     /**
      * Walks UP from the StaticCall through MethodCall ancestors set by
-     * ParentConnectingVisitor and returns true iff any ancestor is a
-     * MethodCall whose first arg is the literal 'tenant_id' or 'company_id'.
+     * ParentConnectingVisitor. Direct where('tenant_id'|'company_id', ...)
+     * chains keep their legacy behavior; parent-scoped closures must prove
+     * both tenant_id and company_id through structured, conjunctive predicates.
      */
     private function wrappingChainContainsTenantOrCompanyScope(StaticCall $staticCall): bool
     {
@@ -230,11 +231,78 @@ final class ExistsRuleVisitor extends NodeVisitorAbstract
                     && in_array($first->value, ['tenant_id', 'company_id'], true)) {
                     return true;
                 }
+                if ($first instanceof Closure && $this->closureContainsTenantAndCompanyScope($first)) {
+                    return true;
+                }
             }
             $cursor = $cursor->getAttribute('parent');
         }
 
         return false;
+    }
+
+    private function closureContainsTenantAndCompanyScope(Closure $closure): bool
+    {
+        $columns = [];
+        foreach ($closure->stmts as $stmt) {
+            $this->collectConjunctiveScopeColumns($stmt, false, $columns);
+        }
+
+        return isset($columns['tenant_id'], $columns['company_id']);
+    }
+
+    /**
+     * @param  array<string, true>  $columns
+     */
+    private function collectConjunctiveScopeColumns(Node $node, bool $inDisjunctivePosition, array &$columns): void
+    {
+        if ($node instanceof MethodCall && $node->name instanceof Identifier) {
+            $methodName = $node->name->toString();
+            $lowerMethodName = strtolower($methodName);
+            $isDisjunctive = $inDisjunctivePosition || str_starts_with($lowerMethodName, 'or');
+
+            if (! $isDisjunctive && $methodName === 'where') {
+                $first = $node->args[0]->value ?? null;
+                if ($first instanceof String_
+                    && in_array($first->value, ['tenant_id', 'company_id'], true)) {
+                    $columns[$first->value] = true;
+                }
+            }
+
+            $this->collectConjunctiveScopeColumns($node->var, $isDisjunctive, $columns);
+            foreach ($node->args as $arg) {
+                if (! $arg instanceof Node\Arg) {
+                    continue;
+                }
+                $this->collectConjunctiveScopeColumns($arg->value, $isDisjunctive, $columns);
+            }
+
+            return;
+        }
+
+        if ($node instanceof Closure) {
+            foreach ($node->stmts as $stmt) {
+                $this->collectConjunctiveScopeColumns($stmt, $inDisjunctivePosition, $columns);
+            }
+
+            return;
+        }
+
+        foreach ($node->getSubNodeNames() as $name) {
+            $child = $node->$name;
+            if ($child instanceof Node) {
+                $this->collectConjunctiveScopeColumns($child, $inDisjunctivePosition, $columns);
+
+                continue;
+            }
+            if (is_array($child)) {
+                foreach ($child as $item) {
+                    if ($item instanceof Node) {
+                        $this->collectConjunctiveScopeColumns($item, $inDisjunctivePosition, $columns);
+                    }
+                }
+            }
+        }
     }
 
     private function methodHasValidCrossTenantRouteAttribute(ClassMethod $method): bool

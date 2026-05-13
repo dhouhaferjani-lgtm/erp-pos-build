@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Vault, Building2, CreditCard, Wallet } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
 import { usePermissions } from '../../hooks/usePermissions'
@@ -48,6 +50,8 @@ export function RepositoryListPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const { hasPermission } = usePermissions()
   const canManageRepositories = hasPermission('repositories.manage')
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
 
   // Get translated type label
@@ -60,11 +64,12 @@ export function RepositoryListPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<RepositoriesResponse>('/payment-repositories')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const repositories = data?.data ?? []
@@ -270,7 +275,7 @@ export function RepositoryListPage() {
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false) }}
         onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
+          void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-repositories']) })
         }}
       />
     </div>

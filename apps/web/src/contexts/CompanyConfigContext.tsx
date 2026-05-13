@@ -1,7 +1,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet } from '../lib/api'
+import { tenantScopedKey } from '../lib/tenantScopedKey'
 import { useAuthStore } from '../stores/authStore'
+import { useCompanyStore } from '../stores/companyStore'
 
 /**
  * Company configuration from backend
@@ -48,13 +50,15 @@ interface CompanyConfigProviderProps {
  */
 export function CompanyConfigProvider({ children }: CompanyConfigProviderProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['company-config'],
+    queryKey: tenantScopedKey(['company-config']),
     queryFn: () => apiGet<CompanyConfig>('/company/config'),
     staleTime: 1000 * 60 * 60, // 1 hour - config doesn't change often
     retry: 1,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && tenantId !== null && companyId !== null,
   })
 
   const hasModule = useMemo(() => {

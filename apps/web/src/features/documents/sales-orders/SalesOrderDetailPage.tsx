@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -18,6 +19,8 @@ import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 import type { PaymentStatus } from '../components/PaymentStatusBadge'
 
@@ -30,12 +33,30 @@ const deliveryStatusColors = {
   fully_delivered: 'bg-green-100 text-green-800',
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function SalesOrderDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -50,12 +71,12 @@ export function SalesOrderDetailPage() {
 
   // Fetch sales order
   const { data: order, isLoading, error } = useQuery({
-    queryKey: ['document', 'sales_order', id],
+    queryKey: tenantScopedKey(['document', 'sales_order', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`/orders/${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
   // PDF mutations
@@ -67,9 +88,13 @@ export function SalesOrderDetailPage() {
   // Confirm order mutation
   const confirmMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/orders/${id}/confirm`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.confirmed'))
     },
     onError: (error) => {
@@ -80,32 +105,40 @@ export function SalesOrderDetailPage() {
   // Convert to invoice mutation
   const convertToInvoiceMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/orders/${id}/convert-to-invoice`, {}),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+      ])
       if (data?.id) {
         void navigate(`/sales/invoices/${data.id}`)
       }
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) })
     },
   })
 
   // Convert to delivery note mutation
   const convertToDeliveryMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/orders/${id}/convert-to-delivery`, {}),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+      ])
       if (data?.id) {
         void navigate(`/inventory/delivery-notes/${data.id}`)
       }
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast.error(error.message || t('documents.conversionError'))
-      void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) })
     },
   })
 
@@ -162,11 +195,17 @@ export function SalesOrderDetailPage() {
     })
   }
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
-    void queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
-    void queryClient.invalidateQueries({ queryKey: ['documents'] })
-    void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'sales_order', id]) }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+      }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+      }),
+    ])
   }
 
   if (isLoading) {

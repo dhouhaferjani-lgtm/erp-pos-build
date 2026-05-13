@@ -10,6 +10,7 @@ import { Select } from '../../../components/atoms/Select'
 import { Button } from '../../../components/atoms/Button'
 import { Textarea } from '../../../components/atoms/Textarea'
 import { apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 
 interface PaymentMethod {
   id: string
@@ -121,8 +122,8 @@ export function AddPaymentMethodModal({
       }
       return apiPost<{ data: PaymentMethod }>('/payment-methods', payload)
     },
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
       onSuccess?.(response.data)
       onClose()
     },

@@ -3,6 +3,8 @@ import { MapPin, ChevronDown, Check, Plus, Warehouse, Store, Building2, Truck, t
 import { useLocation } from '../../../hooks/useLocation'
 import { useQueryClient } from '@tanstack/react-query'
 import { AddLocationModal } from '../AddLocationModal'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { LocationType } from '../../../stores/locationStore'
 
 /**
@@ -33,6 +35,22 @@ function getLocationTypeLabel(type: LocationType): string {
   }
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 interface LocationSelectorProps {
   className?: string
 }
@@ -48,6 +66,8 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -67,8 +87,12 @@ export function LocationSelector({ className = '' }: LocationSelectorProps) {
     if (locationId !== currentLocation?.id) {
       switchLocation(locationId)
       // Invalidate stock-related queries to refetch data for new location
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
-      void queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      void queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+      })
+      void queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('stock-movements', tenantId, companyId),
+      })
     }
     setIsOpen(false)
   }

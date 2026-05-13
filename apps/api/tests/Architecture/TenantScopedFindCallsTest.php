@@ -75,8 +75,6 @@ class TenantScopedFindCallsTest extends TestCase
         'ServiceCatalogItem',
         'StockLevel',
         'StockMovement',
-        'TaxConfiguration',
-        'TaxRate',
         'Voucher',
         'VoucherLedger',
         'WithholdingCertificate',

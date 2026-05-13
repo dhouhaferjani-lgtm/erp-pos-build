@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, FileText, Package, TrendingUp, CreditCard } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -16,6 +17,8 @@ import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { useCompany } from '../../../hooks/useCompany'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | 'receive' | null
@@ -27,11 +30,29 @@ const receiptStatusColors = {
   fully_received: 'bg-green-100 text-green-800',
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function PurchaseOrderDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -46,12 +67,12 @@ export function PurchaseOrderDetailPage() {
 
   // Fetch purchase order
   const { data: purchaseOrder, isLoading, error } = useQuery({
-    queryKey: ['document', 'purchase_order', id],
+    queryKey: tenantScopedKey(['document', 'purchase_order', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`/purchase-orders/${id}`)
       return response.data.data
     },
-    enabled: id.length > 0,
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
   // PDF mutations
@@ -63,9 +84,13 @@ export function PurchaseOrderDetailPage() {
   // Confirm PO mutation
   const confirmMutation = useMutation({
     mutationFn: () => apiPost<Document>(`/purchase-orders/${id}/confirm`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] })
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.confirmed'))
     },
     onError: (error) => {
@@ -76,10 +101,16 @@ export function PurchaseOrderDetailPage() {
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
     mutationFn: () => apiPost<{ message: string }>(`/purchase-orders/${id}/receive`, {}),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] })
-      void queryClient.invalidateQueries({ queryKey: ['stock-levels'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+        }),
+      ])
       toast.success(t('documents.messages.goodsReceived'))
     },
     onError: (error) => {
@@ -135,11 +166,17 @@ export function PurchaseOrderDetailPage() {
     })
   }
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
-    void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', id] })
-    void queryClient.invalidateQueries({ queryKey: ['documents'] })
-    void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+      }),
+      queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+      }),
+    ])
   }
 
   if (isLoading) {

@@ -72,7 +72,7 @@ final readonly class BundleAuthoringService
 
     public function update(UpdateBundleCommand $command): ServiceBundle
     {
-        $bundle = $this->bundles->findById($command->bundle_id);
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
         if ($bundle === null) {
             throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
         }
@@ -122,7 +122,7 @@ final readonly class BundleAuthoringService
 
     public function deactivate(DeactivateBundleCommand $command): ServiceBundle
     {
-        $bundle = $this->bundles->findById($command->bundle_id);
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
         if ($bundle === null) {
             throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
         }
@@ -134,7 +134,7 @@ final readonly class BundleAuthoringService
 
     public function addComponent(AddComponentCommand $command): ServiceBundleComponent
     {
-        $bundle = $this->bundles->findById($command->bundle_id);
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
         if ($bundle === null) {
             throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
         }
@@ -142,7 +142,7 @@ final readonly class BundleAuthoringService
         $this->assertQuantityPositive($command->quantity);
 
         if ($command->component_type === BundleComponentType::NestedBundle) {
-            $this->assertNoCycle($command->bundle_id, $command->component_id);
+            $this->assertNoCycle($command->tenant_id, $command->company_id, $command->bundle_id, $command->component_id);
         }
 
         $scale = CurrencyScale::for($bundle->currency);
@@ -181,7 +181,7 @@ final readonly class BundleAuthoringService
      */
     public function updateComponent(UpdateComponentCommand $command): ServiceBundleComponent
     {
-        $bundle = $this->bundles->findById($command->bundle_id);
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
         if ($bundle === null) {
             throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
         }
@@ -203,7 +203,7 @@ final readonly class BundleAuthoringService
             }
 
             if ($command->component_type === BundleComponentType::NestedBundle) {
-                $this->assertNoCycle($command->bundle_id, $command->new_component_reference_id);
+                $this->assertNoCycle($command->tenant_id, $command->company_id, $command->bundle_id, $command->new_component_reference_id);
             }
 
             $component->component_type = $command->component_type;
@@ -249,8 +249,14 @@ final readonly class BundleAuthoringService
 
     public function removeComponent(RemoveComponentCommand $command): void
     {
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
+        if ($bundle === null) {
+            throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
+        }
+
         $component = ServiceBundleComponent::query()
-            ->where('bundle_id', $command->bundle_id)
+            ->where('tenant_id', $command->tenant_id)
+            ->where('bundle_id', $bundle->id)
             ->where('id', $command->component_id)
             ->first();
 
@@ -266,7 +272,7 @@ final readonly class BundleAuthoringService
      */
     public function setVehicleApplicabilities(SetVehicleApplicabilitiesCommand $command): void
     {
-        $bundle = $this->bundles->findById($command->bundle_id);
+        $bundle = $this->bundles->findByIdForScope($command->tenant_id, $command->company_id, $command->bundle_id);
         if ($bundle === null) {
             throw new InvalidArgumentException('Bundle not found: '.$command->bundle_id);
         }
@@ -320,7 +326,7 @@ final readonly class BundleAuthoringService
      * BFS over `nested_bundle_id` starting from `$candidateChild`. If
      * `$bundleId` is reachable, adding the child would create a cycle.
      */
-    private function assertNoCycle(string $bundleId, string $candidateChild): void
+    private function assertNoCycle(string $tenantId, string $companyId, string $bundleId, string $candidateChild): void
     {
         if ($bundleId === $candidateChild) {
             throw BundleCycleException::between($bundleId, $candidateChild);
@@ -349,8 +355,14 @@ final readonly class BundleAuthoringService
                     throw BundleCycleException::between($bundleId, $candidateChild);
                 }
 
+                $childBundle = $this->bundles->findByIdForScope($tenantId, $companyId, $currentId);
+                if ($childBundle === null) {
+                    throw new InvalidArgumentException('Bundle not found: '.$currentId);
+                }
+
                 $childIds = ServiceBundleComponent::query()
-                    ->where('bundle_id', $currentId)
+                    ->where('tenant_id', $tenantId)
+                    ->where('bundle_id', $childBundle->id)
                     ->whereNotNull('nested_bundle_id')
                     ->pluck('nested_bundle_id')
                     ->all();

@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, GripVertical, Search, X } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect'
@@ -74,10 +76,28 @@ interface DocumentLineEditorProps {
   documentType?: string
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function DocumentLineEditor({ lines, onChange, readonly = false, documentType }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const designationFeatureEnabled = useLineDesignationFeature()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchTab, setSearchTab] = useState<SearchTab>('product')
@@ -91,25 +111,25 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
   // Fetch products for search
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products', searchQuery],
+    queryKey: tenantScopedKey(['products', searchQuery]),
     queryFn: async () => {
       const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''
       const response = await api.get<ProductsResponse>(`/products${params}`)
       return response.data
     },
-    enabled: showProductSearch, // Always fetch when dropdown is open
+    enabled: tenantId !== null && companyId !== null && showProductSearch, // Always fetch when dropdown is open
     staleTime: 30000, // Cache for 30 seconds
   })
 
   // Fetch services for search
   const { data: servicesData, isLoading: isLoadingServices } = useQuery({
-    queryKey: ['services', searchQuery],
+    queryKey: tenantScopedKey(['services', searchQuery]),
     queryFn: async () => {
       const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''
       const response = await api.get<ServicesResponse>(`/services${params}`)
       return response.data
     },
-    enabled: showProductSearch && searchTab === 'service',
+    enabled: tenantId !== null && companyId !== null && showProductSearch && searchTab === 'service',
     staleTime: 30000,
   })
 
@@ -682,7 +702,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           }
           // Add the new product to the lines
           handleAddProduct(lineProduct)
-          void queryClient.invalidateQueries({ queryKey: ['products'] })
+          void queryClient.invalidateQueries({
+            predicate: scopedNamespacePredicate('products', tenantId, companyId),
+          })
         }}
       />
     </div>

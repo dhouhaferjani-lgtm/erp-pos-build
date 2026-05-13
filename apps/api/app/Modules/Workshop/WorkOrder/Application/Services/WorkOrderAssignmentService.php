@@ -38,7 +38,7 @@ final readonly class WorkOrderAssignmentService
     public function assign(AssignTechnicianCommand $command): WorkOrderAssignment
     {
         return $this->db->transaction(function () use ($command): WorkOrderAssignment {
-            $wo = $this->requireWorkOrder($command->work_order_id);
+            $wo = $this->requireWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
             $availabilityNote = $this->probeAvailability($wo, $command->technician_profile_id);
 
@@ -72,7 +72,7 @@ final readonly class WorkOrderAssignmentService
     public function unassign(UnassignTechnicianCommand $command): void
     {
         $this->db->transaction(function () use ($command): void {
-            $wo = $this->requireWorkOrder($command->work_order_id);
+            $wo = $this->requireWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
             $assignment = WorkOrderAssignment::query()
                 ->where('work_order_id', $wo->id)
@@ -100,7 +100,7 @@ final readonly class WorkOrderAssignmentService
     public function setPrimary(SetPrimaryTechnicianCommand $command): WorkOrderAssignment
     {
         return $this->db->transaction(function () use ($command): WorkOrderAssignment {
-            $wo = $this->requireWorkOrder($command->work_order_id);
+            $wo = $this->requireWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
             // Drop any current lead on this WO.
             $this->unassignCurrentLead($wo->id);
@@ -177,9 +177,9 @@ final readonly class WorkOrderAssignmentService
             ->update(['unassigned_at' => Carbon::now(), 'is_lead' => false]);
     }
 
-    private function requireWorkOrder(string $workOrderId): WorkOrder
+    private function requireWorkOrder(string $tenantId, string $companyId, string $workOrderId): WorkOrder
     {
-        $wo = $this->workOrders->findForUpdate($workOrderId);
+        $wo = $this->workOrders->findForUpdateForScope($tenantId, $companyId, $workOrderId);
         if ($wo === null) {
             throw new RuntimeException("WorkOrder {$workOrderId} not found.");
         }

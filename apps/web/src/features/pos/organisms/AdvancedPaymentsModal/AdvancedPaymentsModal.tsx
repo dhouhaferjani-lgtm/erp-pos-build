@@ -6,12 +6,15 @@ import {
   Banknote, CreditCard, FileText, Building2, Wallet, Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
 import { useCompanySettings } from '../../hooks'
 import { useDiscountPermissions } from '../../hooks/useDiscountPermissions'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { bcadd, bcsub, bccomp } from '@/lib/decimal'
 import { fetchPaymentMethods } from '../../api/paymentMethodApi'
 import { fetchPaymentRepositories } from '../../api/paymentRepositoryApi'
@@ -132,6 +135,8 @@ export function AdvancedPaymentsModal({
   const { autoPrintReceipts } = useCompanySettings()
   const { currency, decimals, toFixed: toFixedCurrency } = useCurrency()
   const { permissions } = useDiscountPermissions(terminalCode)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [showDiscountModal, setShowDiscountModal] = useState(false)
   const [completedReceipt, setCompletedReceipt] = useState<{ receiptId: string; receiptNumber: string } | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -147,15 +152,17 @@ export function AdvancedPaymentsModal({
   const [entryCardLastFour, setEntryCardLastFour] = useState('')
 
   const { data: paymentMethods = [], isLoading: isLoadingMethods } = useQuery({
-    queryKey: ['payment-methods'],
+    queryKey: tenantScopedKey(['payment-methods']),
     queryFn: fetchPaymentMethods,
     staleTime: 10 * 60 * 1000,
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const { data: paymentRepositories = [], isLoading: isLoadingRepos } = useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: fetchPaymentRepositories,
     staleTime: 10 * 60 * 1000,
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const isLoadingData = isLoadingMethods || isLoadingRepos

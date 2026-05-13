@@ -7,7 +7,7 @@ namespace App\Modules\Workshop\Technician\Infrastructure\Listeners;
 use App\Modules\Workshop\Technician\Application\Services\TimeEntryService;
 
 /**
- * Subscribes to Plan B's `WorkOrderCompleted` event. Closes the open time entry for the
+ * Subscribes to `WorkOrderCompletedV2`. Closes the open time entry for the
  * work order with duration = completed_at - started_at and emits `TechnicianTimeEntryClosed`.
  *
  * Expected event shape:

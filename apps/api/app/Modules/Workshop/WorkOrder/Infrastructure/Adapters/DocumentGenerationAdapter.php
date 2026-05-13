@@ -87,7 +87,10 @@ final readonly class DocumentGenerationAdapter
         // back to the invoice itself — the audit event still survives, with
         // sourceType=invoice signaling no prior Quote document was created.
         $sourceDocument = $wo->quote_document_id !== null
-            ? Document::find($wo->quote_document_id)
+            ? Document::query()
+                ->where('tenant_id', $wo->tenant_id)
+                ->where('company_id', $wo->company_id)
+                ->find($wo->quote_document_id)
             : null;
         $this->discountStripper->stripFromConvertedDocument(
             $sourceDocument ?? $document,

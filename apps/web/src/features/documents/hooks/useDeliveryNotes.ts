@@ -5,6 +5,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   getDeliveryNotes,
   getInvoiceableDeliveryNotes,
@@ -13,6 +16,22 @@ import {
   type DeliveryNote,
 } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 /**
  * Query hook: Get delivery notes list.
@@ -30,9 +49,13 @@ export function useDeliveryNotes(params?: {
   status?: 'draft' | 'confirmed' | 'cancelled'
   partner_id?: string
 }) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['delivery-notes', params],
+    queryKey: tenantScopedKey(['delivery-notes', params]),
     queryFn: () => getDeliveryNotes(params),
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
@@ -50,9 +73,13 @@ export function useDeliveryNotes(params?: {
  * const { data: deliveryNotes } = useInvoiceableDeliveryNotes(partnerId)
  */
 export function useInvoiceableDeliveryNotes(partnerId?: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['delivery-notes', 'invoiceable', partnerId],
+    queryKey: tenantScopedKey(['delivery-notes', 'invoiceable', partnerId]),
     queryFn: () => getInvoiceableDeliveryNotes(partnerId),
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
@@ -65,10 +92,13 @@ export function useInvoiceableDeliveryNotes(partnerId?: string) {
  * const { data: deliveryNote, isLoading } = useDeliveryNote(deliveryNoteId)
  */
 export function useDeliveryNote(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['delivery-note', id],
+    queryKey: tenantScopedKey(['delivery-note', id]),
     queryFn: () => getDeliveryNote(id!),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
   })
 }
 
@@ -99,19 +129,25 @@ export function useDeliveryNote(id: string | undefined) {
  */
 export function useConsolidateDeliveryNotes() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (deliveryNoteIds: string[]) =>
       consolidateDeliveryNotesToInvoice(deliveryNoteIds),
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate delivery notes lists
-      void queryClient.invalidateQueries({ queryKey: ['delivery-notes'] })
-
-      // Invalidate documents lists
-      void queryClient.invalidateQueries({ queryKey: ['documents'] })
-
-      // Invalidate invoices list
-      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('delivery-notes', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('invoices', tenantId, companyId),
+        }),
+      ])
       toast.success('Invoice created from delivery notes')
     },
     onError: (error) => {

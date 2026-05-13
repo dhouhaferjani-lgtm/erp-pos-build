@@ -4,7 +4,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import {
   listReconciliations,
   getReconciliation,
@@ -22,6 +25,22 @@ import type {
   MatchItemRequest,
 } from '@/types/treasury'
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 /**
  * Query hook: List all reconciliations.
  */
@@ -29,9 +48,13 @@ export function useReconciliations(filters?: {
   repository_id?: string;
   status?: string;
 }) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['reconciliations', filters],
+    queryKey: tenantScopedKey(['reconciliations', filters]),
     queryFn: () => listReconciliations(filters),
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 30 * 1000, // 30 seconds
   })
 }
@@ -40,10 +63,13 @@ export function useReconciliations(filters?: {
  * Query hook: Get a single reconciliation with items.
  */
 export function useReconciliation(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['reconciliation', id],
+    queryKey: tenantScopedKey(['reconciliation', id]),
     queryFn: () => getReconciliation(id!),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
     staleTime: 10 * 1000, // 10 seconds
   })
 }
@@ -52,10 +78,13 @@ export function useReconciliation(id: string | undefined) {
  * Query hook: Get reconciliation summary.
  */
 export function useReconciliationSummary(id: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['reconciliation-summary', id],
+    queryKey: tenantScopedKey(['reconciliation-summary', id]),
     queryFn: () => getReconciliationSummary(id!),
-    enabled: !!id,
+    enabled: !!id && tenantId !== null && companyId !== null,
     staleTime: 10 * 1000, // 10 seconds
   })
 }
@@ -64,9 +93,13 @@ export function useReconciliationSummary(id: string | undefined) {
  * Query hook: List payment repositories.
  */
 export function usePaymentRepositories() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: () => listRepositories(),
+    enabled: tenantId !== null && companyId !== null,
     staleTime: 5 * 60 * 1000, // 5 minutes
   })
 }
@@ -76,11 +109,15 @@ export function usePaymentRepositories() {
  */
 export function useStartReconciliation() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (request: StartReconciliationRequest) => startReconciliation(request),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['reconciliations'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('reconciliations', tenantId, companyId),
+      })
       toast.success('Reconciliation started')
     },
     onError: (error) => {
@@ -94,6 +131,8 @@ export function useStartReconciliation() {
  */
 export function useMatchItem() {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({
@@ -105,13 +144,15 @@ export function useMatchItem() {
       paymentId: string;
       request?: MatchItemRequest;
     }) => matchItem(reconciliationId, paymentId, request),
-    onSuccess: (_, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ['reconciliation', variables.reconciliationId],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['reconciliation-summary', variables.reconciliationId],
-      })
+    onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['reconciliation', variables.reconciliationId]),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['reconciliation-summary', variables.reconciliationId]),
+        }),
+      ])
       toast.success('Item matched')
     },
     onError: (error) => {
@@ -125,6 +166,8 @@ export function useMatchItem() {
  */
 export function useUnmatchItem() {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: ({
@@ -134,13 +177,15 @@ export function useUnmatchItem() {
       reconciliationId: string;
       paymentId: string;
     }) => unmatchItem(reconciliationId, paymentId),
-    onSuccess: (_, variables) => {
-      void queryClient.invalidateQueries({
-        queryKey: ['reconciliation', variables.reconciliationId],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: ['reconciliation-summary', variables.reconciliationId],
-      })
+    onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['reconciliation', variables.reconciliationId]),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey(['reconciliation-summary', variables.reconciliationId]),
+        }),
+      ])
       toast.success('Item unmatched')
     },
     onError: (error) => {
@@ -155,15 +200,25 @@ export function useUnmatchItem() {
  */
 export function useCompleteReconciliation() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (id: string) => completeReconciliation(id),
-    onSuccess: (_, id) => {
-      void queryClient.invalidateQueries({ queryKey: ['reconciliations'] })
-      void queryClient.invalidateQueries({ queryKey: ['reconciliation', id] })
-      void queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] })
-      void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('reconciliations', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation-summary', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('payment-repositories', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('payments', tenantId, companyId),
+        }),
+      ])
       toast.success('Reconciliation completed')
     },
     onError: (error) => {
@@ -177,13 +232,19 @@ export function useCompleteReconciliation() {
  */
 export function useCancelReconciliation() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (id: string) => cancelReconciliation(id),
-    onSuccess: (_, id) => {
-      void queryClient.invalidateQueries({ queryKey: ['reconciliations'] })
-      void queryClient.invalidateQueries({ queryKey: ['reconciliation', id] })
-      void queryClient.invalidateQueries({ queryKey: ['reconciliation-summary', id] })
+    onSuccess: async (_, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('reconciliations', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['reconciliation-summary', id]) }),
+      ])
       toast.success('Reconciliation cancelled')
     },
     onError: (error) => {

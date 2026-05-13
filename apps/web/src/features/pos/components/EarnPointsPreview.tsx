@@ -2,6 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { previewEarning, type CartItemForLoyalty } from '../api/loyaltyApi'
 
 export interface EarnPointsPreviewProps {
@@ -22,11 +25,13 @@ export function EarnPointsPreview({
   className,
 }: EarnPointsPreviewProps) {
   const { t } = useTranslation(['pos'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data } = useQuery({
-    queryKey: ['loyalty', 'preview-earning', enrollmentId, cartTotal, cartItems.length],
+    queryKey: tenantScopedKey(['loyalty', 'preview-earning', enrollmentId, cartTotal, cartItems.length]),
     queryFn: () => previewEarning(enrollmentId, cartTotal, cartItems),
-    enabled: !!enrollmentId && parseFloat(cartTotal) > 0,
+    enabled: tenantId !== null && companyId !== null && !!enrollmentId && parseFloat(cartTotal) > 0,
     staleTime: 5000,
   })
 

@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, Layers } from 'lucide-react'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 interface CompositeItemOption {
   id: string
@@ -34,9 +37,11 @@ export function CompositeItemSearchSelect({
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data: itemsData, isLoading } = useQuery({
-    queryKey: ['composite-items-search', searchQuery],
+    queryKey: tenantScopedKey(['composite-items-search', searchQuery]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) {
@@ -46,17 +51,17 @@ export function CompositeItemSearchSelect({
       const response = await api.get<CompositeItemsResponse>(`/composite-items?${params.toString()}`)
       return response.data
     },
-    enabled: isOpen,
+    enabled: isOpen && tenantId !== null && companyId !== null,
     staleTime: 30000,
   })
 
   const { data: selectedItem } = useQuery({
-    queryKey: ['composite-item-selected', value],
+    queryKey: tenantScopedKey(['composite-item-selected', value]),
     queryFn: async () => {
       const response = await api.get<{ data: CompositeItemOption }>(`/composite-items/${value}`)
       return response.data.data
     },
-    enabled: Boolean(value) && !isOpen,
+    enabled: Boolean(value) && !isOpen && tenantId !== null && companyId !== null,
     staleTime: 60000,
   })
 

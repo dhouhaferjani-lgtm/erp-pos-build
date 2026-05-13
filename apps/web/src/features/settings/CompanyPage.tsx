@@ -17,6 +17,9 @@ import {
   Receipt,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { countries } from '../../lib/countries'
 import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
 
@@ -53,6 +56,8 @@ type CompanyTab = 'general' | 'receipt'
 export function CompanyPage() {
   const { t } = useTranslation(['settings', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<CompanyTab>('general')
   const [notification, setNotification] = useState<{
@@ -62,11 +67,12 @@ export function CompanyPage() {
 
   // Fetch company settings
   const { data, isLoading, error } = useQuery({
-    queryKey: ['company-settings'],
+    queryKey: tenantScopedKey(['company-settings']),
     queryFn: async () => {
       const response = await api.get<CompanySettingsResponse>('/settings/company')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   // Form state
@@ -99,8 +105,8 @@ export function CompanyPage() {
     mutationFn: async (data: Partial<CompanySettings>): Promise<void> => {
       await api.patch('/settings/company', data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
       setIsDirty(false)
       showNotification('success', t('settings:company.messages.saved'))
     },
@@ -118,8 +124,8 @@ export function CompanyPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
       showNotification('success', t('settings:company.messages.logoUploaded'))
     },
     onError: (error) => {
@@ -132,8 +138,8 @@ export function CompanyPage() {
     mutationFn: async (): Promise<void> => {
       await api.delete('/settings/company/logo')
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
       showNotification('success', t('settings:company.messages.logoDeleted'))
     },
     onError: (error) => {

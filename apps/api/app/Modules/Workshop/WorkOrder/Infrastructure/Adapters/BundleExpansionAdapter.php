@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Workshop\WorkOrder\Infrastructure\Adapters;
 
 use App\Modules\Workshop\Bundle\Application\Services\BundleExpansionService;
+use App\Modules\Workshop\Bundle\Domain\Contracts\BundleRepositoryInterface;
 use App\Modules\Workshop\Bundle\Domain\Enums\BundlePricingMode;
-use App\Modules\Workshop\Bundle\Domain\ServiceBundle;
 use App\Modules\Workshop\Bundle\Domain\ValueObjects\BundleExpansionLine;
 use Illuminate\Support\Collection;
 
@@ -23,30 +23,31 @@ final readonly class BundleExpansionAdapter
 {
     public function __construct(
         private BundleExpansionService $expansion,
+        private BundleRepositoryInterface $bundles,
     ) {}
 
     /**
      * @return Collection<int, BundleExpansionLine>
      */
-    public function expand(string $bundleId, string $quantity, ?string $vehicleId): Collection
+    public function expand(string $tenantId, string $companyId, string $bundleId, string $quantity, ?string $vehicleId): Collection
     {
-        return $this->expansion->expandForWorkOrder($bundleId, $quantity, $vehicleId);
+        return $this->expansion->expandForWorkOrder($tenantId, $companyId, $bundleId, $quantity, $vehicleId);
     }
 
     /**
      * Look up whether a bundle is fixed-price. Used by WorkOrderBundleService
      * to decide header-line creation.
      */
-    public function pricingModeOf(string $bundleId): ?BundlePricingMode
+    public function pricingModeOf(string $tenantId, string $companyId, string $bundleId): ?BundlePricingMode
     {
-        $bundle = ServiceBundle::query()->find($bundleId);
+        $bundle = $this->bundles->findByIdForScope($tenantId, $companyId, $bundleId);
 
         return $bundle?->pricing_mode;
     }
 
-    public function bundleName(string $bundleId): ?string
+    public function bundleName(string $tenantId, string $companyId, string $bundleId): ?string
     {
-        $bundle = ServiceBundle::query()->find($bundleId);
+        $bundle = $this->bundles->findByIdForScope($tenantId, $companyId, $bundleId);
 
         return $bundle?->name;
     }

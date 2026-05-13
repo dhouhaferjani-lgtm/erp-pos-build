@@ -127,6 +127,8 @@ final class CreateBundleTest extends TestCase
             service_interval_km: null,
             service_interval_months: null,
             is_active: null,
+            tenant_id: $created->tenant_id,
+            company_id: $created->company_id,
         ));
 
         $this->assertSame('Renamed', $updated->name);
@@ -151,7 +153,11 @@ final class CreateBundleTest extends TestCase
             service_interval_months: null,
         ));
 
-        $updated = $this->service->deactivate(new DeactivateBundleCommand($created->id));
+        $updated = $this->service->deactivate(new DeactivateBundleCommand(
+            bundle_id: $created->id,
+            tenant_id: $created->tenant_id,
+            company_id: $created->company_id,
+        ));
 
         $this->assertFalse($updated->is_active);
     }

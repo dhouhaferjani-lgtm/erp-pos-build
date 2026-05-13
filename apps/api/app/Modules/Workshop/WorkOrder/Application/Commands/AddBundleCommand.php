@@ -18,5 +18,7 @@ final readonly class AddBundleCommand
         public string $bundle_id,
         public string $quantity,
         public ?string $vehicle_id,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

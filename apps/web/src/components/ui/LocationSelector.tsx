@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown, MapPin } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { getLocations } from '../../features/locations/api/locations'
 import type { Location } from '../../features/locations/types'
 
@@ -30,23 +33,25 @@ export function LocationSelector({
   const [searchQuery, setSearchQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Fetch all locations
   const { data: allLocations, isLoading } = useQuery({
-    queryKey: ['locations'],
+    queryKey: tenantScopedKey(['locations']),
     queryFn: getLocations,
-    enabled: isOpen,
+    enabled: tenantId !== null && companyId !== null && isOpen,
     staleTime: 30000,
   })
 
   // Fetch selected location for display
   const { data: selectedLocationData } = useQuery({
-    queryKey: ['location', value],
+    queryKey: tenantScopedKey(['location', value]),
     queryFn: async () => {
       const response = await api.get<{ data: Location }>(`/locations/${value}`)
       return response.data.data
     },
-    enabled: Boolean(value) && !isOpen,
+    enabled: tenantId !== null && companyId !== null && Boolean(value) && !isOpen,
     staleTime: 60000,
   })
 

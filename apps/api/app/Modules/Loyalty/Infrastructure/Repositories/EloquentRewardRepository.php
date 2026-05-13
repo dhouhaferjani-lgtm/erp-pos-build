@@ -7,6 +7,7 @@ namespace App\Modules\Loyalty\Infrastructure\Repositories;
 use App\Modules\Loyalty\Domain\Entities\Reward;
 use App\Modules\Loyalty\Domain\Repositories\RewardRepositoryInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Eloquent implementation of Reward repository
@@ -19,6 +20,31 @@ final readonly class EloquentRewardRepository implements RewardRepositoryInterfa
     public function findById(string $id): ?Reward
     {
         return Reward::find($id);
+    }
+
+    /**
+     * Determine whether a reward belongs to the given program and tenant.
+     */
+    public function existsForProgramInTenant(string $id, string $programId, string $tenantId): bool
+    {
+        return DB::table('loyalty_rewards')
+            ->join('loyalty_programs', 'loyalty_programs.id', '=', 'loyalty_rewards.program_id')
+            ->where('loyalty_rewards.id', $id)
+            ->where('loyalty_rewards.program_id', $programId)
+            ->where('loyalty_programs.tenant_id', $tenantId)
+            ->exists();
+    }
+
+    /**
+     * Determine whether a reward belongs to any program in the given tenant.
+     */
+    public function existsInTenant(string $id, string $tenantId): bool
+    {
+        return DB::table('loyalty_rewards')
+            ->join('loyalty_programs', 'loyalty_programs.id', '=', 'loyalty_rewards.program_id')
+            ->where('loyalty_rewards.id', $id)
+            ->where('loyalty_programs.tenant_id', $tenantId)
+            ->exists();
     }
 
     /**

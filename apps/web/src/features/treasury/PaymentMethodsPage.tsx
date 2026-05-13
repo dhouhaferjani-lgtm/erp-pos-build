@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { usePaymentMethods } from './hooks/usePaymentMethods'
 import { AddPaymentMethodModal } from './components/AddPaymentMethodModal'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 
 interface PaymentMethodExtended {
   id: string
@@ -40,8 +41,8 @@ export function PaymentMethodsPage() {
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
       await api.patch(`/payment-methods/${id}`, { is_active: !isActive })
     },
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
       toast.success(
         variables.isActive
           ? t('treasury:paymentMethods.messages.deactivated')
@@ -330,7 +331,7 @@ export function PaymentMethodsPage() {
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false) }}
         onSuccess={() => {
-          void queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
+          void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['payment-methods']) })
         }}
       />
     </div>

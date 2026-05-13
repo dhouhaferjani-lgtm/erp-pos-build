@@ -59,7 +59,7 @@ final readonly class WriteDocumentVehicleContextForWorkOrderInvoice
             return; // Non-WO invoice (e.g., IziPOS retail sale) — nothing to do.
         }
 
-        $workOrder = $this->workOrders->findById($workOrderId);
+        $workOrder = $this->workOrders->findByIdForScope($event->tenantId, $event->companyId, $workOrderId);
         if ($workOrder === null) {
             return;
         }

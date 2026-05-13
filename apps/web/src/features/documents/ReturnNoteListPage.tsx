@@ -10,6 +10,9 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Search, Filter, FileText } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { ReturnNote } from '@/types/returnNote'
 
 interface ReturnNotesResponse {
@@ -19,13 +22,15 @@ interface ReturnNotesResponse {
 export function ReturnNoteListPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { decimals } = useCurrency()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [reasonFilter, setReasonFilter] = useState<string>('')
 
   // Fetch return notes
   const { data, isLoading } = useQuery({
-    queryKey: ['return-notes', searchQuery, statusFilter, reasonFilter],
+    queryKey: tenantScopedKey(['return-notes', searchQuery, statusFilter, reasonFilter]),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('search', searchQuery)
@@ -35,6 +40,7 @@ export function ReturnNoteListPage() {
       const response = await api.get<ReturnNotesResponse>(`/return-notes?${params.toString()}`)
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const returnNotes = data?.data || []

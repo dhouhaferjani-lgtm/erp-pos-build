@@ -26,5 +26,7 @@ final readonly class AddComponentCommand
         public bool $is_optional,
         public int $display_order,
         public ?string $notes,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

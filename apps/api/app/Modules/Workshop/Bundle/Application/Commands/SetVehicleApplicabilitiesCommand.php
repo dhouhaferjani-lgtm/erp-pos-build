@@ -26,5 +26,7 @@ final readonly class SetVehicleApplicabilitiesCommand
     public function __construct(
         public string $bundle_id,
         public array $applicabilities,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

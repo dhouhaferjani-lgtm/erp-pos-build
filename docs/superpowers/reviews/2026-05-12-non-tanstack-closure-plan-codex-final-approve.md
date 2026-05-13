@@ -1,0 +1,3 @@
+# Non-TanStack Tenant-Isolation Closure Plan - Codex Final Approval
+
+Verdict: APPROVE. Final pass reviewed commit `6ec4c6a857279521240ea21011af0586a75e7654` only against the three remaining Codex reverify gaps from the prior pass: the endpoint matrix now explicitly lists all eight Bundle routes and the three missing WorkOrder transition routes (`transition`, `cancel`, `complete`); Task 3 Step 3's policy fallback now resolves through repository refactor only and no longer mentions an attribute allowlist; and `rg "attribute allowlist|repository refactor OR" docs/superpowers/plans/2026-05-11-tenant-isolation-non-tanstack-closure-plan.md` returns no matches. Implementation is unblocked.

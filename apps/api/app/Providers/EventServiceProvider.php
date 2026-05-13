@@ -32,7 +32,7 @@ use App\Modules\Workshop\Technician\Infrastructure\Listeners\CloseTimeEntryOnWor
 use App\Modules\Workshop\Technician\Infrastructure\Listeners\CreateTimeEntryOnWorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCancelled;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderClosed;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompletedV2;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPartsNeeded;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderPaused;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderResumed;
@@ -86,7 +86,7 @@ class EventServiceProvider extends ServiceProvider
         WorkOrderResumed::class => [
             ReopenTimeEntryOnWorkOrderResumed::class,
         ],
-        WorkOrderCompleted::class => [
+        WorkOrderCompletedV2::class => [
             CloseTimeEntryOnWorkOrderCompleted::class,
             WriteMileageReadingFromWorkOrderCompleted::class,
             MirrorAppointmentOnWorkOrderCompleted::class,

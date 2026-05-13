@@ -21,6 +21,8 @@ final readonly class CaptureApprovalCommand
         public string $approval_captured_by_user_id,
         public ?string $approval_reference,
         public \DateTimeImmutable $approval_captured_at,
+        public string $tenant_id,
+        public string $company_id,
         public ?\DateTimeImmutable $expected_updated_at = null,
     ) {}
 }

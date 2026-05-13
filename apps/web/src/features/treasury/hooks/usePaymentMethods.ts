@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 export interface PaymentMethod {
   id: string
@@ -23,12 +26,16 @@ interface PaymentMethodsResponse {
  * @returns Query result with payment methods list
  */
 export function usePaymentMethods() {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['payment-methods'],
+    queryKey: tenantScopedKey(['payment-methods']),
     queryFn: async () => {
       const response = await api.get<PaymentMethodsResponse>('/payment-methods')
       return response.data.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 

@@ -105,6 +105,8 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
                 reason_code: null,
                 triggered_by_user_id: null,
                 occurred_at: new \DateTimeImmutable,
+                tenant_id: $wo->tenant_id,
+                company_id: $wo->company_id,
                 context: null,
             ));
         } finally {
@@ -189,6 +191,8 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
             reason_code: null,
             triggered_by_user_id: null,
             occurred_at: new \DateTimeImmutable,
+            tenant_id: $wo->tenant_id,
+            company_id: $wo->company_id,
             context: null,
         ));
 

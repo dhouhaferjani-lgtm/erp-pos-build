@@ -29,6 +29,8 @@ final readonly class TransitionStatusCommand
         public ?string $reason_code,
         public ?string $triggered_by_user_id,
         public \DateTimeImmutable $occurred_at,
+        public string $tenant_id,
+        public string $company_id,
         public ?array $context = null,
         public ?\DateTimeImmutable $expected_updated_at = null,
     ) {}

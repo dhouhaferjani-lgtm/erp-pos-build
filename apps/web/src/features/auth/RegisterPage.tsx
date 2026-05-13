@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, ensureCsrfCookie, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { useRegisterForm } from './hooks/useRegisterForm'
@@ -94,7 +95,7 @@ export function RegisterPage() {
         email_verified_at: null,
       }
       setAuth(user, data.token)
-      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+      void queryClient.invalidateQueries({ queryKey: tenantScopedKey(['auth', 'me']) })
       void navigate('/', { replace: true })
     },
     onError: (error: unknown) => {

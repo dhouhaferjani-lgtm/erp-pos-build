@@ -30,5 +30,7 @@ final readonly class AddLineCommand
         public ?string $labor_hours_estimated,
         public ?string $assigned_technician_profile_id,
         public bool $is_customer_supplied,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

@@ -44,7 +44,7 @@ final readonly class WorkOrderLineService
     public function addLine(AddLineCommand $command): WorkOrderLine
     {
         return $this->db->transaction(function () use ($command): WorkOrderLine {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
             $this->assertRefsMatchLineType($command);
 
             $existing = $this->lines->listForWorkOrder($wo->id);
@@ -103,7 +103,7 @@ final readonly class WorkOrderLineService
     public function updateLine(UpdateLineCommand $command): WorkOrderLine
     {
         return $this->db->transaction(function () use ($command): WorkOrderLine {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
             $line = $this->lines->findById($command->line_id);
             if ($line === null || $line->work_order_id !== $wo->id) {
                 throw new RuntimeException("WorkOrderLine {$command->line_id} not found for WO {$wo->id}.");
@@ -161,7 +161,7 @@ final readonly class WorkOrderLineService
     public function removeLine(RemoveLineCommand $command): void
     {
         $this->db->transaction(function () use ($command): void {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
             $line = $this->lines->findById($command->line_id);
             if ($line === null || $line->work_order_id !== $wo->id) {
                 throw new RuntimeException("WorkOrderLine {$command->line_id} not found for WO {$wo->id}.");
@@ -182,7 +182,7 @@ final readonly class WorkOrderLineService
     public function reorderLines(ReorderLinesCommand $command): void
     {
         $this->db->transaction(function () use ($command): void {
-            $wo = $this->requireMutableWorkOrder($command->work_order_id);
+            $wo = $this->requireMutableWorkOrder($command->tenant_id, $command->company_id, $command->work_order_id);
 
             foreach ($command->ordered_line_ids as $index => $lineId) {
                 $line = $this->lines->findById($lineId);
@@ -199,10 +199,10 @@ final readonly class WorkOrderLineService
      * Mark the line as a CoreReturn paired with a prior CoreCharge. Flips the
      * paired CoreCharge's deposit status to Returned. Enforces mutable status.
      */
-    public function returnCoreCharge(string $workOrderId, string $coreChargeLineId, string $coreReturnLineId): void
+    public function returnCoreCharge(string $tenantId, string $companyId, string $workOrderId, string $coreChargeLineId, string $coreReturnLineId): void
     {
-        $this->db->transaction(function () use ($workOrderId, $coreChargeLineId, $coreReturnLineId): void {
-            $wo = $this->requireMutableWorkOrder($workOrderId);
+        $this->db->transaction(function () use ($tenantId, $companyId, $workOrderId, $coreChargeLineId, $coreReturnLineId): void {
+            $wo = $this->requireMutableWorkOrder($tenantId, $companyId, $workOrderId);
 
             $charge = $this->lines->findById($coreChargeLineId);
             $return = $this->lines->findById($coreReturnLineId);
@@ -310,9 +310,9 @@ final readonly class WorkOrderLineService
         $this->workOrders->save($wo);
     }
 
-    private function requireMutableWorkOrder(string $workOrderId): WorkOrder
+    private function requireMutableWorkOrder(string $tenantId, string $companyId, string $workOrderId): WorkOrder
     {
-        $wo = $this->workOrders->findForUpdate($workOrderId);
+        $wo = $this->workOrders->findForUpdateForScope($tenantId, $companyId, $workOrderId);
         if ($wo === null) {
             throw new RuntimeException("WorkOrder {$workOrderId} not found.");
         }

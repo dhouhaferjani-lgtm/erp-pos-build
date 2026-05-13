@@ -59,12 +59,13 @@ final class VoucherController extends Controller
 
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         $perPage = min((int) ($request->query('per_page', '20')), 100);
 
         $query = Voucher::query()
-            ->where('tenant_id', $user->tenant_id)
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->with(['partner', 'issuedAtTerminal', 'issuedBy'])
             ->orderByDesc('issued_at');
@@ -144,6 +145,7 @@ final class VoucherController extends Controller
 
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         if (! Str::isUuid($id)) {
@@ -162,7 +164,7 @@ final class VoucherController extends Controller
             'sourceReceipt',
             'issuedAtTerminal',
         ])
-            ->where('tenant_id', $user->tenant_id)
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($id);
 
@@ -191,6 +193,7 @@ final class VoucherController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         $validated = $request->validated();
@@ -229,7 +232,7 @@ final class VoucherController extends Controller
         $dto = new VoucherIssuanceRequest(
             amount: $amountRaw,
             currency: $currency,
-            tenantId: $user->tenant_id,
+            tenantId: $tenantId,
             companyId: $companyId,
             issuedByUserId: $user->id,
             sourceReceiptId: null,
@@ -274,6 +277,7 @@ final class VoucherController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         if (! Str::isUuid($id)) {
@@ -282,7 +286,7 @@ final class VoucherController extends Controller
             ], 422);
         }
 
-        $voucher = Voucher::where('tenant_id', $user->tenant_id)
+        $voucher = Voucher::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($id);
 
@@ -371,6 +375,7 @@ final class VoucherController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         if (! Str::isUuid($id)) {
@@ -379,7 +384,7 @@ final class VoucherController extends Controller
             ], 422);
         }
 
-        $voucher = Voucher::where('tenant_id', $user->tenant_id)
+        $voucher = Voucher::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($id);
 
@@ -441,6 +446,7 @@ final class VoucherController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $tenantId = $user->tenant_id;
         $companyId = $this->companyContext->requireCompanyId();
 
         if (! Str::isUuid($id)) {
@@ -449,7 +455,7 @@ final class VoucherController extends Controller
             ], 422);
         }
 
-        $voucher = Voucher::where('tenant_id', $user->tenant_id)
+        $voucher = Voucher::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($id);
 

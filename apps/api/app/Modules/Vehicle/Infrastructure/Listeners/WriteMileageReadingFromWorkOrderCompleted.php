@@ -8,7 +8,7 @@ use App\Modules\Vehicle\Application\Commands\LogVehicleMileageCommand;
 use App\Modules\Vehicle\Application\Services\VehicleMileageService;
 use App\Modules\Vehicle\Domain\Enums\MileageSource;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompletedV2;
 
 /**
  * Activated listener: writes a VehicleMileageReading row whenever a WorkOrder
@@ -26,13 +26,13 @@ final readonly class WriteMileageReadingFromWorkOrderCompleted
         private WorkOrderRepositoryInterface $workOrders,
     ) {}
 
-    public function handle(WorkOrderCompleted $event): void
+    public function handle(WorkOrderCompletedV2 $event): void
     {
         if ($event->completion_mileage === null) {
             return;
         }
 
-        $workOrder = $this->workOrders->findById($event->work_order_id);
+        $workOrder = $this->workOrders->findByIdForScope($event->tenant_id, $event->company_id, $event->work_order_id);
         if ($workOrder === null) {
             return;
         }

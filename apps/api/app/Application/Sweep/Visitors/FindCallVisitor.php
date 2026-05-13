@@ -9,7 +9,9 @@ use PhpParser\Node\Attribute;
 use PhpParser\Node\Expr\ArrowFunction;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\Closure;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
@@ -63,6 +65,15 @@ final class FindCallVisitor extends NodeVisitorAbstract
     ];
 
     /**
+     * Models whose backing tables are tenant-scoped without company_id.
+     *
+     * @var list<string>
+     */
+    private const TENANT_ONLY_MODELS = [
+        'LoyaltyMember',
+    ];
+
+    /**
      * Variables in the current method scope known to carry a tenant/company
      * filter. Stack of per-method maps; the top is the active scope.
      *
@@ -83,6 +94,13 @@ final class FindCallVisitor extends NodeVisitorAbstract
      * @var list<string>
      */
     private array $enclosingMethodStack = [];
+
+    /**
+     * Stack of active function-like parameter names.
+     *
+     * @var list<array<string, true>>
+     */
+    private array $parameterNamesStack = [[]];
 
     /**
      * @param  list<string>  $guardedModels
@@ -106,6 +124,7 @@ final class FindCallVisitor extends NodeVisitorAbstract
                 : false;
             $this->methodCrossTenantSkipStack[] = $methodSkip;
             $this->enclosingMethodStack[] = $this->nameForFunctionLike($node);
+            $this->parameterNamesStack[] = $this->parameterNamesForFunctionLike($node);
         }
 
         if ($this->shouldSkip()) {
@@ -138,11 +157,15 @@ final class FindCallVisitor extends NodeVisitorAbstract
             array_pop($this->scopedVariablesStack);
             array_pop($this->methodCrossTenantSkipStack);
             array_pop($this->enclosingMethodStack);
+            array_pop($this->parameterNamesStack);
             if ($this->scopedVariablesStack === []) {
                 $this->scopedVariablesStack = [[]];
             }
             if ($this->methodCrossTenantSkipStack === []) {
                 $this->methodCrossTenantSkipStack = [false];
+            }
+            if ($this->parameterNamesStack === []) {
+                $this->parameterNamesStack = [[]];
             }
         }
 
@@ -171,6 +194,25 @@ final class FindCallVisitor extends NodeVisitorAbstract
         $top = end($this->enclosingMethodStack);
 
         return is_string($top) ? $top : self::FILE_SCOPE_SYMBOL;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function parameterNamesForFunctionLike(Node $node): array
+    {
+        if (! property_exists($node, 'params') || ! is_array($node->params)) {
+            return [];
+        }
+
+        $parameters = [];
+        foreach ($node->params as $param) {
+            if ($param->var instanceof Variable && is_string($param->var->name)) {
+                $parameters[$param->var->name] = true;
+            }
+        }
+
+        return $parameters;
     }
 
     private function isFunctionLikeBoundary(Node $node): bool
@@ -233,12 +275,11 @@ final class FindCallVisitor extends NodeVisitorAbstract
             return;
         }
 
-        if ($this->chainIsScoped($node->var)) {
-            return;
-        }
-
         $model = $this->modelShortNameFromChain($node->var);
         if ($model === null || ! in_array($model, $this->guardedShortNames, true)) {
+            return;
+        }
+        if ($this->chainIsScoped($node->var, $model)) {
             return;
         }
         $this->violations[] = [
@@ -252,21 +293,20 @@ final class FindCallVisitor extends NodeVisitorAbstract
 
     private function expressionIsScoped(Node $expr): bool
     {
-        return $this->chainIsScoped($expr);
+        $model = $this->modelShortNameFromChain($expr);
+
+        return $model !== null && $this->chainIsScoped($expr, $model);
     }
 
-    private function chainIsScoped(Node $expr): bool
+    private function chainIsScoped(Node $expr, string $model): bool
     {
+        $scopeColumns = [];
         $cursor = $expr;
         while ($cursor instanceof MethodCall) {
             if ($cursor->name instanceof Identifier) {
                 $name = $cursor->name->toString();
                 if ($name === 'where') {
-                    $first = $cursor->args[0]->value ?? null;
-                    if ($first instanceof String_
-                        && in_array($first->value, ['tenant_id', 'company_id'], true)) {
-                        return true;
-                    }
+                    $this->recordSafeWhereScope($cursor, $scopeColumns);
                 }
                 if (in_array($name, self::SCOPE_METHODS, true)) {
                     return true;
@@ -277,12 +317,166 @@ final class FindCallVisitor extends NodeVisitorAbstract
 
         if ($cursor instanceof StaticCall && $cursor->name instanceof Identifier) {
             $name = $cursor->name->toString();
+            if ($name === 'where') {
+                $this->recordSafeWhereScope($cursor, $scopeColumns);
+            }
             if (in_array($name, self::SCOPE_METHODS, true)) {
                 return true;
             }
         }
 
+        if (in_array($model, self::TENANT_ONLY_MODELS, true)) {
+            return isset($scopeColumns['tenant_id']);
+        }
+
+        return isset($scopeColumns['tenant_id'], $scopeColumns['company_id']);
+    }
+
+    /**
+     * @param  array<string, true>  $scopeColumns
+     */
+    private function recordSafeWhereScope(MethodCall|StaticCall $call, array &$scopeColumns): void
+    {
+        $columnArg = $call->args[0]->value ?? null;
+        if (! $columnArg instanceof String_
+            || ! in_array($columnArg->value, ['tenant_id', 'company_id'], true)) {
+            return;
+        }
+
+        $valueArg = $this->whereValueArgument($call);
+        if ($valueArg === null || ! $this->isAllowedScopeValue($valueArg, $columnArg->value)) {
+            return;
+        }
+
+        $scopeColumns[$columnArg->value] = true;
+    }
+
+    private function whereValueArgument(MethodCall|StaticCall $call): ?Node
+    {
+        if (isset($call->args[1], $call->args[2])
+            && $call->args[1] instanceof Node\Arg
+            && $call->args[2] instanceof Node\Arg
+            && $call->args[1]->value instanceof String_) {
+            return $call->args[2]->value;
+        }
+
+        if (isset($call->args[1]) && $call->args[1] instanceof Node\Arg) {
+            return $call->args[1]->value;
+        }
+
+        return null;
+    }
+
+    private function isAllowedScopeValue(Node $value, string $column): bool
+    {
+        if ($value instanceof Variable && is_string($value->name)) {
+            return match ($column) {
+                'tenant_id' => $value->name === 'tenantId',
+                'company_id' => $value->name === 'companyId',
+                default => false,
+            };
+        }
+
+        if ($value instanceof PropertyFetch) {
+            return $this->propertyFetchIsAllowedScopeValue($value, $column);
+        }
+
+        if ($value instanceof MethodCall) {
+            return $this->methodCallIsAllowedScopeValue($value, $column);
+        }
+
+        if ($value instanceof ConstFetch || $value instanceof String_) {
+            return false;
+        }
+
         return false;
+    }
+
+    private function propertyFetchIsAllowedScopeValue(PropertyFetch $value, string $column): bool
+    {
+        $property = $this->nodeName($value->name);
+        if ($property === null || $property !== $column) {
+            return false;
+        }
+
+        if ($this->rootVariableName($value) === 'this') {
+            return $this->chainContainsMethod($value, ['requireCompany', 'currentCompany']);
+        }
+
+        if ($value->var instanceof Variable && is_string($value->var->name)) {
+            if ($value->var->name === 'context' && $this->isCurrentParameter($value->var->name)) {
+                return true;
+            }
+            if ($value->var->name === 'request') {
+                return false;
+            }
+
+            return $this->isCurrentParameter($value->var->name);
+        }
+
+        return false;
+    }
+
+    private function methodCallIsAllowedScopeValue(MethodCall $value, string $column): bool
+    {
+        $method = $this->nodeName($value->name);
+        if ($method === null) {
+            return false;
+        }
+
+        $allowedMethods = $column === 'tenant_id'
+            ? ['tenantId']
+            : ['companyId', 'requireCompanyId'];
+        if (! in_array($method, $allowedMethods, true)) {
+            return false;
+        }
+
+        return $this->rootVariableName($value) === 'this';
+    }
+
+    /**
+     * @param  list<string>  $methods
+     */
+    private function chainContainsMethod(Node $node, array $methods): bool
+    {
+        $cursor = $node;
+        while ($cursor instanceof PropertyFetch || $cursor instanceof MethodCall) {
+            if ($cursor instanceof MethodCall) {
+                $name = $this->nodeName($cursor->name);
+                if ($name !== null && in_array($name, $methods, true)) {
+                    return true;
+                }
+            }
+            $cursor = $cursor->var;
+        }
+
+        return false;
+    }
+
+    private function rootVariableName(Node $node): ?string
+    {
+        $cursor = $node;
+        while ($cursor instanceof PropertyFetch || $cursor instanceof MethodCall) {
+            $cursor = $cursor->var;
+        }
+
+        return $cursor instanceof Variable && is_string($cursor->name) ? $cursor->name : null;
+    }
+
+    private function nodeName(Node|Identifier $node): ?string
+    {
+        if ($node instanceof Identifier) {
+            return $node->toString();
+        }
+
+        return null;
+    }
+
+    private function isCurrentParameter(string $name): bool
+    {
+        $top = end($this->parameterNamesStack);
+
+        return is_array($top) && isset($top[$name]);
     }
 
     private function modelShortNameFromChain(Node $expr): ?string

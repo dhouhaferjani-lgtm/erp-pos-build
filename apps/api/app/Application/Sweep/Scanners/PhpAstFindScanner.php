@@ -62,8 +62,6 @@ final class PhpAstFindScanner implements Scanner
         'ServiceCatalogItem',
         'StockLevel',
         'StockMovement',
-        'TaxConfiguration',
-        'TaxRate',
         'Voucher',
         'VoucherLedger',
         'WithholdingCertificate',

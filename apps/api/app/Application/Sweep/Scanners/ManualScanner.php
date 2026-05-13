@@ -21,8 +21,12 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Rows have stable_key = `manual:<cluster>:<slug>` — never reproducible by
  * any sha256-based scanner, so they survive `sweep:inventory:generate`
- * regenerations. They're only removed via `sweep:inventory:defer` /
- * `sweep:inventory:resolve` workflow.
+ * regenerations. Manual stub entries are removed from this file once their
+ * inventory row reaches `status: fixed` and has a non-empty
+ * `regression_test`. The inventory row is preserved as the historical record;
+ * the regression test is the anti-revert anchor. Use
+ * `sweep:inventory:defer` / `sweep:inventory:resolve` for status transitions
+ * only; file edits are part of the close ceremony.
  *
  * Stub shape (validated at scan time):
  * ```yaml

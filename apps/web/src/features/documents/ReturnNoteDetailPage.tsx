@@ -9,7 +9,10 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Package, CreditCard, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import type { ReturnNote } from '@/types/returnNote'
 import { useState } from 'react'
 
@@ -17,20 +20,38 @@ interface ReturnNoteResponse {
   data: ReturnNote
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function ReturnNoteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   // Fetch return note
   const { data, isLoading } = useQuery({
-    queryKey: ['return-note', id],
+    queryKey: tenantScopedKey(['return-note', id]),
     queryFn: async () => {
       const response = await api.get<ReturnNoteResponse>(`/return-notes/${id}`)
       return response.data
     },
-    enabled: !!id,
+    enabled: tenantId !== null && companyId !== null && !!id,
   })
 
   // Confirm return note mutation
@@ -38,9 +59,13 @@ export function ReturnNoteDetailPage() {
     mutationFn: async () => {
       await api.post(`/return-notes/${id}/confirm`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['return-note', id] })
-      void queryClient.invalidateQueries({ queryKey: ['return-notes'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['return-note', id]) }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('return-notes', tenantId, companyId),
+        }),
+      ])
       toast.success(t('sales:returnNotes.messages.confirmed'))
       setShowConfirmDialog(false)
     },

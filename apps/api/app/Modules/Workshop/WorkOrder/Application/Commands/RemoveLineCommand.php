@@ -9,5 +9,7 @@ final readonly class RemoveLineCommand
     public function __construct(
         public string $work_order_id,
         public string $line_id,
+        public string $tenant_id,
+        public string $company_id,
     ) {}
 }

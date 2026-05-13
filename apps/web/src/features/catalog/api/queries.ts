@@ -8,6 +8,9 @@ import {
   updateCategory,
   deleteCategory,
 } from './categories'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 
 /**
  * Query key factory for categories
@@ -21,6 +24,35 @@ export const categoryKeys = {
   detail: (id: number) => [...categoryKeys.details(), id] as const,
 }
 
+type CategoryInvalidationShape =
+  | { readonly kind: 'all' }
+  | { readonly kind: 'lists' }
+  | { readonly kind: 'tree' }
+  | { readonly kind: 'detail'; readonly id: number }
+
+function categoriesInvalidationPredicate(
+  shape: CategoryInvalidationShape,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    if (k.length < 3 || k[0] !== 'categories') return false
+    if (k[k.length - 2] !== tenantId || k[k.length - 1] !== companyId) return false
+
+    switch (shape.kind) {
+      case 'all':
+        return true
+      case 'lists':
+        return k[1] === 'list'
+      case 'tree':
+        return k[1] === 'tree'
+      case 'detail':
+        return k[1] === 'detail' && k[2] === shape.id
+    }
+  }
+}
+
 /**
  * Hook to fetch paginated categories
  */
@@ -28,10 +60,13 @@ export function useCategories(
   params?: GetCategoriesParams,
   options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getCategories>>>, 'queryKey' | 'queryFn'>
 ) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.list(params),
+    queryKey: tenantScopedKey([...categoryKeys.list(params)]),
     queryFn: () => getCategories(params),
     ...options,
+    enabled: (options?.enabled ?? true) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -41,10 +76,13 @@ export function useCategories(
 export function useCategoryTree(
   options?: Omit<UseQueryOptions<CategoryTreeNode[]>, 'queryKey' | 'queryFn'>
 ) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.tree(),
+    queryKey: tenantScopedKey([...categoryKeys.tree()]),
     queryFn: getCategoryTree,
     ...options,
+    enabled: (options?.enabled ?? true) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -55,11 +93,13 @@ export function useCategory(
   id: number,
   options?: Omit<UseQueryOptions<Category>, 'queryKey' | 'queryFn'>
 ) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: categoryKeys.detail(id),
+    queryKey: tenantScopedKey([...categoryKeys.detail(id)]),
     queryFn: () => getCategory(id),
-    enabled: Boolean(id),
     ...options,
+    enabled: Boolean(id) && (options?.enabled ?? true) && tenantId !== null && companyId !== null,
   })
 }
 
@@ -67,13 +107,17 @@ export function useCategory(
  * Hook to create a category
  */
 export function useCreateCategory() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (data: CreateCategoryData) => createCategory(data),
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate all category queries
-      queryClient.invalidateQueries({ queryKey: categoryKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: categoriesInvalidationPredicate({ kind: 'all' }, tenantId, companyId),
+      })
     },
   })
 }
@@ -82,15 +126,25 @@ export function useCreateCategory() {
  * Hook to update a category
  */
 export function useUpdateCategory() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateCategoryData }) => updateCategory(id, data),
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       // Invalidate specific category and all lists/tree
-      queryClient.invalidateQueries({ queryKey: categoryKeys.detail(variables.id) })
-      queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: categoryKeys.tree() })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: categoriesInvalidationPredicate({ kind: 'detail', id: variables.id }, tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: categoriesInvalidationPredicate({ kind: 'lists' }, tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: categoriesInvalidationPredicate({ kind: 'tree' }, tenantId, companyId),
+        }),
+      ])
     },
   })
 }
@@ -99,13 +153,17 @@ export function useUpdateCategory() {
  * Hook to delete a category
  */
 export function useDeleteCategory() {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (id: number) => deleteCategory(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate all category queries
-      queryClient.invalidateQueries({ queryKey: categoryKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: categoriesInvalidationPredicate({ kind: 'all' }, tenantId, companyId),
+      })
     },
   })
 }

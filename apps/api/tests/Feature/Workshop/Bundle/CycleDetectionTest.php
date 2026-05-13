@@ -53,6 +53,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
 
         $this->expectException(BundleCycleException::class);
@@ -68,6 +70,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
     }
 
@@ -88,6 +92,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
         // B → C
         $this->service->addComponent(new AddComponentCommand(
@@ -100,6 +106,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
 
         $this->expectException(BundleCycleException::class);
@@ -115,6 +123,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
     }
 
@@ -134,6 +144,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
     }
 
@@ -152,6 +164,8 @@ final class CycleDetectionTest extends TestCase
             is_optional: false,
             display_order: 1,
             notes: null,
+            tenant_id: $this->tenant->id,
+            company_id: $this->company->id,
         ));
 
         $this->assertInstanceOf(ServiceBundleComponent::class, $component);

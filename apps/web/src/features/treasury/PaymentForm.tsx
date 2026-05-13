@@ -6,12 +6,15 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
 import { PaymentAllocationForm } from './components'
 import type { OpenInvoice } from '../../types/treasury'
 import { useWithholdingPreview } from '../withholding'
 import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 interface PaymentMethod {
   id: string
@@ -75,11 +78,29 @@ interface PaymentFormData {
   withholding_override_reason?: string
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 export function PaymentForm() {
   const { t } = useTranslation(['treasury', 'common', 'sales', 'withholding'])
   const { currency, symbol, decimals, format: formatCurrency } = useCurrency()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [searchParams] = useSearchParams()
   const invoiceId = searchParams.get('invoice')
   const purchaseOrderId = searchParams.get('purchase_order')
@@ -116,35 +137,35 @@ export function PaymentForm() {
 
   // Fetch invoice data if invoice ID is provided in query params
   const { data: invoiceData } = useQuery({
-    queryKey: ['invoice', invoiceId],
+    queryKey: tenantScopedKey(['invoice', invoiceId]),
     queryFn: async () => {
       if (!invoiceId) return null
       const response = await api.get<{ data: Invoice }>(`/invoices/${invoiceId}`)
       return response.data.data
     },
-    enabled: !!invoiceId,
+    enabled: !!invoiceId && tenantId !== null && companyId !== null,
   })
 
   // Fetch purchase order data if purchase order ID is provided
   const { data: purchaseOrderData } = useQuery({
-    queryKey: ['purchase-order', purchaseOrderId],
+    queryKey: tenantScopedKey(['purchase-order', purchaseOrderId]),
     queryFn: async () => {
       if (!purchaseOrderId) return null
       const response = await api.get<{ data: Invoice }>(`/purchase-orders/${purchaseOrderId}`)
       return response.data.data
     },
-    enabled: !!purchaseOrderId,
+    enabled: !!purchaseOrderId && tenantId !== null && companyId !== null,
   })
 
   // Fetch delivery note data if delivery note ID is provided
   const { data: deliveryNoteData } = useQuery({
-    queryKey: ['delivery-note', deliveryNoteId],
+    queryKey: tenantScopedKey(['delivery-note', deliveryNoteId]),
     queryFn: async () => {
       if (!deliveryNoteId) return null
       const response = await api.get<{ data: Invoice }>(`/documents/${deliveryNoteId}`)
       return response.data.data
     },
-    enabled: !!deliveryNoteId,
+    enabled: !!deliveryNoteId && tenantId !== null && companyId !== null,
   })
 
   // Pre-fill form when document data is loaded
@@ -188,40 +209,43 @@ export function PaymentForm() {
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
-    queryKey: ['payment-methods'],
+    queryKey: tenantScopedKey(['payment-methods']),
     queryFn: async () => {
       const response = await api.get<PaymentMethodsResponse>('/payment-methods')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const paymentMethods = paymentMethodsData?.data ?? []
 
   // Fetch partners
   const { data: partnersData } = useQuery({
-    queryKey: ['partners'],
+    queryKey: tenantScopedKey(['partners']),
     queryFn: async () => {
       const response = await api.get<PartnersResponse>('/partners')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const partners = partnersData?.data ?? []
 
   // Fetch repositories
   const { data: repositoriesData } = useQuery({
-    queryKey: ['payment-repositories'],
+    queryKey: tenantScopedKey(['payment-repositories']),
     queryFn: async () => {
       const response = await api.get<RepositoriesResponse>('/payment-repositories')
       return response.data
     },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const repositories = repositoriesData?.data ?? []
 
   // Fetch open invoices for selected partner (for smart allocation)
   const { data: openInvoicesData } = useQuery({
-    queryKey: ['open-invoices', selectedPartnerId],
+    queryKey: tenantScopedKey(['open-invoices', selectedPartnerId]),
     queryFn: async () => {
       if (!selectedPartnerId) return null
       const response = await api.get<{ data: OpenInvoice[] }>(
@@ -229,7 +253,7 @@ export function PaymentForm() {
       )
       return response.data.data
     },
-    enabled: !!selectedPartnerId && !invoiceId, // Don't fetch if coming from specific invoice
+    enabled: !!selectedPartnerId && !invoiceId && tenantId !== null && companyId !== null, // Don't fetch if coming from specific invoice
   })
 
   const openInvoices: OpenInvoice[] = openInvoicesData ?? []
@@ -306,13 +330,21 @@ export function PaymentForm() {
         withholding_override_reason: data.withholding_override_reason,
       })
     },
-    onSuccess: (payment) => {
-      void queryClient.invalidateQueries({ queryKey: ['payments'] })
-      void queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] })
-      void queryClient.invalidateQueries({ queryKey: ['purchase-order', purchaseOrderId] })
-      void queryClient.invalidateQueries({ queryKey: ['delivery-note', deliveryNoteId] })
-      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      void queryClient.invalidateQueries({ queryKey: ['open-invoices'] })
+    onSuccess: async (payment) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
+        invoiceId
+          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['invoice', invoiceId]) })
+          : Promise.resolve(),
+        purchaseOrderId
+          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-order', purchaseOrderId]) })
+          : Promise.resolve(),
+        deliveryNoteId
+          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['delivery-note', deliveryNoteId]) })
+          : Promise.resolve(),
+        queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('invoices', tenantId, companyId) }),
+        queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('open-invoices', tenantId, companyId) }),
+      ])
       toast.success(t('treasury:payments.messages.created'))
 
       // Store payment ID for potential manual allocation adjustment
@@ -764,7 +796,9 @@ export function PaymentForm() {
         onClose={() => { setShowPartnerModal(false) }}
         onSuccess={(partner) => {
           setValue('partner_id', partner.id)
-          void queryClient.invalidateQueries({ queryKey: ['partners'] })
+          void queryClient.invalidateQueries({
+            predicate: scopedNamespacePredicate('partners', tenantId, companyId),
+          })
         }}
       />
 
@@ -774,7 +808,9 @@ export function PaymentForm() {
         onClose={() => { setShowRepositoryModal(false) }}
         onSuccess={(repository) => {
           setValue('repository_id', repository.id)
-          void queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
+          void queryClient.invalidateQueries({
+            predicate: scopedNamespacePredicate('payment-repositories', tenantId, companyId),
+          })
         }}
       />
     </div>

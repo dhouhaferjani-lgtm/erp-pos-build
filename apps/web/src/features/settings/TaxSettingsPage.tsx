@@ -6,7 +6,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save, Plus, Pencil, Trash2, GripVertical } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPut, getErrorMessage } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import {
@@ -50,11 +53,28 @@ const MONTHS = [
   { value: 12, label: 'December' },
 ]
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 export function TaxSettingsPage() {
   const { t } = useTranslation(['settings', 'common', 'sales'])
   const { currentCompany } = useCompany()
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const [activeTab, setActiveTab] = useState('profile')
   const [formData, setFormData] = useState<TaxSettings>({
@@ -70,7 +90,7 @@ export function TaxSettingsPage() {
 
   // Fetch company settings
   const { isLoading: isLoadingCompany } = useQuery({
-    queryKey: ['company', 'tax-settings', currentCompany?.id],
+    queryKey: tenantScopedKey(['company', 'tax-settings', currentCompany?.id]),
     queryFn: async () => {
       if (!currentCompany?.id) return null
       const response = await api.get<{ data: CompanyResponse }>(`/companies/${currentCompany.id}`)
@@ -85,7 +105,7 @@ export function TaxSettingsPage() {
 
       return company
     },
-    enabled: !!currentCompany?.id,
+    enabled: !!currentCompany?.id && tenantId !== null && companyId !== null,
   })
 
   // Tax configurations
@@ -98,9 +118,15 @@ export function TaxSettingsPage() {
       if (!currentCompany?.id) throw new Error('No company selected')
       return apiPut<CompanyResponse>(`/companies/${currentCompany.id}`, data)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['company'] })
-      void queryClient.invalidateQueries({ queryKey: ['companies'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('company', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('companies', tenantId, companyId),
+        }),
+      ])
       setIsDirty(false)
       toast.success(t('common:saveSuccess'))
     },

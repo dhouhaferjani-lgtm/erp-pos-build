@@ -2,15 +2,21 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, AlertTriangle, Circle, ArrowRight } from 'lucide-react'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { fetchOnboardingStatus, type OnboardingItem } from '../api/onboardingApi'
 
 export function SetupChecklist() {
   const { t } = useTranslation('settings')
   const navigate = useNavigate()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['onboarding-status'],
+    queryKey: tenantScopedKey(['onboarding-status']),
     queryFn: fetchOnboardingStatus,
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const completedCount = items.filter((item) => item.completed).length

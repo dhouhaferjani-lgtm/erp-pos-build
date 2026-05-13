@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api, apiPost, apiPatch, apiDelete, getErrorMessage } from '../../../lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 export type AdditionalCostType = 'shipping' | 'customs' | 'insurance' | 'handling' | 'other'
 
@@ -38,15 +41,18 @@ interface AdditionalCostResponse {
  * Fetch additional costs for a document
  */
 export function useAdditionalCosts(documentId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['additional-costs', documentId],
+    queryKey: tenantScopedKey(['additional-costs', documentId]),
     queryFn: async () => {
       const response = await api.get<AdditionalCostsResponse>(
         `/documents/${documentId}/additional-costs`
       )
       return response.data
     },
-    enabled: !!documentId,
+    enabled: !!documentId && tenantId !== null && companyId !== null,
   })
 }
 
@@ -55,6 +61,8 @@ export function useAdditionalCosts(documentId: string | undefined) {
  */
 export function useCreateAdditionalCost(documentId: string) {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: async (data: CreateAdditionalCostData) => {
@@ -64,9 +72,12 @@ export function useCreateAdditionalCost(documentId: string) {
       )
       return response
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+      ])
       toast.success('Additional cost created')
     },
     onError: (error) => {
@@ -80,6 +91,8 @@ export function useCreateAdditionalCost(documentId: string) {
  */
 export function useUpdateAdditionalCost(documentId: string) {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: async ({ costId, data }: { costId: string; data: UpdateAdditionalCostData }) => {
@@ -89,9 +102,12 @@ export function useUpdateAdditionalCost(documentId: string) {
       )
       return response
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+      ])
       toast.success('Additional cost updated')
     },
     onError: (error) => {
@@ -105,14 +121,19 @@ export function useUpdateAdditionalCost(documentId: string) {
  */
 export function useDeleteAdditionalCost(documentId: string) {
   const queryClient = useQueryClient()
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: async (costId: string) => {
       await apiDelete(`/documents/${documentId}/additional-costs/${costId}`)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['additional-costs', documentId] })
-      void queryClient.invalidateQueries({ queryKey: ['document', 'purchase_order', documentId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['additional-costs', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', documentId]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]) }),
+      ])
       toast.success('Additional cost deleted')
     },
     onError: (error) => {
@@ -150,14 +171,17 @@ interface LandedCostBreakdownResponse {
  * Shows how additional costs are allocated across document lines
  */
 export function useLandedCostBreakdown(documentId: string | undefined) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
   return useQuery({
-    queryKey: ['landed-cost-breakdown', documentId],
+    queryKey: tenantScopedKey(['landed-cost-breakdown', documentId]),
     queryFn: async () => {
       const response = await api.get<LandedCostBreakdownResponse>(
         `/documents/${documentId}/landed-cost-breakdown`
       )
       return response.data.data
     },
-    enabled: !!documentId,
+    enabled: !!documentId && tenantId !== null && companyId !== null,
   })
 }

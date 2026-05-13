@@ -30,9 +30,10 @@ class BundleExpansionController extends Controller
             abort(404);
         }
 
+        $company = $this->companyContext->requireCompany();
         $companyId = $this->companyContext->requireCompanyId();
-        $bundle = $this->bundles->findById($bundleId);
-        if ($bundle === null || $bundle->company_id !== $companyId) {
+        $bundle = $this->bundles->findByIdForScope($company->tenant_id, $companyId, $bundleId);
+        if ($bundle === null) {
             abort(404);
         }
 
@@ -40,7 +41,7 @@ class BundleExpansionController extends Controller
         $vehicleId = $request->input('vehicle_id');
         $vehicleIdStr = is_string($vehicleId) && Str::isUuid($vehicleId) ? $vehicleId : null;
 
-        $lines = $this->expansion->expandForWorkOrder($bundleId, $quantity, $vehicleIdStr);
+        $lines = $this->expansion->expandForWorkOrder($bundle->tenant_id, $bundle->company_id, $bundleId, $quantity, $vehicleIdStr);
 
         return response()->json([
             'data' => $lines->map(fn ($line): BundleExpansionLineData => BundleExpansionLineData::fromValueObject($line))->values(),

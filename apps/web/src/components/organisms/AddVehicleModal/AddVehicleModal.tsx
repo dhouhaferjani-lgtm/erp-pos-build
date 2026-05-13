@@ -8,6 +8,25 @@ import { FormField } from '../../atoms/FormField'
 import { Input } from '../../atoms/Input'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
+
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 interface Vehicle {
   id: string
@@ -81,6 +100,8 @@ export function AddVehicleModal({
 }: AddVehicleModalProps) {
   const { t } = useTranslation(['vehicles', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   // Form state with React Hook Form
   const {
@@ -130,10 +151,12 @@ export function AddVehicleModal({
       }
       return apiPost<{ data: Vehicle }>('/vehicles', payload)
     },
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({ queryKey: ['vehicles'] })
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('vehicles', tenantId, companyId),
+      })
       if (partnerId) {
-        void queryClient.invalidateQueries({ queryKey: ['partner', partnerId] })
+        await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['partner', partnerId]) })
       }
       onSuccess?.(response.data)
       onClose()

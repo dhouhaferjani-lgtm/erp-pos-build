@@ -36,6 +36,42 @@ final class RepositoriesTest extends TestCase
         $this->assertNull($repo->findById('00000000-0000-0000-0000-000000000000'));
     }
 
+    public function test_work_order_repo_scoped_find_by_id_rejects_foreign_scope(): void
+    {
+        $tenantA = Tenant::factory()->create();
+        $companyA = Company::factory()->create(['tenant_id' => $tenantA->id]);
+        $tenantB = Tenant::factory()->create();
+        $companyB = Company::factory()->create(['tenant_id' => $tenantB->id]);
+
+        $foreign = WorkOrder::factory()->create([
+            'tenant_id' => $tenantB->id,
+            'company_id' => $companyB->id,
+        ]);
+
+        $repo = $this->app->make(WorkOrderRepositoryInterface::class);
+
+        $this->assertNull($repo->findByIdForScope($tenantA->id, $companyA->id, $foreign->id));
+        $this->assertNotNull($repo->findByIdForScope($tenantB->id, $companyB->id, $foreign->id));
+    }
+
+    public function test_work_order_repo_scoped_find_for_update_rejects_foreign_scope(): void
+    {
+        $tenantA = Tenant::factory()->create();
+        $companyA = Company::factory()->create(['tenant_id' => $tenantA->id]);
+        $tenantB = Tenant::factory()->create();
+        $companyB = Company::factory()->create(['tenant_id' => $tenantB->id]);
+
+        $foreign = WorkOrder::factory()->create([
+            'tenant_id' => $tenantB->id,
+            'company_id' => $companyB->id,
+        ]);
+
+        $repo = $this->app->make(WorkOrderRepositoryInterface::class);
+
+        $this->assertNull($repo->findForUpdateForScope($tenantA->id, $companyA->id, $foreign->id));
+        $this->assertNotNull($repo->findForUpdateForScope($tenantB->id, $companyB->id, $foreign->id));
+    }
+
     public function test_work_order_repo_paginate_filters_by_tenant_and_company(): void
     {
         $wo1 = WorkOrder::factory()->create();

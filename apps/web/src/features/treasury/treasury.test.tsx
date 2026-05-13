@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,6 +8,8 @@ import { PaymentForm } from './PaymentForm'
 import { PaymentDetailPage } from './PaymentDetailPage'
 import { InstrumentListPage } from './InstrumentListPage'
 import { InstrumentDetailPage } from './InstrumentDetailPage'
+import { useAuthStore } from '../../stores/authStore'
+import { useCompanyStore } from '../../stores/companyStore'
 
 // Mock the API
 const { mockApiGet, mockApiPost, mockApi } = vi.hoisted(() => ({
@@ -112,9 +114,29 @@ const mockPartners = [
   { id: 'partner-2', name: 'Client Inc' },
 ]
 
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: [], email_verified_at: null },
+    token: 'token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({ currentCompanyId: companyId, companies: [], isLoading: false })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+}
+
 describe('Treasury Management', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setTenant('tenant-A', 'company-1')
+  })
+
+  afterEach(() => {
+    resetTenant()
   })
 
   describe('PaymentListPage', () => {

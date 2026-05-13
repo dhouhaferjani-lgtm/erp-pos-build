@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Workshop\Technician\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Workshop\Technician\Domain\Enums\TimeEntryType;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum;
 
@@ -17,6 +19,12 @@ use Illuminate\Validation\Rules\Enum;
  */
 final class StoreTimeEntryRequest extends FormRequest
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {
+        parent::__construct();
+    }
+
     public function authorize(): bool
     {
         return $this->user() !== null;
@@ -27,8 +35,14 @@ final class StoreTimeEntryRequest extends FormRequest
      */
     public function rules(): array
     {
+        $company = $this->companyContext->requireCompany();
+
         return [
-            'work_order_id' => ['nullable', 'uuid'],
+            'work_order_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('workshop_work_orders', $company->tenant_id, $company->id),
+            ],
             'started_at' => ['required', 'date'],
             'ended_at' => ['required', 'date', 'after:started_at'],
             'entry_type' => ['required', new Enum(TimeEntryType::class)],

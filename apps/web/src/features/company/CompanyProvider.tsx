@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompanyStore, type Company } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 
@@ -41,6 +42,11 @@ function mapCompanyResponse(company: CompanyResponse): Company {
   }
 }
 
+function userCompaniesPredicate(q: { queryKey: readonly unknown[] }): boolean {
+  const k = q.queryKey
+  return k.length >= 2 && k[0] === 'user' && k[1] === 'companies'
+}
+
 /**
  * CompanyProvider fetches user's companies and sets company context
  *
@@ -52,6 +58,7 @@ function mapCompanyResponse(company: CompanyResponse): Company {
 export function CompanyProvider({ children }: CompanyProviderProps) {
   const routerLocation = useLocation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const setCompanies = useCompanyStore((state) => state.setCompanies)
   const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
   const setLoading = useCompanyStore((state) => state.setLoading)
@@ -63,14 +70,14 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   const isAdminRoute = routerLocation.pathname === '/admin' || routerLocation.pathname.startsWith('/admin/')
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['user', 'companies'],
+    queryKey: tenantScopedKey(['user', 'companies']),
     queryFn: async () => {
       const response = await api.get<CompaniesApiResponse>('/user/companies')
       return response.data.data.map(mapCompanyResponse)
     },
     retry: 1,
     staleTime: 1000 * 60 * 10, // 10 minutes - companies don't change often
-    enabled: isAuthenticated && !isAdminRoute,
+    enabled: isAuthenticated && tenantId !== null && !isAdminRoute,
   })
 
   // Update company store when data is fetched
@@ -97,7 +104,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   useEffect(() => {
     if (!isAuthenticated) {
       reset()
-      queryClient.removeQueries({ queryKey: ['user', 'companies'] })
+      queryClient.removeQueries({ predicate: userCompaniesPredicate })
     }
   }, [isAuthenticated, reset, queryClient])
 
@@ -135,5 +142,7 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
  */
 export function useInvalidateCompanies() {
   const queryClient = useQueryClient()
-  return () => queryClient.invalidateQueries({ queryKey: ['user', 'companies'] })
+  useAuthStore((state) => state.user?.tenant_id ?? null)
+  useCompanyStore((state) => state.currentCompanyId ?? null)
+  return () => queryClient.invalidateQueries({ queryKey: tenantScopedKey(['user', 'companies']) })
 }
