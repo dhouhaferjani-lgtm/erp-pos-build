@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { ProductConfigProvider } from '@/contexts/ProductConfigContext'
 import { CompanyConfigProvider } from '@/contexts/CompanyConfigContext'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { defaultProductConfig, type TestProductConfig } from './fixtures/productConfig'
 import { defaultCompanyConfig, type TestCompanyConfig } from './fixtures/companyConfig'
 
@@ -13,22 +14,25 @@ import { defaultCompanyConfig, type TestCompanyConfig } from './fixtures/company
  * - `route`: initial entry for `MemoryRouter`.
  * - `queryClient`: override the default in-memory client (useful when a test
  *   needs to inspect cache or pre-seed additional queries). Note: the helper
- *   will call `setQueryData(['company-config'], companyConfig)` on whichever
- *   client you pass, mutating it. If you rely on cache isolation, use the
- *   default.
+ *   will call `setQueryData(tenantScopedKey(['company-config']), companyConfig)`
+ *   on whichever client you pass, mutating it. If you rely on cache isolation,
+ *   use the default.
  * - `productConfig`: seed for `ProductConfigProvider` (forwarded as the
  *   `initialProduct` prop).
  * - `companyConfig`: seed pre-populated into the query cache under the
- *   `company-config` key so `useCompanyConfig()` resolves synchronously.
+ *   tenant-scoped `company-config` key so `useCompanyConfig()` resolves
+ *   synchronously.
  *   Caveats:
  *   (a) The helper does not mock `apiGet`. Any refetch (e.g. via
  *       `invalidateQueries` or a hook that calls `apiGet('/company/config')`
  *       without its own mock) will replace the seed with the real network
  *       response.
- *   (b) `isAuthenticated` defaults to `false` in tests, so the underlying
- *       query is `enabled: false` and returns the seeded data synchronously
- *       with no loading state. Tests that assert on a loading state will
- *       diverge from production flow.
+ *   (b) `isAuthenticated` defaults to `false` in tests; tests that need an
+ *       authenticated user / a populated company id are expected to call
+ *       `useAuthStore.setState(...)` / `useCompanyStore.setState(...)`
+ *       themselves (typically in beforeEach). The helper does not seed those
+ *       stores so the tenant-scope tests that explicitly assert on null/
+ *       empty state keep working.
  *
  * Extends RTL `RenderOptions` minus `wrapper`, which this helper owns.
  */
@@ -76,7 +80,13 @@ export function renderWithProviders(
   // Pre-seed the company-config query so CompanyConfigProvider resolves
   // synchronously without hitting the network (and without modifying the
   // provider's production fetch path).
-  queryClient.setQueryData(['company-config'], companyConfig)
+  //
+  // CompanyConfigProvider wraps the cache key with tenantScopedKey() so the
+  // entry includes the active tenant_id + company_id (or null sentinels in
+  // tests where the auth/company stores have not been seeded). We resolve
+  // the same scoped key here so the seed lands at the lookup site whether
+  // the test sets up authenticated stores or not.
+  queryClient.setQueryData(tenantScopedKey(['company-config']), companyConfig)
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
