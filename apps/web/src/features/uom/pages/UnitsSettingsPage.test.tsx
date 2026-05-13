@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { UnitsSettingsPage } from './UnitsSettingsPage'
 import type { UnitCategory } from '../api/uomApi'
 import { makeUnit, makeUnitCategory } from '../__fixtures__/unit'
@@ -121,6 +122,7 @@ const mockCategories: UnitCategory[] = [
 describe('UnitsSettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   /**

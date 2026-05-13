@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { Dashboard } from './Dashboard'
 import {
   makeDashboardStats,
@@ -96,6 +97,7 @@ function configureApiMocks() {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
     configureApiMocks()
   })
 

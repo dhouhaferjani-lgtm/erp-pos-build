@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { InvoiceSearchSelect } from './InvoiceSearchSelect'
 import type { Invoice } from './InvoiceSearchSelect'
 import { api } from '../../lib/api'
@@ -74,6 +75,7 @@ describe('InvoiceSearchSelect', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   const renderComponent = (props = {}) => {

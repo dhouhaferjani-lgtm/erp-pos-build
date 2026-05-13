@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { seedAuth } from '@/test/seedAuth'
 import { DocumentTotals } from './DocumentTotals'
 import * as taxApi from '../api/taxApi'
 
@@ -36,6 +37,7 @@ describe('DocumentTotals', () => {
       },
     })
     vi.clearAllMocks()
+    seedAuth()
   })
 
   const renderComponent = (props: any) => {

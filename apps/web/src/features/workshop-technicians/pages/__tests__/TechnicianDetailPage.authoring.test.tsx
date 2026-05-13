@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { TechnicianDetailPage } from '../TechnicianDetailPage'
 import type { TechnicianProfile } from '../../api/types'
 import type {
@@ -139,6 +140,7 @@ describe('TechnicianDetailPage — authoring integration', () => {
     mockApiPatch.mockReset()
     mockApiDelete.mockReset()
     mockApiGetHelper.mockReset()
+    seedAuth()
 
     mockApiGetHelper.mockImplementation(async (url: string) => {
       if (url === `/workshop/technicians/${TECH_ID}`) {

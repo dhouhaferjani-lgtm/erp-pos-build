@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
+import { seedAuth } from '@/test/seedAuth'
 import { PriceListListPage } from './PriceListListPage'
 import { PriceListForm } from './PriceListForm'
 import { PriceListDetailPage } from './PriceListDetailPage'
@@ -145,6 +146,7 @@ const mockPriceListDetail = {
 describe('Pricing Module', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   describe('PriceListListPage', () => {

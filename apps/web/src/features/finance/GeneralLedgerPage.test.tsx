@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { GeneralLedgerPage } from './pages/GeneralLedgerPage'
 import {
   makeLedgerLine,
@@ -73,6 +74,7 @@ const mockLedgerReport = makeLedgerReport({
 describe('GeneralLedgerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   it('renders the page title', async () => {

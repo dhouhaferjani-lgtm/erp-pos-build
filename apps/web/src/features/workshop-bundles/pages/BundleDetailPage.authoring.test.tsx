@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { BundleDetailPage } from './BundleDetailPage'
 import type { ServiceBundleData } from '../types'
 
@@ -83,6 +84,7 @@ describe('BundleDetailPage — authoring integration', () => {
     mockApiPatch.mockReset()
     mockApiDelete.mockReset()
     mockApiPut.mockReset()
+    seedAuth()
 
     mockApiGet.mockImplementation((url: string) => {
       if (url.startsWith('/workshop/bundles/bundle-1/expansion')) {

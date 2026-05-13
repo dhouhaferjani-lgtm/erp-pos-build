@@ -88,12 +88,20 @@ function extractQueryKeyOccurrences(file: string): QueryKeyOccurrence[] {
   const lines = source.split('\n')
   const occurrences: QueryKeyOccurrence[] = []
 
-  // Pattern: `queryKey:` followed by `[` then either a quoted string or
-  // some other expression. We deliberately keep the regex permissive
-  // about whitespace so multi-line `queryKey: [\n  'foo',\n  ...]` is
-  // captured (the literal-extraction step then operates on the next
-  // few characters of the source string).
-  const queryKeyAnchor = /queryKey\s*:\s*\[/g
+  // Two patterns anchor a queryKey literal we want to namespace-check:
+  //
+  //   1. `queryKey:` followed by `[` — the bare literal form.
+  //   2. `tenantScopedKey(` followed by `[` — the tenant-scoped helper
+  //      introduced by the sweep. The helper appends tenant/company
+  //      sentinels onto the tuple, but the FIRST element still
+  //      determines the cache namespace, so we want to lint it the
+  //      same way as a bare queryKey.
+  //
+  // Both forms are permissive about whitespace so multi-line tuples
+  // are captured. The literal-extraction step then operates on the
+  // next few characters of the source string regardless of which
+  // anchor matched.
+  const queryKeyAnchor = /(?:queryKey\s*:\s*\[|tenantScopedKey\s*\(\s*\[)/g
 
   let match: RegExpExecArray | null
   while ((match = queryKeyAnchor.exec(source)) !== null) {

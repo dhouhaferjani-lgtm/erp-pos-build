@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom'
+import { seedAuth } from '@/test/seedAuth'
 import { JournalEntryForm } from './pages/JournalEntryForm'
 import { JournalEntryListPage } from './pages/JournalEntryListPage'
 import { JournalEntryDetailPage } from './pages/JournalEntryDetailPage'
@@ -135,6 +136,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe('JournalEntryListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   it('renders the page title', async () => {
@@ -183,6 +185,7 @@ describe('JournalEntryListPage', () => {
 describe('JournalEntryForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   const setupMocks = () => {
@@ -426,6 +429,7 @@ describe('JournalEntryForm', () => {
 describe('JournalEntryDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   const mockDraftEntry = {

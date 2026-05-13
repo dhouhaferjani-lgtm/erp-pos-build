@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { CompanyConfigProvider, useCompanyConfig } from '../CompanyConfigContext'
 import * as api from '../../lib/api'
 import { useAuthStore } from '../../stores/authStore'
+import { resetAuth, seedAuth } from '../../test/seedAuth'
 import {
   defaultCompanyConfig,
   pharmacyCompanyConfig,
@@ -60,18 +61,20 @@ describe('CompanyConfigContext', () => {
     })
     vi.clearAllMocks()
 
-    // Seed the auth store so the provider's query is enabled.
-    useAuthStore.setState({
-      user: testUser,
-      token: 'test-token',
-      isAuthenticated: true,
-      isLoading: false,
+    // Seed the auth + company stores so the provider's query is enabled.
+    // CompanyConfigProvider gates on isAuthenticated AND a non-null
+    // tenant_id AND a non-null currentCompanyId; without seeding the
+    // company store the query stays disabled and apiGet is never called.
+    seedAuth({
+      userId: testUser.id,
+      email: testUser.email,
+      tenantId: testUser.tenant_id,
+      roles: testUser.roles,
     })
   })
 
   afterEach(() => {
-    // Reset auth store to a clean unauthenticated state between tests.
-    useAuthStore.getState().logout()
+    resetAuth()
     queryClient.clear()
   })
 

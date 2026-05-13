@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { ChartOfAccountsPage } from '@/features/finance/pages/ChartOfAccountsPage'
+import { seedAuth } from '@/test/seedAuth'
 
 const { mockApiGet, mockApiPost, mockApiPatch } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
@@ -68,6 +69,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe('ChartOfAccountsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    seedAuth()
   })
 
   it('renders the page title', async () => {

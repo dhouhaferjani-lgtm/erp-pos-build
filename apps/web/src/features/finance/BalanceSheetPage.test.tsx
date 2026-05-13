@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { seedAuth } from '@/test/seedAuth'
 import { BalanceSheetPage } from './pages/BalanceSheetPage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ describe('BalanceSheetPage', () => {
       },
     })
     vi.clearAllMocks()
+    seedAuth()
   })
 
   it('renders page title', () => {

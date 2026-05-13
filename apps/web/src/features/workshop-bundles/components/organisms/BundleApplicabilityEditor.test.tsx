@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth } from '@/test/seedAuth'
 import { BundleApplicabilityEditor } from './BundleApplicabilityEditor'
 import type { ServiceBundleData } from '../../types'
 
@@ -44,6 +45,7 @@ describe('BundleApplicabilityEditor', () => {
   beforeEach(() => {
     mockApiPut.mockReset()
     mockApiPut.mockResolvedValue({ data: { data: [] } })
+    seedAuth()
   })
 
   it('renders the empty state with an Add rule button', () => {
