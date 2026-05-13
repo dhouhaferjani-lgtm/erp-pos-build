@@ -59,7 +59,7 @@ final class RateLimitEnforcementTest extends TestCase
         // name + by() value (Illuminate\Routing\Middleware\ThrottleRequests::resolveRequestSignature),
         // so we clear by limiter name to be safe. RateLimiter::clear is a
         // no-op for keys that never existed.
-        foreach (['login', 'password-reset', 'register'] as $name) {
+        foreach (['login', 'password-reset', 'register', 'document-email', 'pos-terminal-activation'] as $name) {
             RateLimiter::clear($name);
         }
     }

@@ -87,6 +87,9 @@ class FirstTenantProductionSecurityTest extends TestCase
             'register' => ['register'],
             'email-verification' => ['email-verification'],
             'api' => ['api'],
+            // dev-remediation/D — M2.6 additional rate limiters.
+            'document-email' => ['document-email'],
+            'pos-terminal-activation' => ['pos-terminal-activation'],
         ];
     }
 

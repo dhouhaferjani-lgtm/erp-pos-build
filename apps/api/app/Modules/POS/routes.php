@@ -38,15 +38,19 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Terminal Management
     Route::get('/pos/terminals', [TerminalController::class, 'index']);
     Route::get('/pos/terminals/available', [TerminalController::class, 'available']);
-    Route::post('/pos/terminals/claim', [TerminalController::class, 'claim']);
-    Route::post('/pos/terminals/request', [TerminalController::class, 'requestTerminal']);
-    Route::post('/pos/terminals/web', [TerminalController::class, 'getOrCreateWebTerminal']);
+    Route::post('/pos/terminals/claim', [TerminalController::class, 'claim'])
+        ->middleware('throttle:pos-terminal-activation');
+    Route::post('/pos/terminals/request', [TerminalController::class, 'requestTerminal'])
+        ->middleware('throttle:pos-terminal-activation');
+    Route::post('/pos/terminals/web', [TerminalController::class, 'getOrCreateWebTerminal'])
+        ->middleware('throttle:pos-terminal-activation');
     Route::get('/pos/terminals/by-device/{hardwareIdentifier}', [TerminalController::class, 'findByDevice']);
     Route::post('/pos/terminals', [TerminalController::class, 'store']);
     Route::get('/pos/terminals/{id}', [TerminalController::class, 'show']);
     Route::patch('/pos/terminals/{id}', [TerminalController::class, 'update']);
     Route::delete('/pos/terminals/{id}', [TerminalController::class, 'destroy']);
-    Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate']);
+    Route::patch('/pos/terminals/{id}/activate', [TerminalController::class, 'activate'])
+        ->middleware('throttle:pos-terminal-activation');
     Route::patch('/pos/terminals/{id}/deactivate', [TerminalController::class, 'deactivate']);
     Route::patch('/pos/terminals/{id}/archive', [TerminalController::class, 'archive']);
     Route::post('/pos/terminals/{id}/toggle-training', [TerminalController::class, 'toggleTrainingMode']);
