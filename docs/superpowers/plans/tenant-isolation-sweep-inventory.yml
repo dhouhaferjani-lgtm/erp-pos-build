@@ -3,10 +3,10 @@ metadata:
   spec_version: 2026-05-02-master
   spec_path: docs/superpowers/plans/2026-05-02-tenant-isolation-master-plan.md
   branch: feat/tenant-isolation-sweep-execution
-  generated_at: '2026-05-12T11:21:46Z'
+  generated_at: '2026-05-13T05:12:24Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+  yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -9535,6 +9535,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.004
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.005
     stable_key: 'sha256:92cc705317b322a4f38141bf7c5c20b90cea857bfe96567664e8fbe9d54c2273'
@@ -9662,6 +9678,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.005
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.006
     stable_key: 'sha256:f5ed1eeabcebe612da0ef378f5beb38e4b36d74d89d3135860f3a50ed96a3739'
@@ -9789,6 +9821,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.006
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.007
     stable_key: 'sha256:09b93ad1c354525e6e6083430562c1a4614be90cf1305dec0fc663ba58a184a8'
@@ -9916,6 +9964,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.007
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.008
     stable_key: 'sha256:f324b19524bb5cbb7abc1944d9d26a0a20eec501e94d182805a99e136c6eb48f'
@@ -10043,6 +10107,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.008
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.009
     stable_key: 'sha256:8aace2dc269feaa23e5facdc4deba37ae31ce1b604ac7d56a0e47fe5f798751b'
@@ -10170,6 +10250,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.009
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.010
     stable_key: 'sha256:409f3d56be59589884d836e1ab0ef6dc1024f2c574e1620e7bca6c870cb3cfae'
@@ -10297,6 +10393,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.010
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.011
     stable_key: 'sha256:74a3cbc299d2e6d45a2683f2820b0d20e8ddf2ffaf520effff00830cab5e3719'
@@ -10424,6 +10536,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.011
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.012
     stable_key: 'sha256:911ee566e88fd12e1d248a224b6c5c7524c21aaef6358112acc1a78d067d11bc'
@@ -10551,6 +10679,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.012
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.013
     stable_key: 'sha256:615a9bc0dee95f1121f39c173fd58acd26e77d9f087ec07529df7f50cf6eb7ed'
@@ -10678,6 +10822,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.013
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.014
     stable_key: 'sha256:4725e3bd6b0b680c02ee26c8e1acf5963325307635fdcce25f5801d97cf14859'
@@ -10805,6 +10965,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.014
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.015
     stable_key: 'sha256:bd48043cf6c4e5a8540ea2458df3dc821d1ee8cec7a9573d7878a29a99dae5a3'
@@ -10932,6 +11108,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.015
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.016
     stable_key: 'sha256:fe54c2a84fdd7a99dbf32ae6a4f8e97e5300a812b7cc7ad41d47206e14e78478'
@@ -11059,6 +11251,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: b09c7ac6
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.016
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.017
     stable_key: 'sha256:c2f12bd8d3824c1637b4211afaf1eba518aaec937bdfcd40cc1aac0b4a9ecb44'
@@ -13301,12 +13509,12 @@ callsites:
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
   -
     id: api.catalog.008
-    stable_key: 'sha256:d5c67a4a690ed720d4c87921cf9235ab7c952d7ea27fb22c459fc60d7cfae7ae'
+    stable_key: 'sha256:4011d98e14489ea94274c26a835c733310027a370ebfe2ac273a175d2e7e0d61'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierGroupController.php
-    line: 65
+    line: 68
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierGroupController::show'
     pattern_type: unscoped_eloquent_findOrFail
     resource: ModifierGroup
@@ -13316,7 +13524,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -13410,14 +13618,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.008
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.009
-    stable_key: 'sha256:3dc2767133b47f531e82b9344fd90046d9d354ef3730b0482afa6f50ed4e34cc'
+    stable_key: 'sha256:68ab927232b525c527fd55b19cfd2b74511bdc8d2ce487cd15aaa8031029aa12'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierGroupController.php
-    line: 93
+    line: 97
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierGroupController::update'
     pattern_type: unscoped_eloquent_findOrFail
     resource: ModifierGroup
@@ -13427,7 +13651,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -13521,14 +13745,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.009
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.010
-    stable_key: 'sha256:7d7a07cd83de10824ce54b382e7fe82d07589be24264bc1bd8bf4b9edc713799'
+    stable_key: 'sha256:f1ae9c416c88fcb24cf0fe8bb6c907a055c68044bb31bf31de7069b34b1603b3'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierGroupController.php
-    line: 120
+    line: 126
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierGroupController::destroy'
     pattern_type: unscoped_eloquent_findOrFail
     resource: ModifierGroup
@@ -13538,7 +13778,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -13632,14 +13872,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.010
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.011
-    stable_key: 'sha256:7bbcbda63a8c24c169fa3b0af3eb7fc8cc5a1d311592e16ea661eaaeff59765a'
+    stable_key: 'sha256:8626b5dfce3d11e4fd668a62a4dbcd7aec8b82a0694cc63d22dfa7e077e11fef'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
-    line: 30
+    line: 34
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::store'
     pattern_type: unscoped_eloquent_findOrFail
     resource: ModifierGroup
@@ -13649,7 +13905,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -13759,14 +14015,30 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.011
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.012
-    stable_key: 'sha256:decd02b0fb0cdd4d78ac7389236f0954ceb29aecc04e34f462fe3c129dc17dd8'
+    stable_key: 'sha256:6dd80ad1850d44f2f6f3ccdeb90bf084252b7c0c14742540b2700bbd9769a1b0'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
-    line: 54
+    line: 56
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::update'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Modifier
@@ -13776,7 +14048,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -13935,14 +14207,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.012
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.catalog.013
-    stable_key: 'sha256:318ecdc76cad66fa44610a0219e623ba236c1029b6b65cfdf181c58efc5bfb63'
+    stable_key: 'sha256:4ada74648774ac36a262d77610360dd567183782855d3c986a1e34e1e915cb3f'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Catalog/Presentation/Controllers/ModifierController.php
-    line: 91
+    line: 95
     symbol: 'App\Modules\Catalog\Presentation\Controllers\ModifierController::destroy'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Modifier
@@ -13952,7 +14240,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
     review:
@@ -14111,14 +14399,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-needs-recheck-claude-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.013
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.015
-    stable_key: 'sha256:309d97fc904b7bd17b9fe044dc1cf00ba10dfa659e6234913be0319349169fc2'
+    stable_key: 'sha256:57cbbf79b67d843373eb76d7f5615c4f53a80832ab2eaddb10da9c6a8af2fcdb'
     surface: api
     cluster_id: api.marketplace
     scanner: php_ast_find
     file: apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnPriceChange.php
-    line: 31
+    line: 36
     symbol: 'App\Modules\Marketplace\Application\Listeners\SyncListingOnPriceChange::handle'
     pattern_type: unscoped_eloquent_find
     resource: Product
@@ -14128,7 +14432,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-09T14:43:03Z'
     review:
@@ -14240,14 +14544,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
         review_commit: 3d0378cb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.unmapped.015
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.016
-    stable_key: 'sha256:18c3c202b8a598bf4f72a15ece5aa50521645894f0e770acc70b0cce7d63b7a5'
+    stable_key: 'sha256:916d85c041e1ede94381ce7d75b16f0778b2ce01ed0149228917392560b746bb'
     surface: api
     cluster_id: api.marketplace
     scanner: php_ast_find
     file: apps/api/app/Modules/Marketplace/Application/Listeners/SyncListingOnStockChange.php
-    line: 31
+    line: 35
     symbol: 'App\Modules\Marketplace\Application\Listeners\SyncListingOnStockChange::handle'
     pattern_type: unscoped_eloquent_find
     resource: Product
@@ -14257,7 +14577,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-09T14:43:03Z'
     review:
@@ -14369,6 +14689,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-marketplace-cluster-codex-review.md
         review_commit: 3d0378cb
         note: 'review verdict=APPROVE by codex via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.unmapped.016
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.008
     stable_key: 'sha256:496783c190bf60bbac1d3e805bafd1a9505bb9c31fbdd38d08a078876563b755'
@@ -14800,12 +15136,12 @@ callsites:
         note: 'Relevant scanner no longer emits this stable key after country-scoped TaxConfiguration was removed from guarded find models; targeted taxation HTTP and PHPStan gates passed.'
   -
     id: api.taxation.011
-    stable_key: 'sha256:a38d5fcf90da30c93c4af37814a7f4e02e9ad0a87ce5dcf9027bd8a44d70be72'
+    stable_key: 'sha256:3913c82a33f6457768cdf2f4098db381c7c38fff1fa38a725dca7e3cbbf4d388'
     surface: api
     cluster_id: api.taxation
     scanner: php_ast_find
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/SalesWithholdingTrackingController.php
-    line: 38
+    line: 48
     symbol: 'App\Modules\Taxation\Presentation\Controllers\SalesWithholdingTrackingController::recordWithholding'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Document
@@ -14815,7 +15151,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -14909,14 +15245,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.taxation.011
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.012
-    stable_key: 'sha256:a8691f51eac7bc94258ca86d5e9a87c6921c0c80803cec82f31de043c9e5833a'
+    stable_key: 'sha256:d7542e48797d676ac84b6cd6494a7521b9a51f9b896bdce7d4fdc02c13efea38'
     surface: api
     cluster_id: api.taxation
     scanner: php_ast_find
     file: apps/api/app/Modules/Taxation/Presentation/Controllers/WithholdingPreviewController.php
-    line: 35
+    line: 41
     symbol: 'App\Modules\Taxation\Presentation\Controllers\WithholdingPreviewController::preview'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Partner
@@ -14926,7 +15278,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
     review:
@@ -15020,6 +15372,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.taxation.012
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.taxation.013
     stable_key: 'sha256:959ab0650901d034897837116609b8d6cc99118e83c12557bf581ffcdc4386ba'
@@ -15036,7 +15404,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T23:02:03Z'
@@ -15131,6 +15499,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-taxation-cluster-codex-round2-review.md
         review_commit: e7a2f543
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.taxation.013
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.004
     stable_key: 'sha256:5eaa60d88d9a4feeefcb1660ae2e53af02d0d579457ebf2095d5116f7657ebc4'
@@ -15258,7 +15642,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -15353,6 +15737,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
         review_commit: dd56691b
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.005
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.006
     stable_key: 'sha256:cd050329ba6cf54216f2150d42c647ab81d54a54fc2a7e8458a402c9ad214c7f'
@@ -15369,7 +15769,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -15464,6 +15864,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
         review_commit: dd56691b
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.006
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.007
     stable_key: 'sha256:c001696a78ff909d2a48d64c0e6d8beca511396342d92ca8d0cf37240ebe33a9'
@@ -15480,7 +15896,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -15575,6 +15991,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
         review_commit: dd56691b
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.007
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.008
     stable_key: 'sha256:ead1cab1f5d684b370838c2ec32e5352450497571596c553f612500ca1da947b'
@@ -15591,7 +16023,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -15686,14 +16118,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch1.md
         review_commit: dd56691b
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.008
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.009
-    stable_key: 'sha256:c60252f852f27dd97515bbe3c5c81df2687bb7f2570bf611d70d6cbfdc62954f'
+    stable_key: 'sha256:637f7b4a6ebe254320f2d6a8844cae4be63eb35bb7b24ba96ac5ccf42aa8e921'
     surface: api
     cluster_id: api.document
     scanner: php_ast_find
     file: apps/api/app/Modules/Document/Application/Services/AgedReceivablesService.php
-    line: 179
+    line: 181
     symbol: 'App\Modules\Document\Application\Services\AgedReceivablesService::generateCustomerStatement'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Partner
@@ -15703,7 +16151,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -15797,6 +16245,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
         review_commit: 8bd2b13a
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.009
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.document.010
     stable_key: 'sha256:a877a6df3897402063e64084f240f358c526f849ce372c42ea9421a2682ec8ca'
@@ -16957,12 +17421,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.020
-    stable_key: 'sha256:e5db68c814235797cc131d05c805a29f102f63f932cc802e82c8217ac4660ce6'
+    stable_key: 'sha256:f2833b768612c8278b2c771834cd461e4394461a1dcb7beec265f7d65ba71705'
     surface: api
     cluster_id: api.document
     scanner: php_ast_find
     file: apps/api/app/Modules/Document/Domain/Services/ReturnNoteService.php
-    line: 169
+    line: 171
     symbol: 'App\Modules\Document\Domain\Services\ReturnNoteService::receiveStockBack'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Location
@@ -16972,7 +17436,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -17066,6 +17530,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch3.md
         review_commit: 8bd2b13a
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.020
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.document.021
     stable_key: 'sha256:4ff2024568d22cefee270e6b753841e8aa0f5bd0abb33d1f7c6e164dbe34e7f9'
@@ -18067,12 +18547,12 @@ callsites:
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
   -
     id: api.document.030
-    stable_key: 'sha256:1e02592b0d56ef09a55a3cb936b146202eac7ab4a926aae7b5d423d01582ca5d'
+    stable_key: 'sha256:9f6b658717dc719e5bb17aa160966ec8ba158e5bc9484a0638319ec0533aeb5d'
     surface: api
     cluster_id: api.document
     scanner: php_ast_find
     file: apps/api/app/Modules/Document/Presentation/Controllers/DocumentController.php
-    line: 248
+    line: 252
     symbol: 'App\Modules\Document\Presentation\Controllers\DocumentController::taxBreakdown'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Document
@@ -18082,7 +18562,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
     review:
@@ -18176,6 +18656,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
         review_commit: '5174e756'
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.030
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.document.031
     stable_key: 'sha256:d02de606c676b7b0c639f7fecbd0b1d9d7d6d5cb30863b3fc6cffb3fb2f74f84'
@@ -18192,7 +18688,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -18287,6 +18783,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
         review_commit: '5174e756'
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.031
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.032
     stable_key: 'sha256:61448c8fe6a2eb1985682f2702ab87a60b6da93a7d1874b251ebac01ce0a7667'
@@ -18303,7 +18815,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -18398,6 +18910,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
         review_commit: '5174e756'
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.032
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.033
     stable_key: 'sha256:87b819324d40aea1a6f568afd20ee6a9f419fed08413769c715a755de46a093a'
@@ -18414,7 +18942,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:33:36Z'
@@ -18509,6 +19037,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-05-api-document-cluster-codex-round3-review-batch2.md
         review_commit: '5174e756'
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.033
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.document.034
     stable_key: 'sha256:b5ef2d6453df36416e4257b37760b1a90af0ca86962203c18dc0395118e33769'
@@ -20035,12 +20579,12 @@ callsites:
         note: 'Relevant scanner no longer emits this stable key; targeted loyalty HTTP and PHPStan gates passed.'
   -
     id: api.unmapped.017
-    stable_key: 'sha256:80b2598af7073f063bc7635415258af5df837d07705d83bb373374e6165bb10a'
+    stable_key: 'sha256:0acc21f2432782220b476debfd039ee87bb17de882b8d7b66a9a9b9c8da2ecee'
     surface: api
     cluster_id: api.pricing
     scanner: php_ast_find
     file: apps/api/app/Modules/Coupon/Application/Services/CouponApplicationService.php
-    line: 51
+    line: 60
     symbol: 'App\Modules\Coupon\Application\Services\CouponApplicationService::recordUsage'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Coupon
@@ -20050,7 +20594,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T09:27:55Z'
     review:
@@ -20162,14 +20706,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-reassigned-cluster-codex-round2-review.md
         review_commit: da535327
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.unmapped.017
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.018
-    stable_key: 'sha256:102aae677cdd57c130173c3346d7a743a0887243b1268821beda6b8e08180f73'
+    stable_key: 'sha256:fb095c3afecf507e773a486abea1790ef31d61bf0c16b821cd4d4627fa7833c0'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
-    line: 126
+    line: 134
     symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::store'
     pattern_type: unscoped_eloquent_find
     resource: Category
@@ -20179,7 +20739,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T09:32:56Z'
     review:
@@ -20291,14 +20851,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
         review_commit: f88ad4a5
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.unmapped.018
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.019
-    stable_key: 'sha256:18277095aed0a56ae35ad878d6e4c0c4f5b40ec2e5946be3ac8fe3aa72256b4c'
+    stable_key: 'sha256:f078db5467f0a254c493c7ef0c1cd35f93bf5f8e4fdb9db7bbebc03451f0481a'
     surface: api
     cluster_id: api.catalog
     scanner: php_ast_find
     file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
-    line: 174
+    line: 186
     symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::update'
     pattern_type: unscoped_eloquent_find
     resource: Category
@@ -20308,7 +20884,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T09:32:57Z'
     review:
@@ -20420,6 +20996,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-catalog-fast-batch-claude-review.md
         review_commit: f88ad4a5
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.unmapped.019
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.compliance.001
     stable_key: 'sha256:f783b2d1725bd0b9b116e53122affd578ad73d150fdf2e378af4096886991572'
@@ -20991,6 +21583,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.020
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.021
     stable_key: 'sha256:ca8a2b86f695c2f5159bf71c1599ad5f042e945bd07916186b4ae976e7d263c4'
@@ -21118,14 +21726,30 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.021
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.022
-    stable_key: 'sha256:a059ef5c27fc6889077ef6f5ad8a6adbcfef861b51126f93a7bb85405ea9d2b6'
+    stable_key: 'sha256:23c06f1d5eb93869fe2672c6b2663f6073af88f51d9fc40e9dbc51b4218d7222'
     surface: api
     cluster_id: api.pos-stabilization
     scanner: php_ast_find
     file: apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php
-    line: 508
+    line: 513
     symbol: 'App\Modules\POS\Application\Services\ReceiptCreationService::<closure@5892>'
     pattern_type: unscoped_eloquent_find
     resource: Contact
@@ -21135,7 +21759,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -21229,14 +21853,30 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.022
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pos-stabilization.023
-    stable_key: 'sha256:9224fbd9c430ade0e3a45cf20cabc248fa24a35d5bf8e37a8383e255ab300061'
+    stable_key: 'sha256:fd8794333fd2764a6a6232f5387613d3abc4aba895bdbf7cee3a0622b7b17743'
     surface: api
     cluster_id: api.pos-stabilization
     scanner: php_ast_find
     file: apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php
-    line: 523
+    line: 531
     symbol: 'App\Modules\POS\Application\Services\ReceiptCreationService::<closure@5892>'
     pattern_type: unscoped_eloquent_find
     resource: Partner
@@ -21246,7 +21886,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -21340,6 +21980,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.023
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pos-stabilization.024
     stable_key: 'sha256:63f62137b7c7695d8965bbf502d79df1c232170273cf488773e06998a3980946'
@@ -21578,6 +22234,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.025
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.026
     stable_key: 'sha256:c896c85d6cb50ac0f6fe0b839de966abbd0d84f30d5cdce4506109f245f672f1'
@@ -21705,14 +22377,30 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.026
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.027
-    stable_key: 'sha256:20eced31ddcd748718de2c4db365b33458a332902d7858587269dbdde290b1e1'
+    stable_key: 'sha256:304b45209ab0a91b78b45637fd08baeaf76af0c1fe279c1dfa203245db2c229d'
     surface: api
     cluster_id: api.pos-stabilization
     scanner: php_ast_find
     file: apps/api/app/Modules/POS/Application/Services/VoucherLedgerPushService.php
-    line: 87
+    line: 117
     symbol: 'App\Modules\POS\Application\Services\VoucherLedgerPushService::push'
     pattern_type: unscoped_eloquent_find
     resource: Voucher
@@ -21722,7 +22410,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -21832,14 +22520,30 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: b7cc96e5
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.027
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pos-stabilization.028
-    stable_key: 'sha256:b2d2a83304b615832d2377f9d560b77bf980cbf738c39147bc5579effd4ee169'
+    stable_key: 'sha256:423e259241777e18047373ec5d66adea793e2183ede63a4d310a1d3cf747954c'
     surface: api
     cluster_id: api.pos-stabilization
     scanner: php_ast_find
     file: apps/api/app/Modules/POS/Presentation/Controllers/TerminalController.php
-    line: 423
+    line: 433
     symbol: 'App\Modules\POS\Presentation\Controllers\TerminalController::getOrCreateWebTerminal'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Location
@@ -21849,7 +22553,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-05T09:46:27Z'
     review:
@@ -21943,14 +22647,30 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md
         review_commit: 184576c2
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round2-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.028
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.011
-    stable_key: 'sha256:3fbc312a694546c888c58872f9317b6238cdd279fcefd06e6b5e6a7c9441a4bb'
+    stable_key: 'sha256:1c99211c3b462cf13470913d3548714b3d229bda61aee8abbbaa1e6f03fad36c'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Application/Services/StockReservationService.php
-    line: 367
+    line: 389
     symbol: 'App\Modules\Inventory\Application\Services\StockReservationService::reserveWithFEFO'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Product
@@ -21960,7 +22680,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -22070,6 +22790,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.011
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.012
     stable_key: 'sha256:0d76dfeee0f3646ddc7e5b7d9478b00488550bca02e9704e7a6e80976d662c39'
@@ -22193,6 +22929,22 @@ callsites:
         from_status: fixed
         to_status: fixed
         commit: 30069a660282b5af0535ac048e9404b1334b4879
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.012
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
         test: null
         review_file: null
         review_commit: null
@@ -22324,6 +23076,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.013
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.014
     stable_key: 'sha256:131843ff334cb2805083457feebe16fc6d19e55c542441521aceec885716c58c'
@@ -22451,14 +23219,30 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.014
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.015
-    stable_key: 'sha256:ce975496ebbac1efd3b3129a4ec223b58dc62cab6a7bfc3c4fc7392149dc58cc'
+    stable_key: 'sha256:623198b3c5cb8c6f083409606908803155c741210d1c5c14bc54ebeaf6cdd0a9'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php
-    line: 85
+    line: 88
     symbol: 'App\Modules\Inventory\Application\Services\GoodsReceiptService::<closure@1917>'
     pattern_type: unscoped_eloquent_find
     resource: Product
@@ -22468,7 +23252,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -22562,6 +23346,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.015
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.016
     stable_key: 'sha256:f20a05dcdedd07bfc2a49da2c11e09a6ece7e52b717f57171cdffa85aa9ae2c8'
@@ -22578,7 +23378,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -22673,6 +23473,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-inventory-cluster-codex-round4-review.md
         review_commit: 1eada1cb
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.016
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.017
     stable_key: 'sha256:be6d3d94a30c2f45802fb932736379cc2e5ed063d0b5745fb7d73514e076ed38'
@@ -22689,7 +23505,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
@@ -22833,14 +23649,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-inventory-cluster-codex-review.md
         review_commit: 1585720e
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.017
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.018
-    stable_key: 'sha256:7dceeb8f2e0b91e0f6c78e7baa618a887204d7cfcba8c0a9c2a99d0b098c0183'
+    stable_key: 'sha256:db066a5af4b3e87660c034bfae4cfc5b09f5b18ab50264a96968f5f541f54925'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php
-    line: 536
+    line: 567
     symbol: 'App\Modules\Inventory\Domain\Services\StockAdjustmentService::recordMovement'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Location
@@ -22850,7 +23682,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -22993,14 +23825,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-inventory-cluster-codex-review.md
         review_commit: 1585720e
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.018
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.inventory.019
-    stable_key: 'sha256:0f270dc672878a8227cad9c64d284120b3f6dbff01a611a82b4d3bbbfecac3a6'
+    stable_key: 'sha256:05879206c25f4e43e99605cf9e62ce9b728673df80571ef9a065e795e29a52c1'
     surface: api
     cluster_id: api.inventory
     scanner: php_ast_find
     file: apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php
-    line: 545
+    line: 549
     symbol: 'App\Modules\Inventory\Presentation\Controllers\InventoryCountingController::addProduct'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Product
@@ -23010,7 +23858,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: stale_orphan
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-05T04:22:41Z'
     review:
@@ -23120,6 +23968,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.019
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.cart.001
     stable_key: 'sha256:30a335e5ee26f353f011d6ee78e5c4693bcd3836b3381bdfd13ed10491f002a3'
@@ -23136,7 +24000,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:22:01Z'
@@ -23231,6 +24095,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
         review_commit: 65f291a2
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.cart.001
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.cart.002
     stable_key: 'sha256:9d29be840e7a684670dd16d36331a324b61dd688bf9094a14f0699831f0f09bf'
@@ -23247,7 +24127,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T19:22:01Z'
@@ -23342,6 +24222,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-cart-cluster-opus-review.md
         review_commit: 65f291a2
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.cart.002
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.service.001
     stable_key: 'sha256:69dbc453ce2714fb4029783a42c2dacd769f832787b8fdccd564efbb6de5afca'
@@ -24221,12 +25117,12 @@ callsites:
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
   -
     id: api.treasury.030
-    stable_key: 'sha256:f22b65a678126b0e955155628ef2e9eb18ae372458bb0e6418a9959417a523e3'
+    stable_key: 'sha256:eda4918481d28322ebd598e1f8a7cf6568b4e4d42a9e273c9e7bd5f37564186a'
     surface: api
     cluster_id: api.treasury
     scanner: php_ast_find
     file: apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php
-    line: 420
+    line: 423
     symbol: 'App\Modules\Treasury\Domain\Services\PaymentRefundService::<closure@16791>'
     pattern_type: unscoped_eloquent_find
     resource: Payment
@@ -24236,7 +25132,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
     review:
@@ -24362,6 +25258,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.030
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
     structurally_protected_by_upstream_guard:
       - 'apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php:626-633'
   -
@@ -24380,7 +25292,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -24491,6 +25403,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.031
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.032
     stable_key: 'sha256:4dfcda93fa01339a3289dceb1abd0f362d265d06d252738ec11d8c2106870ec9'
@@ -24507,7 +25435,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T07:44:20Z'
@@ -24618,6 +25546,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.032
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.033
     stable_key: 'sha256:10fbd133061fc3f31f2a1d31b95ba1ce19ef72d88b63ebd7fdead23969fac752'
@@ -25174,6 +26118,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.036
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.037
     stable_key: 'sha256:b92f2369fbc9dbd6402aa3cc4e04158e88261abae7b7ad883185b9105f8ac3c8'
@@ -25301,6 +26261,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.037
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.038
     stable_key: 'sha256:516e3df6b6fda5eba68ec47d552fa96b98ae52ed61427be8e5bcceb596e5a011'
@@ -25428,6 +26404,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.038
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.039
     stable_key: 'sha256:193cb02d7117bfc6adde793e00a8bb8d2fef72dab0aafcaec5437cb04e49bb9d'
@@ -25555,6 +26547,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.039
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.040
     stable_key: 'sha256:bce367b4943e9895ce42535d38168aee67fe7818ea03d413624b5baae778e583'
@@ -25682,6 +26690,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.040
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.041
     stable_key: 'sha256:ebca44afb66d5361e8f2eb81513ac48972dc5f0c0e33d87189de8ca687d42244'
@@ -25809,6 +26833,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.041
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.042
     stable_key: 'sha256:bda36503b64b227db20988356b8ec3f007b5a2dec8f1472432fafc63a03d68c0'
@@ -25936,6 +26976,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.042
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.043
     stable_key: 'sha256:7dc7ecea330b995aa2c04c9b077acaed2b5d951bce1119cb484b2a64685087f8'
@@ -26063,6 +27119,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.043
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.044
     stable_key: 'sha256:160ef6b6e7b16bb4481a01bc51f7d5f27aedc682999aa75a30962b7d0c79d542'
@@ -26190,6 +27262,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.044
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.045
     stable_key: 'sha256:770d6f2e32a2d78eaebd179b2646bd45dd43324c375bbdefc253c458890a0a89'
@@ -26317,6 +27405,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.045
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.046
     stable_key: 'sha256:ab5976260a4f0bcff032fd0a1395851dd7353f669d92394c570bac3a56285b5e'
@@ -26444,6 +27548,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.046
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.047
     stable_key: 'sha256:fb6d829106c9a6aa0aebe52c51d57a6d87746fd44803d9b98c5a6992e384a1d8'
@@ -26571,6 +27691,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: f616d188
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.047
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.048
     stable_key: 'sha256:70ac2c9672e762e43da4c6d2096903ffa5bc4bb2cc83e01702d32281711d861a'
@@ -26684,12 +27820,12 @@ callsites:
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
   -
     id: api.pricing.001
-    stable_key: 'sha256:5e3fff34837d3bac84518abd410dedbfef9ce4ed4847b203628223648b676b92'
+    stable_key: 'sha256:da6e7d79a42acac48184e7b7543c5e883cb662e0b181599de3fcb66e5d5bff86'
     surface: api
     cluster_id: api.pricing
     scanner: php_ast_find
     file: apps/api/app/Modules/Pricing/Domain/Services/PricingService.php
-    line: 62
+    line: 69
     symbol: 'App\Modules\Pricing\Domain\Services\PricingService::getPrice'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Product
@@ -26699,7 +27835,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -26793,14 +27929,30 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.001
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.pricing.002
-    stable_key: 'sha256:23d13e47f8d707410355707064d0fca893ed816127b32770753c66951cf208fb'
+    stable_key: 'sha256:237fb634e063b358d6bdc316b224d11cc8832f832ee2f03c22800a825b7f10a7'
     surface: api
     cluster_id: api.pricing
     scanner: php_ast_find
     file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
-    line: 371
+    line: 486
     symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::checkMargin'
     pattern_type: unscoped_eloquent_findOrFail
     resource: Product
@@ -26810,7 +27962,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: fixed
+    status: needs_recheck
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
     review:
@@ -26904,6 +28056,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.002
+        from_status: fixed
+        to_status: needs_recheck
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Stable key changed but path/symbol/resource unchanged — needs_recheck per master plan Section 4.'
   -
     id: api.unmapped.020
     stable_key: 'sha256:27e31d0c19bc52e09c61ef309ec4693f921bdfe52abcae1a90f942ce401b41f0'
@@ -28042,7 +29210,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -28137,6 +29305,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.014
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.015
     stable_key: 'sha256:ec27702bfb343951737d03ce257aebb7a88367d0cb747d782c7ba6d10f1a46ea'
@@ -28153,7 +29337,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -28248,6 +29432,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.015
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.016
     stable_key: 'sha256:44db58073152a2f1d323222cc1c1ae0e7779f716d8025ea517c59c53db5854a1'
@@ -28264,7 +29464,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -28359,6 +29559,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.016
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.catalog.017
     stable_key: 'sha256:afe4d10d85d088786d9b60049b2dba53c2fdc75098ec69d9107892f34e807483'
@@ -28375,7 +29591,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T20:36:36Z'
@@ -28470,6 +29686,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-catalog-cluster-codex-round2-review.md
         review_commit: 516c6f61
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.017
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.029
     stable_key: 'sha256:26c28ae36ada8faafb08e030fe6cb40919558c22fcf9017096af64ab6de97be7'
@@ -29485,7 +30717,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -29580,6 +30812,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.003
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.004
     stable_key: 'sha256:3763fc1c99355c406d543cf32b4c4885c9bf91628158be430883c3ea1e40f0e0'
@@ -29596,7 +30844,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -29691,6 +30939,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.004
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.005
     stable_key: 'sha256:d89f82d22ea984bdfe53a6d2c31ae9ee0bded58ea01b744c427a9dc96f672e60'
@@ -29707,7 +30971,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -29802,6 +31066,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.005
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.006
     stable_key: 'sha256:561ec03b69ed74d97e711d47397271608ef5d47bea5ce4d4db7e14e9f1e3ac56'
@@ -29818,7 +31098,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -29913,6 +31193,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.006
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.007
     stable_key: 'sha256:5dbfaa73ba46507ed17917d47f3244c56e698474361f07417a08b000b2546b53'
@@ -29929,7 +31225,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -30024,6 +31320,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.007
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.008
     stable_key: 'sha256:5dac59c6322350d6d36f67e9ae2c0d054bc71fd7052c463cb2ae70504f3ef48b'
@@ -30040,7 +31352,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -30135,6 +31447,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.008
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.009
     stable_key: 'sha256:980b36765544de341383ef5737411503789c4e233928e0dd01bc7ac2dd17616c'
@@ -30151,7 +31479,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -30246,6 +31574,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.009
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pricing.010
     stable_key: 'sha256:b4df2c11a2ff3ecf9020d5cb72b121da76fe25b9e58e64d0b2bdad4b4b9c6f09'
@@ -30262,7 +31606,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: codex
     claimed_at: '2026-05-04T22:10:24Z'
@@ -30357,6 +31701,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-04-api-pricing-cluster-codex-round2-review.md
         review_commit: 12ec1df9
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.010
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.compliance.005
     stable_key: 'sha256:a4e2f4e0438f42cc634ac676b1729d551de701046c163a658e06e6a1a41c7ced'
@@ -31816,7 +33176,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T11:44:00Z'
@@ -31911,6 +33271,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.056
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.057
     stable_key: 'sha256:1f9de0c40e697282e9e69315613de62762c7ede41ae56febdd560b2a2ee24499'
@@ -31927,7 +33303,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T11:44:01Z'
@@ -32022,6 +33398,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.057
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.058
     stable_key: 'sha256:0684fcf53dab039fcb2f4bbf331d5961b0790c278bf839babc7f5b192e56b9c3'
@@ -32260,7 +33652,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T11:44:03Z'
@@ -32355,6 +33747,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.060
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.061
     stable_key: 'sha256:4e18dc67a136bcc37895a3a20dd38512273ab88cc5bdbb109ca1ef94c6fc2f26'
@@ -32371,7 +33779,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T11:44:03Z'
@@ -32466,6 +33874,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.061
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.treasury.062
     stable_key: 'sha256:2732163d5a72ecb46d15a3752b180910ea281588c34e8e9c1c022953b02e3acc'
@@ -32482,7 +33906,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-04T11:44:04Z'
@@ -32577,6 +34001,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md
         review_commit: 48a6e353
         note: 'review verdict=APPROVE by codex (Treasury round-5 cluster approval, retro-flip via one-shot mutate; original review at docs/superpowers/reviews/2026-05-04-treasury-cluster-codex-round5-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.062
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.compliance.006
     stable_key: 'manual:api.compliance:nf525-export-jet-body-company-id'
@@ -35545,7 +36985,7 @@ callsites:
     severity: low
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-09T14:10:29Z'
@@ -35640,6 +37080,22 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-09-api-inventory-cluster-codex-review.md
         review_commit: 1585720e
         note: 'review verdict=APPROVE-WITH-MINOR-EDITS-APPLIED by codex via sweep:inventory:review'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.032
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.inventory.033
     stable_key: 'manual:api.inventory:release-by-source-not-tenant-scoped'
@@ -37099,7 +38555,7 @@ callsites:
     severity: high
     fiscal_path: true
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-05T19:40:04Z'
@@ -37194,6 +38650,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md
         review_commit: a7860ef4
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-04-api-pos-stabilization-cluster-codex-round3-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.043
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.044
     stable_key: 'manual:api.pos-stabilization:table-release-cross-tenant-mutation'
@@ -38209,7 +39681,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:28:31Z'
@@ -38304,6 +39776,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
         review_commit: de7078d0
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.046
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.047
     stable_key: 'manual:api.pos-stabilization:close-cancel-order-table-release-unscoped'
@@ -38320,7 +39808,7 @@ callsites:
     severity: high
     fiscal_path: false
     cross_module: false
-    stale_state: active
+    stale_state: stale_orphan
     status: fixed
     owner: claude
     claimed_at: '2026-05-06T06:28:32Z'
@@ -38415,6 +39903,22 @@ callsites:
         review_file: docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md
         review_commit: de7078d0
         note: 'review verdict=APPROVE by codex (administrative closure: per-callsite attestation pinned to its own fix_commit; cumulative review file at docs/superpowers/reviews/2026-05-06-api-pos-stabilization-cluster-codex-round4-review.md)'
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: claude
+        action: stale_mark
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.047
+        from_status: fixed
+        to_status: fixed
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'Symbol moved or renamed; new row created. See sibling pending row at same path.'
   -
     id: api.pos-stabilization.048
     stable_key: 'manual:api.pos-stabilization:order-controller-reload-reads-unscoped'
@@ -139705,6 +141209,1478 @@ callsites:
         review_file: ../../docs/superpowers/reviews/2026-05-12-api-workshop-task4-closure-claude-review.md
         review_commit: '01574841'
         note: 'review verdict=APPROVE by claude via sweep:inventory:review'
+  -
+    id: api.taxation.014
+    stable_key: 'sha256:0babe44580081b0c7a68cdc8dfb1718536c549198c4126f0d6a56bd4095ee4a3'
+    surface: api
+    cluster_id: api.taxation
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Taxation/Presentation/Controllers/WithholdingCertificateController.php
+    line: 359
+    symbol: 'App\Modules\Taxation\Presentation\Controllers\WithholdingCertificateController::requireTenantScopedCertificate'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: WithholdingCertificate
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.taxation.014
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.046
+    stable_key: 'sha256:c118839250ce5733263d61243c503645714fa573e0faf71acf9b9fb151bf1214'
+    surface: api
+    cluster_id: api.document
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Document/Application/Services/CreditNoteService.php
+    line: 310
+    symbol: 'App\Modules\Document\Application\Services\CreditNoteService::<closure@12945>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Partner
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.046
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.047
+    stable_key: 'sha256:9433b2433cc1bd3d881160694c68642d0396bef332643b43430a962776eb3ddb'
+    surface: api
+    cluster_id: api.document
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Document/Application/Services/CreditNoteService.php
+    line: 459
+    symbol: 'App\Modules\Document\Application\Services\CreditNoteService::<closure@19375>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Document
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.047
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.document.048
+    stable_key: 'sha256:94f0d7da3e5683c607173180d2a1d726875b415963135420eae209c608be6170'
+    surface: api
+    cluster_id: api.document
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Document/Presentation/Controllers/DocumentPdfController.php
+    line: 75
+    symbol: 'App\Modules\Document\Presentation\Controllers\DocumentPdfController::scopedFindOrFail'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Document
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.document.048
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.034
+    stable_key: 'sha256:2a9c53474c6b29e7c517731e0e46454a9e752da067557e3266c6e62559ad84d7'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 102
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::show'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Category
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.034
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.catalog.035
+    stable_key: 'sha256:9a7d6679c05ff0a4371ed22670f00e91eef92509cef1f582740a97857cb92d7e'
+    surface: api
+    cluster_id: api.catalog
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Product/Presentation/Controllers/CategoryController.php
+    line: 206
+    symbol: 'App\Modules\Product\Presentation\Controllers\CategoryController::destroy'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Category
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.catalog.035
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.054
+    stable_key: 'sha256:5e3bf914fd4694bd4655ce7e13c4fad7f564200f4e550d3cd7b148ce28d591a6'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php
+    line: 108
+    symbol: 'App\Modules\POS\Application\Services\ReceiptPaymentService::<closure@3477>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Partner
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.054
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.055
+    stable_key: 'sha256:37d23cae10cca7a26b1d8b91f5bfa77ea8ab2aa143b734da58d365c1c654d892'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php
+    line: 202
+    symbol: 'App\Modules\POS\Application\Services\ReceiptPaymentService::<closure@3477>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.055
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.056
+    stable_key: 'sha256:7b277518037c8881784a38ff62e62514b537f625b8aff17dcedeefb2b3099ec6'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php
+    line: 222
+    symbol: 'App\Modules\POS\Application\Services\ReceiptPaymentService::<closure@3477>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentMethod
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.056
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.057
+    stable_key: 'sha256:7e2c5cbb8786b2db5e21ed274ca71cc211d7acdc47614b59ab67fdb2b419fa93'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 118
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::<closure@2732>'
+    pattern_type: unscoped_eloquent_find
+    resource: Partner
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare find() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.057
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.058
+    stable_key: 'sha256:abc8bda867ac4dcba573c08a618389654cf1c74a23c8f7a9679a1e6ce28070c7'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/OrderManagementService.php
+    line: 225
+    symbol: 'App\Modules\POS\Application\Services\OrderManagementService::<closure@7929>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Product
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.058
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.059
+    stable_key: 'sha256:c7c85397457d14748dafc4007e29579c6c703fbbbd745510f3e719c130c6747c'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php
+    line: 278
+    symbol: 'App\Modules\POS\Application\Services\ReceiptSyncService::<closure@8660>'
+    pattern_type: unscoped_eloquent_find
+    resource: Product
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare find() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.059
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pos-stabilization.060
+    stable_key: 'sha256:0cfa293915cab86e1d41adac111c76188e1295dc8a9594b1582e507ed54b1092'
+    surface: api
+    cluster_id: api.pos-stabilization
+    scanner: php_ast_find
+    file: apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php
+    line: 564
+    symbol: 'App\Modules\POS\Application\Services\ReceiptSyncService::<closure@8660>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentMethod
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pos-stabilization.060
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.034
+    stable_key: 'sha256:66d5c9f8a0714485d523485b7ddbefe8e03d8c54200c6ab4b7080729b1ce4527'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+    line: 225
+    symbol: 'App\Modules\Inventory\Application\Services\WeightedAverageCostService::<closure@9149>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Product
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.034
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.035
+    stable_key: 'sha256:0486bbb6de9958b5ac4cb6e4632839b95f343cf26e8e5ad1d008bc1ea4605a2c'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
+    line: 336
+    symbol: 'App\Modules\Inventory\Application\Services\WeightedAverageCostService::<closure@13465>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Product
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.035
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.036
+    stable_key: 'sha256:5ded5e5317bd3393b91acfd9b8ad5d244c5b8190618550131274e0656ab5266d'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php
+    line: 546
+    symbol: 'App\Modules\Inventory\Domain\Services\StockAdjustmentService::resolveCompanyId'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Location
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.036
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.inventory.037
+    stable_key: 'sha256:4f46cc5424088431cdef412d8468beecfcac1ba8b54fb1f66fc5008d4f521334'
+    surface: api
+    cluster_id: api.inventory
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Inventory/Presentation/Controllers/LocationController.php
+    line: 44
+    symbol: 'App\Modules\Inventory\Presentation\Controllers\LocationController::show'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Location
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.inventory.037
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.cart.003
+    stable_key: 'sha256:badc8a18b1a91f4d2bf040dd961a4d082cb4cfa4b2ad5cdbcec239cda5cea566'
+    surface: api
+    cluster_id: api.cart
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Cart/Application/Services/CartConversionService.php
+    line: 152
+    symbol: 'App\Modules\Cart\Application\Services\CartConversionService::<closure@6085>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Partner
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.cart.003
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.063
+    stable_key: 'sha256:db9de66abc872277f3c064db62a4d0258ac910c50430a787a06447283eb6859a'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Application/Services/BankReconciliationService.php
+    line: 44
+    symbol: 'App\Modules\Treasury\Application\Services\BankReconciliationService::startReconciliation'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.063
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.064
+    stable_key: 'sha256:27cd7d54d0badb09f11c0414fe6f575941354d3767acefa009bae43f19f73072'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Domain/Services/VendorRefundService.php
+    line: 51
+    symbol: 'App\Modules\Treasury\Domain\Services\VendorRefundService::<closure@1463>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Document
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.064
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.065
+    stable_key: 'sha256:3505c2e8dea617164b3c9d9bb0d1a6b6ebaca74fb6a5f6cdf1931794c71f6974'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Domain/Services/VendorRefundService.php
+    line: 86
+    symbol: 'App\Modules\Treasury\Domain\Services\VendorRefundService::<closure@1463>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentMethod
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.065
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.066
+    stable_key: 'sha256:f24b475428202b4f3203e49d6022ba5fd706e5ec8536b6e3c7556259533cc8cd'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Domain/Services/VendorRefundService.php
+    line: 92
+    symbol: 'App\Modules\Treasury\Domain\Services\VendorRefundService::<closure@1463>'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.066
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.067
+    stable_key: 'sha256:8042a3a53afcf9fa2dfb14414c19950bf309c85d2673229ba5bfc2a87384c006'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 46
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::show'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.067
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.068
+    stable_key: 'sha256:e3531c5a9b98c46541098327f87f93fe0c43436cd8699d5cee649aff4ba69abd'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 112
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::update'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.068
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.069
+    stable_key: 'sha256:a5ebcb85cd191f39cb80b775121a514cc02f03edcef046d2354f7ff037d14946'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 154
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::balance'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.069
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.070
+    stable_key: 'sha256:09ca1efee85b8dd3e2c5af52628801f02f20c4494638889868e94748573c6e74'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRepositoryController.php
+    line: 179
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController::transactions'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentRepository
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.070
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.071
+    stable_key: 'sha256:05a48c166750354c34563a951f6387f3cb27a838a1d6f60f43b5e48365373863'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRefundController.php
+    line: 33
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRefundController::findPaymentOrFail'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Payment
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.071
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.072
+    stable_key: 'sha256:253683fcf7db6eb7ef51ad9f91527c385e17a4f8f7f5e55ba7546a8527840d7b'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentRefundController.php
+    line: 46
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentRefundController::findDocumentOrFail'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Document
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.072
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.073
+    stable_key: 'sha256:da88638ad636e42a63481c8640d856b227764d5e81f1ceea784bfec509c817b8'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentMethodController.php
+    line: 44
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentMethodController::show'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentMethod
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.073
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.074
+    stable_key: 'sha256:937267b897a8d6b4d0abd1b1a023b67f1dc602a9c142be69e6e9dbda37358042'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentMethodController.php
+    line: 129
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentMethodController::update'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: PaymentMethod
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.074
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.treasury.075
+    stable_key: 'sha256:15d94a70193f01f80ab412c62f85a92affb4edaa920ca4448d598b90454b20fc'
+    surface: api
+    cluster_id: api.treasury
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php
+    line: 78
+    symbol: 'App\Modules\Treasury\Presentation\Controllers\PaymentController::show'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Payment
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.treasury.075
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
+  -
+    id: api.pricing.011
+    stable_key: 'sha256:906941059fd60d3cb14359c0dfd652d8dac62d339a16016d2a862541ffaa2fd2'
+    surface: api
+    cluster_id: api.pricing
+    scanner: php_ast_find
+    file: apps/api/app/Modules/Pricing/Presentation/Controllers/PricingController.php
+    line: 314
+    symbol: 'App\Modules\Pricing\Presentation\Controllers\PricingController::removeFromPartner'
+    pattern_type: unscoped_eloquent_findOrFail
+    resource: Partner
+    expected_scope: tenant_and_company
+    expected_fix: "Replace bare findOrFail() with a tenant-scoped chain (Model::query()->where('tenant_id', ...)->find($id)) or a model scope method (forCompany/forTenant)."
+    severity: high
+    fiscal_path: false
+    cross_module: false
+    stale_state: active
+    status: pending
+    owner: null
+    claimed_at: null
+    review:
+      reviewer: null
+      verdict: null
+      reviewed_at: null
+      review_file: null
+      review_commit: null
+    fix_commit: null
+    regression_test: null
+    blocked_reason: null
+    history:
+      -
+        at: '2026-05-13T05:12:24Z'
+        actor: generator
+        action: generate
+        command: 'sweep:inventory:generate'
+        previous_yaml_sha256: 2253f8bda02cfdeb4aa93200e302ecd8bd6fc02fc5a2fb300faa68b4f41def40
+        new_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        target_ids:
+          - api.pricing.011
+        from_status: null
+        to_status: pending
+        commit: 7f7177ddd781ca5d86e9605415ee3ae63c521043
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'initial detection'
 progress:
   total_callsites: 0
   total_clusters: 29
