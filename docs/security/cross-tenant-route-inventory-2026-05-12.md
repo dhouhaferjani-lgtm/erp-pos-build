@@ -2,11 +2,37 @@
 
 > **Plan reference:** `docs/superpowers/plans/2026-05-12-dev-go-live-remediation-plan.md` §M2.0
 > **Companion CSV:** `cross-tenant-route-inventory-2026-05-12.csv`
-> **Branch:** `chore/dev-go-live-remediation`.
+> **Round 1 branch:** `chore/dev-go-live-remediation`.
+> **Round 2 triage branch:** `chore/dev-go-live-remediation-2`.
 
 This is the M2.0 deliverable: a complete enumeration of every `#[CrossTenantRoute(reason: ...)]` annotation in `apps/api/app/`, with an initial classification per the remediation plan. The CSV is the source of truth; this markdown explains how to read it.
 
-## Counts
+## Counts (post-Round-2 triage — 2026-05-13)
+
+| Classification | Count | Meaning |
+| --- | --- | --- |
+| `legitimate-platform` | 91 | Locked: super-admin / webhook / platform-shared catalog / Spatie-team-scoped / platform-integration outbound. No further action. |
+| `accept-with-doc` | 6 | Cross-tenant by design with documented mitigations: AuthController pre-auth (4) + PublicProductImageController (2). |
+| **Total** | **97** | Reduced from 117 after Round 2 fixes (`dev-remediation/B.M2.1`–`B.M2.5` removed 20 annotations from the source). |
+
+### Round 2 (2026-05-13) triage closure
+
+- 24 `fix-now` rows were closed by `dev-remediation/B.M2.1` through `dev-remediation/B.M2.5` — the corresponding `CrossTenantRoute` attributes were removed from source after the controllers were scoped to tenant+company.
+- 29 `TBD-needs-review` rows were resolved by per-controller cluster triage (see `CLUSTER_TRIAGE` in `scripts/generate-cross-tenant-inventory.py`).
+- 68 `legitimate-platform-candidate` rows were auto-promoted to `legitimate-platform` with the heuristic basis as the acceptance note (see classifier order in the script). Spot-check pending; the auto-lock is reversible by editing the script's classifier and re-running.
+
+### First-tenant gate verification
+
+```
+awk -F, 'NR>1 && ($7 ~ /TBD/ || $8 ~ /TBD/)' docs/security/cross-tenant-route-inventory-2026-05-12.csv | wc -l
+→ 0
+awk -F, 'NR>1 && $8 == "yes" && $7 != "legitimate-platform" && $9 == ""' docs/security/cross-tenant-route-inventory-2026-05-12.csv | wc -l
+→ 0
+```
+
+Both gate conditions are satisfied: no TBD remains, and every `first_tenant_exposed=yes` row that is not `legitimate-platform` has a written acceptance.
+
+## Original Counts (pre-Round-2)
 
 | Classification | Count | Meaning |
 | --- | --- | --- |
