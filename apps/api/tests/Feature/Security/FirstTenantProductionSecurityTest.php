@@ -90,6 +90,8 @@ class FirstTenantProductionSecurityTest extends TestCase
             // dev-remediation/D — M2.6 additional rate limiters.
             'document-email' => ['document-email'],
             'pos-terminal-activation' => ['pos-terminal-activation'],
+            // F.3 — check-email enumeration mitigation.
+            'check-email' => ['check-email'],
         ];
     }
 

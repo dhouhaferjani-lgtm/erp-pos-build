@@ -59,7 +59,7 @@ final class RateLimitEnforcementTest extends TestCase
         // name + by() value (Illuminate\Routing\Middleware\ThrottleRequests::resolveRequestSignature),
         // so we clear by limiter name to be safe. RateLimiter::clear is a
         // no-op for keys that never existed.
-        foreach (['login', 'password-reset', 'register', 'document-email', 'pos-terminal-activation'] as $name) {
+        foreach (['login', 'password-reset', 'register', 'document-email', 'pos-terminal-activation', 'check-email'] as $name) {
             RateLimiter::clear($name);
         }
     }
@@ -172,6 +172,31 @@ final class RateLimitEnforcementTest extends TestCase
             'password' => 'Pa$$w0rd-Pa$$w0rd',
             'password_confirmation' => 'Pa$$w0rd-Pa$$w0rd',
             'tenant_name' => 'Probe Tenant',
+        ]);
+
+        $response->assertStatus(429);
+    }
+
+    public function test_check_email_returns_429_after_ten_per_ip_attempts(): void
+    {
+        // F.3 — checkEmail uses a dedicated per-IP limiter (10/min)
+        // rather than the broader `login` limiter (5/min per email or
+        // IP). An attacker rotating emails defeats the email-keyed
+        // limit; the IP-keyed limit slows enumeration regardless.
+        for ($i = 1; $i <= 10; $i++) {
+            $response = $this->postJson('/api/v1/auth/check-email', [
+                'email' => 'enum-probe-'.$i.'@test.invalid',
+            ]);
+
+            $this->assertNotEquals(
+                429,
+                $response->status(),
+                "check-email attempt #{$i} must not be throttled (limit is 10/min/IP); got 429 too early.",
+            );
+        }
+
+        $response = $this->postJson('/api/v1/auth/check-email', [
+            'email' => 'enum-probe-final@test.invalid',
         ]);
 
         $response->assertStatus(429);

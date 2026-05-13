@@ -27,7 +27,7 @@ Route::prefix('api/v1/auth')->middleware('web')->group(function () {
         ->middleware('throttle:register')
         ->name('auth.register');
     Route::post('check-email', [AuthController::class, 'checkEmail'])
-        ->middleware('throttle:login')
+        ->middleware('throttle:check-email')
         ->name('auth.check-email');
     Route::post('verify-email', [AuthController::class, 'verifyEmail'])
         ->middleware('throttle:email-verification')
