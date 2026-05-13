@@ -74,9 +74,30 @@ Tricky cases handled:
 
 ---
 
-## P1-5 — Rate-limit enforcement feature tests — in progress
+## P1-5 — Rate-limit enforcement feature tests
 
-Open at the time of writing. See `dev-remediation/A.5` once committed.
+**Status:** closed.
+
+**Action:** Added `apps/api/tests/Feature/Security/RateLimitEnforcementTest.php` (commit `dev-remediation/A.5`) with five end-to-end tests that issue N+1 actual requests at each limited endpoint and assert the (N+1)th returns HTTP 429:
+
+- `test_login_returns_429_after_five_invalid_attempts` — 6 POSTs to `/api/v1/auth/login` with same email → 6th = 429 (limit 5/min per email or IP).
+- `test_forgot_password_returns_429_after_three_attempts` — 4 POSTs to `/api/v1/auth/forgot-password` with same email → 4th = 429 (limit 3/hour per email).
+- `test_reset_password_returns_429_after_three_attempts` — 4 POSTs to `/api/v1/auth/reset-password` with same email → 4th = 429 (shares the `password-reset` limiter).
+- `test_register_returns_429_after_five_attempts` — 6 POSTs to `/api/v1/auth/register` from the same IP → 6th = 429 (limit 5/15min per IP).
+- `test_verify_manager_pin_returns_429_after_three_attempts` — auth'd, 4 POSTs to `/api/v1/pos/verify-manager-pin` against same target user → 4th = 429 with `error.code = TOO_MANY_ATTEMPTS` (limit 3/30s per IP+user_id, hand-rolled in `ManagerPinController`).
+
+The manager-PIN test required real company-membership setup (to pass `CompanyContextMiddleware`) and a real target user in the same tenant (to pass `VerifyManagerPinRequest::rules()`'s `ScopedExists::tenant('users', ...)` validation) — both validations fire BEFORE the controller's hand-rolled rate-limit, so the test wires both up and only then exercises the limiter.
+
+**Verification:**
+
+```
+vendor/bin/phpunit tests/Feature/Security tests/Feature/Identity/AuthenticationTest.php tests/Feature/POS/ManagerPinControllerTest.php
+→ 82 tests / 281 assertions / 0 failures (2 pre-existing PHPUnit deprecations)
+```
+
+Now the gate fails closed: a refactor that strips `throttle:login` from the login route, or changes the manager-PIN limiter key shape, breaks the test instead of silently leaving the route un-throttled.
+
+**Residual:** the existing `test_required_rate_limiter_is_registered` (existence test) and `test_manager_pin_endpoint_enforces_per_ip_per_user_rate_limit` (static-source assertion) remain. They are weaker than the new enforcement test but they catch a different failure mode (a removed `RateLimiter::for(...)` registration) — keep them.
 
 ---
 
