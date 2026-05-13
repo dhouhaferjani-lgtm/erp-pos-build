@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Controllers;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +17,10 @@ use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
+
     /**
      * Count users assigned to a role via direct database query.
      * This avoids reliance on Spatie's morphedByMany relationship which requires proper guard config.
@@ -25,6 +30,27 @@ class RoleController extends Controller
         return DB::table('model_has_roles')
             ->where('role_id', $role->id)
             ->count();
+    }
+
+    /**
+     * Resolve a user by id constrained to the caller's tenant. The 404
+     * shape matches a genuinely missing id so cross-tenant ids cannot
+     * be distinguished from nonexistent ones. dev-remediation/B.M2.4.
+     */
+    private function resolveTenantUser(string $userId): User
+    {
+        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        $user = User::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $userId)
+            ->first();
+
+        if ($user === null) {
+            abort(404, 'User not found');
+        }
+
+        return $user;
     }
 
     /**
@@ -242,14 +268,13 @@ class RoleController extends Controller
     /**
      * Assign a role to a user.
      */
-    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped: a user from a different tenant could be found and have a role assigned. Tracked for future api.identity cluster fix; the gap surfaces only when an attacker has BOTH `roles.assign` permission on tenant A AND knowledge of user UUIDs from tenant B (UUIDs are not enumerable in normal flows). Spatie\'s syncPermissions() that follows is team-scoped via the active team_id, but the User lookup itself is not.')]
     public function assignRole(Request $request, string $userId): JsonResponse
     {
         $validated = $request->validate([
             'role' => ['required', 'string', 'exists:roles,name'],
         ]);
 
-        $user = User::findOrFail($userId);
+        $user = $this->resolveTenantUser($userId);
 
         /** @var string $roleName */
         $roleName = $validated['role'];
@@ -271,14 +296,13 @@ class RoleController extends Controller
     /**
      * Remove a role from a user.
      */
-    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped (mirrors assignRole shape). Tracked for future api.identity cluster fix. The Spatie removeRole call following is team-scoped, but the User lookup is not.')]
     public function removeRole(Request $request, string $userId): JsonResponse
     {
         $validated = $request->validate([
             'role' => ['required', 'string', 'exists:roles,name'],
         ]);
 
-        $user = User::findOrFail($userId);
+        $user = $this->resolveTenantUser($userId);
 
         /** @var string $roleName */
         $roleName = $validated['role'];
@@ -300,10 +324,9 @@ class RoleController extends Controller
     /**
      * Get user roles and permissions.
      */
-    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — User::findOrFail($userId) is unscoped: any user UUID can be inspected for roles+permissions across tenants. Tracked for future api.identity cluster fix. The roles/permissions returned are themselves Spatie team-scoped to the requesting actor\'s tenant, but the User row lookup discloses cross-tenant existence.')]
     public function userRoles(Request $request, string $userId): JsonResponse
     {
-        $user = User::findOrFail($userId);
+        $user = $this->resolveTenantUser($userId);
 
         return response()->json([
             'data' => [
