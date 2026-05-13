@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { CompanyConfigProvider, useCompanyConfig } from '../CompanyConfigContext'
 import * as api from '../../lib/api'
-import { useAuthStore } from '../../stores/authStore'
 import { resetAuth, seedAuth } from '../../test/seedAuth'
 import {
   defaultCompanyConfig,
