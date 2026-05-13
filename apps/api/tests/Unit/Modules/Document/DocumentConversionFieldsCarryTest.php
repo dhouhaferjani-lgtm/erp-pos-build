@@ -7,6 +7,7 @@ namespace Tests\Unit\Modules\Document;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
@@ -78,6 +79,15 @@ final class DocumentConversionFieldsCarryTest extends TestCase
         ]);
 
         $this->registry = app(DocumentConverterRegistry::class);
+
+        // Bind the company context so converters that gate on
+        // CompanyContext::requireCompanyId() (currently
+        // InvoiceToCreditNoteConverter -> CreditNoteService) resolve the
+        // same tenant + company this test seeded. In production the
+        // CompanyContextMiddleware sets these from the request; the unit
+        // test bypasses HTTP, so we set them directly on the singleton.
+        $context = app(CompanyContext::class);
+        $context->setCompanyId($this->company->id);
     }
 
     // -------------------------------------------------------------------------

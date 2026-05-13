@@ -645,10 +645,16 @@ class AuthenticationTest extends TestCase
         $row = $tokenRows->first();
         $abilities = json_decode((string) $row->abilities, true);
 
+        // Tenant-isolation Invariant D (master plan §15) prepends
+        // `tenant:<uuid>` to every Sanctum token so EnforceTokenTenantClaim
+        // can reject tokens whose tenant has changed since issuance. The
+        // POS-flavoured `pos:*` ability follows, replacing the historical
+        // catch-all `*` so a spoofed long token cannot reach web back-office
+        // routes.
         $this->assertSame(
-            ['pos:*'],
+            ['tenant:'.$this->tenant->id, 'pos:*'],
             $abilities,
-            'POS-issued token must carry exactly [pos:*] abilities, not the catch-all [*].',
+            'POS-issued token must carry [tenant:<uuid>, pos:*] abilities.',
         );
 
         // Cross-check via Sanctum's PersonalAccessToken model — `tokenCan`
@@ -656,6 +662,7 @@ class AuthenticationTest extends TestCase
         $token = PersonalAccessToken::query()->find($row->id);
         $this->assertNotNull($token);
         $this->assertTrue($token->can('pos:*'), 'POS token must satisfy pos:* ability check');
+        $this->assertTrue($token->can('tenant:'.$this->tenant->id), 'POS token must satisfy the tenant-claim ability check');
         $this->assertFalse($token->can('*'), 'POS token must NOT satisfy the catch-all ability check');
     }
 
@@ -688,16 +695,22 @@ class AuthenticationTest extends TestCase
         $row = $tokenRows->first();
         $abilities = json_decode((string) $row->abilities, true);
 
+        // Tenant-isolation Invariant D (master plan §15) prepends
+        // `tenant:<uuid>` to every Sanctum token. The web back-office still
+        // gets the catch-all `*` ability as its second element because the
+        // back-office surface has no consistent ability scoping yet —
+        // narrowing it here would silently break unrelated endpoints.
         $this->assertSame(
-            ['*'],
+            ['tenant:'.$this->tenant->id, '*'],
             $abilities,
-            'Web back-office tokens must keep the catch-all [*] abilities until the back-office surface adopts scoped abilities.',
+            'Web back-office tokens must keep [tenant:<uuid>, *] abilities until the back-office surface adopts scoped abilities.',
         );
 
         $token = PersonalAccessToken::query()->find($row->id);
         $this->assertNotNull($token);
         $this->assertTrue($token->can('*'), 'Web token must satisfy the catch-all ability check');
         $this->assertTrue($token->can('pos:*'), 'Catch-all `*` ability also satisfies pos:* (Sanctum semantics)');
+        $this->assertTrue($token->can('tenant:'.$this->tenant->id), 'Web token must satisfy the tenant-claim ability check');
     }
 
     /**
@@ -727,7 +740,15 @@ class AuthenticationTest extends TestCase
 
         $row = $tokenRows->first();
         $abilities = json_decode((string) $row->abilities, true);
-        $this->assertSame(['pos:*'], $abilities);
+
+        // The register endpoint creates the User and its Tenant in the same
+        // transaction; the prepended tenant claim is the freshly-created
+        // tenant_id. We look it up via the personal-access-token row's
+        // tokenable_id rather than fixed expectation so the test stays
+        // resilient to the random uuid the factory mints.
+        $newTenantId = User::find($row->tokenable_id)?->tenant_id;
+        $this->assertNotNull($newTenantId);
+        $this->assertSame(['tenant:'.$newTenantId, 'pos:*'], $abilities);
 
         $this->assertNotNull(
             $row->expires_at,

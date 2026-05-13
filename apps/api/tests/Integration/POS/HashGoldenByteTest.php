@@ -27,7 +27,14 @@ final class HashGoldenByteTest extends TestCase
 
         $json = json_encode($reportData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-        $expected = '{"schema_version":2,"opening_cash":"10.0000","gross_sales":"1432.5000","net_sales":"1203.7800","tax_amount":"228.7200","cash_counts":[{"payment_method_id":"11111111-1111-1111-1111-111111111111","currency_code":"EUR","expected_amount":"830.0000","actual_amount":"830.0000","variance_amount":"0.0000"}]}';
+        // Z-report contract v1.1 (POS go-live PR #1, Phase 0.1.9) normalizes
+        // monetary fields at scale 3 before hashing. The cross-language
+        // fixture at apps/pos/tests/fixtures/z-report-v2-eur.json mirrors
+        // this expectation so the Tauri-side SHA-256 of the same payload
+        // matches byte-for-byte. Any change to scale here MUST be paired
+        // with a sibling change to that fixture and to the documented
+        // ZReportHashService::normalizeForHash() contract.
+        $expected = '{"schema_version":2,"opening_cash":"10.000","gross_sales":"1432.500","net_sales":"1203.780","tax_amount":"228.720","cash_counts":[{"payment_method_id":"11111111-1111-1111-1111-111111111111","currency_code":"EUR","expected_amount":"830.000","actual_amount":"830.000","variance_amount":"0.000"}]}';
 
         $this->assertSame($expected, $json);
     }

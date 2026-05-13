@@ -12,7 +12,7 @@ use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrder
 use App\Modules\Scheduling\Infrastructure\Listeners\MirrorAppointmentOnWorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCancelled;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderClosed;
-use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompleted;
+use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderCompletedV2;
 use App\Modules\Workshop\WorkOrder\Domain\Events\WorkOrderStarted;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -64,8 +64,10 @@ final class MirrorWorkOrderStatusTest extends TestCase
             'work_order_id' => $workOrder->id,
         ]);
 
-        Event::dispatch(new WorkOrderCompleted(
+        Event::dispatch(new WorkOrderCompletedV2(
             work_order_id: $workOrder->id,
+            tenant_id: $workOrder->tenant_id,
+            company_id: $workOrder->company_id,
             completion_mileage: null,
             completed_at: new \DateTimeImmutable,
         ));
@@ -134,8 +136,10 @@ final class MirrorWorkOrderStatusTest extends TestCase
             primary_technician_profile_id: '',
             started_at: new \DateTimeImmutable,
         ));
-        Event::dispatch(new WorkOrderCompleted(
+        Event::dispatch(new WorkOrderCompletedV2(
             work_order_id: $unlinkedWorkOrderId,
+            tenant_id: (string) Str::uuid(),
+            company_id: (string) Str::uuid(),
             completion_mileage: null,
             completed_at: new \DateTimeImmutable,
         ));
@@ -191,7 +195,7 @@ final class MirrorWorkOrderStatusTest extends TestCase
         );
         $this->assertContains(
             MirrorAppointmentOnWorkOrderCompleted::class,
-            array_map('strval', $dispatcher->getRawListeners()[WorkOrderCompleted::class] ?? []),
+            array_map('strval', $dispatcher->getRawListeners()[WorkOrderCompletedV2::class] ?? []),
         );
         $this->assertContains(
             MirrorAppointmentOnWorkOrderCancelled::class,

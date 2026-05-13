@@ -360,6 +360,12 @@ class CategoryTest extends TestCase
                 'parent_id' => $otherCategory->id,
             ]);
 
-        $response->assertStatus(404);
+        // Cross-company parent_id is rejected at the form-request validation
+        // layer (parent_id must exist within the current company), so the
+        // response is a 422 unprocessable entity rather than a 404 not found.
+        // The contract intent — "the request must be rejected" — is preserved,
+        // and 422 is the correct status for a validation failure on the
+        // payload shape.
+        $response->assertStatus(422);
     }
 }
