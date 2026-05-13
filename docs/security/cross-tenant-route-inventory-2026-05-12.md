@@ -21,6 +21,20 @@ This is the M2.0 deliverable: a complete enumeration of every `#[CrossTenantRout
 - 29 `TBD-needs-review` rows were resolved by per-controller cluster triage (see `CLUSTER_TRIAGE` in `scripts/generate-cross-tenant-inventory.py`).
 - 68 `legitimate-platform-candidate` rows were auto-promoted to `legitimate-platform` with the heuristic basis as the acceptance note (see classifier order in the script). Spot-check pending; the auto-lock is reversible by editing the script's classifier and re-running.
 
+### Sampling spot-check of auto-promoted rows (F.6, 2026-05-13)
+
+A deterministic 5-row sample of the 68 auto-promoted `legitimate-platform` rows was hand-audited against the source. Sample (seed `20260513` on the row list):
+
+| File:line | Class::method | Heuristic match | Verdict |
+| --- | --- | --- | --- |
+| `apps/api/app/Modules/Taxation/Presentation/Controllers/StampDutyRuleController.php:20` | `StampDutyRuleController::index` | named lookup-controller set (`StampDutyRuleController`) — global stamp-duty regulatory catalog scoped by `country_code`, no `tenant_id` column | correct |
+| `apps/api/app/Modules/Product/Presentation/Controllers/KeyComponentController.php:27` | `KeyComponentController::index` | Phase C cluster triage (`legitimate-platform` — platform-shared regulatory reference data, no `tenant_id`) | correct |
+| `apps/api/app/Modules/Billing/Presentation/Controllers/AdminBillingController.php:349` | `AdminBillingController::updateSubscription` | super-admin substring in annotation reason; super_admin middleware on route group | correct |
+| `apps/api/app/Modules/Marketplace/Presentation/Controllers/MarketplaceListingController.php:51` | `MarketplaceListingController::show` | Phase C cluster triage (`legitimate-platform` — B2B cross-tenant discovery is the feature) | correct |
+| `apps/api/app/Modules/PlatformIntegration/Presentation/Controllers/VinDecodeController.php:40` | `VinDecodeController::confirmMatch` | named lookup-controller set (`VinDecodeController`) — Phase 4 stub returning 501 Not Implemented | correct |
+
+All 5 rows confirm the auto-promotion classifier was sound for the sampled cases. Future rounds can expand the sample if a concrete miscategorization is suspected.
+
 ### First-tenant gate verification
 
 ```
