@@ -126,7 +126,9 @@ final class EnforceTokenTenantClaimTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/_test/tenant-claim-probe');
 
-        $response->assertStatus(401);
+        $response->assertStatus(401)
+            ->assertJsonPath('error.code', 'TOKEN_TENANT_MISMATCH')
+            ->assertJsonPath('error.message', 'Token tenant claim does not match user tenant.');
     }
 
     /**

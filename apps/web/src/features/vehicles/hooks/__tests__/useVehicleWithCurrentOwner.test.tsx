@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { useVehicleWithCurrentOwner } from '../useVehicleWithCurrentOwner'
 
 // Matches the flattened detail envelope introduced to close audit finding
@@ -49,6 +49,10 @@ function wrap({ children }: { children: ReactNode }) {
 describe('useVehicleWithCurrentOwner', () => {
   beforeEach(() => {
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('returns the flat vehicle-with-current-owner payload (🟠-3)', async () => {

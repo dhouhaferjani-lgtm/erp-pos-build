@@ -209,6 +209,28 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perHour(5)->by((string) $key);
         });
 
+        // Document email send/queue - 30 per hour per user (prevents an
+        // authenticated insider from spamming email-out of fiscal docs).
+        // dev-remediation/D.
+        RateLimiter::for('document-email', function (Request $request): Limit {
+            $user = $request->user();
+            $key = $user !== null ? $user->getAuthIdentifier() : ($request->ip() ?? 'unknown');
+
+            return Limit::perHour(30)->by((string) $key);
+        });
+
+        // POS terminal activation / claim - 20 per minute per user (or
+        // per IP if unauthenticated). Activation is a privileged
+        // operation; without a throttle, a malicious POS terminal could
+        // flood the activate endpoint or attempt to claim every
+        // terminal slot. dev-remediation/D.
+        RateLimiter::for('pos-terminal-activation', function (Request $request): Limit {
+            $user = $request->user();
+            $key = $user !== null ? $user->getAuthIdentifier() : ($request->ip() ?? 'unknown');
+
+            return Limit::perMinute(20)->by((string) $key);
+        });
+
         // General API - 100 requests per minute per user/IP
         RateLimiter::for('api', function (Request $request): Limit {
             $user = $request->user();

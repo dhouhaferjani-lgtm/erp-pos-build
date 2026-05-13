@@ -1,0 +1,107 @@
+# Round 2 P1 Closures — 2026-05-13
+
+> Companion ledger to `docs/superpowers/reviews/2026-05-13-dev-remediation-opus-adversarial-review.md`.
+> Records what was done (or audited and found already-closed) for each P1 finding from the prior round.
+
+Each entry names the prior-review finding, the action taken in this round, the commit that closes it, and any residual follow-up.
+
+---
+
+## P1-1 — Secret rotation: replace tracking-only with provider-rotation playbook
+
+**Status:** engineering-side closed. Provider-side revocation remains outstanding and is owned by the release owner.
+
+**Action:** Rewrote `docs/security/secret-rotation-2026-05-12.md` (commit `dev-remediation/A.1`) to:
+
+- Lock disposition to **Option B — Revoke at provider** with rationale (Option A's `git filter-repo` cannot retroactively remove bytes from collaborator clones; Option B revokes the values regardless of who still holds the history).
+- Acknowledge the scope limit (no production credentials are rotatable from a developer terminal).
+- Provide eight per-credential playbooks (APP_KEY, DB_PASSWORD, REDIS_PASSWORD, MAIL_PASSWORD, AWS keys, MEILISEARCH_KEY, Reverb trio, Sentry DSN) with exact commands + verification + side-effects.
+- Add an evidence ledger and final sign-off section.
+
+**Residual:** the release owner must execute the playbooks against production and fill the evidence ledger. The first-tenant gate cannot close until each "Critical" row reads `revoked`.
+
+---
+
+## P1-2 — EnforceTokenTenantClaim middleware verification
+
+**Status:** closed.
+
+**Action:** Inspected the middleware at `apps/api/app/Modules/Identity/Presentation/Middleware/EnforceTokenTenantClaim.php`. It is real (not a stub), implements all five documented branches (matching pass, mismatch 401, grandfathered pass, super-admin marker pass, session-cookie pass), and is registered on every protected route group across the api routes (~20 callsites). Existing test `tests/Feature/Identity/EnforceTokenTenantClaimTest.php` covers all five branches. Commit `dev-remediation/A.2` added an assertion on the mismatch branch that locks the wire contract (`error.code === 'TOKEN_TENANT_MISMATCH'` + message) so a refactor that drops the error code without changing the status code is caught.
+
+**Note on the prior review's framing:** the review asked the middleware to compare the token claim against "the request's resolved tenant from CompanyContext." The implemented invariant compares against `User->tenant_id` (the authenticated user's home tenant). That is the correct layer-D invariant per the master-plan §15 / api.auth-permissions cluster documentation embedded in the middleware. Request-tenant scoping is a separate invariant enforced by CompanyContext middleware downstream and is out of scope for this middleware.
+
+**Residual:** none.
+
+---
+
+## P1-3 — Category 404→422 web UI consumer audit
+
+**Status:** closed.
+
+**Action:** Audited `apps/web/src/features/categories/**` and the global API client at `apps/web/src/lib/api.ts`. Findings:
+
+- The categories form (`apps/web/src/features/categories/CategoriesPage.tsx:67-89`) catches mutation errors with a generic `catch (error: unknown)` block, extracts `error.message`, and displays `t('inventory:categories.messages.createFailed', { error })`. There is no status-code switch.
+- The categories API client (`apps/web/src/features/categories/api/categoriesApi.ts`) does not branch on status either.
+- The global axios interceptor at `apps/web/src/lib/api.ts:135-182` only special-cases 401 (redirect), 403 (log), 419 (CSRF retry), and 500+ (log server error). 404 and 422 are both passed through to the mutation's onError handler.
+- Both error shapes (`{error: {code, message}}` for 422 and `{error: {code, message}}` for 404) are well-formed; the user sees a toast with the backend's message either way. The 422 path now carries the validation error message which is actually more informative than the prior 404 "Not Found" payload.
+
+**Backend check:** `apps/api/tests/Feature/Product/CategoryTest.php:352-370` (test_parent_must_belong_to_same_company) asserts 422 with an explanatory comment.
+
+**Residual:** none. No code change required.
+
+---
+
+## P1-4 — seedAuth test isolation (afterEach resetAuth)
+
+**Status:** closed.
+
+**Action:** Audited every test file in `apps/web/src` that imports `seedAuth` (25 callsites including the helper definition). 24 of the 25 needed an `afterEach(resetAuth)`; the 25th (`CompanyConfigContext.test.tsx`) already had one.
+
+Commit `dev-remediation/A.4` applies the following transformation per file via a single Python pass (`scripts/inject_afterEach_resetAuth.py`-style inline):
+
+- `import { seedAuth } from '@/test/seedAuth'` → `import { seedAuth, resetAuth } from '@/test/seedAuth'`
+- vitest import gains `afterEach` (only where it was missing)
+- `afterEach(() => { resetAuth() })` injected directly after each seedAuth-containing `beforeEach(() => { … })` block, at the same indent
+
+Tricky cases handled:
+
+- `JournalEntryForm.test.tsx` has three sibling `describe` blocks each calling `seedAuth` in their own `beforeEach`. The scripted pass added an `afterEach(resetAuth)` to the first; the remaining two were added manually so all three describe blocks have matching resetAuth.
+- `PayrollExportPage.test.tsx` already had an unrelated `afterEach(...)` for other cleanup; the new `afterEach(resetAuth)` was added as a separate sibling and both run after each test (vitest stacks `afterEach` hooks).
+
+**Verification:** `pnpm --filter @autoerp/web test -- --run` → 270 test files / 2129 tests pass, 1 pre-existing skip. No regressions.
+
+**Residual:** none. The test helper at `apps/web/src/test/renderWithProviders.tsx` still documents itself as "intentionally omitting" auth/company providers; the prior review's P2-4 nit (update the docstring to reference the seedAuth coupling) is queued, not in this commit.
+
+---
+
+## P1-5 — Rate-limit enforcement feature tests
+
+**Status:** closed.
+
+**Action:** Added `apps/api/tests/Feature/Security/RateLimitEnforcementTest.php` (commit `dev-remediation/A.5`) with five end-to-end tests that issue N+1 actual requests at each limited endpoint and assert the (N+1)th returns HTTP 429:
+
+- `test_login_returns_429_after_five_invalid_attempts` — 6 POSTs to `/api/v1/auth/login` with same email → 6th = 429 (limit 5/min per email or IP).
+- `test_forgot_password_returns_429_after_three_attempts` — 4 POSTs to `/api/v1/auth/forgot-password` with same email → 4th = 429 (limit 3/hour per email).
+- `test_reset_password_returns_429_after_three_attempts` — 4 POSTs to `/api/v1/auth/reset-password` with same email → 4th = 429 (shares the `password-reset` limiter).
+- `test_register_returns_429_after_five_attempts` — 6 POSTs to `/api/v1/auth/register` from the same IP → 6th = 429 (limit 5/15min per IP).
+- `test_verify_manager_pin_returns_429_after_three_attempts` — auth'd, 4 POSTs to `/api/v1/pos/verify-manager-pin` against same target user → 4th = 429 with `error.code = TOO_MANY_ATTEMPTS` (limit 3/30s per IP+user_id, hand-rolled in `ManagerPinController`).
+
+The manager-PIN test required real company-membership setup (to pass `CompanyContextMiddleware`) and a real target user in the same tenant (to pass `VerifyManagerPinRequest::rules()`'s `ScopedExists::tenant('users', ...)` validation) — both validations fire BEFORE the controller's hand-rolled rate-limit, so the test wires both up and only then exercises the limiter.
+
+**Verification:**
+
+```
+vendor/bin/phpunit tests/Feature/Security tests/Feature/Identity/AuthenticationTest.php tests/Feature/POS/ManagerPinControllerTest.php
+→ 82 tests / 281 assertions / 0 failures (2 pre-existing PHPUnit deprecations)
+```
+
+Now the gate fails closed: a refactor that strips `throttle:login` from the login route, or changes the manager-PIN limiter key shape, breaks the test instead of silently leaving the route un-throttled.
+
+**Residual:** the existing `test_required_rate_limiter_is_registered` (existence test) and `test_manager_pin_endpoint_enforces_per_ip_per_user_rate_limit` (static-source assertion) remain. They are weaker than the new enforcement test but they catch a different failure mode (a removed `RateLimiter::for(...)` registration) — keep them.
+
+---
+
+## Conventions
+
+- This file is append-only within Round 2. If a P1 needs to re-open after closure, add a new section below with the re-open reason and date.
+- Each closure entry must name: the action, the commit that lands it, and any residual follow-up.

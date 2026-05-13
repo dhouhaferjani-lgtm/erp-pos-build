@@ -339,11 +339,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Email
     Route::post('/documents/{document}/email', [DocumentEmailController::class, 'send'])
-        ->middleware('can:documents.view')
+        ->middleware(['can:documents.view', 'throttle:document-email'])
         ->name('documents.email.send');
 
     Route::post('/documents/{document}/email/queue', [DocumentEmailController::class, 'queue'])
-        ->middleware('can:documents.view')
+        ->middleware(['can:documents.view', 'throttle:document-email'])
         ->name('documents.email.queue');
 
     // Financial Reports

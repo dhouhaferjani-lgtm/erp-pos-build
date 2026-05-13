@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { BundleComponentFormModal } from './BundleComponentFormModal'
 import type { ServiceBundleComponentData, ServiceBundleData } from '../../types'
 
@@ -105,6 +105,10 @@ describe('BundleComponentFormModal', () => {
     mockApiPost.mockReset()
     mockApiPatch.mockReset()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('renders the create title and a part picker by default', () => {

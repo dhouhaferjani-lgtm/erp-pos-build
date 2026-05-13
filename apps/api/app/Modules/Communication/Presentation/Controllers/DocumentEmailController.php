@@ -7,29 +7,41 @@ namespace App\Modules\Communication\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Communication\Application\Services\DocumentEmailService;
 use App\Modules\Communication\Presentation\Requests\SendDocumentEmailRequest;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
-use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Send / queue document email.
+ *
+ * dev-remediation/B.M2.2 — closed both CrossTenantRoute annotations
+ * (send + queue) by replacing Route Model Binding on Document with a
+ * CompanyContext-scoped query. A foreign-tenant or cross-company
+ * document id returns 404 with the same shape as a missing id so the
+ * PDF generation pathway and downstream mail transport never see
+ * cross-tenant data.
+ */
 final class DocumentEmailController extends Controller
 {
     public function __construct(
         private readonly DocumentEmailService $emailService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     /**
      * Send a document via email.
      */
-    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — Document Route Model Binding does NOT auto-scope by tenant (Document model has only scopeForTenant local scope, not global). The bound $document is forwarded to DocumentEmailService::send which generates the PDF via the document\'s data — including cross-tenant data if a different-tenant document id is passed. Tracked for future api.document cluster fix.')]
-    public function send(SendDocumentEmailRequest $request, Document $document): JsonResponse
+    public function send(SendDocumentEmailRequest $request, string $document): JsonResponse
     {
+        $documentModel = $this->resolveDocument($document);
+
         try {
             /** @var array<string> $ccEmails */
             $ccEmails = $request->input('cc_emails', []);
 
             $sent = $this->emailService->send(
-                document: $document,
+                document: $documentModel,
                 recipientEmail: $request->input('recipient_email'),
                 customMessage: $request->input('message'),
                 customSubject: $request->input('subject'),
@@ -49,7 +61,7 @@ final class DocumentEmailController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to send document email', [
-                'document_id' => $document->id,
+                'document_id' => $documentModel->id,
                 'error' => $e->getMessage(),
             ]);
 
@@ -63,15 +75,16 @@ final class DocumentEmailController extends Controller
     /**
      * Queue a document email for later sending.
      */
-    #[CrossTenantRoute(reason: 'KNOWN TENANT-ISOLATION GAP — same Document Route Model Binding issue as send(); the queue path defers actual email sending to a job, but the Document binding gap is identical. Tracked for future api.document cluster fix.')]
-    public function queue(SendDocumentEmailRequest $request, Document $document): JsonResponse
+    public function queue(SendDocumentEmailRequest $request, string $document): JsonResponse
     {
+        $documentModel = $this->resolveDocument($document);
+
         try {
             /** @var array<string> $ccEmails */
             $ccEmails = $request->input('cc_emails', []);
 
             $queued = $this->emailService->queue(
-                document: $document,
+                document: $documentModel,
                 recipientEmail: $request->input('recipient_email'),
                 customMessage: $request->input('message'),
                 customSubject: $request->input('subject'),
@@ -91,7 +104,7 @@ final class DocumentEmailController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to queue document email', [
-                'document_id' => $document->id,
+                'document_id' => $documentModel->id,
                 'error' => $e->getMessage(),
             ]);
 
@@ -100,5 +113,27 @@ final class DocumentEmailController extends Controller
                 'message' => 'Failed to queue email. Please try again later.',
             ], 500);
         }
+    }
+
+    /**
+     * Resolve the bound document through the caller's tenant + company
+     * scope. The shared 404 shape across foreign, missing, and
+     * cross-company ids removes id-enumeration leakage.
+     */
+    private function resolveDocument(string $documentId): Document
+    {
+        $company = $this->companyContext->requireCompany();
+
+        $document = Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('id', $documentId)
+            ->first();
+
+        if ($document === null) {
+            abort(404, 'Document not found');
+        }
+
+        return $document;
     }
 }

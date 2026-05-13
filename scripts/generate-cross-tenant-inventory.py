@@ -35,12 +35,78 @@ FIX_NOW_CONTROLLERS = {
     'PurchaseHubOfferController',
 }
 
+# Default owner and reviewer-date stamp for bulk legitimate-platform
+# promotion. Bump these when the script is re-run for a new triage round.
+DEFAULT_OWNER = '@otospexsolutions'
+TRIAGE_DATE = '2026-05-13'
+
+# Per-controller (by class name) cluster-level triage decisions for the
+# `TBD-needs-review` rows. After Phase C triage, every TBD row is matched
+# by exactly one cluster below. The cluster's classification +
+# first_tenant_exposed + acceptance reason apply to every annotation in
+# that controller (modulo a per-method override below).
+CLUSTER_TRIAGE = {
+    # Pre-auth surface — tenant context does not exist yet. Routes are
+    # rate-limited; checkEmail discloses email existence which is
+    # accepted (alternative would break the registration UX).
+    'AuthController': {
+        'classification': 'accept-with-doc',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'accept-with-doc 2026-05-13 — pre-auth: tenant context does not exist before login/register; routes are rate-limited',
+    },
+    # Marketplace B2B peer discovery — cross-tenant reads are the feature.
+    # The marketplace tables (marketplace_listings) have no tenant_id by
+    # design; rows are the product of cross-tenant matchmaking.
+    'MarketplaceListingController': {
+        'classification': 'legitimate-platform',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'legitimate-platform 2026-05-13 — marketplace cross-tenant discovery is the feature',
+    },
+    # Parapharmacy regulatory reference catalogs — tables have no tenant_id
+    # and are platform-shared. Write methods require admin permission per
+    # routes.php; cross-tenant *data* leakage does not apply because the
+    # data is intentionally global.
+    'CertificationController': {
+        'classification': 'legitimate-platform',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'legitimate-platform 2026-05-13 — platform-shared regulatory reference data (no tenant_id on table)',
+    },
+    'HealthClaimController': {
+        'classification': 'legitimate-platform',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'legitimate-platform 2026-05-13 — platform-shared regulatory reference data (no tenant_id on table)',
+    },
+    'IngredientController': {
+        'classification': 'legitimate-platform',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'legitimate-platform 2026-05-13 — platform-shared regulatory reference data (no tenant_id on table)',
+    },
+    'KeyComponentController': {
+        'classification': 'legitimate-platform',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'legitimate-platform 2026-05-13 — platform-shared regulatory reference data (no tenant_id on table)',
+    },
+    # Public e-commerce product images — public route by design (B2C
+    # storefronts read any tenant's catalog images). Rate-limited via
+    # throttle:public-product-images.
+    'PublicProductImageController': {
+        'classification': 'accept-with-doc',
+        'first_tenant_exposed': 'yes',
+        'fix_pr_or_acceptance': 'accept-with-doc 2026-05-13 — public e-commerce catalog by design; rate-limited',
+    },
+}
+
 
 def classify(rel: str, cls: str, reason: str) -> tuple[str, str]:
-    """Returns (classification, first_tenant_exposed)."""
-    if cls in FIX_NOW_CONTROLLERS:
-        return ('fix-now', 'yes')
+    """Returns (classification, first_tenant_exposed).
 
+    Order matters: reason-based checks run BEFORE the
+    FIX_NOW_CONTROLLERS controller-name heuristic so that a
+    legitimate-platform annotation inside a fix-now controller (e.g.,
+    Spatie team-scoped or platform-integration methods on RoleController
+    / PurchaseHubOfferController) does not inherit the controller's
+    fix-now classification.
+    """
     # Super-admin / platform-level routes.
     if ('Http/Controllers/Api/Admin/SuperAdmin' in rel
             or 'SuperAdminController' in cls
@@ -83,6 +149,12 @@ def classify(rel: str, cls: str, reason: str) -> tuple[str, str]:
     ):
         return ('legitimate-platform-candidate', 'no')
 
+    # M2.1-M2.5 named controllers — any annotation in these controllers
+    # that has NOT been classified as legitimate-platform above is a
+    # fix-now gap.
+    if cls in FIX_NOW_CONTROLLERS:
+        return ('fix-now', 'yes')
+
     # KNOWN GAP markers — needs human review whether to fix now or defer.
     if 'KNOWN TENANT-ISOLATION GAP' in reason:
         return ('TBD-needs-review-fix-likely', 'TBD')
@@ -121,6 +193,26 @@ def main() -> None:
                 'first_tenant_exposed': fte,
             })
 
+    # Apply cluster-level triage overrides.
+    for r in rows:
+        triage = CLUSTER_TRIAGE.get(r['class'])
+        if triage is not None:
+            r['classification'] = triage['classification']
+            r['first_tenant_exposed'] = triage['first_tenant_exposed']
+            r['fix_pr_or_acceptance'] = triage['fix_pr_or_acceptance']
+        elif r['classification'] == 'legitimate-platform-candidate':
+            # Auto-promote remaining candidates to locked
+            # legitimate-platform with the script's classification
+            # reason as the acceptance note (one-line per the M2.0
+            # README's lock procedure).
+            r['classification'] = 'legitimate-platform'
+            r['first_tenant_exposed'] = 'no'
+            r['fix_pr_or_acceptance'] = (
+                f"legitimate-platform {TRIAGE_DATE} — "
+                "auto-locked from generator heuristic (Spatie/super-admin/webhook/static-reference); "
+                "see scripts/generate-cross-tenant-inventory.py classify()"
+            )
+
     rows.sort(key=lambda r: (r['classification'], r['file'], r['line']))
 
     counts = Counter(r['classification'] for r in rows)
@@ -135,10 +227,12 @@ def main() -> None:
             "first_tenant_exposed,fix_pr_or_acceptance,owner,notes\n"
         )
         for r in rows:
+            fix_pr = r.get('fix_pr_or_acceptance', 'TBD').replace(',', ';')
+            owner = DEFAULT_OWNER if r['classification'] != 'TBD-needs-review' else 'TBD'
             f.write(
                 f"{r['file']},{r['line']},{r['class']},{r['method']},TBD,"
                 f"{r['reason_excerpt']},{r['classification']},"
-                f"{r['first_tenant_exposed']},TBD,TBD,\n"
+                f"{r['first_tenant_exposed']},{fix_pr},{owner},\n"
             )
     print(f"wrote {OUT_PATH}")
 
