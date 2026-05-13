@@ -47,6 +47,17 @@ abstract class AbstractSweepInventoryCommand extends Command
     protected const ALLOWED_ACTORS = ['claude', 'codex', 'ci', 'human'];
 
     /**
+     * Sweep tooling is dev/CI-only; it mutates planning YAML under
+     * docs/superpowers and is never invoked from HTTP, queues, schedulers,
+     * or production runbooks. Hide and disable the command in production so
+     * it does not appear in `php artisan list` and cannot be executed.
+     */
+    public function isEnabled(): bool
+    {
+        return ! $this->getLaravel()->environment('production');
+    }
+
+    /**
      * The action enum value this command writes to history events. Subclasses
      * MUST override (e.g. "claim", "submit"). Read-only commands return null.
      */

@@ -64,7 +64,7 @@ class InventoryYamlSchemaTest extends TestCase
         );
     }
 
-    public function test_seed_inventory_lists_23_api_clusters_per_master_plan_section_6(): void
+    public function test_seed_inventory_lists_all_expected_api_clusters_per_master_plan_section_6(): void
     {
         /** @var array<string, mixed> $inventory */
         $inventory = $this->loadInventory();
@@ -101,10 +101,17 @@ class InventoryYamlSchemaTest extends TestCase
             'api.auth-permissions',
             'api.super-admin-context',
             'api.module-gating',
-            // POS-stabilization is API surface but blocked on POS orchestrator
-            // branch per master plan Section 16. It counts toward the API
-            // surface but is tracked separately.
+            // POS-stabilization landed in this branch as part of the POS
+            // go-live work; the cluster remains in the inventory because the
+            // tauri.* clusters (sqlite-cache, sync-envelope) still reference
+            // it for traceability. Status is verified separately in
+            // test_pos_stabilization_cluster_is_fixed_after_pos_go_live().
             'api.pos-stabilization',
+            // Marketplace cluster covers MarketplaceListing/MarketplaceSeller
+            // controllers and was added after the original master plan
+            // Section 6 numbering. It is tracked here so any future scanner
+            // regression that drops the cluster surfaces immediately.
+            'api.marketplace',
             // api.unmapped is the synthetic catch-all cluster added per
             // Codex Phase 1 review #2. Callsites whose module isn't in
             // ClusterResolver's default map land here so triage can
@@ -118,14 +125,18 @@ class InventoryYamlSchemaTest extends TestCase
         $this->assertSame($expected, $apiClusterIds);
     }
 
-    public function test_pos_clusters_are_blocked_on_pos_orchestrator_branch(): void
+    public function test_tauri_pos_clusters_remain_blocked_on_pos_orchestrator_branch(): void
     {
         /** @var array<string, mixed> $inventory */
         $inventory = $this->loadInventory();
         /** @var array<int, array<string, mixed>> $clusters */
         $clusters = $inventory['clusters'];
 
-        $blockedIds = ['api.pos-stabilization', 'tauri.sqlite-cache', 'tauri.sync-envelope'];
+        // api.pos-stabilization shipped on the POS go-live branch and is
+        // tracked separately by test_pos_stabilization_cluster_is_fixed_after_pos_go_live().
+        // The remaining tauri.* clusters track POS-orchestrator-branch work
+        // that has not yet landed and must stay blocked here.
+        $blockedIds = ['tauri.sqlite-cache', 'tauri.sync-envelope'];
         foreach ($clusters as $cluster) {
             if (! in_array($cluster['id'] ?? null, $blockedIds, true)) {
                 continue;
@@ -135,6 +146,38 @@ class InventoryYamlSchemaTest extends TestCase
             $this->assertSame('pos_orchestrator_branch', $cluster['blocked_by_external'] ?? null,
                 "Cluster {$cluster['id']} must reference pos_orchestrator_branch as blocker");
         }
+    }
+
+    public function test_pos_stabilization_cluster_is_fixed_after_pos_go_live(): void
+    {
+        /** @var array<string, mixed> $inventory */
+        $inventory = $this->loadInventory();
+        /** @var array<int, array<string, mixed>> $clusters */
+        $clusters = $inventory['clusters'];
+
+        $posStabilization = null;
+        foreach ($clusters as $cluster) {
+            if (($cluster['id'] ?? null) === 'api.pos-stabilization') {
+                $posStabilization = $cluster;
+                break;
+            }
+        }
+        $this->assertNotNull($posStabilization,
+            'api.pos-stabilization cluster must exist in seed inventory');
+
+        // POS go-live work landed on dev via PRs #1-#4 (Z-report cash-count
+        // contract, receipt legal-field printing, discount permission
+        // fail-closed, operator runbooks). The cluster is therefore expected
+        // to be fixed rather than blocked. If this assertion fails, either
+        // the YAML reverted incorrectly or the audit-trail entries proving
+        // the POS work are missing — investigate before flipping back.
+        $this->assertSame('fixed', $posStabilization['status'] ?? null,
+            'api.pos-stabilization must be status=fixed after POS go-live shipped on dev.');
+        // The schema keeps `blocked_by_external` as a structural field for
+        // every cluster, but a fixed cluster must not reference any
+        // external branch — the value must be null/empty.
+        $this->assertEmpty($posStabilization['blocked_by_external'] ?? null,
+            'api.pos-stabilization must no longer reference an external blocker once it is fixed.');
     }
 
     public function test_treasury_cluster_is_reference_and_blocks_every_other_api_cluster(): void

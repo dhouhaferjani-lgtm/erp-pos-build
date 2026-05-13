@@ -56,6 +56,17 @@ final class SweepInventoryGenerateCommand extends Command
     /** @var string */
     protected $description = 'Regenerate the tenant-isolation sweep inventory by running scanners and merging output by stable key.';
 
+    /**
+     * Sweep tooling is dev/CI-only; the scanners write to planning YAML under
+     * docs/superpowers and are never invoked from HTTP, queues, schedulers,
+     * or production runbooks. Hide and disable in production so the command
+     * does not appear in `php artisan list` and cannot be executed.
+     */
+    public function isEnabled(): bool
+    {
+        return ! $this->getLaravel()->environment('production');
+    }
+
     public function handle(): int
     {
         $repoRoot = $this->resolveRepoRoot();
