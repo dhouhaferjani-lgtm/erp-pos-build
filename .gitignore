@@ -4,8 +4,9 @@ vendor/
 
 # Environment files
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Build outputs
 dist/
