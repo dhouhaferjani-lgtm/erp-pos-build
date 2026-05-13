@@ -98,6 +98,8 @@ class AppServiceProvider extends ServiceProvider
                 ->symbols();
         });
 
+        $this->guardProductionCorsConfig();
+
         $this->configureRateLimiting();
 
         // Register journal entry immutability observers
@@ -132,6 +134,34 @@ class AppServiceProvider extends ServiceProvider
 
             return $isValid;
         });
+    }
+
+    /**
+     * Fail-fast guard against the unsafe CORS combination
+     *   APP_ENV=production + supports_credentials=true + allowed_origins=['*'].
+     *
+     * Browsers refuse to send credentials when the response advertises the
+     * wildcard origin, so the runtime symptom is "authenticated API calls
+     * silently break in production". Throwing at boot surfaces the
+     * misconfiguration before deploy. dev-remediation/M1.8 documents the
+     * gate.
+     */
+    private function guardProductionCorsConfig(): void
+    {
+        if (! $this->app->isProduction()) {
+            return;
+        }
+
+        $origins = (array) config('cors.allowed_origins', []);
+        $supportsCredentials = (bool) config('cors.supports_credentials', false);
+
+        if ($supportsCredentials && in_array('*', $origins, true)) {
+            throw new \RuntimeException(
+                'Unsafe CORS configuration: CORS_ALLOWED_ORIGINS=* combined with '
+                .'supports_credentials=true in production. Enumerate explicit origins '
+                .'in CORS_ALLOWED_ORIGINS or set supports_credentials=false.',
+            );
+        }
     }
 
     /**
