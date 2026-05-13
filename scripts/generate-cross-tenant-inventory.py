@@ -14,6 +14,7 @@ describes the heuristic and the next-step triage workflow.
 """
 
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -237,5 +238,65 @@ def main() -> None:
     print(f"wrote {OUT_PATH}")
 
 
+def self_test() -> None:
+    """Lightweight in-process unit test for the classify() heuristic.
+
+    Run with `python3 scripts/generate-cross-tenant-inventory.py --self-test`.
+    Closes Round 2 review NIT-2 without adding a pytest dependency.
+    """
+    cases = [
+        # (file, class, reason, expected_classification, expected_fte)
+        ('apps/api/app/Http/Controllers/Api/Admin/SuperAdminController.php',
+         'SuperAdminController',
+         'reads platform-level tenant list',
+         'legitimate-platform-candidate', 'no'),
+        ('apps/api/app/Modules/Stripe/Presentation/Controllers/StripeWebhookController.php',
+         'StripeWebhookController',
+         'External Stripe webhook callback, signature-verified',
+         'legitimate-platform-candidate', 'no'),
+        ('apps/api/app/Modules/Identity/Presentation/Controllers/RoleController.php',
+         'RoleController',
+         'Spatie TeamScope auto-scoping: role queries filter by team_id',
+         'legitimate-platform-candidate', 'no'),
+        ('apps/api/app/Modules/PurchaseHub/Presentation/Controllers/PurchaseHubOfferController.php',
+         'PurchaseHubOfferController',
+         'PurchaseHub outbound integration: tenant-tagged via headers',
+         'legitimate-platform-candidate', 'no'),
+        ('apps/api/app/Modules/Product/Presentation/Controllers/ProductImageController.php',
+         'ProductImageController',
+         'KNOWN TENANT-ISOLATION GAP — Product RMB without tenant scope',
+         'fix-now', 'yes'),
+        ('apps/api/app/Modules/Foo/Presentation/Controllers/SomeRandomController.php',
+         'SomeRandomController',
+         'no heuristic match — needs human triage',
+         'TBD-needs-review', 'TBD'),
+        ('apps/api/app/Modules/Foo/Presentation/Controllers/AnotherController.php',
+         'AnotherController',
+         'KNOWN TENANT-ISOLATION GAP — some unique gap',
+         'TBD-needs-review-fix-likely', 'TBD'),
+    ]
+
+    failures: list[str] = []
+    for path, cls, reason, expected_cls, expected_fte in cases:
+        got_cls, got_fte = classify(path, cls, reason)
+        if got_cls != expected_cls or got_fte != expected_fte:
+            failures.append(
+                f"  {cls} (reason '{reason[:40]}…'): "
+                f"expected ({expected_cls!r}, {expected_fte!r}), "
+                f"got ({got_cls!r}, {got_fte!r})"
+            )
+
+    if failures:
+        print(f"self-test: FAIL ({len(failures)} of {len(cases)})", file=sys.stderr)
+        for f in failures:
+            print(f, file=sys.stderr)
+        sys.exit(1)
+
+    print(f"self-test: OK ({len(cases)} cases)")
+
+
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--self-test':
+        self_test()
+    else:
+        main()
