@@ -436,9 +436,16 @@ final class ReceiptController extends Controller
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        // F.2 — defense-in-depth: scope by tenant_id alongside company_id.
+        // Companies are tenant-scoped today (a company UUID belongs to
+        // exactly one tenant), but the explicit tenant predicate hardens
+        // the scope against future schema changes.
+        $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
+        $receipt = Receipt::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();
@@ -465,9 +472,13 @@ final class ReceiptController extends Controller
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        // F.2 — defense-in-depth tenant_id scope (mirrors downloadPdf).
+        $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::where('company_id', $companyId)->findOrFail($id);
+        $receipt = Receipt::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();

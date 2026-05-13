@@ -278,14 +278,25 @@ final class ReportController extends Controller
             'terminal_id' => ['required', 'string', 'uuid'],
         ]);
 
-        $zReport = ZReport::where('terminal_id', $request->input('terminal_id'))
-            ->where('z_number', $zNumber)
+        // F.2 — defense-in-depth: ZReport itself has no tenant_id /
+        // company_id columns; the terminal is the scope anchor. Resolve
+        // the terminal via a tenant+company scoped lookup BEFORE
+        // querying ZReport so a foreign-tenant terminal_id never even
+        // reaches the Z-report table. Returns the same 404 shape across
+        // foreign and missing ids so id-enumeration is impossible.
+        $company = $this->companyContext->requireCompany();
+        $terminalId = (string) $request->input('terminal_id');
+
+        Terminal::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('id', $terminalId)
             ->firstOrFail();
 
-        // Verify terminal belongs to current company
-        if ($zReport->terminal->company_id !== $this->companyContext->getCompanyId()) {
-            abort(403, 'Z report does not belong to your company');
-        }
+        $zReport = ZReport::query()
+            ->where('terminal_id', $terminalId)
+            ->where('z_number', $zNumber)
+            ->firstOrFail();
 
         $pdf = $this->reportGenerationService->generatePdf($zReport);
         $filename = $this->reportGenerationService->getZReportFilename($zReport);
