@@ -66,6 +66,19 @@ export function createTestQueryClient(): QueryClient {
  * those bring in their own network dependencies and most tests only need
  * ProductConfig + CompanyConfig. If a test needs them, it should compose
  * explicitly; this helper stays minimal.
+ *
+ * Auth/company store coupling (F.5, addresses Round 1 P2-4):
+ *
+ *   The `tenantScopedKey([...])` cache key used here resolves the active
+ *   tenant_id + company_id from `useAuthStore` and `useCompanyStore` (the
+ *   zustand stores). Tests that need a populated tenant/company scope
+ *   should seed those stores via `seedAuth()` in `beforeEach` and reset
+ *   via `resetAuth()` in `afterEach` — see `@/test/seedAuth` and the
+ *   M1.5b/A.4 test files for the canonical pattern. Without seeding,
+ *   the scoped key resolves to `[..., null, null]`, which matches the
+ *   pre-auth fixture this helper pre-seeds; both branches work, but
+ *   anything that calls a useQuery hook gated on `useAuthStore.getState().isAuthenticated`
+ *   needs `seedAuth()` to open the gate.
  */
 export function renderWithProviders(
   ui: ReactElement,
