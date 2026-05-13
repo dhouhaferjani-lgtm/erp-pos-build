@@ -51,9 +51,26 @@ Each entry names the prior-review finding, the action taken in this round, the c
 
 ---
 
-## P1-4 — seedAuth test isolation (afterEach resetAuth) — in progress
+## P1-4 — seedAuth test isolation (afterEach resetAuth)
 
-Open at the time of writing. See `dev-remediation/A.4` once committed.
+**Status:** closed.
+
+**Action:** Audited every test file in `apps/web/src` that imports `seedAuth` (25 callsites including the helper definition). 24 of the 25 needed an `afterEach(resetAuth)`; the 25th (`CompanyConfigContext.test.tsx`) already had one.
+
+Commit `dev-remediation/A.4` applies the following transformation per file via a single Python pass (`scripts/inject_afterEach_resetAuth.py`-style inline):
+
+- `import { seedAuth } from '@/test/seedAuth'` → `import { seedAuth, resetAuth } from '@/test/seedAuth'`
+- vitest import gains `afterEach` (only where it was missing)
+- `afterEach(() => { resetAuth() })` injected directly after each seedAuth-containing `beforeEach(() => { … })` block, at the same indent
+
+Tricky cases handled:
+
+- `JournalEntryForm.test.tsx` has three sibling `describe` blocks each calling `seedAuth` in their own `beforeEach`. The scripted pass added an `afterEach(resetAuth)` to the first; the remaining two were added manually so all three describe blocks have matching resetAuth.
+- `PayrollExportPage.test.tsx` already had an unrelated `afterEach(...)` for other cleanup; the new `afterEach(resetAuth)` was added as a separate sibling and both run after each test (vitest stacks `afterEach` hooks).
+
+**Verification:** `pnpm --filter @autoerp/web test -- --run` → 270 test files / 2129 tests pass, 1 pre-existing skip. No regressions.
+
+**Residual:** none. The test helper at `apps/web/src/test/renderWithProviders.tsx` still documents itself as "intentionally omitting" auth/company providers; the prior review's P2-4 nit (update the docstring to reference the seedAuth coupling) is queued, not in this commit.
 
 ---
 

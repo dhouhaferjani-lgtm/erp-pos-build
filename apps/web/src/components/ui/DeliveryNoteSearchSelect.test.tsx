@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { DeliveryNoteSearchSelect } from './DeliveryNoteSearchSelect'
 import * as api from '../../lib/api'
 import { makeDeliveryNote } from '@/features/documents/__fixtures__/deliveryNote'
@@ -71,6 +71,10 @@ describe('DeliveryNoteSearchSelect', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   const renderComponent = (props = {}) => {

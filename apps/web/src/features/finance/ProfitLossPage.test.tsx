@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { ProfitLossPage } from './pages/ProfitLossPage'
 
 const { mockApiGet } = vi.hoisted(() => ({
@@ -29,6 +29,10 @@ describe('ProfitLossPage', () => {
     })
     vi.clearAllMocks()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('renders page title', () => {

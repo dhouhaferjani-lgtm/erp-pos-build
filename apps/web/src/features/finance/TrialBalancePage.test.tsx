@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { TrialBalancePage } from './pages/TrialBalancePage'
 import {
   makeTrialBalanceLine,
@@ -26,6 +26,10 @@ describe('TrialBalancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('renders page title', () => {

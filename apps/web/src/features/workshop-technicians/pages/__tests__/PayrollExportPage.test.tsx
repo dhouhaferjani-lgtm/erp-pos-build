@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { PayrollExportPage } from '../PayrollExportPage'
 import type { TechnicianProfile } from '../../api/types'
 
@@ -70,6 +70,10 @@ describe('PayrollExportPage', () => {
     URL.createObjectURL = vi.fn(() => 'blob:mock-url')
     URL.revokeObjectURL = vi.fn()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   afterEach(() => {

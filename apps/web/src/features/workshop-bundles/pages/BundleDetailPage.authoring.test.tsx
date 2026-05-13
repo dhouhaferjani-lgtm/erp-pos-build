@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { BundleDetailPage } from './BundleDetailPage'
 import type { ServiceBundleData } from '../types'
 
@@ -95,6 +95,10 @@ describe('BundleDetailPage — authoring integration', () => {
       }
       return Promise.resolve({ data: { data: [] } })
     })
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('opens the add-component modal when the add button is clicked', async () => {

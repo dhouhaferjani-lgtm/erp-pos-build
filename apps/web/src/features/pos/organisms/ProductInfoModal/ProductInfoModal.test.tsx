@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { seedAuth } from '@/test/seedAuth'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { ProductInfoModal, type StockLevel } from './ProductInfoModal'
 import {
   makeProductDetail,
@@ -122,6 +122,10 @@ describe('ProductInfoModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('should not render when isOpen is false', () => {
