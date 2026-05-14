@@ -18,7 +18,7 @@
   "packageManager": "pnpm@9.14.2",
   "pnpm": {
     "overrides": {
-      "ajv@<6.14.0": ">=6.14.0",
+      "ajv@<6.12.3": "6.12.6",
       "brace-expansion@<1.1.13": ">=1.1.13",
       "brace-expansion@<2.0.3": ">=2.0.3",
       "flatted@<3.4.2": ">=3.4.2",
