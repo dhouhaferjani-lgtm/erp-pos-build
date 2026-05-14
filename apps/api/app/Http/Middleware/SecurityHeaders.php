@@ -64,7 +64,13 @@ class SecurityHeaders
 
         // Web SPA policy. Tightened from default-src 'self' so it:
         // - allows the SPA's own JS/CSS bundles
-        // - permits inline styles (Tailwind utility classes inject inline)
+        // - permits inline style ATTRIBUTES via 'unsafe-inline'. NOTE: this is
+        //   NOT for Tailwind — Tailwind ships a static build-time stylesheet
+        //   covered by 'self'. It is required by runtime inline `style="..."`
+        //   attributes: ~41 React `style={{}}` usages, ECharts chart layout,
+        //   and Headless UI / Floating UI popover positioning. Nonces and
+        //   'unsafe-hashes' cannot cover dynamically-computed style attributes.
+        //   See docs/security/csp-unsafe-inline-investigation-2026-05-14.md.
         // - permits images/fonts from self + data: + https: (catalog
         //   images may live on a CDN configured at deploy time)
         // - permits same-origin + https: + wss: for API + Reverb
