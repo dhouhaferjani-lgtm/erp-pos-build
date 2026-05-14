@@ -36,6 +36,8 @@ use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
 use App\Modules\Treasury\Domain\Events\InvoiceClosedWithTolerance;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
+use App\Modules\Treasury\Domain\Events\PaymentRefunded;
+use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Auth;
@@ -186,6 +188,44 @@ final class DomainEventSubscriber
                 'payment_method_id' => $event->paymentMethodId,
                 'recorded_at' => $event->recordedAt,
             ]
+        );
+    }
+
+    /**
+     * Handle PaymentRefunded events.
+     *
+     * Privileged action — every refund (full or partial) must leave an audit
+     * trail with the actor, the originating payment, and the amount. Without
+     * this handler the PaymentRefunded events dispatched by
+     * PaymentRefundService fell into the void with no audit_events row.
+     */
+    public function handlePaymentRefunded(PaymentRefunded $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Payment',
+            aggregateId: $event->paymentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
+    /**
+     * Handle PaymentReversed events.
+     *
+     * Privileged action — payment reversals (error/correction path) must be
+     * audit-logged with the actor and amount, mirroring PaymentRefunded.
+     */
+    public function handlePaymentReversed(PaymentReversed $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'Payment',
+            aggregateId: $event->paymentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
         );
     }
 
@@ -848,6 +888,8 @@ final class DomainEventSubscriber
             DocumentFullyPaid::class => 'handleDocumentFullyPaid',
             DeliveryNoteConfirmed::class => 'handleDeliveryNoteConfirmed',
             PaymentRecorded::class => 'handlePaymentRecorded',
+            PaymentRefunded::class => 'handlePaymentRefunded',
+            PaymentReversed::class => 'handlePaymentReversed',
             DocumentConverted::class => 'handleDocumentConverted',
 
             // Company events (compliance)
