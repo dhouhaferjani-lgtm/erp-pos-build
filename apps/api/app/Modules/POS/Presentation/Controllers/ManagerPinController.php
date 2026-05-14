@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\PinVerifier;
+use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
 use App\Modules\POS\Presentation\Requests\VerifyManagerPinRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\RateLimiter;
@@ -30,6 +32,7 @@ final class ManagerPinController extends Controller
 {
     public function __construct(
         private readonly PinVerifier $pinVerifier,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     public function verify(VerifyManagerPinRequest $request): JsonResponse
@@ -83,6 +86,18 @@ final class ManagerPinController extends Controller
         $valid = $this->pinVerifier->verify($userId, $pin);
         if ($valid) {
             RateLimiter::clear($key);
+
+            // Privileged action — a successful verification is a manager
+            // authorising a cashier to exceed a limit. Leave a timestamped
+            // audit trail (actor = caller, target = manager). verify() does
+            // no DB writes, so a direct event() dispatch is correct — there
+            // is no surrounding transaction to roll back.
+            event(new ManagerOverrideAuthorized(
+                managerId: $userId,
+                callerId: $caller->id,
+                companyId: $this->companyContext->requireCompany()->id,
+                verifiedAt: now()->toIso8601String(),
+            ));
         }
 
         return response()->json([

@@ -25,6 +25,7 @@ use App\Modules\Inventory\Domain\Events\ReservationCreated;
 use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
+use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
 use App\Modules\POS\Domain\Events\ReceiptCreated;
 use App\Modules\POS\Domain\Events\ReceiptDrafted;
 use App\Modules\POS\Domain\Events\ReceiptPrinted;
@@ -262,6 +263,27 @@ final class DomainEventSubscriber
             companyId: $event->companyId,
             aggregateType: 'Payment',
             aggregateId: $event->paymentId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
+    /**
+     * Handle ManagerOverrideAuthorized events.
+     *
+     * Privileged action — a successful manager-PIN verification at the
+     * override gate (ManagerPinController::verify). The audit_events row is
+     * the only timestamped record of who authorised whom; the downstream
+     * receipt/shift columns carry the manager identity but not the moment of
+     * authorisation, nor the failed attempts.
+     */
+    public function handleManagerOverrideAuthorized(ManagerOverrideAuthorized $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'User',
+            aggregateId: $event->managerId,
             eventType: $event->getEventName(),
             payload: $event->getAuditPayload(),
         );
@@ -967,6 +989,7 @@ final class DomainEventSubscriber
             ShiftClosed::class => 'handleShiftClosed',
             ZReportGenerated::class => 'handleZReportGenerated',
             CashDrawerOperationRecorded::class => 'handleCashDrawerOperationRecorded',
+            ManagerOverrideAuthorized::class => 'handleManagerOverrideAuthorized',
 
             // Terminal lifecycle events (NF525 compliance)
             TerminalActivatedAudit::class => 'handleTerminalActivatedAudit',
