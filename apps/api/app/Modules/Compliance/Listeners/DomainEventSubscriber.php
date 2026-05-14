@@ -19,6 +19,8 @@ use App\Modules\Document\Domain\Events\InvoicePaid;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
+use App\Modules\Identity\Domain\Events\RoleAssigned;
+use App\Modules\Identity\Domain\Events\RoleRemoved;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
 use App\Modules\Inventory\Domain\Events\ReservationExpired;
 use App\Modules\Inventory\Domain\Events\ReservationReleased;
@@ -188,6 +190,42 @@ final class DomainEventSubscriber
                 'payment_method_id' => $event->paymentMethodId,
                 'recorded_at' => $event->recordedAt,
             ]
+        );
+    }
+
+    /**
+     * Handle RoleAssigned events.
+     *
+     * Privileged action — captures who granted whom which role, and when.
+     * The audit_events row is the only durable record of this; the
+     * model_has_roles row carries team_id alone (no actor, no timestamp).
+     */
+    public function handleRoleAssigned(RoleAssigned $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'User',
+            aggregateId: $event->targetUserId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
+    /**
+     * Handle RoleRemoved events.
+     *
+     * Privileged action — role revocation audit trail, mirroring RoleAssigned.
+     */
+    public function handleRoleRemoved(RoleRemoved $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'User',
+            aggregateId: $event->targetUserId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
         );
     }
 
@@ -894,6 +932,10 @@ final class DomainEventSubscriber
 
             // Company events (compliance)
             CompanyUpdated::class => 'handleCompanyUpdated',
+
+            // Identity events (privileged-action audit trail)
+            RoleAssigned::class => 'handleRoleAssigned',
+            RoleRemoved::class => 'handleRoleRemoved',
 
             // Sales order events (fraud detection)
             SalesOrderConfirmed::class => 'handleSalesOrderConfirmed',

@@ -72,7 +72,8 @@ Legend: ✅ wired + persisted · 🟢 fixed this session · ❌ no audit trail �
 | **Refund payment (full)** | `Treasury\...\PaymentRefunded` | **`handlePaymentRefunded`** | `Payment` / original_payment_id, amount, currency, reason, refunded_at | 🟢 fixed |
 | **Refund payment (partial)** | `Treasury\...\PaymentRefunded` | **`handlePaymentRefunded`** | `Payment` / original_payment_id, amount, currency, reason, refunded_at | 🟢 fixed |
 | **Reverse payment (error/correction)** | `Treasury\...\PaymentReversed` | **`handlePaymentReversed`** | `Payment` / amount, currency, reversed_at | 🟢 fixed |
-| Role assignment / removal | — none — | — none — | nothing in `audit_events`; `model_has_roles` row carries `team_id` only | ❌ gap (G1) |
+| **Role assignment** | `Identity\...\RoleAssigned` | **`handleRoleAssigned`** | `User` / target_user_id, role_name, actor_user_id, assigned_at | 🟢 fixed |
+| **Role removal** | `Identity\...\RoleRemoved` | **`handleRoleRemoved`** | `User` / target_user_id, role_name, actor_user_id, removed_at | 🟢 fixed |
 | Manager-PIN verification (discount / variance-close override gate) | — none — | — none — | nothing persisted; only `receipt.authorized_by_user_id` / `shift.manager_override_by` columns, untimestamped, no reason | ❌ gap (G2) |
 | POS return/refund proration (`PaymentRefundService::refundReceiptPayments` via `ReceiptReturnService`) | — none dispatched — | n/a | refund `Payment` rows carry `original_payment_id`, `refund_request_id`, `authorized_by_user_id`, `policy_trigger` — but no `audit_events` row | ⚠️ partial (G3) |
 
@@ -84,36 +85,32 @@ Legend: ✅ wired + persisted · 🟢 fixed this session · ❌ no audit trail �
 **absent from `DomainEventSubscriber::subscribe()`**, so every production refund and reversal
 fell into the void with no `audit_events` row.
 
-Fix: added `handlePaymentRefunded` + `handlePaymentReversed` handlers and their `subscribe()`
-entries (commit `dev-backlog/t1-audit-log-dispatch`). No business-logic change — listener
-wiring only.
+**Treasury fix** — added `handlePaymentRefunded` + `handlePaymentReversed` handlers and their
+`subscribe()` entries (commit `dev-backlog/t1`). No business-logic change — listener wiring
+only.
 
-Coverage added — `tests/Feature/Security/PrivilegedAuditLogDispatchTest.php`:
-- Wiring tests: fire `PaymentRefunded` / `PaymentReversed` directly, assert the `audit_events`
-  row lands with tenant + company + actor + action + target + timestamp.
-- End-to-end tests: call the real `PaymentRefundService` methods (no `Event::fake`), assert
-  the row lands through the `afterCommit → subscriber → persist` chain.
-- `ReceiptVoidService` e2e control test (proves F0).
+**Role-assignment fix (G1)** — the `Identity` module had no `Domain/Events/` directory and
+`RoleController::assignRole()` / `::removeRole()` called Spatie's `$user->assignRole()` /
+`->removeRole()` directly, leaving only a `model_has_roles` row (which carries `team_id` but
+no actor, no timestamp, and no removal record at all). Added immutable `RoleAssigned` /
+`RoleRemoved` domain events, dispatched directly after the Spatie mutation succeeds (no
+enclosing transaction — atomic on its own), and wired `handleRoleAssigned` /
+`handleRoleRemoved` handlers. Test-first.
+
+Coverage added:
+- `tests/Feature/Security/PrivilegedAuditLogDispatchTest.php` — Treasury: wiring tests fire
+  `PaymentRefunded` / `PaymentReversed` directly; e2e tests call the real
+  `PaymentRefundService` methods (no `Event::fake`) and assert the row lands through the
+  `afterCommit → subscriber → persist` chain; `ReceiptVoidService` e2e control test (proves F0).
+- `tests/Feature/Identity/RoleAssignmentAuditTest.php` — assign / remove leave a correctly
+  shaped `audit_events` row; a rejected assignment (422) leaves none.
 
 ## Open gaps — NOT fixed this session (scope / design decision)
 
-These three actions have **no audit event class at all**. Closing them is not listener-wiring
-— it requires authoring new immutable-forever domain events (CLAUDE.md rule 8) and adding
-dispatch into the Identity / POS layers. That is a feature addition crossing module
-boundaries, beyond the "wire the absent listener" scope of this task, so it is flagged here
-for an explicit owner decision rather than guessed at.
-
-### G1 — Role assignment / removal is not audited
-
-`Identity\...\RoleController::assignRole()` / `::removeRole()` call Spatie's
-`$user->assignRole()` / `->removeRole()` directly. The only record is the `model_has_roles`
-row, which carries `team_id` but **no actor, no timestamp-of-assignment, no removal record at
-all**. For a compliance-ready ERP, "who granted whom which role, and when" is a primary audit
-question and currently has no answer. The `Identity` module has no `Domain/Events/` directory.
-
-**Recommended fix:** add `RoleAssigned` / `RoleRemoved` domain events (actor, target user,
-role name, company/tenant, timestamp), dispatch from the controller, wire handlers in
-`DomainEventSubscriber`. Test-first, same pattern as the Treasury fix above.
+The two remaining gaps have **no audit event class at all**. Closing them requires authoring
+new immutable-forever domain events (CLAUDE.md rule 8) and adding dispatch into the POS
+layer — a feature addition with more design ambiguity (G2) or more regression risk (G3) than
+the G1 fix. They are flagged here for an explicit owner decision rather than guessed at.
 
 ### G2 — Manager-PIN override is not audited
 
@@ -137,9 +134,11 @@ paths, it leaves no `audit_events` row. The data is reconstructable from the `pa
 table, but the unified audit trail is incomplete.
 
 **Recommended fix:** dispatch `PaymentRefunded` (one per allocation, or one aggregate event)
-from `refundReceiptPayments()`, inside the existing `DB::afterCommit` boundary. Slightly
-higher risk than G1/G2 because it touches a heavily-tested proration path — needs careful
-test coverage of the existing proration behaviour first.
+from `refundReceiptPayments()`, inside the existing `DB::afterCommit` boundary. Higher risk
+than G1/G2 because it touches a heavily-tested proration path with idempotency / race
+handling — needs careful test coverage of the existing proration behaviour first, in its own
+focused change. The data is fully reconstructable from the `payments` table today (the audit
+columns are all present), so this is the least urgent of the three.
 
 ## NIT findings
 

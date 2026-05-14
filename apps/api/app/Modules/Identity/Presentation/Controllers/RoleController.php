@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\Events\RoleAssigned;
+use App\Modules\Identity\Domain\Events\RoleRemoved;
 use App\Modules\Identity\Domain\User;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
@@ -280,6 +282,20 @@ class RoleController extends Controller
         $roleName = $validated['role'];
         $user->assignRole($roleName);
 
+        // Privileged action — leave an audit trail (actor + target + role +
+        // timestamp). The audit_events row is the only record of who granted
+        // whom which role; model_has_roles carries team_id alone.
+        $actor = $request->user();
+        if ($actor instanceof User) {
+            event(new RoleAssigned(
+                targetUserId: $user->id,
+                roleName: $roleName,
+                companyId: $this->companyContext->requireCompany()->id,
+                actorUserId: $actor->id,
+                assignedAt: now()->toIso8601String(),
+            ));
+        }
+
         return response()->json([
             'data' => [
                 'message' => "Role '{$roleName}' assigned to user",
@@ -307,6 +323,19 @@ class RoleController extends Controller
         /** @var string $roleName */
         $roleName = $validated['role'];
         $user->removeRole($roleName);
+
+        // Privileged action — role revocation must be audit-logged with the
+        // actor and timestamp, mirroring assignRole().
+        $actor = $request->user();
+        if ($actor instanceof User) {
+            event(new RoleRemoved(
+                targetUserId: $user->id,
+                roleName: $roleName,
+                companyId: $this->companyContext->requireCompany()->id,
+                actorUserId: $actor->id,
+                removedAt: now()->toIso8601String(),
+            ));
+        }
 
         return response()->json([
             'data' => [
