@@ -157,7 +157,7 @@ class PrivilegedAuditLogTest extends TestCase
      * message). Pass `allowExtra: true` to allow the constructor to
      * carry additional fields beyond the listed set.
      *
-     * @param array<string, string> $expected
+     * @param  array<string, string>  $expected
      */
     private function assertConstructorHasParameters(
         string $eventClass,

@@ -48,7 +48,8 @@ class SweepCommandsProductionGateTest extends TestCase
 
     /**
      * @dataProvider sweepCommandProvider
-     * @param class-string $commandClass
+     *
+     * @param  class-string  $commandClass
      */
     public function test_sweep_command_is_disabled_in_production(string $commandClass): void
     {
@@ -65,7 +66,8 @@ class SweepCommandsProductionGateTest extends TestCase
 
     /**
      * @dataProvider sweepCommandProvider
-     * @param class-string $commandClass
+     *
+     * @param  class-string  $commandClass
      */
     public function test_sweep_command_is_enabled_in_non_production(string $commandClass): void
     {
@@ -81,5 +83,4 @@ class SweepCommandsProductionGateTest extends TestCase
             );
         }
     }
-
 }

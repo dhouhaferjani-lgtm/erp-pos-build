@@ -74,7 +74,7 @@ final class PurchaseHubOfferTenantIsolationTest extends TestCase
         $this->companyA = $this->makeCompany($this->tenantA->id, 'Company A', 'TAX-HA');
         $this->companyB = $this->makeCompany($this->tenantB->id, 'Company B', 'TAX-HB');
 
-        $this->companyContext = new CompanyContext();
+        $this->companyContext = new CompanyContext;
         $this->app->instance(CompanyContext::class, $this->companyContext);
 
         $this->service = $this->app->make(PurchaseHubService::class);

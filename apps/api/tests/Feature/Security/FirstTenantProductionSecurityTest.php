@@ -6,6 +6,7 @@ namespace Tests\Feature\Security;
 
 use App\Providers\AppServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\RateLimiter;
 use ReflectionMethod;
@@ -105,12 +106,12 @@ class FirstTenantProductionSecurityTest extends TestCase
         $this->assertNotNull(
             $resolver,
             "Required RateLimiter::for('{$name}') must be registered in AppServiceProvider so the "
-            ."first-tenant auth surface receives HTTP 429 under abusive traffic.",
+            .'first-tenant auth surface receives HTTP 429 under abusive traffic.',
         );
 
         // The resolver returns a Limit instance (or array of limits); make sure
         // it does not silently return null (no-op) which would bypass throttling.
-        $request = \Illuminate\Http\Request::create('/_test', 'POST');
+        $request = Request::create('/_test', 'POST');
         $request->setUserResolver(static fn () => null);
 
         $limit = $resolver($request);
