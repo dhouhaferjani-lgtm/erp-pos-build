@@ -12,6 +12,7 @@ use App\Modules\Coupon\Providers\CouponServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Document\Providers\DocumentServiceProvider;
 use App\Modules\Expense\Providers\ExpenseServiceProvider;
+use App\Modules\Fiscal\Providers\FiscalServiceProvider;
 use App\Modules\Identity\Infrastructure\Providers\IdentityServiceProvider;
 use App\Modules\Import\Providers\ImportServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
@@ -70,6 +71,7 @@ return [
     ServiceModuleServiceProvider::class,
     BillingServiceProvider::class,
     ExpenseServiceProvider::class,
+    FiscalServiceProvider::class,
     TaxationServiceProvider::class,
     POSServiceProvider::class,
     HeldOrderServiceProvider::class,
