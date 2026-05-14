@@ -35,6 +35,7 @@ final class DraftPersistenceService
 {
     public function __construct(
         private readonly DocumentNumberingService $numberingService,
+        private readonly DocumentTotalsCalculator $totalsCalculator,
     ) {}
 
     /**
@@ -186,7 +187,7 @@ final class DraftPersistenceService
         }
 
         // Recalculate totals
-        $document->recalculateTotals();
+        $this->totalsCalculator->recalculate($document);
         $document->save();
     }
 

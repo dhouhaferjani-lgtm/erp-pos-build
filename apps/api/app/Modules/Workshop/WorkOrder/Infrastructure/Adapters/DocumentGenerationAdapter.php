@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderLineRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrderLine;
@@ -41,6 +42,7 @@ final readonly class DocumentGenerationAdapter
         private DocumentPostingService $posting,
         private WorkOrderLineRepositoryInterface $lines,
         private StripSubToleranceDiscountsService $discountStripper,
+        private DocumentTotalsCalculator $totalsCalculator,
     ) {}
 
     /**
@@ -54,7 +56,7 @@ final readonly class DocumentGenerationAdapter
 
         $this->mapLines($wo, $document);
 
-        $document->recalculateTotals();
+        $this->totalsCalculator->recalculate($document);
         $document->save();
 
         return $document->id;
@@ -76,7 +78,7 @@ final readonly class DocumentGenerationAdapter
         // legitimately bypasses the DiscountAboveTolerance request validator
         // (negotiation-stage), so a WO Quote may carry a sub-tolerance line
         // discount that must NOT survive into the fiscal hash chain on the
-        // resulting Invoice. We invoke the strip BEFORE recalculateTotals so
+        // resulting Invoice. We invoke the strip BEFORE the totals recalc so
         // the resulting subtotal/tax/total reflect the post-strip state, and
         // BEFORE DocumentPostingService::post so the chain entry is signed
         // over the corrected document.
@@ -97,7 +99,7 @@ final readonly class DocumentGenerationAdapter
             $document,
         );
 
-        $document->recalculateTotals();
+        $this->totalsCalculator->recalculate($document);
         $document->status = DocumentStatus::Confirmed;
         $document->save();
 

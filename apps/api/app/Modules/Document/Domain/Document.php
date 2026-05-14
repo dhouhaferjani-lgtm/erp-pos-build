@@ -17,7 +17,6 @@ use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
-use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Factories\DocumentFactory;
@@ -539,31 +538,6 @@ class Document extends Model
     public function scopeCreditNotes(Builder $query): Builder
     {
         return $query->where('type', DocumentType::CreditNote);
-    }
-
-    /**
-     * Recalculate document totals from lines
-     */
-    public function recalculateTotals(int $scale = 3): void
-    {
-        $subtotal = '0';
-
-        foreach ($this->lines as $line) {
-            $lineSubtotal = bcmul($line->quantity, $line->unit_price, $scale);
-            $subtotal = bcadd($subtotal, $lineSubtotal, $scale);
-        }
-
-        // Use TaxCalculationService to calculate all taxes (line taxes + stamp duties)
-        $taxCalculationService = app(TaxCalculationService::class);
-        $taxResult = $taxCalculationService->calculateDocumentTaxes($this);
-
-        $this->update([
-            'subtotal' => $subtotal,
-            'line_tax_amount' => $taxResult->lineItemsTaxTotal,
-            'stamp_duty_amount' => $taxResult->documentTaxTotal,
-            'tax_amount' => $taxResult->totalTax,  // Total of line_tax + stamp_duty
-            'total' => $taxResult->total,
-        ]);
     }
 
     /**

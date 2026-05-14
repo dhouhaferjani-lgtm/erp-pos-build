@@ -9,10 +9,12 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Document\Domain\Services\DocumentTotalsCalculator;
 use App\Modules\Document\Domain\Services\DraftPersistenceService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
+use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -77,7 +79,8 @@ class DraftPersistenceServiceTest extends TestCase
         ]);
 
         $this->service = new DraftPersistenceService(
-            new DocumentNumberingService
+            new DocumentNumberingService,
+            new DocumentTotalsCalculator(new TaxCalculationService),
         );
     }
 
