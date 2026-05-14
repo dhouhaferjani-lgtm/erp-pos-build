@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-05-14",
+  "note": "Regenerate with: node scripts/lint-ratchet.mjs --update-baseline",
+  "apps": {
+    "@autoerp/web": {
+      "errors": 0,
+      "warnings": 11337
+    },
+    "@autoerp/pos": {
+      "errors": 0,
+      "warnings": 41
+    }
+  }
+}

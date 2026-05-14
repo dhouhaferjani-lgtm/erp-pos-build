@@ -8,6 +8,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "pnpm -r typecheck",
     "preflight": "./scripts/preflight.sh"
   },
