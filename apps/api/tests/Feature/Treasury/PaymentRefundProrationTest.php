@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -897,6 +898,115 @@ class PaymentRefundProrationTest extends TestCase
 
         $legacyRefundPayment->refresh();
         $this->assertSame(PaymentType::Refund, $legacyRefundPayment->payment_type, 'Idempotent run must keep the type');
+    }
+
+    // -------------------------------------------------------------------------
+    // Audit-event dispatch (G3) — refundReceiptPayments() must leave an
+    // audit_events row per refund allocation, like refundPayment/partialRefund.
+    // -------------------------------------------------------------------------
+
+    public function test_proration_refund_dispatches_one_audit_event_per_allocation(): void
+    {
+        // Authenticated actor — DomainEventSubscriber stamps the audit row's
+        // user_id from Auth::id() and tenant_id from Auth::user().
+        $this->actingAs($this->user, 'sanctum');
+
+        [$receipt, $cardPayment, $cashPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+
+        $allocations = $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $this->assertCount(2, $allocations);
+
+        $refundPaymentIds = collect($allocations)->pluck('paymentId')->all();
+        $auditRows = AuditEvent::whereIn('aggregate_id', $refundPaymentIds)
+            ->where('event_type', 'treasury.payment.refunded')
+            ->get();
+
+        $this->assertCount(
+            2,
+            $auditRows,
+            'refundReceiptPayments must leave one treasury.payment.refunded audit_events row per refund allocation.',
+        );
+
+        foreach ($auditRows as $audit) {
+            $this->assertSame($this->tenant->id, $audit->tenant_id);
+            $this->assertSame($this->company->id, $audit->company_id);
+            $this->assertSame($this->user->id, $audit->user_id);
+            $this->assertSame('Payment', $audit->aggregate_type);
+        }
+    }
+
+    public function test_proration_refund_audit_event_carries_original_payment_amount_and_reason(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        [$receipt, $cardPayment, $cashPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+
+        $allocations = $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+            policyTrigger: 'over_threshold',
+        );
+
+        $byOriginal = collect($allocations)->keyBy('originalPaymentId');
+
+        $cardAudit = AuditEvent::where('aggregate_id', $byOriginal[$cardPayment->id]->paymentId)
+            ->where('event_type', 'treasury.payment.refunded')
+            ->first();
+
+        $this->assertNotNull($cardAudit, 'Each refund allocation must have a matching audit_events row.');
+        $this->assertSame($cardPayment->id, $cardAudit->payload['original_payment_id']);
+        // Refund rows carry negative amounts; the €60 card share of a €50 refund is -30.00.
+        $this->assertSame('-30.00', CurrencyScale::bcformat($cardAudit->payload['amount'], 2));
+        $this->assertSame('EUR', $cardAudit->payload['currency']);
+        // No $reason param on refundReceiptPayments — the policy trigger stands in.
+        $this->assertSame('over_threshold', $cardAudit->payload['reason']);
+        $this->assertArrayHasKey('refunded_at', $cardAudit->payload);
+    }
+
+    public function test_idempotent_proration_replay_does_not_redispatch_audit_events(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        [$receipt] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+        $rid = Str::uuid()->toString();
+
+        $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: $rid,
+        );
+
+        // Idempotent replay — same refund_request_id returns the existing rows
+        // without creating new ones, so it must not re-dispatch audit events.
+        $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: $rid,
+        );
+
+        $refundPaymentIds = Payment::where('refund_request_id', $rid)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->pluck('id')
+            ->all();
+
+        $this->assertCount(2, $refundPaymentIds, 'Idempotency must keep exactly 2 refund rows.');
+        $this->assertSame(
+            2,
+            AuditEvent::whereIn('aggregate_id', $refundPaymentIds)
+                ->where('event_type', 'treasury.payment.refunded')
+                ->count(),
+            'An idempotent proration replay must not produce duplicate audit_events rows.',
+        );
     }
 
     public function test_positive_amount_document_payment_is_not_backfilled(): void

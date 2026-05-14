@@ -408,6 +408,8 @@ class PaymentRefundService
             }
 
             $result = [];
+            /** @var list<Payment> $createdRefundRows */
+            $createdRefundRows = [];
 
             foreach ($allocationMap as $originalPaymentId => $positiveAmount) {
                 /** @var numeric-string $positiveAmount */
@@ -467,7 +469,33 @@ class PaymentRefundService
                     paymentId: $refundRow->id,
                     amount: $positiveAmountForDto,
                 );
+                $createdRefundRows[] = $refundRow;
             }
+
+            // Audit trail (G3): one PaymentRefunded per allocation, mirroring
+            // refundPayment()/partialRefund(). Registered AFTER the loop so it
+            // covers exactly the rows committed by this transaction — the
+            // idempotency early-returns and the UniqueConstraintViolation race
+            // path all return before reaching here, so no event fires for a
+            // replay or a lost race. refundReceiptPayments takes no $reason
+            // arg, so the policy trigger stands in (constant fallback when the
+            // caller supplied none).
+            DB::afterCommit(function () use ($createdRefundRows, $policyTrigger): void {
+                $reason = $policyTrigger ?? 'pos_return_proration';
+
+                foreach ($createdRefundRows as $refundRow) {
+                    event(new PaymentRefunded(
+                        paymentId: $refundRow->id,
+                        tenantId: $refundRow->tenant_id,
+                        companyId: $refundRow->company_id,
+                        originalPaymentId: (string) $refundRow->original_payment_id,
+                        amount: $refundRow->amount,
+                        currency: $refundRow->currency,
+                        reason: $reason,
+                        refundedAt: ($refundRow->created_at ?? now())->toIso8601String(),
+                    ));
+                }
+            });
 
             return $result;
         });
