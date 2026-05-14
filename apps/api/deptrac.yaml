@@ -1,15 +1,35 @@
-# Deptrac Configuration for AutoERP Module Boundaries
-# Run: ./vendor/bin/deptrac analyse --config-file=deptrac.yaml
+# Deptrac Configuration — AutoERP hexagonal-architecture boundary enforcement
+#
+# Run directly:   ./vendor/bin/deptrac analyse --config-file=deptrac.yaml
+# Run ratcheted:  php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json
+#
+# Strategy (M3.1, dev deferred backlog 2026-05-14):
+#   Rather than enumerate ~39 modules x 4 layers by hand (the previous config
+#   covered only 12 modules and referenced a phantom "Sales" module), the
+#   layers are GLOB-based: one layer per hexagonal tier, collecting every
+#   module's matching sub-directory. This covers every current AND future
+#   module automatically and never goes stale.
+#
+#   What this enforces: the hexagonal dependency direction WITHIN the module
+#   tree — Domain may not reach up into Application / Infrastructure /
+#   Presentation; Application may not reach into Infrastructure / Presentation;
+#   Infrastructure may not reach into Presentation.
+#
+#   What this deliberately does NOT enforce: cross-module coupling (module A's
+#   Domain depending on module B's Domain is a same-layer dependency and is
+#   allowed). Per the M3 plan, cross-module Application coupling is a separate
+#   follow-up ticket — it needs per-module layers, which is a much larger
+#   effort than the first-tenant baseline this task targets.
 
 deptrac:
   paths:
     - ./app
 
   exclude_files:
-    - '#.*test.*#i'
+    - '#.*[Tt]est.*#'
 
   layers:
-    # Shared layers (accessible by all modules)
+    # --- Shared kernel (consumable by the matching module tiers) ----------
     - name: SharedDomain
       collectors:
         - type: directory
@@ -30,199 +50,34 @@ deptrac:
         - type: directory
           value: app/Shared/Infrastructure/.*
 
-    # Module Domain Layers (core business logic, no external dependencies)
-    - name: IdentityDomain
+    # --- Module hexagonal tiers (one glob layer per tier, all modules) ----
+    - name: ModuleDomain
       collectors:
         - type: directory
-          value: app/Modules/Identity/Domain/.*
+          value: app/Modules/[^/]+/Domain/.*
 
-    - name: TenantDomain
+    - name: ModuleApplication
       collectors:
         - type: directory
-          value: app/Modules/Tenant/Domain/.*
+          value: app/Modules/[^/]+/Application/.*
 
-    - name: CatalogDomain
+    - name: ModuleInfrastructure
       collectors:
         - type: directory
-          value: app/Modules/Catalog/Domain/.*
+          value: app/Modules/[^/]+/Infrastructure/.*
 
-    - name: VehicleDomain
+    - name: ModulePresentation
       collectors:
         - type: directory
-          value: app/Modules/Vehicle/Domain/.*
-
-    - name: PartnerDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Partner/Domain/.*
-
-    - name: WorkshopDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Workshop/Domain/.*
-
-    - name: SalesDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Sales/Domain/.*
-
-    - name: InventoryDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Inventory/Domain/.*
-
-    - name: TreasuryDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Treasury/Domain/.*
-
-    - name: AccountingDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Accounting/Domain/.*
-
-    - name: CommunicationDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Communication/Domain/.*
-
-    - name: MediaDomain
-      collectors:
-        - type: directory
-          value: app/Modules/Media/Domain/.*
-
-    # Module Application Layers
-    - name: IdentityApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Identity/Application/.*
-
-    - name: TenantApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Tenant/Application/.*
-
-    - name: CatalogApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Catalog/Application/.*
-
-    - name: VehicleApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Vehicle/Application/.*
-
-    - name: PartnerApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Partner/Application/.*
-
-    - name: WorkshopApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Workshop/Application/.*
-
-    - name: SalesApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Sales/Application/.*
-
-    - name: InventoryApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Inventory/Application/.*
-
-    - name: TreasuryApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Treasury/Application/.*
-
-    - name: AccountingApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Accounting/Application/.*
-
-    - name: CommunicationApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Communication/Application/.*
-
-    - name: MediaApplication
-      collectors:
-        - type: directory
-          value: app/Modules/Media/Application/.*
-
-    # Module Infrastructure Layers
-    - name: IdentityInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Identity/Infrastructure/.*
-
-    - name: TenantInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Tenant/Infrastructure/.*
-
-    - name: CatalogInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Catalog/Infrastructure/.*
-
-    - name: VehicleInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Vehicle/Infrastructure/.*
-
-    - name: PartnerInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Partner/Infrastructure/.*
-
-    - name: WorkshopInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Workshop/Infrastructure/.*
-
-    - name: SalesInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Sales/Infrastructure/.*
-
-    - name: InventoryInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Inventory/Infrastructure/.*
-
-    - name: TreasuryInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Treasury/Infrastructure/.*
-
-    - name: AccountingInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Accounting/Infrastructure/.*
-
-    - name: CommunicationInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Communication/Infrastructure/.*
-
-    - name: MediaInfrastructure
-      collectors:
-        - type: directory
-          value: app/Modules/Media/Infrastructure/.*
-
-    # Module Presentation Layers
-    - name: Presentation
-      collectors:
-        - type: directory
-          value: app/Modules/.*/Presentation/.*
+          value: app/Modules/[^/]+/Presentation/.*
 
   ruleset:
-    # Shared layers are accessible by all
-    SharedDomain: ~
-    SharedContracts: ~
+    # --- Shared kernel internal direction --------------------------------
+    # SharedDomain is pure (no allowed dependencies — omitted from the
+    # ruleset entirely). The shared kernel must NOT depend on any module
+    # tier — those dependencies stay flagged as violations.
+    SharedContracts:
+      - SharedDomain
     SharedApplication:
       - SharedDomain
       - SharedContracts
@@ -231,253 +86,37 @@ deptrac:
       - SharedContracts
       - SharedApplication
 
-    # Domain layers can ONLY depend on SharedDomain and SharedContracts
-    # NO cross-module domain dependencies!
-    IdentityDomain:
-      - SharedDomain
-      - SharedContracts
-    TenantDomain:
-      - SharedDomain
-      - SharedContracts
-    CatalogDomain:
-      - SharedDomain
-      - SharedContracts
-    VehicleDomain:
-      - SharedDomain
-      - SharedContracts
-    PartnerDomain:
-      - SharedDomain
-      - SharedContracts
-    WorkshopDomain:
-      - SharedDomain
-      - SharedContracts
-    SalesDomain:
-      - SharedDomain
-      - SharedContracts
-    InventoryDomain:
-      - SharedDomain
-      - SharedContracts
-    TreasuryDomain:
-      - SharedDomain
-      - SharedContracts
-    AccountingDomain:
-      - SharedDomain
-      - SharedContracts
-    CommunicationDomain:
-      - SharedDomain
-      - SharedContracts
-    MediaDomain:
+    # Domain is the core: it may only depend on the shared domain kernel and
+    # shared contracts. Any dependency on Application / Infrastructure /
+    # Presentation is a hexagonal violation (hard-fail in the ratchet).
+    ModuleDomain:
       - SharedDomain
       - SharedContracts
 
-    # Application layers can depend on their domain and shared layers
-    # Cross-module communication via SharedContracts ONLY
-    IdentityApplication:
-      - IdentityDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    TenantApplication:
-      - TenantDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    CatalogApplication:
-      - CatalogDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    VehicleApplication:
-      - VehicleDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    PartnerApplication:
-      - PartnerDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    WorkshopApplication:
-      - WorkshopDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    SalesApplication:
-      - SalesDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    InventoryApplication:
-      - InventoryDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    TreasuryApplication:
-      - TreasuryDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    AccountingApplication:
-      - AccountingDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    CommunicationApplication:
-      - CommunicationDomain
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-    MediaApplication:
-      - MediaDomain
+    # Application orchestrates Domain; it may use the shared application kernel.
+    ModuleApplication:
+      - ModuleDomain
       - SharedDomain
       - SharedContracts
       - SharedApplication
 
-    # Infrastructure layers can depend on everything in their module + shared
-    IdentityInfrastructure:
-      - IdentityDomain
-      - IdentityApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    TenantInfrastructure:
-      - TenantDomain
-      - TenantApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    CatalogInfrastructure:
-      - CatalogDomain
-      - CatalogApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    VehicleInfrastructure:
-      - VehicleDomain
-      - VehicleApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    PartnerInfrastructure:
-      - PartnerDomain
-      - PartnerApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    WorkshopInfrastructure:
-      - WorkshopDomain
-      - WorkshopApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    SalesInfrastructure:
-      - SalesDomain
-      - SalesApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    InventoryInfrastructure:
-      - InventoryDomain
-      - InventoryApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    TreasuryInfrastructure:
-      - TreasuryDomain
-      - TreasuryApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    AccountingInfrastructure:
-      - AccountingDomain
-      - AccountingApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    CommunicationInfrastructure:
-      - CommunicationDomain
-      - CommunicationApplication
-      - SharedDomain
-      - SharedContracts
-      - SharedApplication
-      - SharedInfrastructure
-    MediaInfrastructure:
-      - MediaDomain
-      - MediaApplication
+    # Infrastructure implements Domain/Application ports; it may use the
+    # shared infrastructure kernel.
+    ModuleInfrastructure:
+      - ModuleDomain
+      - ModuleApplication
       - SharedDomain
       - SharedContracts
       - SharedApplication
       - SharedInfrastructure
 
-    # Presentation can depend on application and domain of its module
-    Presentation: ~
-
-  formatters:
-    graphviz:
-      hidden_layers:
-        - SharedDomain
-        - SharedContracts
-      groups:
-        Shared:
-          - SharedDomain
-          - SharedContracts
-          - SharedApplication
-          - SharedInfrastructure
-        Identity:
-          - IdentityDomain
-          - IdentityApplication
-          - IdentityInfrastructure
-        Tenant:
-          - TenantDomain
-          - TenantApplication
-          - TenantInfrastructure
-        Catalog:
-          - CatalogDomain
-          - CatalogApplication
-          - CatalogInfrastructure
-        Vehicle:
-          - VehicleDomain
-          - VehicleApplication
-          - VehicleInfrastructure
-        Partner:
-          - PartnerDomain
-          - PartnerApplication
-          - PartnerInfrastructure
-        Workshop:
-          - WorkshopDomain
-          - WorkshopApplication
-          - WorkshopInfrastructure
-        Sales:
-          - SalesDomain
-          - SalesApplication
-          - SalesInfrastructure
-        Inventory:
-          - InventoryDomain
-          - InventoryApplication
-          - InventoryInfrastructure
-        Treasury:
-          - TreasuryDomain
-          - TreasuryApplication
-          - TreasuryInfrastructure
-        Accounting:
-          - AccountingDomain
-          - AccountingApplication
-          - AccountingInfrastructure
-        Communication:
-          - CommunicationDomain
-          - CommunicationApplication
-          - CommunicationInfrastructure
-        Media:
-          - MediaDomain
-          - MediaApplication
-          - MediaInfrastructure
+    # Presentation (controllers, requests, resources) sits at the edge and
+    # may depend on every inner tier.
+    ModulePresentation:
+      - ModuleDomain
+      - ModuleApplication
+      - ModuleInfrastructure
+      - SharedDomain
+      - SharedContracts
+      - SharedApplication
+      - SharedInfrastructure
