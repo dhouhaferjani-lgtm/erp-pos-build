@@ -1,0 +1,224 @@
+[
+  {
+    "name": "tnd_3dp_simple_sale",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reference_event_id": null,
+      "sequence_number": 1,
+      "event_time_device": "2026-05-14T10:00:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-tnd-001",
+      "payload": {
+        "currency": "TND",
+        "total": "12.345",
+        "lines": []
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:00:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"TND\",\"lines\":[],\"total\":\"12.345\"},\"previous_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"reference_document_id\":\"receipt-tnd-001\",\"reference_event_id\":null,\"sequence_number\":1,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "5889f5bc1464b1e5478e638428fd2189f765c0b412c1dfaeef8921211010821e"
+  },
+  {
+    "name": "eur_2dp_simple_sale",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reference_event_id": null,
+      "sequence_number": 2,
+      "event_time_device": "2026-05-14T10:01:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-eur-001",
+      "payload": {
+        "currency": "EUR",
+        "total": "12.34",
+        "lines": [
+          {
+            "sku": "OIL",
+            "quantity": 1,
+            "unit_price": "12.34"
+          }
+        ]
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:01:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"EUR\",\"lines\":[{\"quantity\":1,\"sku\":\"OIL\",\"unit_price\":\"12.34\"}],\"total\":\"12.34\"},\"previous_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"reference_document_id\":\"receipt-eur-001\",\"reference_event_id\":null,\"sequence_number\":2,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "0b959dd77662127388bee8b4e2fcc68819c74970e380b8f6825630de02bac054"
+  },
+  {
+    "name": "jpy_0dp_simple_sale",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "reference_event_id": null,
+      "sequence_number": 3,
+      "event_time_device": "2026-05-14T10:02:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-jpy-001",
+      "payload": {
+        "currency": "JPY",
+        "total": "1200",
+        "lines": [
+          {
+            "sku": "WASH",
+            "quantity": 1,
+            "unit_price": "1200"
+          }
+        ]
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:02:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"JPY\",\"lines\":[{\"quantity\":1,\"sku\":\"WASH\",\"unit_price\":\"1200\"}],\"total\":\"1200\"},\"previous_hash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"reference_document_id\":\"receipt-jpy-001\",\"reference_event_id\":null,\"sequence_number\":3,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "92c8a75c2e9b6fb4cda301e92325856d3b46c26fe18bec4e8eee91f3f98f5edb"
+  },
+  {
+    "name": "negative_amount_refund_shape",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "reference_event_id": null,
+      "sequence_number": 4,
+      "event_time_device": "2026-05-14T10:03:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-negative-001",
+      "payload": {
+        "currency": "TND",
+        "total": "-4.500",
+        "lines": [
+          {
+            "sku": "RETURN",
+            "quantity": -1,
+            "unit_price": "4.500"
+          }
+        ]
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:03:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"TND\",\"lines\":[{\"quantity\":-1,\"sku\":\"RETURN\",\"unit_price\":\"4.500\"}],\"total\":\"-4.500\"},\"previous_hash\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"reference_document_id\":\"receipt-negative-001\",\"reference_event_id\":null,\"sequence_number\":4,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "3f686d88acc0339703c704217f278156b53ac5ce764c6de8cb280ce4e5f679d7"
+  },
+  {
+    "name": "empty_arrays_null_optionals",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "reference_event_id": null,
+      "sequence_number": 5,
+      "event_time_device": "2026-05-14T10:04:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-empty-001",
+      "payload": {
+        "currency": "TND",
+        "total": "0.000",
+        "lines": [],
+        "discounts": [],
+        "customer": null,
+        "notes": null
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:04:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"TND\",\"customer\":null,\"discounts\":[],\"lines\":[],\"notes\":null,\"total\":\"0.000\"},\"previous_hash\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"reference_document_id\":\"receipt-empty-001\",\"reference_event_id\":null,\"sequence_number\":5,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "a61197ddad151cd7f1ea61735cecb19632f7828b2b680e61e65defa1ce287269"
+  },
+  {
+    "name": "multibyte_nfc_customer_note",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "reference_event_id": null,
+      "sequence_number": 6,
+      "event_time_device": "2026-05-14T10:05:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-nfc-001",
+      "payload": {
+        "currency": "TND",
+        "total": "7.250",
+        "customer_name": "Café Élise",
+        "note": "سيارة"
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:05:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"TND\",\"customer_name\":\"Café Élise\",\"note\":\"سيارة\",\"total\":\"7.250\"},\"previous_hash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"reference_document_id\":\"receipt-nfc-001\",\"reference_event_id\":null,\"sequence_number\":6,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "39836503216e7ac2a2d5aa862d1e2fa9ae843ec447fb4afb8800f5403639de91"
+  },
+  {
+    "name": "line_separator_normalization",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "reference_event_id": null,
+      "sequence_number": 7,
+      "event_time_device": "2026-05-14T10:06:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-separator-001",
+      "payload": {
+        "currency": "TND",
+        "total": "1.000",
+        "note": "alpha beta gamma"
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:06:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"currency\":\"TND\",\"note\":\"alphabetagamma\",\"total\":\"1.000\"},\"previous_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"reference_document_id\":\"receipt-separator-001\",\"reference_event_id\":null,\"sequence_number\":7,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "84005cbfef1811ef2fe634e6615000844e6d01c125fa1724a263979f8ef1ef44"
+  },
+  {
+    "name": "non_ascii_key_order",
+    "payload_dto_input": {
+      "tenant_id": "tenant-001",
+      "company_id": "company-001",
+      "terminal_id": "terminal-001",
+      "operator_id": "operator-001",
+      "event_type": "SALE_RECEIPT",
+      "event_version": 1,
+      "signature_version": "hash-chain-integrity-v1",
+      "previous_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "reference_event_id": null,
+      "sequence_number": 8,
+      "event_time_device": "2026-05-14T10:07:00Z",
+      "business_date": "2026-05-14",
+      "reference_document_id": "receipt-keys-001",
+      "payload": {
+        "β": 3,
+        "a": 1,
+        "é": 2
+      }
+    },
+    "expected_canonical_string": "{\"business_date\":\"2026-05-14\",\"company_id\":\"company-001\",\"event_time_device\":\"2026-05-14T10:07:00Z\",\"event_type\":\"SALE_RECEIPT\",\"event_version\":1,\"operator_id\":\"operator-001\",\"payload\":{\"a\":1,\"é\":2,\"β\":3},\"previous_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"reference_document_id\":\"receipt-keys-001\",\"reference_event_id\":null,\"sequence_number\":8,\"signature_version\":\"hash-chain-integrity-v1\",\"tenant_id\":\"tenant-001\",\"terminal_id\":\"terminal-001\"}",
+    "expected_sha256_hex": "fc8ba9b3cc6d3061a13b8647c5752009fc2b575682ba5ec411aefff754bf4fa2"
+  }
+]
