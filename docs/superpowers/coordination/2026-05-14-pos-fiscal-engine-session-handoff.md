@@ -1,7 +1,7 @@
 # POS Fiscal Event Engine — Session Handoff / Continuation Anchor
 
 **Created:** 2026-05-14
-**Last refreshed:** 2026-05-16 — Tasks 7–12 shipped + dual-reviewed; the schema-destructive gate is OPEN via owner attestation; branch HEAD `0d5da5b0` on `feat/pos-fiscal-event-engine-phase1` (PR #124).
+**Last refreshed:** 2026-05-16 — Tasks 7–13 shipped + dual-reviewed; Task 5 deferred P2s closed; the schema-destructive gate is OPEN via owner attestation; branch HEAD `3fdb7a41` on `feat/pos-fiscal-event-engine-phase1` (PR #124).
 **Why this exists:** the originating session hit the context window; subsequent sessions refresh this in place. This is the durable anchor — read this first, then the artifacts it indexes.
 
 ---
@@ -69,9 +69,9 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 
 **Plan v4 is re-reviewed and cleared.** Review file: `docs/superpowers/reviews/2026-05-14-pos-phase1-fiscal-event-engine-plan-v4-codex-review.md` (verdict APPROVE-WITH-MINOR-EDITS; only P3 wording cleanup applied).
 
-**Phase 1 implementation is in progress on branch `feat/pos-fiscal-event-engine-phase1` (PR #124).** Branch HEAD `4aa7f9be` as of 2026-05-16. Owner sign-off on the schema-destructive preflight gate is OPEN (`apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` — attested 2026-05-15).
+**Phase 1 implementation is in progress on branch `feat/pos-fiscal-event-engine-phase1` (PR #124).** Branch HEAD `3fdb7a41` as of 2026-05-16. Owner sign-off on the schema-destructive preflight gate is OPEN (`apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` — attested 2026-05-15).
 
-### 4.1 Tasks shipped (1–11 inclusive)
+### 4.1 Tasks shipped (1–13 inclusive)
 
 | # | Commit | Summary | Reviews |
 |---|---|---|---|
@@ -87,24 +87,24 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 | 10 | `2e8aec56` + `c3e448d2` + `9014019b` | `fiscal_event_quarantine` (§8 non-admissible partition) + reconciliation (P1 CI-gate, 4×P2 + index widen + Phase-2 trigger note) | Opus APPROVE-WITH-MINOR-EDITS; Codex REQUEST-CHANGES (file says APPROVE-WITH-MINOR-EDITS — wrapper-summary diverged); reconciliation applied |
 | 11 | `ddc42d5c` + `00670adf` + `4aa7f9be` | `pos_receipts` gains `canonical_bytes` + `fiscal_event_id` UNIQUE FK; chain columns become mirrors. Receipt model `$fillable` extended; @property annotations added; prevent_receipt_modification trigger interaction documented; insert-based duplicate-rejection test (via explicit factory chain) added | Opus APPROVE-WITH-MINOR-EDITS; Codex APPROVE-WITH-MINOR-EDITS; 3 P2 reconciliation applied |
 | 12 | `49fb63e3` + `a544d566` + `0d5da5b0` | Treasury `payments` gains `origin` + `fiscal_event_id`; `PaymentOrigin` enum (5 cases). FK direction `payments → fiscal_events` (asymmetric bounded-modules seam). Partial index on `fiscal_event_id WHERE NOT NULL` for projector replay. Payment model `$fillable` + cast + @property extended. No UNIQUE on `fiscal_event_id` (one event → N Payment rows; idempotency at projector-level per Task 22) | Opus APPROVE-WITH-MINOR-EDITS (3 P2); Codex APPROVE-WITH-MINOR-EDITS (1 P2 + 11 CLEAN); 4 P2 reconciliation applied (partial-index test, all-5-cases cast, runtime FK rejection, VARCHAR(32) length pin) |
+| 13 | `442ea109` + `3fdb7a41` | **First Tauri/device-side task.** Device SQLite migration v37: `fiscal_events` table (spec §3.1 column set, NOT GLOB hash-format CHECK, sequence/enum/source-pair CHECKs), append-only triggers (BEFORE UPDATE OF all 33 non-sync columns; BEFORE DELETE), `terminal_state` +3 chain head columns (legacy mirrors retained), `offline_receipts.canonical_bytes` (nullable per Task 15 deferral). | Opus REQUEST-CHANGES (1 BLOCKER + 5 P2 + 1 P3); Codex BLOCK (1 BLOCKER + 1 P2 + 1 P3) — BOTH caught the same hash-format GLOB BLOCKER (`[0-9a-f]*` only validated first char). Round-2 commit fixes the CHECK with `NOT GLOB '*[^0-9a-f]*'` and grows the test from 12 → 49 cases (BLOCKER reproducer + sequence>0 + enum CHECKs + source-event pair CHECK + all-33-columns data-driven trigger coverage + post-failure atomicity + ALTER TABLE backfill on pre-v37 rows). |
+| 5†| `b561bcd7` | Task 5 deferred P2s closed BEFORE Task 15: extracted `canonicalCore.ts` (shared JCS structural encoder parameterized by a `StringNormalizer`); receipt-V3 hash output remains byte-identical (47 v3 fixture tests stay green). SHA-256 padding-boundary vectors added — every block-edge length (55-57, 63-65, 119-121, 127-128) hashed against `node:crypto.createHash('sha256')`; 19 vectors total. | Closes the two Task-5 round-1 deferred P2s; gate to Task 15 lifted. |
 
-### 4.2 Per-task ground rules (carried forward from Tasks 7–11)
+### 4.2 Per-task ground rules (carried forward from Tasks 7–13)
 
-1. **Per-task TDD + dual review is non-negotiable.** Codex caught the only two BLOCKERs found so far (both in Task 8). Don't skip the Codex pass even when Opus is happy.
-2. **CI PG merge-gate filter must be extended at the same commit any new fiscal table-shape test ships.** Tasks 10 and 11 reviewers both flagged this regression once already. Pattern: add the test class name to `.github/workflows/ci.yml` line ~346 + extend the comment block.
+1. **Per-task TDD + dual review is non-negotiable.** Codex caught two of the three BLOCKERs found so far (Task 8 parse-failure resolution bypass + Task 8 integrity_exception_class write-once); on Task 13 **both Opus and Codex independently caught the same hash-format GLOB BLOCKER via `node:sqlite` probing**, validating that the dual-review gate continues to add value even when the reviewers converge. Don't skip the Codex pass even when Opus is happy.
+2. **CI PG merge-gate filter must be extended at the same commit any new fiscal table-shape test ships — server-side PHPUnit only.** Tasks 10 and 11 reviewers both flagged this regression once already. Pattern: add the test class name to `.github/workflows/ci.yml` line ~346 + extend the comment block. **Device-side Vitest tests (Task 13+) are picked up automatically by `apps/pos pnpm test` in the existing pos-test job (`.github/workflows/ci.yml:461`); no filter change needed for device tests.**
 3. **`$fillable` boundary discipline.** Lifecycle/state-machine columns belong out of `$fillable` (Task 9 lesson). Identity / insert-time FK columns are fine to include (Task 11 CLEAN-2 verified — both Receipt and FiscalEventProjectionRow follow this pattern).
 4. **Codex wrapper-summary may diverge from the actual review file.** Trust the file (`docs/superpowers/reviews/...-codex-review.md`) as source-of-truth; the wrapper summary returned by the agent runtime is generated from a different prompt path and can mis-classify severity.
 5. **Plan-vs-code wording drift on `hash_sequence` vs `chain_sequence`.** Plan says `hash_sequence`; actual `pos_receipts` column is `chain_sequence`. Migration / commit message correctly use `chain_sequence`; do not propagate the plan's wording. (Task 11 Codex CLEAN-6.)
 6. **Schema-destructive preflight gate is OPEN.** No further human checkpoints in the remaining tasks unless a new schema-destructive surface surfaces.
 
-### 4.3 Open items going into Task 12
+### 4.3 Open items going into Task 14
 
-- **Task 5 deferred P2s (still unhandled):** must close before Task 15 wires `FiscalEventEngine.append()` into the production flow:
-  - Vet/replace the hand-rolled sync SHA-256 in `apps/pos/src/lib/fiscal/v3/sha256.ts` OR add padding-boundary vectors at 55–57, 63–65, 119–120, 127–128 bytes to the canonical golden-vector fixture.
-  - Extract a shared JCS core instead of duplicating the canonicalization in `apps/pos/src/lib/fiscal/v3/canonicalJson.ts`.
-- **Task 13 next — first Tauri-device task** (`apps/pos/`, TypeScript + SQLite migration runner). Device SQLite `fiscal_events` table + triggers + `terminal_state` chain head. Locate the existing device migration set via `grep -rl "CREATE TABLE" apps/pos/src --include=*.ts` (look for the migrations runner the app uses for `offline_receipts`). Plan §952+. This is the first context switch from `apps/api` to `apps/pos` — different tooling (Vitest, not phpunit; ts-strict, not phpstan).
-- **Task 14 next:** `OutboxEvent.canonical_bytes` + sync envelope adjustment (device side). Plan §1040+.
-- **Subagent strategy:** for Tasks 15/19/21/22/27/28/29/30, delegate to Opus subagents per the original brief. Tasks 13/14 are still small enough to inline; the larger ones come at Task 15 (`FiscalEventEngine.append()` production wiring).
+- **Task 5 deferred P2s — CLOSED at `b561bcd7`.** Shared JCS core extracted to `apps/pos/src/lib/fiscal/canonicalCore.ts`; receipt-V3 output stays byte-identical (47 v3 fixture tests green). SHA-256 padding-boundary vectors (55-57, 63-65, 119-121, 127-128 + sanity baselines + FIPS 180-4 known vectors + multibyte UTF-8) validated against `node:crypto.createHash`; 19 vectors total. Gate to Task 15 lifted.
+- **Task 14 next:** `FiscalEventPayloadRegistry` + payload DTOs (server PHP + device TS). Five payload DTO types, of which `SaleReceiptPayload` / `ChainBreakDetectedPayload` / `ChainRestartPayload` / `TerminalRegistrySnapshotPayload` are implemented in Phase 1 and `CompanyDayClosureManifestPayload` is reserved (schema-only; throws `FiscalEventTypeNotImplemented`). Plan §1023+. Same Vitest + PHPUnit dual-tooling context as Task 13.
+- **Forward-looking input from Task 13 Codex P3:** the `terminal_state` chain-head columns ship with empty-string sentinels (`fiscal_event_genesis_seed = ''`, `fiscal_event_last_hash = ''`, `fiscal_event_sequence = 0`). Task 15's `FiscalEventEngine.append()` boot path **must** treat these as "not yet initialized" and either issue an explicit seed-init transaction or refuse to append until a valid genesis seed is provisioned. The migration itself cannot enforce this; track at Task 15.
+- **Subagent strategy:** for Tasks 15/19/21/22/27/28/29/30, delegate to Opus subagents per the original brief. Tasks 14 is still small enough to inline; the first delegation comes at Task 15 (`FiscalEventEngine.append()` production wiring) — Task 5 P2 gate is now clear.
 
 ### 4.4 Worktree + CI status
 
