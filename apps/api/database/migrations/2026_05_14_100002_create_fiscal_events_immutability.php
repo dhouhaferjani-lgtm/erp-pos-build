@@ -185,6 +185,23 @@ return new class extends Migration
                                 RAISE EXCEPTION 'fiscal_events row %: quarantined -> verified requires integrity_resolved_at AND integrity_resolved_by (spec §3.3).', OLD.id
                                     USING ERRCODE = 'integrity_constraint_violation';
                             END IF;
+
+                            -- Plan-review BLOCKER (round 2) — canonical_parse_failure resolution must
+                            -- be atomic: the same UPDATE that flips integrity quarantined -> verified
+                            -- must ALSO write the payload and flip payload_parse_status failed ->
+                            -- parsed (spec §7.5 / Task 24). Allowing an integrity-only verification
+                            -- here would strand a verified event with payload=NULL that the
+                            -- write-once payload gate (Step 4) could never repair, leaving every
+                            -- projector unable to replay it.
+                            IF OLD.integrity_exception_class = 'canonical_parse_failure' THEN
+                                IF OLD.payload IS NOT NULL
+                                   OR NEW.payload IS NULL
+                                   OR OLD.payload_parse_status IS DISTINCT FROM 'failed'
+                                   OR NEW.payload_parse_status IS DISTINCT FROM 'parsed' THEN
+                                    RAISE EXCEPTION 'fiscal_events row %: canonical_parse_failure resolution must atomically write payload and flip payload_parse_status from ''failed'' to ''parsed'' in the same UPDATE (spec §7.5).', OLD.id
+                                        USING ERRCODE = 'integrity_constraint_violation';
+                                END IF;
+                            END IF;
                         ELSE
                             RAISE EXCEPTION 'fiscal_events row %: integrity_status transition % -> % is not allowed (spec §3.3).', OLD.id, OLD.integrity_status, NEW.integrity_status
                                 USING ERRCODE = 'integrity_constraint_violation';

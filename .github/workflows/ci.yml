@@ -319,6 +319,11 @@ jobs:
         #     (calls markTestSkipped on SQLite — these are the exact tests Gate 3 targets)
         #   - VoucherLedgerAppendOnlyTest (Feature): Eloquent-level append-only guard
         #   - FiscalHardeningE2ETest (Feature): fiscal hash-chain immutability triggers
+        #   - FiscalEventsTableTest (Feature, Task 7): PG-only schema invariants
+        #     (JSONB CHECKs, unique indexes, FK shape) that skip on SQLite
+        #   - FiscalEventsImmutabilityTest (Feature, Task 8): PG-only trigger
+        #     semantics for the fiscal_events append-only ledger, including the
+        #     gated `failed -> parsed` resume contract Task 24 depends on
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -328,7 +333,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

@@ -92,10 +92,18 @@ fiscal event landing during the window will be **unprotected**.
    inserts (`SELECT count(*) FROM fiscal_events WHERE server_received_at > NOW() - INTERVAL '5 seconds'` is and stays 0).
 2. **Open the maintenance window** in the change calendar, with the
    originating change ticket linked.
-3. **Open a serialized, audited transaction** for the privileged work
-   (`BEGIN; SET LOCAL session_replication_role = 'replica';` will **not**
-   bypass these triggers — they are user triggers; `ALTER TABLE … DISABLE
-   TRIGGER` is required).
+3. **Open a serialized, audited transaction** for the privileged work using
+   the explicit, named `ALTER TABLE … DISABLE TRIGGER` sequence in §5 below.
+
+> **DO NOT use `SET session_replication_role = 'replica'` on `fiscal_events`.**
+> Contrary to a common misconception, that session-mode flag **does** suppress
+> default user triggers — including these immutability triggers — and would
+> create a much wider trigger-disabled window than this procedure intends
+> (every BEFORE/AFTER user trigger on every table touched in the session goes
+> dark, not just the three on `fiscal_events`). Use **only** the narrow,
+> per-trigger `ALTER TABLE fiscal_events DISABLE TRIGGER
+> fiscal_events_immutability_update;` sequence in §5, re-enabled inside the
+> **same transaction** before `COMMIT`.
 
 ---
 
