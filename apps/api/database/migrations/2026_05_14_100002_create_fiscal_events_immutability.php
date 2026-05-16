@@ -109,6 +109,32 @@ return new class extends Migration
                             USING ERRCODE = 'integrity_constraint_violation';
                     END IF;
 
+                    -- Step 1b (round-2 BLOCKER fix): integrity_exception_class is write-once.
+                    -- It may be set on INSERT, or set on a verified -> quarantined update
+                    -- (the named ingestor/reclassifier path gated by Step 5); once non-NULL
+                    -- it cannot change to a different non-NULL value, nor be unset.
+                    --
+                    -- WITHOUT this guard a malicious or buggy resolver could bypass the
+                    -- atomic canonical_parse_failure payload+status guard in Step 5 by:
+                    --   (1) UPDATE just integrity_exception_class
+                    --       from 'canonical_parse_failure' to e.g. 'canonical_hash_mismatch'
+                    --       (Steps 2/4/5 don't fire because status/payload/integrity are unchanged), then
+                    --   (2) UPDATE quarantined -> verified with stamps only
+                    --       (the Step-5 guard skips because OLD.integrity_exception_class
+                    --        is no longer 'canonical_parse_failure').
+                    -- Result: a stranded verified row with payload=NULL, parse_status='failed'.
+                    -- The class is forensic metadata: it describes WHY the row was
+                    -- quarantined and that fact is permanent (spec §3.3, §7.5).
+                    IF OLD.integrity_exception_class IS DISTINCT FROM NEW.integrity_exception_class THEN
+                        IF OLD.integrity_exception_class IS NOT NULL THEN
+                            RAISE EXCEPTION 'fiscal_events row %: integrity_exception_class is write-once; once set on a quarantined row it cannot be changed (would bypass class-specific resolution guards — spec §3.3, §7.5).', OLD.id
+                                USING ERRCODE = 'integrity_constraint_violation';
+                        END IF;
+                        -- OLD IS NULL, NEW IS NOT NULL: this is the verified->quarantined
+                        -- flag path. That transition is gated separately in Step 5; the
+                        -- class set itself is permitted here.
+                    END IF;
+
                     -- Step 2: payload_parse_status transition validation.
                     --   pending  -> parsed   (normal parse success)
                     --   pending  -> failed   (normal parse failure)

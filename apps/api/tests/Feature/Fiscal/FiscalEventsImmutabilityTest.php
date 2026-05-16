@@ -275,6 +275,102 @@ final class FiscalEventsImmutabilityTest extends TestCase
                 'integrity_resolved_by' => null,
             ],
         ];
+
+        // P3 (round-2 review): partial resolver — payload is written and
+        // integrity flips quarantined -> verified, but payload_parse_status
+        // is left at 'failed'. This is the half-applied resume the Step 5
+        // canonical_parse_failure guard rejects via `NEW.payload_parse_status
+        // IS DISTINCT FROM 'parsed'`. Independent coverage so a future
+        // refactor that drops that clause is caught.
+        // Tuple: OLD.payload=NULL, NEW.payload NOT NULL,
+        //        OLD.payload_parse_status='failed', NEW.payload_parse_status='failed',
+        //        OLD.integrity_status='quarantined', NEW.integrity_status='verified'.
+        yield 'partial resolver: payload written but parse_status not flipped' => [
+            "NEW.payload_parse_status stays 'failed'",
+            [],
+            [
+                'payload' => json_encode(['resolved' => true]),
+                // payload_parse_status intentionally OMITTED — stays at 'failed'
+                'integrity_status' => 'verified',
+                'integrity_resolved_at' => '2026-05-16 12:00:00',
+                'integrity_resolved_by' => '99999999-9999-9999-9999-999999999999',
+            ],
+        ];
+    }
+
+    /**
+     * Round-2 BLOCKER fix: `integrity_exception_class` is write-once.
+     *
+     * Once set on INSERT or on a verified -> quarantined reclassification, the
+     * class cannot change to a different non-NULL value, nor be unset. Without
+     * this guard a resolver can bypass the Step 5 canonical_parse_failure
+     * atomic-resume guard by (1) reclassifying the row to another class then
+     * (2) verifying with stamps only, stranding a verified row with payload=NULL.
+     *
+     * The class describes WHY a row entered quarantine — that fact is permanent
+     * forensic metadata (spec §3.3, §7.5).
+     */
+    public function test_integrity_exception_class_can_be_set_on_verified_to_quarantined(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // Insert a normal verified row with NULL class (the default-state).
+        $e = $this->insertEvent([
+            'integrity_status' => 'verified',
+            'integrity_exception_class' => null,
+        ]);
+
+        // Legitimate first-set: the reclassifier flags this row and sets the
+        // class as part of the verified -> quarantined transition. Must succeed.
+        DB::table('fiscal_events')->where('id', $e)->update([
+            'integrity_status' => 'quarantined',
+            'integrity_exception_class' => 'canonical_hash_mismatch',
+            'integrity_exception_reason' => 'first-set on flag — legitimate',
+        ]); // no exception
+
+        $this->assertSame(
+            'canonical_hash_mismatch',
+            DB::table('fiscal_events')->where('id', $e)->value('integrity_exception_class'),
+        );
+    }
+
+    public function test_integrity_exception_class_cannot_change_to_different_value(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // Insert a quarantined canonical_parse_failure (the bypass-attempt setup).
+        $e = $this->insertEvent([
+            'payload' => null,
+            'payload_parse_status' => 'failed',
+            'integrity_status' => 'quarantined',
+            'integrity_exception_class' => 'canonical_parse_failure',
+        ]);
+
+        // Reclassification attempt — Steps 2/4/5 would not fire because only
+        // the class column changes. Step 1b must reject.
+        $this->expectException(QueryException::class);
+        DB::table('fiscal_events')->where('id', $e)->update([
+            'integrity_exception_class' => 'canonical_hash_mismatch',
+        ]);
+    }
+
+    public function test_integrity_exception_class_cannot_be_unset(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // Insert a quarantined canonical_parse_failure.
+        $e = $this->insertEvent([
+            'payload' => null,
+            'payload_parse_status' => 'failed',
+            'integrity_status' => 'quarantined',
+            'integrity_exception_class' => 'canonical_parse_failure',
+        ]);
+
+        // Unset attempt — the class is permanent forensic metadata.
+        $this->expectException(QueryException::class);
+        DB::table('fiscal_events')->where('id', $e)->update([
+            'integrity_exception_class' => null,
+        ]);
     }
 
     /**
