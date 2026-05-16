@@ -281,6 +281,106 @@ final class FiscalEventIngestionEndpointTest extends TestCase
             ->assertStatus(422);
     }
 
+    /**
+     * Round-2 P2 (dual-review convergent) — pin `IngestionResult::idempotent`
+     * at the HTTP boundary. Spec v7 §7.2 Step 4: an exact-byte re-delivery
+     * must return the existing event (no re-dispatch). The controller maps
+     * that to `stored=false, fiscal_event_id=<existing>, sequence_conflict=false,
+     * exception_class=null`.
+     */
+    public function test_endpoint_returns_idempotent_redelivery_for_byte_identical_repost(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $envelope = $this->validEnvelopeWire(['sequence_number' => 1]);
+
+        $first = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$envelope]])
+            ->assertOk()
+            ->assertJsonPath('results.0.stored', true);
+        $firstId = $first->json('results.0.fiscal_event_id');
+        $this->assertIsString($firstId);
+
+        // Identical envelope (same id, hash, canonical_bytes, source_event_*).
+        $second = $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$envelope]]);
+
+        $second->assertOk();
+        $second->assertJsonPath('results.0.stored', false);
+        $second->assertJsonPath('results.0.fiscal_event_id', $firstId);
+        $second->assertJsonPath('results.0.sequence_conflict', false);
+        $second->assertJsonPath('results.0.exception_class', null);
+
+        // The ledger still carries exactly one row; no quarantine row was added.
+        $this->assertSame(1, DB::table('fiscal_events')->count());
+        $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
+    }
+
+    /**
+     * Round-2 P2 (dual-review convergent) — pin `IngestionResult::quarantined`
+     * (the in-table quarantine path) at the HTTP boundary. Spec v7 §7.2:
+     * `canonical_hash_mismatch` is admitted to `fiscal_events` with
+     * `integrity_status='quarantined'` and `integrity_exception_class='canonical_hash_mismatch'`;
+     * the row IS persisted (the device is never blocked) and the per-envelope
+     * response carries `stored=true, exception_class='canonical_hash_mismatch'`.
+     */
+    public function test_endpoint_returns_quarantined_in_table_for_canonical_hash_mismatch(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $envelope = $this->validEnvelopeWire(['sequence_number' => 1]);
+        // Replace current_hash with a syntactically valid but wrong 64-hex
+        // value. assertWireShape() still passes (hex format ok); the hash
+        // verification inside the ingestor fails → in-table quarantine.
+        $envelope['payload']['current_hash'] = str_repeat('f', 64);
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$envelope],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('results.0.stored', true);
+        $response->assertJsonPath('results.0.sequence_conflict', false);
+        $response->assertJsonPath('results.0.exception_class', 'canonical_hash_mismatch');
+        $fiscalEventId = $response->json('results.0.fiscal_event_id');
+        $this->assertIsString($fiscalEventId);
+
+        $row = DB::table('fiscal_events')->where('id', $fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertSame('canonical_hash_mismatch', $row->integrity_exception_class);
+
+        $this->assertSame(0, DB::table('fiscal_event_quarantine')->count(), 'hash-mismatch is in-table quarantine — fiscal_event_quarantine is reserved for non-admissible classes');
+    }
+
+    /**
+     * Round-2 P3-F3 — pin the precedence between the two pre-flight stages.
+     * An envelope that is BOTH malformed (UUID at `id`) AND cross-tenant
+     * must return 422 (Stage 1 — malformed) rather than 403 (Stage 2 —
+     * tenant). The controller runs `FiscalEventEnvelope::fromArray()` for
+     * ALL envelopes before ANY tenant check, so a malformed field aborts
+     * the entire batch before tenant evaluation begins.
+     */
+    public function test_envelope_with_both_malformed_field_and_cross_tenant_returns_422_not_403(): void
+    {
+        Sanctum::actingAs($this->user);
+        $tenantB = Tenant::factory()->create();
+
+        $envWire = $this->validEnvelopeWire([
+            'tenant_id' => $tenantB->id,
+            // Same envelope is also malformed at `id` — both pre-flight checks
+            // would otherwise reject it.
+        ]);
+        $envWire['payload']['id'] = 'not-a-uuid-at-all';
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$envWire],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'MALFORMED_ENVELOPE');
+        $this->assertSame(0, DB::table('fiscal_events')->count());
+        $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
+    }
+
     // =================================================================
     // Helpers
     // =================================================================

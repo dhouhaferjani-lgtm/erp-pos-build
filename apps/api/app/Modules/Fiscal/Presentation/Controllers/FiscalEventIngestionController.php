@@ -105,13 +105,23 @@ final class FiscalEventIngestionController extends Controller
         }
 
         // Per-envelope ingest. The OutboxIngestor's verify-then-insert core
-        // (Task 19) is fail-closed: every anomaly is captured in
-        // `IngestionResult` (stored / sequence_conflict / in-table
-        // quarantine via `exception_class`) without throwing under the
-        // controlled call path. The only InvalidArgumentException path
-        // here is defense-in-depth for envelopes whose malformed fields
-        // bypass the FormRequest + `fromArray()` regex (which they cannot,
-        // since `fromArray()` runs `assertWireShape()`).
+        // (Task 19) is fail-closed for chain anomalies: every hash / linkage
+        // / clock / parse anomaly is captured in `IngestionResult` (stored /
+        // sequence_conflict / in-table quarantine via `exception_class`) and
+        // returned to the caller. Two exception paths remain — both intentional:
+        //   - `InvalidArgumentException` from `FiscalEventEnvelope::assertWireShape()`
+        //     is unreachable here because pre-flight Stage 1 above already
+        //     called `FiscalEventEnvelope::fromArray()`, which runs the
+        //     assertion. The ingestor calls it again at its own boundary,
+        //     but that path is dead in this controller's call chain. No
+        //     catch is added — the Task 19 F3 standing pattern removes
+        //     dead defensive wrappers.
+        //   - `QueryException` from a `(source_event_class, source_event_id)`
+        //     uniqueness violation is the Task 19 round-2 T19-B2 contract:
+        //     re-thrown as a programming bug for the caller (Log::critical
+        //     fires inside the ingestor). The controller lets it propagate
+        //     to a 500 — the device's authoring logic must not reuse a
+        //     source-event-id across different fiscal events.
         $results = [];
         foreach ($envelopes as $envelope) {
             $results[] = $this->resultToWire($this->ingestor->ingest($envelope));

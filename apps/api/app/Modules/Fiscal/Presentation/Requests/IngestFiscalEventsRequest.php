@@ -42,6 +42,11 @@ final class IngestFiscalEventsRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Batch cap of 100 mirrors the existing offline-sync precedent at
+            // `apps/api/app/Modules/POS/Presentation/Requests/SyncReceiptsRequest.php:64`
+            // (`'receipts' => ['required', 'array', 'min:1', 'max:100']`).
+            // Bounds the worst-case per-request OutboxIngestor cost + the
+            // device-side memory footprint of a single sync POST.
             'envelopes' => ['required', 'array', 'min:1', 'max:100'],
             'envelopes.*' => ['required', 'array'],
             'envelopes.*.envelope_id' => ['required', 'string'],
