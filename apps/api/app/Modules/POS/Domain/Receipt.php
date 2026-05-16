@@ -81,6 +81,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $policy_trigger Machine-readable policy trigger key (e.g. "over_threshold")
  * @property string|null $refund_request_id Client-supplied idempotency UUID
  * @property string|null $exchange_group_id UUID shared by both halves of an exchange transaction (committed in v3 hash)
+ * @property string|null $canonical_bytes Phase 1 §7.5 verbatim canonical encoding from the device (BYTEA on PG, BLOB on SQLite); NULL on rows pre-dating the projection-row rebuild
+ * @property string|null $fiscal_event_id Phase 1 §7.5 UUID FK → fiscal_events.id — the projector idempotency anchor (Task 21); NULL on legacy rows
  * @property Carbon $created_at Server creation time
  * @property Carbon $updated_at
  * @property-read Tenant $tenant

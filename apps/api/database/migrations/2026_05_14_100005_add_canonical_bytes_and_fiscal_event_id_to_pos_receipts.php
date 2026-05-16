@@ -37,6 +37,18 @@ return new class extends Migration
      * Multiple legacy rows with NULL `fiscal_event_id` are permitted: the
      * UNIQUE constraint accepts multiple NULLs (standard ANSI behavior on
      * PostgreSQL).
+     *
+     * Interaction with `prevent_receipt_modification()` (Phase 0
+     * `2026_01_08_190637_create_pos_receipts_table.php`): the existing
+     * BEFORE UPDATE OR DELETE trigger on `pos_receipts` blocks all UPDATE
+     * paths outside the void-operation whitelist (`is_voided`, `voided_at`,
+     * `voided_by`, `void_reason`, `void_receipt_id`, `sync_status`,
+     * `synced_at`, `sync_error`). Both new columns (`canonical_bytes`,
+     * `fiscal_event_id`) are NOT in that whitelist. Therefore
+     * `PosCoreReceiptProjection` (Task 21) MUST populate them on INSERT and
+     * MUST NEVER attempt to UPDATE them later — a legacy-row backfill via
+     * UPDATE would be silently rejected by the trigger. The Task 21
+     * implementation will fail loudly if it attempts otherwise.
      */
     public function up(): void
     {

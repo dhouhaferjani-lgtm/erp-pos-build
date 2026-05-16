@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\Terminal;
+use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -46,6 +53,50 @@ final class PosReceiptsCanonicalBytesTest extends TestCase
 
         $this->assertContains('canonical_bytes', $fillable);
         $this->assertContains('fiscal_event_id', $fillable);
+    }
+
+    public function test_duplicate_fiscal_event_id_insert_is_rejected(): void
+    {
+        // The plan's red test (§Task 11 step 1) requires proving the write
+        // path rejects duplicate linkage, not just that the constraint exists
+        // in metadata. The pattern matches PreflightFiscalGateCommandTest:
+        // explicit factory chain for the ~5 FK parents
+        // (tenants/companies/locations/users/pos_terminals) so the inner
+        // factories don't try to recurse and leave NULL tenant_id columns.
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $location = Location::factory()->create(['company_id' => $company->id]);
+        $cashier = User::factory()->create(['tenant_id' => $tenant->id]);
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+        ]);
+
+        $eventId = $this->insertFiscalEvent();
+
+        Receipt::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $cashier->id,
+            'fiscal_event_id' => $eventId,
+        ]);
+
+        $this->expectException(QueryException::class);
+        // PosCoreReceiptProjection (Task 21) relies on this UNIQUE for the
+        // safe-to-re-run idempotency guard:
+        //   if (PosReceipt::where('fiscal_event_id', $event->id)->exists()) return;
+        // Without runtime rejection, a buggy projector could double-project.
+        Receipt::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $cashier->id,
+            'fiscal_event_id' => $eventId,
+        ]);
     }
 
     public function test_fiscal_event_id_unique_constraint_exists(): void
@@ -127,5 +178,37 @@ final class PosReceiptsCanonicalBytesTest extends TestCase
         if (DB::connection()->getDriverName() !== 'pgsql') {
             $this->markTestSkipped('FK / catalog introspection only on PostgreSQL');
         }
+    }
+
+    /**
+     * Insert a minimal `fiscal_events` row matching the Task 7 schema and
+     * return its id. Used by the duplicate-FK insert test so the FK on
+     * `pos_receipts.fiscal_event_id` is satisfied on PG.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function insertFiscalEvent(array $overrides = []): string
+    {
+        $defaults = [
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => Str::uuid()->toString(),
+            'company_id' => Str::uuid()->toString(),
+            'terminal_id' => Str::uuid()->toString(),
+            'operator_id' => Str::uuid()->toString(),
+            'event_type' => 'SALE_RECEIPT',
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => 1,
+            'event_time_device' => now()->toDateTimeString(),
+            'business_date' => now()->toDateString(),
+            'server_received_at' => now()->toDateTimeString(),
+            'canonical_bytes' => '{}',
+            'previous_hash' => str_repeat('0', 64),
+            'current_hash' => str_repeat('a', 64),
+        ];
+        $row = array_merge($defaults, $overrides);
+        DB::table('fiscal_events')->insert($row);
+
+        return (string) $row['id'];
     }
 }
