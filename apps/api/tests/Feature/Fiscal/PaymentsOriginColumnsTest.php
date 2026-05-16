@@ -6,9 +6,12 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Payment;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -61,6 +64,29 @@ final class PaymentsOriginColumnsTest extends TestCase
         $this->assertSame(PaymentOrigin::Pos, $payment->origin);
     }
 
+    #[DataProvider('paymentOriginRoundTripCases')]
+    public function test_payment_model_round_trips_every_origin_case(string $stored, PaymentOrigin $expected): void
+    {
+        $payment = new Payment;
+        $payment->setRawAttributes(['origin' => $stored], true);
+
+        $this->assertSame($expected, $payment->origin);
+    }
+
+    /**
+     * @return array<string, array{string, PaymentOrigin}>
+     */
+    public static function paymentOriginRoundTripCases(): array
+    {
+        return [
+            'pos' => ['pos', PaymentOrigin::Pos],
+            'web_admin' => ['web_admin', PaymentOrigin::WebAdmin],
+            'mobile' => ['mobile', PaymentOrigin::Mobile],
+            'api' => ['api', PaymentOrigin::Api],
+            'unknown_legacy' => ['unknown_legacy', PaymentOrigin::UnknownLegacy],
+        ];
+    }
+
     public function test_fiscal_event_id_fk_to_fiscal_events_exists_on_postgres(): void
     {
         $this->skipUnlessPostgres();
@@ -74,6 +100,39 @@ final class PaymentsOriginColumnsTest extends TestCase
             $row,
             'FK payments_fiscal_event_id_fk → fiscal_events(id) missing on PostgreSQL',
         );
+    }
+
+    public function test_orphan_fiscal_event_id_is_rejected_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // Prove the FK actually fires at runtime, not just exists in
+        // pg_constraint. Without this, a future migration that names the
+        // constraint differently or drops it would pass the metadata test
+        // but break the projector idempotency-tail check.
+        $this->expectException(QueryException::class);
+        Payment::factory()->create([
+            'fiscal_event_id' => Str::uuid()->toString(), // no matching fiscal_events row
+        ]);
+    }
+
+    public function test_fiscal_event_id_partial_index_exists_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            'SELECT indexdef FROM pg_indexes WHERE indexname = ?',
+            ['payments_fiscal_event_id_idx'],
+        );
+
+        $this->assertNotNull(
+            $row,
+            'Partial index payments_fiscal_event_id_idx missing on PostgreSQL',
+        );
+        // The predicate scopes the index to rows linked to a fiscal event
+        // (i.e. projected by TreasuryReceiptBridge) so legacy rows stay
+        // out of the projector's idempotency-tail hot scan.
+        $this->assertStringContainsString('fiscal_event_id IS NOT NULL', $row->indexdef);
     }
 
     public function test_origin_and_fiscal_event_id_are_nullable_for_legacy_rows_on_postgres(): void
@@ -91,6 +150,23 @@ final class PaymentsOriginColumnsTest extends TestCase
             $this->assertSame($expectedType, $row->data_type, "{$column} data_type drift");
             $this->assertSame('YES', $row->is_nullable, "{$column} must be nullable for legacy rows");
         }
+    }
+
+    public function test_origin_varchar_length_is_pinned_at_32_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        // The VARCHAR(32) width is part of the spec §13 contract. Pin it
+        // here so a future migration widening to VARCHAR(64) doesn't slip
+        // through the data_type test (which only proves "character varying").
+        $row = DB::selectOne(
+            'SELECT character_maximum_length FROM information_schema.columns
+             WHERE table_name = ? AND column_name = ?',
+            ['payments', 'origin'],
+        );
+
+        $this->assertNotNull($row);
+        $this->assertSame(32, (int) $row->character_maximum_length);
     }
 
     private function skipUnlessPostgres(): void
