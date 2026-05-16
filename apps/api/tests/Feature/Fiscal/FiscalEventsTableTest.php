@@ -44,8 +44,7 @@ final class FiscalEventsTableTest extends TestCase
 
     public function test_unique_sequence_key_blocks_duplicate_slot(): void
     {
-        $this->skipUnlessPostgres();
-
+        // The composite UNIQUE key is portable (Laravel schema builder, not raw PG). Run on every driver.
         $this->insertEvent(['sequence_number' => 1]);
 
         $this->expectException(QueryException::class);
