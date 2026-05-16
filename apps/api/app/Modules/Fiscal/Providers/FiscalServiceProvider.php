@@ -41,5 +41,10 @@ final class FiscalServiceProvider extends ServiceProvider
                 PreflightFiscalGateCommand::class,
             ]);
         }
+
+        // Task 20 — load the single fiscal-event ingestion endpoint
+        // (`POST /api/v1/pos/sync/fiscal-events`). Mirrors
+        // `POSServiceProvider::boot()` (apps/api/app/Modules/POS/Providers/POSServiceProvider.php:49).
+        $this->loadRoutesFrom(__DIR__.'/../routes.php');
     }
 }

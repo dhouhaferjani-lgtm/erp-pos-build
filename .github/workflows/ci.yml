@@ -346,6 +346,14 @@ jobs:
         #     a portable subset of the schema) but PG is the production
         #     truth — the CHECK constraints, FKs, and partial-unique
         #     indexes only exist there.
+        #   - FiscalEventIngestionEndpointTest (Feature, Task 20): the
+        #     HTTP boundary for the OutboxIngestor — sequence_conflict
+        #     routing, malformed-envelope 422, cross-tenant 403. SQLite
+        #     covers the routing-layer happy-path locally; PG is the
+        #     production truth because the CHECK constraints on
+        #     `fiscal_event_quarantine.integrity_exception_class`
+        #     (Task 10 + the round-2 widening for `malformed_envelope`)
+        #     only fire there.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -355,7 +363,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
