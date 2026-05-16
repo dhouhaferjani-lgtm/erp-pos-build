@@ -337,6 +337,15 @@ jobs:
         #   - PaymentsOriginColumnsTest (Feature, Task 12): PG-only FK
         #     payments.fiscal_event_id → fiscal_events(id) + column-type
         #     contract for the Treasury-module integration columns
+        #   - OutboxIngestorTest (Feature, Task 19): exercises the §7.2
+        #     validate-then-insert flow against real PG tables — UNIQUE
+        #     (tenant_id, terminal_id, sequence_number) sequence_conflict
+        #     detection, in-table quarantine rows with valid hash-format
+        #     CHECKs, and the §7.5 projection-row creation in the same
+        #     transaction. SQLite passes locally (RefreshDatabase rebuilds
+        #     a portable subset of the schema) but PG is the production
+        #     truth — the CHECK constraints, FKs, and partial-unique
+        #     indexes only exist there.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -346,7 +355,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
