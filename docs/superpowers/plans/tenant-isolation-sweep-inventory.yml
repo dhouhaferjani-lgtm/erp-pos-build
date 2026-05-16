@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-13T05:12:24Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+  yaml_sha256: 66f18ca410cbdf6915aedb8472953d69fe231d4de8308ffe07f2b6f2f4a7467a
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -142054,17 +142054,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:17Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_start_reconciliation_service_refuses_cross_company_repository_id'
     blocked_reason: null
     history:
       -
@@ -142083,6 +142083,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:18Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 4e72594cb11dc518cf40a020ee5584a644a1db46e5f500b1061438d603cc2d6b
+        new_yaml_sha256: 8c4c2a7fc72e06325229fabebeb56c568a01e3886c601eb531e848953dfbe874
+        target_ids:
+          - api.treasury.063
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:37:46Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: dbbaa504dbe8d970b9865680c50ec4c3ae8af53faf26b6b028000554a6f2a753
+        new_yaml_sha256: 81d7b0a92cd1e84e8b1722180442d33d19f44270f2bcdd9b284c6821c1d45cd1
+        target_ids:
+          - api.treasury.063
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:13Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 9dc218fad5b2e2d6916a53ff4ffe8f1d66e221093885284cf449737a16f03951
+        new_yaml_sha256: 3524915d1c6e285c5c250ac0b1d7d118d9ee46c22bcb4a7fa286ed71e6bf18a2
+        target_ids:
+          - api.treasury.063
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_start_reconciliation_service_refuses_cross_company_repository_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.064
     stable_key: 'sha256:27cd7d54d0badb09f11c0414fe6f575941354d3767acefa009bae43f19f73072'
@@ -142238,17 +142286,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:20Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_repository_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142267,6 +142315,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:21Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 8c4c2a7fc72e06325229fabebeb56c568a01e3886c601eb531e848953dfbe874
+        new_yaml_sha256: 3db18a6d61eed3caeebb1002c9577f8238f651ffb44d7243a9eaf37ecb61175e
+        target_ids:
+          - api.treasury.067
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:37:48Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 81d7b0a92cd1e84e8b1722180442d33d19f44270f2bcdd9b284c6821c1d45cd1
+        new_yaml_sha256: 44165f213d5e4c61bd60e6f50113c4347ba7f7c15df13e7c5f96dcabf4fd03b8
+        target_ids:
+          - api.treasury.067
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:16Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 3524915d1c6e285c5c250ac0b1d7d118d9ee46c22bcb4a7fa286ed71e6bf18a2
+        new_yaml_sha256: e8628353aca01a37caf47b5ef2e341ff19841ad28d0994fa44ab3a99efc14d8f
+        target_ids:
+          - api.treasury.067
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_repository_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.068
     stable_key: 'sha256:e3531c5a9b98c46541098327f87f93fe0c43436cd8699d5cee649aff4ba69abd'
@@ -142284,17 +142380,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:23Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_update_payment_repository_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142313,6 +142409,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:24Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 3db18a6d61eed3caeebb1002c9577f8238f651ffb44d7243a9eaf37ecb61175e
+        new_yaml_sha256: 6dce519d952aeb24d89a0cc19386ffa155dbfb298e32d06eb495ccfef5dedd14
+        target_ids:
+          - api.treasury.068
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:37:51Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 44165f213d5e4c61bd60e6f50113c4347ba7f7c15df13e7c5f96dcabf4fd03b8
+        new_yaml_sha256: 27737cbb4034dbfbae67de91b75cc7b7a0847ba2246555979446e3668cfdc768
+        target_ids:
+          - api.treasury.068
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:18Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: e8628353aca01a37caf47b5ef2e341ff19841ad28d0994fa44ab3a99efc14d8f
+        new_yaml_sha256: 1d0d13cef9e3ded3285d797507af533ef44b118e45236c7212a8ea6e2a6c03e7
+        target_ids:
+          - api.treasury.068
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_update_payment_repository_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.069
     stable_key: 'sha256:a5ebcb85cd191f39cb80b775121a514cc02f03edcef046d2354f7ff037d14946'
@@ -142330,17 +142474,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:26Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_payment_repository_balance_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142359,6 +142503,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6dce519d952aeb24d89a0cc19386ffa155dbfb298e32d06eb495ccfef5dedd14
+        new_yaml_sha256: 035e2bac6039a2f1eed28a7ad7ab701e65b7af9e80691f8b685cd46a3d0fc510
+        target_ids:
+          - api.treasury.069
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:37:54Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 27737cbb4034dbfbae67de91b75cc7b7a0847ba2246555979446e3668cfdc768
+        new_yaml_sha256: 485eec5df65df266991cbd1b8e76264189b2dbcef6768e57821ed2eba3028d8b
+        target_ids:
+          - api.treasury.069
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:21Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1d0d13cef9e3ded3285d797507af533ef44b118e45236c7212a8ea6e2a6c03e7
+        new_yaml_sha256: 1ce88bfc4e7e13238fb7c2631a04d156fed780d57d0454295efe23ae1f48de98
+        target_ids:
+          - api.treasury.069
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_payment_repository_balance_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.070
     stable_key: 'sha256:09ca1efee85b8dd3e2c5af52628801f02f20c4494638889868e94748573c6e74'
@@ -142376,17 +142568,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_payment_repository_transactions_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142405,6 +142597,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:30Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 035e2bac6039a2f1eed28a7ad7ab701e65b7af9e80691f8b685cd46a3d0fc510
+        new_yaml_sha256: a1577a12267870d247aba43e307ef159324e5d35899996b8923a4d5e65eb3e2c
+        target_ids:
+          - api.treasury.070
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:37:57Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 485eec5df65df266991cbd1b8e76264189b2dbcef6768e57821ed2eba3028d8b
+        new_yaml_sha256: 3f55796e8911c6596b7d36f7989e49cbd1b9453ebd009a15e68ae12c6a4d3262
+        target_ids:
+          - api.treasury.070
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:24Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 1ce88bfc4e7e13238fb7c2631a04d156fed780d57d0454295efe23ae1f48de98
+        new_yaml_sha256: 551b8aac40e861120c88b94f5601f69cdb916c179c22d94fe794b5aab9ae8c29
+        target_ids:
+          - api.treasury.070
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_payment_repository_transactions_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.071
     stable_key: 'sha256:05a48c166750354c34563a951f6387f3cb27a838a1d6f60f43b5e48365373863'
@@ -142422,17 +142662,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:31Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_refund_payment_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142451,6 +142691,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:32Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: a1577a12267870d247aba43e307ef159324e5d35899996b8923a4d5e65eb3e2c
+        new_yaml_sha256: 9474f44c7b6ad4a75fa1ea5263d89f88f2ae52f6f4bacad3831fa7ad60f196d7
+        target_ids:
+          - api.treasury.071
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:38:00Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3f55796e8911c6596b7d36f7989e49cbd1b9453ebd009a15e68ae12c6a4d3262
+        new_yaml_sha256: 8fdae24648518d6408526fef33f8b5bc4da5f287a414d5b4ccad92b7c585ed94
+        target_ids:
+          - api.treasury.071
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:26Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 551b8aac40e861120c88b94f5601f69cdb916c179c22d94fe794b5aab9ae8c29
+        new_yaml_sha256: a74fa2149e319ed5f63837ed9196c95128da3c6e9a8f54917c139b1bbce482b4
+        target_ids:
+          - api.treasury.071
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_refund_payment_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.072
     stable_key: 'sha256:253683fcf7db6eb7ef51ad9f91527c385e17a4f8f7f5e55ba7546a8527840d7b'
@@ -142468,17 +142756,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:34Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_refund_prepayment_refuses_cross_company_document_id'
     blocked_reason: null
     history:
       -
@@ -142497,6 +142785,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:35Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 9474f44c7b6ad4a75fa1ea5263d89f88f2ae52f6f4bacad3831fa7ad60f196d7
+        new_yaml_sha256: 0209f413b1d7e310b7a58a8da03efe03d6601abd19b7318e9c5253f36d762770
+        target_ids:
+          - api.treasury.072
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:38:02Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 8fdae24648518d6408526fef33f8b5bc4da5f287a414d5b4ccad92b7c585ed94
+        new_yaml_sha256: 5e42dd73aeeefb62074007d181034b9d67ca02a17b994f7bb7b853f2146cbc3c
+        target_ids:
+          - api.treasury.072
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:29Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: a74fa2149e319ed5f63837ed9196c95128da3c6e9a8f54917c139b1bbce482b4
+        new_yaml_sha256: eab930a910adf7c8a1d414c5c4982cde2a81097be6937bd3980cb4b0af883a13
+        target_ids:
+          - api.treasury.072
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_refund_prepayment_refuses_cross_company_document_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.073
     stable_key: 'sha256:da88638ad636e42a63481c8640d856b227764d5e81f1ceea784bfec509c817b8'
@@ -142514,17 +142850,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:37Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_method_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142543,6 +142879,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:38Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 0209f413b1d7e310b7a58a8da03efe03d6601abd19b7318e9c5253f36d762770
+        new_yaml_sha256: 5daa09985ccac38efdf1e8581ce08a257460c3b9104376db1e40b2e9d6f2e50f
+        target_ids:
+          - api.treasury.073
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:38:05Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 5e42dd73aeeefb62074007d181034b9d67ca02a17b994f7bb7b853f2146cbc3c
+        new_yaml_sha256: 694fcd3f62e8fff64227ffcbc432c81fba12e6a9146c9fa2b501ac80417ff28d
+        target_ids:
+          - api.treasury.073
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:32Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: eab930a910adf7c8a1d414c5c4982cde2a81097be6937bd3980cb4b0af883a13
+        new_yaml_sha256: c92299c209940867ece8026db58df8f63daba0197a460c6c1e964f41ce65645a
+        target_ids:
+          - api.treasury.073
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_method_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.074
     stable_key: 'sha256:937267b897a8d6b4d0abd1b1a023b67f1dc602a9c142be69e6e9dbda37358042'
@@ -142560,17 +142944,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:40Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_update_payment_method_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142589,6 +142973,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:40Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 5daa09985ccac38efdf1e8581ce08a257460c3b9104376db1e40b2e9d6f2e50f
+        new_yaml_sha256: 6f227d85317f329bff5bb1fcccb50026a2561922b1ab7639891452121ce86d8b
+        target_ids:
+          - api.treasury.074
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:38:08Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 694fcd3f62e8fff64227ffcbc432c81fba12e6a9146c9fa2b501ac80417ff28d
+        new_yaml_sha256: 3b502c6004b9f6adb9cf17c5bec98d7adaaa8cfd05adccf0d8ff4b1194fc7c7f
+        target_ids:
+          - api.treasury.074
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:34Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: c92299c209940867ece8026db58df8f63daba0197a460c6c1e964f41ce65645a
+        new_yaml_sha256: 81a1d630b84123e3735ae8d6f0e5b04af50200627dfa02a2e205892516d45a04
+        target_ids:
+          - api.treasury.074
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_update_payment_method_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.treasury.075
     stable_key: 'sha256:15d94a70193f01f80ab412c62f85a92affb4edaa920ca4448d598b90454b20fc'
@@ -142606,17 +143038,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T05:37:42Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: 309343cd889c0c07db451bfec242189ee2dfb128
+    regression_test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_refuses_cross_company_id'
     blocked_reason: null
     history:
       -
@@ -142635,6 +143067,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T05:37:43Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6f227d85317f329bff5bb1fcccb50026a2561922b1ab7639891452121ce86d8b
+        new_yaml_sha256: dbbaa504dbe8d970b9865680c50ec4c3ae8af53faf26b6b028000554a6f2a753
+        target_ids:
+          - api.treasury.075
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T05:38:10Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 3b502c6004b9f6adb9cf17c5bec98d7adaaa8cfd05adccf0d8ff4b1194fc7c7f
+        new_yaml_sha256: 9dc218fad5b2e2d6916a53ff4ffe8f1d66e221093885284cf449737a16f03951
+        target_ids:
+          - api.treasury.075
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T05:38:37Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 81a1d630b84123e3735ae8d6f0e5b04af50200627dfa02a2e205892516d45a04
+        new_yaml_sha256: 66f18ca410cbdf6915aedb8472953d69fe231d4de8308ffe07f2b6f2f4a7467a
+        target_ids:
+          - api.treasury.075
+        from_status: in_progress
+        to_status: under_review
+        commit: 309343cd889c0c07db451bfec242189ee2dfb128
+        test: 'tests/Feature/Treasury/TreasuryCompanyIsolationTest.php::test_show_payment_refuses_cross_company_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pricing.011
     stable_key: 'sha256:906941059fd60d3cb14359c0dfd652d8dac62d339a16016d2a862541ffaa2fd2'
