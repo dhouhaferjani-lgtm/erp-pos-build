@@ -1,0 +1,87 @@
+import { describe, expect, it } from 'vitest';
+import {
+  FiscalEventPayloadRegistry,
+  FiscalEventTypeNotImplementedError,
+  type FiscalEventTypeValue,
+} from '../FiscalEventPayloadRegistry';
+
+describe('FiscalEventPayloadRegistry', () => {
+  const registry = new FiscalEventPayloadRegistry();
+
+  it('marks all four Phase 1 event types as implemented', () => {
+    expect(registry.isImplemented('SALE_RECEIPT')).toBe(true);
+    expect(registry.isImplemented('CHAIN_BREAK_DETECTED')).toBe(true);
+    expect(registry.isImplemented('CHAIN_RESTART')).toBe(true);
+    expect(registry.isImplemented('TERMINAL_REGISTRY_SNAPSHOT')).toBe(true);
+  });
+
+  it('marks reserved-not-implemented types as unimplemented', () => {
+    const reservedNotImplemented: FiscalEventTypeValue[] = [
+      'COMPANY_DAY_CLOSURE_MANIFEST',
+      'SALE_VOID',
+      'SALE_CORRECTION',
+      'REFUND_RECEIPT',
+      'PARTIAL_REFUND',
+      'RETURN_WITHOUT_RECEIPT',
+      'OPENING_FLOAT',
+      'CASH_IN',
+      'CASH_OUT',
+      'SAFE_DROP',
+      'CASH_CORRECTION',
+      'SESSION_OPEN',
+      'SESSION_CLOSE',
+      'X_REPORT',
+      'Z_REPORT',
+      'REPRINT_COPY',
+      'ACCOUNT_PAYMENT',
+      'ACCOUNT_CHARGE',
+      'ACCOUNT_REFUND',
+      'ACCOUNT_PAYMENT_RECONCILED',
+      'ACCOUNT_CREDIT_ISSUE',
+      'ACCOUNT_CREDIT_USAGE',
+      'DEPOSIT_RECEIPT',
+      'IDENTITY_ALIAS_RECONCILED',
+    ];
+
+    for (const type of reservedNotImplemented) {
+      expect(registry.isImplemented(type), `${type} should be unimplemented`).toBe(false);
+    }
+  });
+
+  it('returns eventVersion=1 for implemented types', () => {
+    expect(registry.eventVersionFor('SALE_RECEIPT')).toBe(1);
+    expect(registry.eventVersionFor('CHAIN_BREAK_DETECTED')).toBe(1);
+    expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
+    expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);
+  });
+
+  it('throws FiscalEventTypeNotImplementedError when resolving a reserved type', () => {
+    expect(() => registry.eventVersionFor('COMPANY_DAY_CLOSURE_MANIFEST')).toThrow(
+      FiscalEventTypeNotImplementedError,
+    );
+    expect(() => registry.eventVersionFor('SALE_VOID')).toThrow(FiscalEventTypeNotImplementedError);
+    expect(() => registry.eventVersionFor('Z_REPORT')).toThrow(FiscalEventTypeNotImplementedError);
+  });
+
+  it('throws with a message that names the reserved type', () => {
+    let thrown: unknown;
+    try {
+      registry.eventVersionFor('SALE_VOID');
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(FiscalEventTypeNotImplementedError);
+    expect((thrown as Error).message).toMatch(/SALE_VOID/);
+  });
+
+  it('exposes a stable list of implemented types matching the server contract', () => {
+    expect(new Set(registry.implementedTypes())).toEqual(
+      new Set<FiscalEventTypeValue>([
+        'SALE_RECEIPT',
+        'CHAIN_BREAK_DETECTED',
+        'CHAIN_RESTART',
+        'TERMINAL_REGISTRY_SNAPSHOT',
+      ]),
+    );
+  });
+});
