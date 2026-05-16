@@ -41,8 +41,13 @@ class BankReconciliationService
         string $userId,
         array $data
     ): BankReconciliation {
+        // Tenant+company scope — Treasury is company-scoped; a tenant-only
+        // lookup would silently bind a foreign-company repository to the
+        // reconciliation. Defense-in-depth behind the controller's
+        // ScopedExists::tenantAndCompany validator (api.treasury.063).
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($data['repository_id']);
 
         // Get opening balance (last reconciled or 0)

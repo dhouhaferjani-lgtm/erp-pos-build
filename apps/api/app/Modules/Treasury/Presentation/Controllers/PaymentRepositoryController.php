@@ -43,8 +43,10 @@ class PaymentRepositoryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.067).
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with('glAccount:id,code,name')
             ->findOrFail($id);
 
@@ -109,8 +111,10 @@ class PaymentRepositoryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.068).
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($id);
 
         $validated = $request->validate([
@@ -151,8 +155,10 @@ class PaymentRepositoryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.069).
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($id);
 
         return response()->json([
@@ -175,9 +181,10 @@ class PaymentRepositoryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        // Verify repository exists and belongs to tenant
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.070).
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $company->id)
             ->findOrFail($id);
 
         // Get all payments that went to this repository

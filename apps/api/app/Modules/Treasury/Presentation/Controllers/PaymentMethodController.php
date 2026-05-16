@@ -41,8 +41,10 @@ class PaymentMethodController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.073).
         $method = PaymentMethod::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($id);
 
         return response()->json([
@@ -126,8 +128,10 @@ class PaymentMethodController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // Tenant+company scope — Treasury is company-scoped (api.treasury.074).
         $method = PaymentMethod::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->findOrFail($id);
 
         $validated = $request->validate([
