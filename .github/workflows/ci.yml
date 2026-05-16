@@ -334,6 +334,9 @@ jobs:
         #   - PosReceiptsCanonicalBytesTest (Feature, Task 11): PG-only FK
         #     pos_receipts.fiscal_event_id → fiscal_events(id) and BYTEA /
         #     nullability shape for the projection-row linkage anchor
+        #   - PaymentsOriginColumnsTest (Feature, Task 12): PG-only FK
+        #     payments.fiscal_event_id → fiscal_events(id) + column-type
+        #     contract for the Treasury-module integration columns
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -343,7 +346,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
