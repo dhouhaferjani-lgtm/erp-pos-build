@@ -7,6 +7,9 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use Illuminate\Support\Facades\Log;
+use LogicException;
+use Throwable;
 
 /**
  * Pluggable-bridge seam — spec v7 §7.3 + SoT §13.6/D16.
@@ -35,6 +38,30 @@ use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
  * container-resolved registry is constructed over an empty tagged set.
  * An empty registry is a valid Phase 1 state and `activeProjectorsFor()`
  * returns `[]` cleanly.
+ *
+ * **Round-2 hardening (Codex):**
+ *   - **F1 fail-closed on resolver exception.** §7.2 requires the
+ *     fiscal event row to always be persisted and the device never
+ *     blocked. §7.5 defines projection as downstream / retryable. A
+ *     resolver throw (DB outage, cache backend down, etc.) must NOT
+ *     crash `activeProjectorsFor()` — the registry catches every
+ *     Throwable, excludes the gated projector, and logs. POS-core
+ *     projectors (`requiresModule() === null`) are unaffected and
+ *     proceed normally.
+ *   - **F2 unique projector names.** §7.5 defines a UNIQUE constraint
+ *     on `fiscal_event_projections (fiscal_event_id, projector_name)`.
+ *     A duplicate `name()` at the registry level would surface as a
+ *     DB constraint violation at Task 24 row-insert. The constructor
+ *     fast-fails at boot time with a `LogicException` naming the
+ *     collision instead — boot-fail is acceptable for "broken config";
+ *     a runtime DB error in projection would be much harder to
+ *     diagnose.
+ *   - **F3 reject empty `requiresModule()` token.** §7.3 mandates a
+ *     canonical PascalCase token OR null. An empty/whitespace-only
+ *     non-null token is a programming error in the projector — fail
+ *     fast at constructor time rather than silently routing `''` to
+ *     `CompanyConfig::hasModule()` (which strict-compares and always
+ *     reports false, masking the bug).
  */
 final class FiscalEventProjectionRegistry
 {
@@ -46,6 +73,9 @@ final class FiscalEventProjectionRegistry
      *                                                      `FiscalServiceProvider`; the iterable is captured once at
      *                                                      construction (singleton lifetime) — tasks 21/22 will tag the
      *                                                      real POS-core + Treasury projectors.
+     *
+     * @throws LogicException when two projectors share a `name()` (Codex F2 round-2) or when a non-null
+     *                        `requiresModule()` is empty / whitespace-only (Codex F3 round-2).
      */
     public function __construct(
         iterable $projectors,
@@ -53,7 +83,33 @@ final class FiscalEventProjectionRegistry
     ) {
         // Materialize the iterable once — singletons keep this list for the
         // process lifetime; we cannot re-iterate a Generator twice.
-        $this->projectors = is_array($projectors) ? array_values($projectors) : iterator_to_array($projectors, false);
+        $materialized = is_array($projectors) ? array_values($projectors) : iterator_to_array($projectors, false);
+
+        $seen = [];
+        foreach ($materialized as $projector) {
+            // F2 round-2 — unique projector names (UNIQUE constraint at Task 24).
+            $name = $projector->name();
+            if (isset($seen[$name])) {
+                throw new LogicException(sprintf(
+                    'Duplicate FiscalEventProjector name "%s" — registry projector names must be unique '.
+                    '(UNIQUE constraint on fiscal_event_projections(fiscal_event_id, projector_name) per spec §7.5).',
+                    $name,
+                ));
+            }
+            $seen[$name] = true;
+
+            // F3 round-2 — reject empty / whitespace-only requiresModule().
+            $module = $projector->requiresModule();
+            if ($module !== null && trim($module) === '') {
+                throw new LogicException(sprintf(
+                    'FiscalEventProjector "%s" returned an empty `requiresModule()` token — must be either `null` '.
+                    '(always-active) or a non-empty canonical PascalCase module token per spec §7.3.',
+                    $name,
+                ));
+            }
+        }
+
+        $this->projectors = $materialized;
     }
 
     /**
@@ -67,9 +123,36 @@ final class FiscalEventProjectionRegistry
                 continue;
             }
             $module = $projector->requiresModule();
-            if ($module !== null
-                && ! $this->resolver->isActive($module, $event->tenant_id, $event->company_id)) {
-                continue;
+            if ($module !== null) {
+                // F1 round-2 — fail-closed on resolver exception. §7.2 demands
+                // the fiscal event row always be persisted and the device never
+                // blocked; §7.5 defines projection as retryable. A resolver
+                // outage excludes the gated projector and logs — never crashes
+                // the ingest path. POS-core (always-active) projectors are
+                // unaffected.
+                try {
+                    $isActive = $this->resolver->isActive($module, $event->tenant_id, $event->company_id);
+                } catch (Throwable $e) {
+                    Log::error(
+                        'FiscalEventProjectionRegistry: ModuleActivationResolver threw — '.
+                        'failing closed and excluding projector.',
+                        [
+                            'projector' => $projector->name(),
+                            'module' => $module,
+                            'tenant_id' => $event->tenant_id,
+                            'company_id' => $event->company_id,
+                            'event_id' => $event->id,
+                            'event_type' => $event->event_type->value,
+                            'exception' => $e::class,
+                            'message' => $e->getMessage(),
+                        ],
+                    );
+
+                    continue;
+                }
+                if (! $isActive) {
+                    continue;
+                }
             }
             $active[] = $projector;
         }

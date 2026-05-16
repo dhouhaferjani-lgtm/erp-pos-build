@@ -9,7 +9,10 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use LogicException;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -193,6 +196,90 @@ final class FiscalEventProjectionRegistryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // Codex round-2 — F1 fail-closed / F2 unique names / F3 empty token
+    // -----------------------------------------------------------------
+
+    public function test_resolver_exception_fails_closed_and_excludes_gated_projector(): void
+    {
+        // Codex F1 round-2 — §7.2 requires the fiscal event row to always be
+        // persisted and the device never blocked. A resolver throw (DB
+        // outage, cache backend down) must NOT crash the registry call —
+        // POS-core projectors proceed; the gated projector is excluded.
+        $resolver = new class implements ModuleActivationResolver
+        {
+            public function isActive(string $module, string $tenantId, string $companyId): bool
+            {
+                throw new RuntimeException('simulated DB outage from resolver');
+            }
+        };
+
+        $registry = new FiscalEventProjectionRegistry(
+            [new FakePosCore, new FakeTreasury],
+            $resolver,
+        );
+
+        // Silence the warning log so the assertion output is clean — also
+        // confirms the log call site fires (no exception bubbles up).
+        Log::shouldReceive('error')->once()->withArgs(
+            static function (string $message, array $context): bool {
+                return str_contains($message, 'failing closed')
+                    && $context['projector'] === 'treasury_receipt_bridge'
+                    && $context['module'] === 'Treasury'
+                    && $context['exception'] === RuntimeException::class;
+            },
+        );
+
+        $active = $registry->activeProjectorsFor($this->saleReceiptEvent());
+
+        $this->assertSame(
+            ['pos_core_receipt'],
+            array_map(static fn (FiscalEventProjector $p): string => $p->name(), $active),
+            'POS-core (always-active) survives a resolver outage; Treasury bridge fails closed.',
+        );
+    }
+
+    public function test_constructor_rejects_duplicate_projector_names(): void
+    {
+        // Codex F2 round-2 — UNIQUE constraint on `fiscal_event_projections
+        // (fiscal_event_id, projector_name)` per spec §7.5 makes duplicate
+        // names a downstream constraint violation. Fast-fail at boot is
+        // cheaper than a runtime DB error in projection.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageMatches('/Duplicate FiscalEventProjector name "pos_core_receipt"/');
+
+        new FiscalEventProjectionRegistry(
+            [new FakePosCore, new FakePosCore],
+            $this->resolverReporting([]),
+        );
+    }
+
+    public function test_constructor_rejects_empty_requires_module_token(): void
+    {
+        // Codex F3 round-2 — §7.3 mandates `null` (always-active) OR a
+        // canonical PascalCase token. An empty/whitespace-only non-null
+        // token is a programming error in the projector that would
+        // silently always-deactivate via strict-compare.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageMatches('/returned an empty `requiresModule\(\)` token/');
+
+        new FiscalEventProjectionRegistry(
+            [new FakeEmptyTokenProjector],
+            $this->resolverReporting([]),
+        );
+    }
+
+    public function test_constructor_rejects_whitespace_only_requires_module_token(): void
+    {
+        // Same class of bug, whitespace-only token.
+        $this->expectException(LogicException::class);
+
+        new FiscalEventProjectionRegistry(
+            [new FakeWhitespaceTokenProjector],
+            $this->resolverReporting([]),
+        );
+    }
+
+    // -----------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------
 
@@ -315,6 +402,58 @@ final class FakeLowercaseTreasury implements FiscalEventProjector
     public function requiresModule(): string
     {
         return 'treasury';
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+}
+
+// Empty-token + whitespace-token fakes used by the Codex F3 round-2 tests.
+
+final class FakeEmptyTokenProjector implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'empty_token_bug';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        unset($type);
+
+        return true;
+    }
+
+    public function requiresModule(): string
+    {
+        return '';
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+}
+
+final class FakeWhitespaceTokenProjector implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'whitespace_token_bug';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        unset($type);
+
+        return true;
+    }
+
+    public function requiresModule(): string
+    {
+        return "  \t  ";
     }
 
     public function apply(FiscalEvent $event): void
