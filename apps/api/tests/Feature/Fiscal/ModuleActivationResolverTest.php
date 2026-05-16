@@ -117,11 +117,34 @@ final class ModuleActivationResolverTest extends TestCase
     public function test_resolver_token_handed_through_without_transformation(): void
     {
         // The resolver passes the token through to `CompanyConfig::hasModule()`
-        // verbatim — no case folding, no aliasing. A randomly-cased token
-        // is rejected by the strict-compare.
+        // verbatim — no case folding, no aliasing, no trimming. A randomly-
+        // cased OR whitespace-padded token is rejected by the strict-compare.
+        // (Opus P3-7 round-2 added the whitespace-padded case as defense
+        // against a future config-file / URL-fragment-derived token wired in
+        // poorly.)
         $resolver = $this->resolver();
         $this->assertFalse($resolver->isActive('TREASURY', $this->tenant->id, $this->company->id));
         $this->assertFalse($resolver->isActive('Treas', $this->tenant->id, $this->company->id));
         $this->assertFalse($resolver->isActive('', $this->tenant->id, $this->company->id));
+        $this->assertFalse($resolver->isActive(' Treasury ', $this->tenant->id, $this->company->id));
+        $this->assertFalse($resolver->isActive("Treasury\n", $this->tenant->id, $this->company->id));
+    }
+
+    public function test_malformed_tenant_id_does_not_throw(): void
+    {
+        // Opus P3-3 round-2 — the contract docblock says "missing tenant
+        // resolves false, never throws". On PostgreSQL the `tenants.id`
+        // column is `uuid`-typed; a malformed string like `'not-a-uuid'`
+        // would otherwise surface as a `QueryException` from the driver.
+        // The impl wraps `Tenant::find()` in a `try/catch (QueryException)`
+        // to genuinely honor the contract.
+        //
+        // SQLite (local test runner) doesn't enforce uuid format, so this
+        // test exercises the unknown-uuid-shape branch on SQLite and the
+        // QueryException-swallow branch on PG. Either way the contract is
+        // upheld.
+        $this->assertFalse(
+            $this->resolver()->isActive('Treasury', 'not-a-uuid', $this->company->id),
+        );
     }
 }
