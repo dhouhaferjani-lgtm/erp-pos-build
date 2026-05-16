@@ -1,7 +1,7 @@
 # POS Fiscal Event Engine — Session Handoff / Continuation Anchor
 
 **Created:** 2026-05-14
-**Last refreshed:** 2026-05-16 — Tasks 7–11 shipped + dual-reviewed; the schema-destructive gate is OPEN via owner attestation; branch HEAD `4aa7f9be` on `feat/pos-fiscal-event-engine-phase1` (PR #124).
+**Last refreshed:** 2026-05-16 — Tasks 7–12 shipped + dual-reviewed; the schema-destructive gate is OPEN via owner attestation; branch HEAD `0d5da5b0` on `feat/pos-fiscal-event-engine-phase1` (PR #124).
 **Why this exists:** the originating session hit the context window; subsequent sessions refresh this in place. This is the durable anchor — read this first, then the artifacts it indexes.
 
 ---
@@ -86,6 +86,7 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 | 9 | `61444f56` + `223577ff` + `55027c0b` | `fiscal_event_projections` mutable table + reconciliation (P1 PG-gate, P2 $fillable narrowing, P2 PHPDoc) | Opus APPROVE-WITH-MINOR-EDITS; Codex APPROVE-WITH-MINOR-EDITS; consensus reconciliation applied |
 | 10 | `2e8aec56` + `c3e448d2` + `9014019b` | `fiscal_event_quarantine` (§8 non-admissible partition) + reconciliation (P1 CI-gate, 4×P2 + index widen + Phase-2 trigger note) | Opus APPROVE-WITH-MINOR-EDITS; Codex REQUEST-CHANGES (file says APPROVE-WITH-MINOR-EDITS — wrapper-summary diverged); reconciliation applied |
 | 11 | `ddc42d5c` + `00670adf` + `4aa7f9be` | `pos_receipts` gains `canonical_bytes` + `fiscal_event_id` UNIQUE FK; chain columns become mirrors. Receipt model `$fillable` extended; @property annotations added; prevent_receipt_modification trigger interaction documented; insert-based duplicate-rejection test (via explicit factory chain) added | Opus APPROVE-WITH-MINOR-EDITS; Codex APPROVE-WITH-MINOR-EDITS; 3 P2 reconciliation applied |
+| 12 | `49fb63e3` + `a544d566` + `0d5da5b0` | Treasury `payments` gains `origin` + `fiscal_event_id`; `PaymentOrigin` enum (5 cases). FK direction `payments → fiscal_events` (asymmetric bounded-modules seam). Partial index on `fiscal_event_id WHERE NOT NULL` for projector replay. Payment model `$fillable` + cast + @property extended. No UNIQUE on `fiscal_event_id` (one event → N Payment rows; idempotency at projector-level per Task 22) | Opus APPROVE-WITH-MINOR-EDITS (3 P2); Codex APPROVE-WITH-MINOR-EDITS (1 P2 + 11 CLEAN); 4 P2 reconciliation applied (partial-index test, all-5-cases cast, runtime FK rejection, VARCHAR(32) length pin) |
 
 ### 4.2 Per-task ground rules (carried forward from Tasks 7–11)
 
@@ -101,16 +102,16 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 - **Task 5 deferred P2s (still unhandled):** must close before Task 15 wires `FiscalEventEngine.append()` into the production flow:
   - Vet/replace the hand-rolled sync SHA-256 in `apps/pos/src/lib/fiscal/v3/sha256.ts` OR add padding-boundary vectors at 55–57, 63–65, 119–120, 127–128 bytes to the canonical golden-vector fixture.
   - Extract a shared JCS core instead of duplicating the canonicalization in `apps/pos/src/lib/fiscal/v3/canonicalJson.ts`.
-- **Task 12 next:** `add_origin_and_fiscal_event_id_to_payments` + `PaymentOrigin` enum on `apps/api/app/Modules/Treasury/Domain/Payment.php` (plan §901–948). Production-model edit; same care as Task 11. Verify the model path with `grep -rn "use App\\\\Modules\\\\Treasury\\\\Domain\\\\Payment" apps/api/app/Modules/Treasury` before editing — Task 22 writers must target the same class.
-- **Task 13 next:** Device SQLite `fiscal_events` table + triggers + `terminal_state` chain head. First Tauri-side task; locate the existing device migration set via `grep -rl "CREATE TABLE" apps/pos/src --include=*.ts` (the migrations runner the app uses for `offline_receipts`).
-- **Subagent strategy:** for Tasks 15/19/21/22/27/28/29/30, delegate to Opus subagents per the original brief. Tasks 12/13/14 are small enough to inline.
+- **Task 13 next — first Tauri-device task** (`apps/pos/`, TypeScript + SQLite migration runner). Device SQLite `fiscal_events` table + triggers + `terminal_state` chain head. Locate the existing device migration set via `grep -rl "CREATE TABLE" apps/pos/src --include=*.ts` (look for the migrations runner the app uses for `offline_receipts`). Plan §952+. This is the first context switch from `apps/api` to `apps/pos` — different tooling (Vitest, not phpunit; ts-strict, not phpstan).
+- **Task 14 next:** `OutboxEvent.canonical_bytes` + sync envelope adjustment (device side). Plan §1040+.
+- **Subagent strategy:** for Tasks 15/19/21/22/27/28/29/30, delegate to Opus subagents per the original brief. Tasks 13/14 are still small enough to inline; the larger ones come at Task 15 (`FiscalEventEngine.append()` production wiring).
 
 ### 4.4 Worktree + CI status
 
 - Working directory: `/Users/houssamr/Projects/syneriva/apps/erp.fiscal-phase1` (dedicated git worktree). Main `apps/erp/` is on detached HEAD; do NOT cd into it (parallel cleanup session may claim branches).
 - The worktree has its own APFS-cloned `apps/api/vendor` (the original symlink resolved PSR-4 baseDir through the main worktree, masking new files; replaced with a real copy in this session). Phpstan/pint/phpunit work directly from the worktree.
 - Per-commit verification: `phpunit` on the touched test, `phpstan analyse` (level 8), `pint --test` — all on the explicit file list.
-- PG-only smoke runs only happen in CI (the local SQLite runner skips them with `markTestSkipped`). The CI filter at `.github/workflows/ci.yml:346` includes: `VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest`.
+- PG-only smoke runs only happen in CI (the local SQLite runner skips them with `markTestSkipped`). The CI filter at `.github/workflows/ci.yml:349` includes: `VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest`.
 
 ---
 
@@ -149,4 +150,4 @@ Every adversarial-review prompt this effort uses (Opus or Codex): instruct the r
 
 ---
 
-**End of handoff (refreshed 2026-05-16 after Tasks 7–11 shipped; next: Task 12 — Treasury Payment origin + fiscal_event_id).**
+**End of handoff (refreshed 2026-05-16 after Tasks 7–12 shipped; next: Task 13 — first Tauri device-side task: device SQLite `fiscal_events` table + triggers + `terminal_state` chain head).**
