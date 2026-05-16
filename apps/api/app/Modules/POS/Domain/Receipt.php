@@ -180,6 +180,14 @@ class Receipt extends Model
         'policy_trigger',
         'refund_request_id',
         'exchange_group_id',
+        // Phase 1 §7.5 — projection-row linkage to `fiscal_events`.
+        // `canonical_bytes` carries the verbatim canonical encoding from the
+        // device; `fiscal_event_id` is the UNIQUE FK to the authoritative
+        // fiscal event and the idempotency anchor for
+        // PosCoreReceiptProjection (Task 21). Both nullable for backward
+        // compatibility with rows that pre-date the rebuild.
+        'canonical_bytes',
+        'fiscal_event_id',
     ];
 
     /**

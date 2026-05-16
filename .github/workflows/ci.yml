@@ -331,6 +331,9 @@ jobs:
         #     Phase 1 single-value CHECK on integrity_exception_class, hash-
         #     format CHECKs, unresolved-incident partial index, and the
         #     information_schema column-type contract for §8 envelope columns
+        #   - PosReceiptsCanonicalBytesTest (Feature, Task 11): PG-only FK
+        #     pos_receipts.fiscal_event_id → fiscal_events(id) and BYTEA /
+        #     nullability shape for the projection-row linkage anchor
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -340,7 +343,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
