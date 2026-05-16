@@ -96,9 +96,10 @@ final class FiscalEventsTableTest extends TestCase
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => 1,
-            'event_time_device' => DB::raw('NOW()'),
-            'business_date' => DB::raw('CURRENT_DATE'),
-            'server_received_at' => DB::raw('NOW()'),
+            // Driver-portable literals — NOW() / CURRENT_DATE don't exist on SQLite.
+            'event_time_device' => now()->toDateTimeString(),
+            'business_date' => now()->toDateString(),
+            'server_received_at' => now()->toDateTimeString(),
             'canonical_bytes' => '{}',
             'previous_hash' => str_repeat('0', 64),
             'current_hash' => str_repeat('a', 64),

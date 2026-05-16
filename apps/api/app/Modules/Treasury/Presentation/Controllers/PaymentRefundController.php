@@ -23,7 +23,9 @@ class PaymentRefundController extends Controller
     ) {}
 
     /**
-     * Find a payment scoped to the current tenant, or fail with 404.
+     * Find a payment scoped to the current tenant + company, or fail with 404.
+     * Treasury is company-scoped — a tenant-only lookup would silently bind a
+     * foreign-company payment to the refund (api.treasury.071).
      */
     private function findPaymentOrFail(string $id): Payment
     {
@@ -32,11 +34,15 @@ class PaymentRefundController extends Controller
         /** @var Payment */
         return Payment::query()
             ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->findOrFail($id);
     }
 
     /**
-     * Find a document scoped to the current tenant, or fail with 404.
+     * Find a document scoped to the current tenant + company, or fail with 404.
+     * The route param {document} is not covered by RefundPrepaymentRequest
+     * (body-only validation), so this is the only gate on the URL id
+     * (api.treasury.072).
      */
     private function findDocumentOrFail(string $id): Document
     {
@@ -45,6 +51,7 @@ class PaymentRefundController extends Controller
         /** @var Document */
         return Document::query()
             ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
             ->findOrFail($id);
     }
 
