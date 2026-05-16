@@ -59,6 +59,8 @@ async function insertFiscalEvent(
     current_hash?: string;
     source_event_class?: string | null;
     source_event_id?: string | null;
+    signature_status?: string;
+    sync_status?: string;
   } = {},
 ): Promise<string> {
   const id = overrides.id ?? `evt-${Math.random().toString(36).slice(2, 10)}`;
@@ -69,6 +71,8 @@ async function insertFiscalEvent(
   const current_hash = overrides.current_hash ?? 'b'.repeat(64);
   const source_event_class = overrides.source_event_class ?? null;
   const source_event_id = overrides.source_event_id ?? null;
+  const signature_status = overrides.signature_status ?? 'not_required';
+  const sync_status = overrides.sync_status ?? 'pending';
 
   await adapter.execute(
     `INSERT INTO fiscal_events (
@@ -77,6 +81,7 @@ async function insertFiscalEvent(
        sequence_number, event_time_device, business_date,
        canonical_bytes, previous_hash, current_hash,
        source_event_class, source_event_id,
+       signature_status, sync_status,
        created_at
      ) VALUES (
        $1, 'tenant-1', 'company-1', $2, 'op-1',
@@ -84,6 +89,7 @@ async function insertFiscalEvent(
        $3, '2026-05-16T10:00:00Z', '2026-05-16',
        '{"x":1}', $4, $5,
        $6, $7,
+       $8, $9,
        '2026-05-16T10:00:00Z'
      )`,
     [
@@ -94,6 +100,8 @@ async function insertFiscalEvent(
       current_hash,
       source_event_class,
       source_event_id,
+      signature_status,
+      sync_status,
     ],
   );
 
@@ -203,12 +211,127 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
     ).resolves.toBe('e4');
   });
 
+  // Regression for Task 13 round-2 BLOCKER (closed at this commit): the original
+  // GLOB '[0-9a-f]*' pattern only validated the FIRST character, accepting
+  // 64-char strings with non-hex characters at positions 2-64 (e.g. 'a' +
+  // 'X'.repeat(63)). Replaced with NOT GLOB '*[^0-9a-f]*' which asserts that
+  // no character anywhere in the string is outside the lowercase hex class.
   it('rejects malformed previous_hash / current_hash via CHECK constraint', async () => {
+    // Length-fail case (the only one the original test exercised).
     await expect(
       insertFiscalEvent(adapter, {
-        id: 'bad',
+        id: 'bad-short',
         sequence_number: 1,
         current_hash: 'NOT_HEX',
+      }),
+    ).rejects.toThrow();
+
+    // BLOCKER-locking case: 64 chars, first char lowercase hex, non-hex
+    // characters mid-string. This passed against the broken GLOB pattern;
+    // the fixed pattern must reject it.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-midstring',
+        sequence_number: 2,
+        current_hash: 'a' + 'X'.repeat(63),
+      }),
+    ).rejects.toThrow();
+
+    // Uppercase hex must also fail (lowercase invariant).
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-upper',
+        sequence_number: 3,
+        current_hash: 'A'.repeat(64),
+      }),
+    ).rejects.toThrow();
+
+    // 64-char string with one non-hex char at the very end.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-tail',
+        sequence_number: 4,
+        current_hash: 'a'.repeat(63) + 'Z',
+      }),
+    ).rejects.toThrow();
+
+    // Symmetric coverage on previous_hash so a future "fix" that drops one of
+    // the two CHECKs surfaces as a test failure.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-prev',
+        sequence_number: 5,
+        previous_hash: 'a' + '!'.repeat(63),
+      }),
+    ).rejects.toThrow();
+
+    // Sanity: a clean 64-char lowercase hex string still passes.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'good-hash',
+        sequence_number: 6,
+        previous_hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        current_hash: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+      }),
+    ).resolves.toBe('good-hash');
+  });
+
+  it('rejects sequence_number <= 0 via CHECK constraint', async () => {
+    // sequence 0 is reserved for the genesis seed on terminal_state, not a
+    // chain row. Negative sequences make no sense.
+    await expect(
+      insertFiscalEvent(adapter, { id: 'zero', sequence_number: 0 }),
+    ).rejects.toThrow();
+    await expect(
+      insertFiscalEvent(adapter, { id: 'neg', sequence_number: -1 }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects out-of-set sync_status / signature_status enum values', async () => {
+    // Insert-time signature_status enum check.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-sig',
+        sequence_number: 1,
+        signature_status: 'bogus',
+      }),
+    ).rejects.toThrow();
+
+    // Insert-time sync_status enum check.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'bad-sync-insert',
+        sequence_number: 2,
+        sync_status: 'bogus',
+      }),
+    ).rejects.toThrow();
+
+    // UPDATE-time sync_status enum check: the immutability trigger allows
+    // sync_status to be updated, but the CHECK constraint must still reject
+    // out-of-set values.
+    await insertFiscalEvent(adapter, { id: 'e1', sequence_number: 3 });
+    await expect(
+      adapter.execute(`UPDATE fiscal_events SET sync_status = 'bogus' WHERE id = 'e1'`),
+    ).rejects.toThrow();
+  });
+
+  it('rejects asymmetric source_event_class / source_event_id pair', async () => {
+    // Spec §3.1: source-event idempotency requires BOTH fields or NEITHER.
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'asym-class-only',
+        sequence_number: 1,
+        source_event_class: 'Offline\\Receipt',
+        source_event_id: null,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      insertFiscalEvent(adapter, {
+        id: 'asym-id-only',
+        sequence_number: 2,
+        source_event_class: null,
+        source_event_id: 'src-uuid-1',
       }),
     ).rejects.toThrow();
   });
@@ -217,20 +340,96 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
   // fiscal_events: immutability triggers
   // ------------------------------------------------------------------
 
-  it('blocks UPDATE of non-sync-lifecycle columns', async () => {
-    await insertFiscalEvent(adapter, { id: 'e1', sequence_number: 1 });
+  // Trigger column-list completeness — all 33 non-sync columns enumerated.
+  // A future "tidy" that drops any column from the BEFORE UPDATE OF list
+  // would silently lift the immutability guard for that column; this test
+  // turns that into a failing case.
+  const NON_SYNC_COLUMNS = [
+    'id',
+    'tenant_id',
+    'company_id',
+    'terminal_id',
+    'operator_id',
+    'event_type',
+    'event_version',
+    'signature_version',
+    'sequence_number',
+    'event_time_device',
+    'business_date',
+    'last_server_time_seen',
+    'reference_event_id',
+    'reference_document_id',
+    'source_event_class',
+    'source_event_id',
+    'partner_id',
+    'partner_identity_snapshot',
+    'canonical_bytes',
+    'previous_hash',
+    'current_hash',
+    'signature_status',
+    'signature_algorithm',
+    'signature_value',
+    'signature_counter',
+    'signature_provider',
+    'signing_device_id',
+    'certificate_id',
+    'signed_payload_ref',
+    'time_source_value',
+    'time_format',
+    'provider_transaction_id',
+    'created_at',
+  ] as const;
 
+  it.each(NON_SYNC_COLUMNS)(
+    'blocks UPDATE OF non-sync column %s',
+    async (column) => {
+      const id = `evt-${column}`;
+      // Each test gets a unique sequence_number so the chain UNIQUE doesn't
+      // collide between cases. Math.random is fine here — collision is
+      // recoverable (retry one-shot) and per-test ordering is independent.
+      const sequence = Math.floor(Math.random() * 1_000_000) + 10_000;
+      await insertFiscalEvent(adapter, { id, sequence_number: sequence });
+
+      // Mutation value chosen to avoid the column's own CHECK / type guards
+      // — we want the TRIGGER to reject, not the value validator.
+      const safeValue =
+        column === 'sequence_number' || column === 'event_version' || column === 'signature_counter'
+          ? '999'
+          : column === 'current_hash' || column === 'previous_hash'
+            ? `'${'c'.repeat(64)}'`
+            : column === 'signature_status'
+              ? "'signed'"
+              : "'x'";
+
+      await expect(
+        adapter.execute(`UPDATE fiscal_events SET ${column} = ${safeValue} WHERE id = '${id}'`),
+      ).rejects.toThrow();
+    },
+  );
+
+  it('rejected UPDATE leaves the chain row unchanged (atomic abort)', async () => {
+    await insertFiscalEvent(adapter, {
+      id: 'atomic-e1',
+      sequence_number: 1,
+      current_hash: '0'.repeat(64),
+    });
+
+    // Mixed allowed+blocked SET — the trigger must reject the whole statement.
     await expect(
-      adapter.execute(`UPDATE fiscal_events SET current_hash = '${'c'.repeat(64)}' WHERE id = 'e1'`),
+      adapter.execute(
+        `UPDATE fiscal_events
+         SET sync_status = 'synced', current_hash = '${'c'.repeat(64)}'
+         WHERE id = 'atomic-e1'`,
+      ),
     ).rejects.toThrow();
 
-    await expect(
-      adapter.execute(`UPDATE fiscal_events SET sequence_number = 999 WHERE id = 'e1'`),
-    ).rejects.toThrow();
+    const rows = await adapter.select<
+      Array<{ sync_status: string; current_hash: string }>
+    >(`SELECT sync_status, current_hash FROM fiscal_events WHERE id = 'atomic-e1'`);
 
-    await expect(
-      adapter.execute(`UPDATE fiscal_events SET canonical_bytes = '{"y":2}' WHERE id = 'e1'`),
-    ).rejects.toThrow();
+    // Both fields unchanged — the abort rolled back the partial mutation.
+    expect(rows[0]?.sync_status).toBe('pending');
+    expect(rows[0]?.current_hash).toBe('0'.repeat(64));
   });
 
   it('allows UPDATE of sync_status / sync_error / synced_at', async () => {
@@ -282,7 +481,7 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
     expect(byName.has('genesis_seed')).toBe(true);
   });
 
-  it('inherits a NOT NULL DEFAULT chain head — existing rows backfill cleanly', async () => {
+  it('fresh INSERTs adopt the chain-head DEFAULTs', async () => {
     await adapter.execute(
       `INSERT INTO terminal_state (terminal_id, terminal_code, genesis_seed, last_hash)
        VALUES ('t-new', 'T01', 'seed', 'GENESIS')`,
@@ -300,6 +499,41 @@ d('Migration v37 — create_fiscal_events_and_chain_head', () => {
     expect(rows[0]?.fiscal_event_genesis_seed).toBe('');
     expect(rows[0]?.fiscal_event_last_hash).toBe('');
     expect(rows[0]?.fiscal_event_sequence).toBe(0);
+  });
+
+  // Actually exercise the ALTER TABLE backfill on a row that pre-dates v37:
+  // run migrations up to v36, insert a terminal_state row, THEN run v37, and
+  // verify the pre-existing row's new columns took on the DEFAULTs.
+  // Uses its own adapter so the suite-level beforeEach (which already ran to
+  // v37) does not interfere.
+  it('backfills the chain-head columns onto rows that pre-date v37', async () => {
+    const freshAdapter = new SqliteTestAdapter();
+    try {
+      await runMigrationsUpTo(freshAdapter, 36);
+      await freshAdapter.execute(
+        `INSERT INTO terminal_state (terminal_id, terminal_code, genesis_seed, last_hash)
+         VALUES ('t-pre-v37', 'T01', 'seed', 'GENESIS')`,
+      );
+
+      const v37 = migrations.find((m) => m.version === 37);
+      if (!v37?.run) throw new Error('migration v37.run not found');
+      await v37.run(freshAdapter);
+
+      const rows = await freshAdapter.select<
+        Array<{
+          fiscal_event_genesis_seed: string | null;
+          fiscal_event_last_hash: string | null;
+          fiscal_event_sequence: number;
+        }>
+      >(`SELECT fiscal_event_genesis_seed, fiscal_event_last_hash, fiscal_event_sequence
+          FROM terminal_state WHERE terminal_id = 't-pre-v37'`);
+
+      expect(rows[0]?.fiscal_event_genesis_seed).toBe('');
+      expect(rows[0]?.fiscal_event_last_hash).toBe('');
+      expect(rows[0]?.fiscal_event_sequence).toBe(0);
+    } finally {
+      freshAdapter.close();
+    }
   });
 
   // ------------------------------------------------------------------

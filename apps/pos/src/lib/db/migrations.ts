@@ -963,8 +963,15 @@ export const migrations: Migration[] = [
           created_at                  TEXT NOT NULL,
           synced_at                   TEXT,
           CHECK (sequence_number > 0),
-          CHECK (length(current_hash)  = 64 AND current_hash  GLOB '[0-9a-f]*' AND length(replace(current_hash,  '_', '')) = 64),
-          CHECK (length(previous_hash) = 64 AND previous_hash GLOB '[0-9a-f]*' AND length(replace(previous_hash, '_', '')) = 64),
+          -- Lowercase-hex 64-char invariant. NOT GLOB '*[^0-9a-f]*' reads as
+          -- "no character anywhere in the string is outside [0-9a-f]" -- the
+          -- canonical SQLite idiom for "every character matches a class"
+          -- (GLOB lacks ^/$ anchors). The earlier GLOB '[0-9a-f]*' only
+          -- validated the FIRST character because * matches any sequence of
+          -- any characters in GLOB; that hole was caught and proven via
+          -- node:sqlite probe in the Task 13 round-2 dual review.
+          CHECK (length(current_hash)  = 64 AND current_hash  NOT GLOB '*[^0-9a-f]*'),
+          CHECK (length(previous_hash) = 64 AND previous_hash NOT GLOB '*[^0-9a-f]*'),
           CHECK (sync_status IN ('pending', 'syncing', 'synced', 'failed')),
           CHECK (signature_status IN ('not_required', 'pending', 'signed', 'failed')),
           CHECK (
