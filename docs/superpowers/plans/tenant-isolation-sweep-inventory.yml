@@ -6,7 +6,7 @@ metadata:
   generated_at: '2026-05-13T05:12:24Z'
   generated_by: claude
   schema_sha256: e377c67eb7381b16ec010b10b843b871765402c7c9f0045466695aabd33e6416
-  yaml_sha256: 66f18ca410cbdf6915aedb8472953d69fe231d4de8308ffe07f2b6f2f4a7467a
+  yaml_sha256: 2f2455329b20331d43ccc8788cc94b270d1976b8882365e5e4f050f75a5e611b
 agents:
   claude:
     role: 'lead, plan, review, complex refactors, reference cluster, security-architecture clusters'
@@ -141502,17 +141502,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:18Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_customer_id_is_rejected'
     blocked_reason: null
     history:
       -
@@ -141531,6 +141531,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:19Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 66f18ca410cbdf6915aedb8472953d69fe231d4de8308ffe07f2b6f2f4a7467a
+        new_yaml_sha256: 6975e6406217c829c89902764fae4b2417fb491486b89ac236ecf188ba26c69a
+        target_ids:
+          - api.pos-stabilization.054
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:35Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 41764f6a8df7556a882e6cedc91e313e5c94b91c816552d8de9b75cbc96928c9
+        new_yaml_sha256: 4d6479002df38cd44a044dfe80bb4e6e7db185d996ee6c1faa4ff6e7929b224f
+        target_ids:
+          - api.pos-stabilization.054
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:16:50Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 54efad486bbf0b6c1913ae3789c54537dc9283672a4465c0d4064b1483c56312
+        new_yaml_sha256: ca2d24b0c3a3a39f20fdcc71500ca9111afc2bf3787942804f30d26b0e91c401
+        target_ids:
+          - api.pos-stabilization.054
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_customer_id_is_rejected'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.055
     stable_key: 'sha256:37d23cae10cca7a26b1d8b91f5bfa77ea8ab2aa143b734da58d365c1c654d892'
@@ -141548,17 +141596,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:21Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_repository_id_is_rejected'
     blocked_reason: null
     history:
       -
@@ -141577,6 +141625,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:22Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 6975e6406217c829c89902764fae4b2417fb491486b89ac236ecf188ba26c69a
+        new_yaml_sha256: 4850382a5bfd09b45eac57c20fc9a2564617864935490976fc596b87ac301902
+        target_ids:
+          - api.pos-stabilization.055
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:37Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 4d6479002df38cd44a044dfe80bb4e6e7db185d996ee6c1faa4ff6e7929b224f
+        new_yaml_sha256: 7cc88276546feb5ea943c94621456d3f4e1e2eddcffe1086dc0b3e4490c755bf
+        target_ids:
+          - api.pos-stabilization.055
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:16:52Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ca2d24b0c3a3a39f20fdcc71500ca9111afc2bf3787942804f30d26b0e91c401
+        new_yaml_sha256: 97ad5fdfbef8af870612ef72826a70997e5d1612ae04f9ee4b83cb998b985a0a
+        target_ids:
+          - api.pos-stabilization.055
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_repository_id_is_rejected'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.056
     stable_key: 'sha256:7b277518037c8881784a38ff62e62514b537f625b8aff17dcedeefb2b3099ec6'
@@ -141594,17 +141690,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:23Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_payment_method_id_is_rejected'
     blocked_reason: null
     history:
       -
@@ -141623,6 +141719,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:24Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: 4850382a5bfd09b45eac57c20fc9a2564617864935490976fc596b87ac301902
+        new_yaml_sha256: d82fccad22164cb87d1be8aa3ccc903aeea1f36902a8856e6cf21e48ed2f42a1
+        target_ids:
+          - api.pos-stabilization.056
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:40Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 7cc88276546feb5ea943c94621456d3f4e1e2eddcffe1086dc0b3e4490c755bf
+        new_yaml_sha256: 809483ad8297f62558672f994e9c089f81ad10be50c932bdff97ad3d658252c1
+        target_ids:
+          - api.pos-stabilization.056
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:16:55Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 97ad5fdfbef8af870612ef72826a70997e5d1612ae04f9ee4b83cb998b985a0a
+        new_yaml_sha256: 633e5a47a30549f1caeda5a33f663b6ff48135d59f5cf94a34b13cf1fdeae60f
+        target_ids:
+          - api.pos-stabilization.056
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/StoreReceiptPaymentsTenantIsolationTest.php::test_cross_tenant_payment_method_id_is_rejected'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.057
     stable_key: 'sha256:7e2c5cbb8786b2db5e21ed274ca71cc211d7acdc47614b59ab67fdb2b419fa93'
@@ -141640,17 +141784,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:26Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_partner_id'
     blocked_reason: null
     history:
       -
@@ -141669,6 +141813,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:27Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: d82fccad22164cb87d1be8aa3ccc903aeea1f36902a8856e6cf21e48ed2f42a1
+        new_yaml_sha256: eaa6053c6987e1e20eb4b096b1220493d529e2f12d960860e9bc0c82e47605ba
+        target_ids:
+          - api.pos-stabilization.057
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:42Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 809483ad8297f62558672f994e9c089f81ad10be50c932bdff97ad3d658252c1
+        new_yaml_sha256: 9ece8686835a31f3a15d5cd564f68ac8c690544671f35dd90e53f6d18b71ab0d
+        target_ids:
+          - api.pos-stabilization.057
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:16:57Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 633e5a47a30549f1caeda5a33f663b6ff48135d59f5cf94a34b13cf1fdeae60f
+        new_yaml_sha256: 03573f3101417dd2f0901631262d9f2f3c48d8c616bf1ea34990434f0ef383c9
+        target_ids:
+          - api.pos-stabilization.057
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_create_order_refuses_cross_tenant_partner_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.058
     stable_key: 'sha256:abc8bda867ac4dcba573c08a618389654cf1c74a23c8f7a9679a1e6ce28070c7'
@@ -141686,17 +141878,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:29Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_add_order_line_refuses_cross_tenant_product_id'
     blocked_reason: null
     history:
       -
@@ -141715,6 +141907,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:30Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: eaa6053c6987e1e20eb4b096b1220493d529e2f12d960860e9bc0c82e47605ba
+        new_yaml_sha256: df00df5f91cda73e1a5c5baa73f2b6f70f54c1abfdda0eb653ad6daafd0e7391
+        target_ids:
+          - api.pos-stabilization.058
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:45Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: 9ece8686835a31f3a15d5cd564f68ac8c690544671f35dd90e53f6d18b71ab0d
+        new_yaml_sha256: e5e15a94cb198aaf339edfc32921c548a81bc66a70ec1666cd85a310feaba14c
+        target_ids:
+          - api.pos-stabilization.058
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:17:00Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: 03573f3101417dd2f0901631262d9f2f3c48d8c616bf1ea34990434f0ef383c9
+        new_yaml_sha256: ed8489097f8d8ac9c0a9db05be43b536d4adf9ec91083ce56a399bc352d768a7
+        target_ids:
+          - api.pos-stabilization.058
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_add_order_line_refuses_cross_tenant_product_id'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.059
     stable_key: 'sha256:c7c85397457d14748dafc4007e29579c6c703fbbbd745510f3e719c130c6747c'
@@ -141732,17 +141972,17 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
-    owner: null
-    claimed_at: null
+    status: under_review
+    owner: claude
+    claimed_at: '2026-05-16T08:16:31Z'
     review:
       reviewer: null
       verdict: null
       reviewed_at: null
       review_file: null
       review_commit: null
-    fix_commit: null
-    regression_test: null
+    fix_commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+    regression_test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_sync_receipts_refuses_cross_tenant_product_id_via_validator'
     blocked_reason: null
     history:
       -
@@ -141761,6 +142001,54 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:16:32Z'
+        actor: claude
+        action: claim
+        command: 'sweep:inventory:claim'
+        previous_yaml_sha256: df00df5f91cda73e1a5c5baa73f2b6f70f54c1abfdda0eb653ad6daafd0e7391
+        new_yaml_sha256: 41764f6a8df7556a882e6cedc91e313e5c94b91c816552d8de9b75cbc96928c9
+        target_ids:
+          - api.pos-stabilization.059
+        from_status: pending
+        to_status: claimed
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'claimed by claude via sweep:inventory:claim'
+      -
+        at: '2026-05-16T08:16:47Z'
+        actor: claude
+        action: start
+        command: 'sweep:inventory:start'
+        previous_yaml_sha256: e5e15a94cb198aaf339edfc32921c548a81bc66a70ec1666cd85a310feaba14c
+        new_yaml_sha256: 54efad486bbf0b6c1913ae3789c54537dc9283672a4465c0d4064b1483c56312
+        target_ids:
+          - api.pos-stabilization.059
+        from_status: claimed
+        to_status: in_progress
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'started by claude via sweep:inventory:start'
+      -
+        at: '2026-05-16T08:17:02Z'
+        actor: claude
+        action: submit
+        command: 'sweep:inventory:submit'
+        previous_yaml_sha256: ed8489097f8d8ac9c0a9db05be43b536d4adf9ec91083ce56a399bc352d768a7
+        new_yaml_sha256: e4e7559bd0dc9497143d236e3f3ffdfd7b030df1f25f4e21a03bee09ea60eb3a
+        target_ids:
+          - api.pos-stabilization.059
+        from_status: in_progress
+        to_status: under_review
+        commit: b37d0dd4a56d3874dc7c32966c8d3802b7ce8748
+        test: 'tests/Feature/POS/PosStabilizationTenantIsolationTest.php::test_sync_receipts_refuses_cross_tenant_product_id_via_validator'
+        review_file: null
+        review_commit: null
+        note: 'submitted by claude via sweep:inventory:submit'
   -
     id: api.pos-stabilization.060
     stable_key: 'sha256:0cfa293915cab86e1d41adac111c76188e1295dc8a9594b1582e507ed54b1092'
@@ -141778,7 +142066,7 @@ callsites:
     fiscal_path: false
     cross_module: false
     stale_state: active
-    status: pending
+    status: blocked
     owner: null
     claimed_at: null
     review:
@@ -141789,7 +142077,7 @@ callsites:
       review_commit: null
     fix_commit: null
     regression_test: null
-    blocked_reason: null
+    blocked_reason: 'ReceiptSyncService:564 (payment_method scope) is already tenant+company scoped in code (defense-in-depth behind SyncReceiptsRequest validator). No existing regression test covers this service-level scope on the payment_method_id path. Unblock once a service-level cross-company test exists (model on the .054-.056 StoreReceiptPaymentsTenantIsolationTest pattern).'
     history:
       -
         at: '2026-05-13T05:12:24Z'
@@ -141807,6 +142095,22 @@ callsites:
         review_file: null
         review_commit: null
         note: 'initial detection'
+      -
+        at: '2026-05-16T08:17:05Z'
+        actor: claude
+        action: block
+        command: 'sweep:inventory:block'
+        previous_yaml_sha256: e4e7559bd0dc9497143d236e3f3ffdfd7b030df1f25f4e21a03bee09ea60eb3a
+        new_yaml_sha256: 2f2455329b20331d43ccc8788cc94b270d1976b8882365e5e4f050f75a5e611b
+        target_ids:
+          - api.pos-stabilization.060
+        from_status: pending
+        to_status: blocked
+        commit: null
+        test: null
+        review_file: null
+        review_commit: null
+        note: 'blocked by claude via sweep:inventory:block: ReceiptSyncService:564 (payment_method scope) is already tenant+company scoped in code (defense-in-depth behind SyncReceiptsRequest validator). No existing regression test covers this service-level scope on the payment_method_id path. Unblock once a service-level cross-company test exists (model on the .054-.056 StoreReceiptPaymentsTenantIsolationTest pattern).'
   -
     id: api.inventory.034
     stable_key: 'sha256:66d5c9f8a0714485d523485b7ddbefe8e03d8c54200c6ab4b7080729b1ce4527'
