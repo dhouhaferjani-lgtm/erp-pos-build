@@ -324,6 +324,9 @@ jobs:
         #   - FiscalEventsImmutabilityTest (Feature, Task 8): PG-only trigger
         #     semantics for the fiscal_events append-only ledger, including the
         #     gated `failed -> parsed` resume contract Task 24 depends on
+        #   - FiscalEventProjectionsTableTest (Feature, Task 9): PG-only FK
+        #     (fiscal_event_id → fiscal_events.id) + partial index for the
+        #     worker dispatcher hot path (projection_status IN pending,running)
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -333,7 +336,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
