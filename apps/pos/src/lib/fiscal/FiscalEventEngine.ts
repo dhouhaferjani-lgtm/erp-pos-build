@@ -50,19 +50,81 @@ import type {
   FiscalEventTypeValue,
 } from './FiscalEventPayloadRegistry';
 
+/** 64-char lowercase hex — the seed / hash invariant from spec §3.1 + v37. */
+const LOWER_HEX_64 = /^[0-9a-f]{64}$/;
+
+/** UTC ISO-8601 second precision — `YYYY-MM-DDTHH:MM:SSZ`. */
+const ISO_8601_SECONDS_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/** `YYYY-MM-DD` calendar date. */
+const ISO_8601_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Thrown when `append()` is called on a terminal whose
- * `fiscal_event_genesis_seed` is still the v37 migration default `''`
- * (i.e. terminal registration has not yet provisioned the seed).
+ * `fiscal_event_genesis_seed` is not a valid 64-char lowercase hex
+ * value — i.e. it is still the v37 migration default `''`, or a
+ * known-sentinel placeholder like `'GENESIS'` / `'0'.repeat(64)`, or
+ * any non-hex / non-64-char string.
+ *
+ * The seed is provisioned at terminal registration (server-side
+ * device-bootstrap flow); `append()` cannot run until that completes.
  */
 export class ChainHeadNotInitializedError extends Error {
-  constructor(public readonly terminalId: string) {
+  constructor(
+    public readonly terminalId: string,
+    public readonly observedSeed: string,
+  ) {
     super(
       `Fiscal-event chain head not initialized for terminal ${terminalId}: ` +
-        'fiscal_event_genesis_seed is the empty-string sentinel. ' +
+        `fiscal_event_genesis_seed = ${JSON.stringify(observedSeed)} is not a valid 64-char lowercase hex seed. ` +
         'The seed is provisioned at terminal registration; append() cannot run before then.',
     );
     this.name = 'ChainHeadNotInitializedError';
+  }
+}
+
+/**
+ * Thrown when the caller-supplied payload or envelope fails the
+ * Phase 1 canonical-payload contract (spec v7 §4) at the device
+ * boundary — BEFORE any canonical_bytes are produced and BEFORE any
+ * chain advance.
+ *
+ * The encoder rejects floats (Task 5 contract), but the spec also
+ * requires monetary fields to be **decimal strings**, not integers,
+ * and timestamps to be UTC ISO-8601 second precision. The encoder
+ * cannot enforce those without payload-type knowledge; the engine
+ * does so for the four implemented Phase 1 event types via a thin
+ * validation layer. Anything stricter (per-line monetary fields,
+ * nested sub-array shapes) is intentionally left to Task 16's
+ * server-side `StrictCanonicalParser` — matching the deferral
+ * pattern from Task 14 Opus P2-2.
+ */
+export class FiscalEventPayloadValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FiscalEventPayloadValidationError';
+  }
+}
+
+/**
+ * Thrown when the chain INSERT trips the v37 partial UNIQUE on
+ * `(tenant_id, terminal_id, sequence_number)` — i.e. a parallel
+ * `append()` already advanced this chain head between our `readChainHead`
+ * and our INSERT. The chain is unbroken; the caller should re-read the
+ * head and retry, or escalate to a `CHAIN_BREAK_DETECTED` if the
+ * race is structurally unexpected.
+ */
+export class ConcurrentChainAdvanceError extends Error {
+  constructor(
+    public readonly terminalId: string,
+    public readonly attemptedSequence: number,
+    public readonly cause: unknown,
+  ) {
+    super(
+      `Concurrent chain advance on terminal ${terminalId} at sequence ${attemptedSequence}: ` +
+        'another transaction already inserted this (terminal_id, sequence_number) pair. Re-read the head and retry.',
+    );
+    this.name = 'ConcurrentChainAdvanceError';
   }
 }
 
@@ -90,10 +152,64 @@ export interface FiscalEventAppendRequest {
   reference_event_id?: string;
   /**
    * Device-side idempotency key. When both fields are set, a duplicate
-   * call against the same pair returns the pre-existing row.
+   * call against the same `(tenant_id, terminal_id, source_event_class,
+   * source_event_id)` 4-tuple returns the pre-existing row. The lookup
+   * is scoped per-(tenant, terminal) so a generator that reuses ids
+   * across terminals (e.g. per-terminal sequential receipt numbers)
+   * cannot accidentally idempotent-deduplicate across terminals.
    */
   source_event_class?: string;
   source_event_id?: string;
+}
+
+// -------------------------------------------------------------------
+// Typed payload-input interfaces (Phase 1 implemented event types).
+//
+// Compile-time defense — TS strict callers that build a typed input
+// object cannot pass `total: 10` (number) where `total: '10.000'`
+// (decimal string) is required. The interfaces mirror the server-side
+// PHP DTOs in `apps/api/app/Modules/Fiscal/Domain/DTOs/*Payload.php`
+// but at the device side every monetary field is `string` — never
+// `number`.
+//
+// The engine's runtime validator (`validateSaleReceiptPayload` etc.)
+// is the second defense: it asserts the top-level monetary fields are
+// strings BEFORE encoding the canonical bytes. Per-line monetary
+// fields and nested sub-array shape validation are intentionally left
+// to Task 16's server-side `StrictCanonicalParser`.
+// -------------------------------------------------------------------
+
+export interface SaleReceiptPayloadInput {
+  readonly currency: string;
+  readonly currency_scale: number;
+  readonly lines: ReadonlyArray<Record<string, unknown>>;
+  readonly subtotal: string;
+  readonly discount_total: string;
+  readonly tax_total: string;
+  readonly total: string;
+  readonly vat_breakdown: ReadonlyArray<Record<string, unknown>>;
+  readonly payment_lines: ReadonlyArray<Record<string, unknown>>;
+  readonly voucher_redemptions: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface ChainBreakDetectedPayloadInput {
+  readonly reason: string;
+  readonly last_good_sequence: number;
+  readonly last_good_hash: string;
+  readonly offending_record_reference: Record<string, unknown>;
+}
+
+export interface ChainRestartPayloadInput {
+  readonly new_genesis_reference: string;
+  readonly last_good_anchor: Record<string, unknown>;
+  readonly operator_authorization_evidence: Record<string, unknown>;
+  readonly provenance_link: Record<string, unknown>;
+}
+
+export interface TerminalRegistrySnapshotPayloadInput {
+  readonly terminals: ReadonlyArray<Record<string, unknown>>;
+  readonly snapshot_hash: string;
+  readonly prior_snapshot_link: string | null;
 }
 
 export interface FiscalEventAppendResult {
@@ -162,14 +278,28 @@ export class FiscalEventEngine {
   ): Promise<FiscalEventAppendResult> {
     const sql = asSql(tx);
 
+    // Step 0 (defense-in-depth) — validate the envelope + payload BEFORE
+    // any state read or mutation. Closes Task 15 round-2 Codex BLOCKER
+    // (opaque payload lets non-string money into immutable canonical
+    // bytes) + P1-1 (timestamp / business_date format not enforced).
+    // Throws FiscalEventPayloadValidationError on contract violation.
+    this.validateRequestEnvelope(request);
+    this.validateRequestPayload(request);
+
     // Step 1 — resolve event_version via the registry. Reserved types
     // throw before any state mutation.
     const eventVersion = this.registry.eventVersionFor(request.event_type);
 
-    // Step 2 — device-side idempotency on (source_event_class, source_event_id).
+    // Step 2 — device-side idempotency on (tenant_id, terminal_id,
+    // source_event_class, source_event_id). The lookup is scoped
+    // per-(tenant, terminal) so a generator that reuses source ids
+    // across terminals cannot accidentally cross-terminal-pollute the
+    // idempotent path (Task 15 round-2 Codex P2-1).
     if (request.source_event_class != null && request.source_event_id != null) {
       const existing = await this.findBySource(
         sql,
+        request.tenant_id,
+        request.terminal_id,
         request.source_event_class,
         request.source_event_id,
       );
@@ -179,11 +309,16 @@ export class FiscalEventEngine {
     }
 
     // Step 3 — read the single chain head from terminal_state. Refuse to
-    // append against the empty-string sentinel (Task 13 Codex P3
-    // forward-looking input).
+    // append unless `fiscal_event_genesis_seed` is a valid 64-char
+    // lowercase hex value (Task 13 Codex P3 forward-looking input +
+    // Task 15 round-2 Codex P3 hardening — also rejects 'GENESIS',
+    // '0'.repeat(64), and any non-hex sentinel).
     const head = await this.readChainHead(sql, request.tenant_id, request.terminal_id);
-    if (head.fiscal_event_sequence === 0 && head.fiscal_event_genesis_seed === '') {
-      throw new ChainHeadNotInitializedError(request.terminal_id);
+    if (!LOWER_HEX_64.test(head.fiscal_event_genesis_seed)) {
+      throw new ChainHeadNotInitializedError(
+        request.terminal_id,
+        head.fiscal_event_genesis_seed,
+      );
     }
     const previousHash =
       head.fiscal_event_sequence > 0
@@ -217,47 +352,58 @@ export class FiscalEventEngine {
     const createdAt = isoSecondsUtc(new Date());
 
     // Step 5 — INSERT the fiscal_events row. sync_status='pending',
-    // signature_status='not_required'.
-    await sql.execute(
-      `INSERT INTO fiscal_events (
-         id, tenant_id, company_id, terminal_id, operator_id,
-         event_type, event_version, signature_version,
-         sequence_number, event_time_device, business_date,
-         reference_event_id, reference_document_id,
-         source_event_class, source_event_id,
-         canonical_bytes, previous_hash, current_hash,
-         signature_status, sync_status, created_at
-       ) VALUES (
-         $1, $2, $3, $4, $5,
-         $6, $7, $8,
-         $9, $10, $11,
-         $12, $13,
-         $14, $15,
-         $16, $17, $18,
-         'not_required', 'pending', $19
-       )`,
-      [
-        id,
-        request.tenant_id,
-        request.company_id,
-        request.terminal_id,
-        request.operator_id,
-        request.event_type,
-        eventVersion,
-        signatureVersion,
-        sequenceNumber,
-        request.event_time_device,
-        request.business_date,
-        request.reference_event_id ?? null,
-        request.reference_document_id ?? null,
-        request.source_event_class ?? null,
-        request.source_event_id ?? null,
-        canonicalBytes,
-        previousHash,
-        currentHash,
-        createdAt,
-      ],
-    );
+    // signature_status='not_required'. Parallel `append()`s on the same
+    // terminal that race past `readChainHead` and re-INSERT the same
+    // sequence_number trip the v37 chain UNIQUE; surface that as a
+    // typed `ConcurrentChainAdvanceError` rather than a raw SQLITE
+    // constraint message (Task 15 round-2 Codex P2-2).
+    try {
+      await sql.execute(
+        `INSERT INTO fiscal_events (
+           id, tenant_id, company_id, terminal_id, operator_id,
+           event_type, event_version, signature_version,
+           sequence_number, event_time_device, business_date,
+           reference_event_id, reference_document_id,
+           source_event_class, source_event_id,
+           canonical_bytes, previous_hash, current_hash,
+           signature_status, sync_status, created_at
+         ) VALUES (
+           $1, $2, $3, $4, $5,
+           $6, $7, $8,
+           $9, $10, $11,
+           $12, $13,
+           $14, $15,
+           $16, $17, $18,
+           'not_required', 'pending', $19
+         )`,
+        [
+          id,
+          request.tenant_id,
+          request.company_id,
+          request.terminal_id,
+          request.operator_id,
+          request.event_type,
+          eventVersion,
+          signatureVersion,
+          sequenceNumber,
+          request.event_time_device,
+          request.business_date,
+          request.reference_event_id ?? null,
+          request.reference_document_id ?? null,
+          request.source_event_class ?? null,
+          request.source_event_id ?? null,
+          canonicalBytes,
+          previousHash,
+          currentHash,
+          createdAt,
+        ],
+      );
+    } catch (error) {
+      if (isChainSequenceUniqueViolation(error)) {
+        throw new ConcurrentChainAdvanceError(request.terminal_id, sequenceNumber, error);
+      }
+      throw error;
+    }
 
     // Step 6 — advance the chain head. Same `tx` so the advance is
     // atomic with the insert.
@@ -300,11 +446,22 @@ export class FiscalEventEngine {
 
   /**
    * Re-fetch an existing fiscal-event row for an idempotent source-backed
-   * emission. Returns the same shape as a fresh append so the caller does
-   * not need to branch on which path produced the result.
+   * emission. The lookup is scoped to `(tenant_id, terminal_id,
+   * source_event_class, source_event_id)` — Task 15 round-2 Codex P2-1
+   * closure. A source id of `'r-1'` on terminal A is a DIFFERENT idempotency
+   * key from `'r-1'` on terminal B even though the v37 partial UNIQUE
+   * index does not include `terminal_id`; cross-terminal collisions
+   * (which should not happen in practice) fall through to the INSERT
+   * which then fails the partial UNIQUE and surfaces as a recoverable
+   * chain incident rather than a silent cross-terminal idempotent match.
+   *
+   * Returns the same shape as a fresh append so the caller does not
+   * need to branch on which path produced the result.
    */
   private async findBySource(
     sql: SqlSurface,
+    tenantId: string,
+    terminalId: string,
     sourceClass: string,
     sourceId: string,
   ): Promise<FiscalEventAppendResult | null> {
@@ -317,13 +474,70 @@ export class FiscalEventEngine {
               canonical_bytes, previous_hash, current_hash,
               signature_status, sync_status, created_at
          FROM fiscal_events
-        WHERE source_event_class = $1 AND source_event_id = $2
+        WHERE tenant_id = $1
+          AND terminal_id = $2
+          AND source_event_class = $3
+          AND source_event_id = $4
         LIMIT 1`,
-      [sourceClass, sourceId],
+      [tenantId, terminalId, sourceClass, sourceId],
     );
     const row = rows[0];
     if (!row) return null;
     return rowToResult(row);
+  }
+
+  /**
+   * Envelope-level format validation — UTC ISO-8601 second precision on
+   * `event_time_device`, `YYYY-MM-DD` on `business_date`. Closes Task 15
+   * round-2 Codex P1-1 (caller could supply millisecond precision or a
+   * non-UTC offset; the engine would copy the malformed value into
+   * canonical_bytes verbatim, producing non-spec hashes the server
+   * would later quarantine).
+   */
+  private validateRequestEnvelope(request: FiscalEventAppendRequest): void {
+    if (!ISO_8601_SECONDS_UTC.test(request.event_time_device)) {
+      throw new FiscalEventPayloadValidationError(
+        `event_time_device must be UTC ISO-8601 second precision (YYYY-MM-DDTHH:MM:SSZ); got ${JSON.stringify(request.event_time_device)}.`,
+      );
+    }
+    if (!ISO_8601_DATE.test(request.business_date)) {
+      throw new FiscalEventPayloadValidationError(
+        `business_date must be YYYY-MM-DD; got ${JSON.stringify(request.business_date)}.`,
+      );
+    }
+  }
+
+  /**
+   * Per-event-type payload validation — asserts the top-level monetary
+   * fields are strings (per spec v7 §4: "money as CurrencyScale::bcformat()
+   * decimal strings"). Closes Task 15 round-2 Codex BLOCKER. The encoder
+   * already rejects floats; this layer additionally rejects integers in
+   * monetary-named fields, which the encoder cannot distinguish from
+   * legitimate count fields without payload-type knowledge.
+   *
+   * Per-line monetary fields + nested sub-array shapes are intentionally
+   * deferred to Task 16's server-side StrictCanonicalParser (matches
+   * Task 14 Opus P2-2 deferral pattern). The engine layer enforces only
+   * the top-level invariants that are unambiguously monetary.
+   */
+  private validateRequestPayload(request: FiscalEventAppendRequest): void {
+    switch (request.event_type) {
+      case 'SALE_RECEIPT':
+        validateSaleReceiptPayload(request.payload);
+        return;
+      case 'CHAIN_BREAK_DETECTED':
+      case 'CHAIN_RESTART':
+      case 'TERMINAL_REGISTRY_SNAPSHOT':
+        // Top-level shape is non-monetary for these three (Phase 1).
+        // Sub-array validation deferred to Task 16's parser. Falling
+        // through with no engine-side checks is the intentional Phase 1
+        // posture.
+        return;
+      default:
+        // Reserved types are rejected by the registry in step 1; this
+        // branch is a defensive fallthrough.
+        return;
+    }
   }
 
   private async readChainHead(
@@ -376,6 +590,86 @@ export class FiscalEventEngine {
   protected get db(): SqlSurface {
     return asSql(this.defaultDb);
   }
+}
+
+// -------------------------------------------------------------------
+// Payload-shape validators for the four Phase 1 implemented event types.
+// Top-level invariants only; per-line and nested sub-array shape stays
+// the server-side StrictCanonicalParser's job (Task 16, Task 14 Opus P2-2).
+// -------------------------------------------------------------------
+
+const SALE_RECEIPT_STRING_MONETARY_FIELDS = [
+  'subtotal',
+  'discount_total',
+  'tax_total',
+  'total',
+] as const;
+
+function validateSaleReceiptPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'SALE_RECEIPT payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  if (typeof p['currency'] !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `SALE_RECEIPT.currency must be a string; got ${typeofTag(p['currency'])}.`,
+    );
+  }
+  if (typeof p['currency_scale'] !== 'number' || !Number.isInteger(p['currency_scale'])) {
+    throw new FiscalEventPayloadValidationError(
+      `SALE_RECEIPT.currency_scale must be an integer; got ${typeofTag(p['currency_scale'])}.`,
+    );
+  }
+  for (const field of SALE_RECEIPT_STRING_MONETARY_FIELDS) {
+    if (typeof p[field] !== 'string') {
+      throw new FiscalEventPayloadValidationError(
+        `SALE_RECEIPT.${field} must be a decimal string (e.g. "10.000"); got ${typeofTag(p[field])}. ` +
+          'Spec v7 §4 — money MUST be a CurrencyScale::bcformat() decimal string, never a number.',
+      );
+    }
+  }
+  if (!Array.isArray(p['lines'])) {
+    throw new FiscalEventPayloadValidationError(
+      `SALE_RECEIPT.lines must be an array; got ${typeofTag(p['lines'])}.`,
+    );
+  }
+}
+
+function typeofTag(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
+/**
+ * Detect a chain-sequence UNIQUE violation on `fiscal_events`. SQLite
+ * surfaces it as a string containing `UNIQUE constraint failed:
+ * fiscal_events.tenant_id, fiscal_events.terminal_id,
+ * fiscal_events.sequence_number` (the index name varies by sqlite
+ * version + plugin, so we match on column names which are stable).
+ *
+ * Only the (terminal_id, sequence_number) collision is treated as
+ * concurrent-chain-advance. A collision on the
+ * (source_event_class, source_event_id) partial UNIQUE is a different
+ * class of incident (a cross-terminal source-id collision under the
+ * engine-side scope from Task 15 round-2 P2-1) and falls through to
+ * the generic `throw` so the caller / recovery flow can disambiguate.
+ */
+function isChainSequenceUniqueViolation(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  return (
+    /UNIQUE constraint failed/i.test(message) &&
+    /fiscal_events\.terminal_id/i.test(message) &&
+    /fiscal_events\.sequence_number/i.test(message)
+  );
 }
 
 // -------------------------------------------------------------------

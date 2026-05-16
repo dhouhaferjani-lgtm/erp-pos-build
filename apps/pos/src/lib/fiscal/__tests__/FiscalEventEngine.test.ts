@@ -19,7 +19,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrations } from '@/lib/db/migrations';
 import {
   ChainHeadNotInitializedError,
+  ConcurrentChainAdvanceError,
   FiscalEventEngine,
+  FiscalEventPayloadValidationError,
   type FiscalEventAppendRequest,
 } from '../FiscalEventEngine';
 import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
@@ -82,6 +84,28 @@ async function seedTerminalState(
   );
 }
 
+/**
+ * A canonical-spec-correct SALE_RECEIPT payload. All top-level monetary
+ * fields are decimal strings (spec §4); `currency_scale` is an int;
+ * `lines` is a list. Per-line monetary fields are also strings for
+ * good-citizen behavior, though the engine doesn't enforce per-line
+ * shape (deferred to Task 16's StrictCanonicalParser).
+ */
+function validSaleReceiptPayload(): Record<string, unknown> {
+  return {
+    currency: 'TND',
+    currency_scale: 3,
+    lines: [{ sku: 'A', qty: 1, unit_price: '10.000', line_total: '10.000' }],
+    subtotal: '10.000',
+    discount_total: '0.000',
+    tax_total: '0.000',
+    total: '10.000',
+    vat_breakdown: [],
+    payment_lines: [{ payment_method_id: 'pm-cash', amount: '10.000' }],
+    voucher_redemptions: [],
+  };
+}
+
 function saleReceiptRequest(
   overrides: Partial<FiscalEventAppendRequest> = {},
 ): FiscalEventAppendRequest {
@@ -93,10 +117,7 @@ function saleReceiptRequest(
     operator_id: OPERATOR_ID,
     event_time_device: '2026-05-16T10:00:00Z',
     business_date: '2026-05-16',
-    payload: {
-      lines: [{ sku: 'A', qty: 1, unit_price: '10.000', total: '10.000' }],
-      total: '10.000',
-    },
+    payload: validSaleReceiptPayload(),
     ...overrides,
   };
 }
@@ -418,6 +439,215 @@ d('FiscalEventEngine.append', () => {
     const head2 = await selectChainHead(adapter, 'terminal-2');
     expect(head1.fiscal_event_sequence).toBe(1);
     expect(head2.fiscal_event_sequence).toBe(1);
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 Codex BLOCKER regression — payload validation rejects
+  // non-string monetary fields before any state mutation.
+  // -------------------------------------------------------------------
+
+  it('round-2 BLOCKER — rejects integer in any SALE_RECEIPT monetary field', async () => {
+    for (const field of ['subtotal', 'discount_total', 'tax_total', 'total']) {
+      const payload = validSaleReceiptPayload();
+      payload[field] = 10; // INTEGER — would silently slip past the encoder.
+
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        FiscalEventPayloadValidationError,
+      );
+
+      // State unchanged after each rejection.
+      const rows = await adapter.select<Array<{ c: number }>>(
+        `SELECT COUNT(*) AS c FROM fiscal_events`,
+      );
+      expect(rows[0]?.c).toBe(0);
+      const head = await selectChainHead(adapter, TERMINAL_ID);
+      expect(head.fiscal_event_sequence).toBe(0);
+    }
+  });
+
+  it('round-2 BLOCKER — rejects missing currency / non-int currency_scale', async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { ...validSaleReceiptPayload(), currency: undefined },
+      { ...validSaleReceiptPayload(), currency_scale: '3' }, // string, not int
+      { ...validSaleReceiptPayload(), currency_scale: 3.5 }, // float, not int
+      { ...validSaleReceiptPayload(), lines: 'not-an-array' },
+    ];
+
+    for (const payload of cases) {
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        FiscalEventPayloadValidationError,
+      );
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 P1-1 — envelope timestamp / business_date format
+  // -------------------------------------------------------------------
+
+  it('round-2 P1-1 — rejects event_time_device with millisecond precision', async () => {
+    await expect(
+      engine.append(adapter, saleReceiptRequest({ event_time_device: '2026-05-16T10:00:00.000Z' })),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('round-2 P1-1 — rejects event_time_device with non-UTC offset', async () => {
+    await expect(
+      engine.append(adapter, saleReceiptRequest({ event_time_device: '2026-05-16T10:00:00+02:00' })),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('round-2 P1-1 — rejects malformed business_date', async () => {
+    await expect(
+      engine.append(adapter, saleReceiptRequest({ business_date: '16/05/2026' })),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 P2-1 — cross-terminal source-event idempotency scope
+  // -------------------------------------------------------------------
+
+  it('round-2 P2-1 — same source_event_id on a different terminal is NOT a silent cross-terminal idempotent match', async () => {
+    // Pre-fix behavior (the BUG): `findBySource` queried the partial
+    // UNIQUE columns only — so `'r-1'` on terminal A "matched" `'r-1'`
+    // on terminal B, and terminal B's append silently returned
+    // terminal A's row (cross-terminal pollution).
+    //
+    // Post-fix behavior: the engine's lookup is scoped to
+    // `(tenant_id, terminal_id, ...)` so it does NOT return a
+    // cross-terminal match. The DB-level partial UNIQUE on
+    // `(source_event_class, source_event_id)` then surfaces the actual
+    // cross-terminal collision as a typed `UNIQUE constraint failed` —
+    // the caller / recovery flow sees a loud failure instead of silent
+    // pollution. Loud failure beats silent data corruption.
+    //
+    // The production assumption is that `source_event_id` is GLOBALLY
+    // UNIQUE (UUIDs or composite keys); cross-terminal collisions are
+    // a developer-error case, not a production occurrence.
+    await seedTerminalState(adapter, {
+      terminal_id: 'terminal-2',
+      fiscal_event_genesis_seed: ALT_GENESIS_SEED,
+    });
+
+    const a = await engine.append(
+      adapter,
+      saleReceiptRequest({
+        source_event_class: 'OfflineReceipt',
+        source_event_id: 'r-1',
+      }),
+    );
+    expect(a.terminal_id).toBe(TERMINAL_ID);
+
+    // Cross-terminal collision — must NOT silently return terminal A's
+    // row. The DB-level partial UNIQUE catches the INSERT.
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          terminal_id: 'terminal-2',
+          event_time_device: '2026-05-16T10:01:00Z',
+          source_event_class: 'OfflineReceipt',
+          source_event_id: 'r-1',
+        }),
+      ),
+    ).rejects.toThrow(/UNIQUE constraint failed/);
+
+    // Exactly ONE row exists — terminal A's. Terminal B's INSERT was
+    // rejected without polluting the chain.
+    const rows = await adapter.select<Array<{ c: number; terminal_id: string }>>(
+      `SELECT COUNT(*) AS c, MIN(terminal_id) AS terminal_id FROM fiscal_events`,
+    );
+    expect(rows[0]?.c).toBe(1);
+    expect(rows[0]?.terminal_id).toBe(TERMINAL_ID);
+  });
+
+  it('round-2 P2-1 — re-emitting the same source on the SAME terminal still returns the existing row', async () => {
+    const a = await engine.append(
+      adapter,
+      saleReceiptRequest({
+        source_event_class: 'OfflineReceipt',
+        source_event_id: 'r-2',
+      }),
+    );
+    const b = await engine.append(
+      adapter,
+      saleReceiptRequest({
+        source_event_class: 'OfflineReceipt',
+        source_event_id: 'r-2',
+      }),
+    );
+
+    expect(b.id).toBe(a.id);
+    const rows = await adapter.select<Array<{ c: number }>>(
+      `SELECT COUNT(*) AS c FROM fiscal_events`,
+    );
+    expect(rows[0]?.c).toBe(1);
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 P2-2 — parallel chain advance surfaces as a typed error
+  // -------------------------------------------------------------------
+
+  it('round-2 P2-2 — chain UNIQUE violation surfaces as ConcurrentChainAdvanceError', async () => {
+    // Simulate a race: manually INSERT a row at sequence_number 1 (as if
+    // another transaction won the race), then attempt `append()` —
+    // which will compute sequence_number = 1 from the unadvanced chain
+    // head and trip the v37 chain UNIQUE.
+    await adapter.execute(
+      `INSERT INTO fiscal_events (
+         id, tenant_id, company_id, terminal_id, operator_id,
+         event_type, event_version, signature_version,
+         sequence_number, event_time_device, business_date,
+         canonical_bytes, previous_hash, current_hash,
+         signature_status, sync_status, created_at
+       ) VALUES (
+         'racer-1', $1, $2, $3, $4,
+         'SALE_RECEIPT', 1, 'hash-chain-integrity-v1',
+         1, '2026-05-16T10:00:00Z', '2026-05-16',
+         '{}', $5, $6,
+         'not_required', 'pending', '2026-05-16T10:00:00Z'
+       )`,
+      [TENANT_ID, COMPANY_ID, TERMINAL_ID, OPERATOR_ID, GENESIS_SEED, 'c'.repeat(64)],
+    );
+
+    // Now append() should compute sequence=1 and trip the UNIQUE.
+    await expect(engine.append(adapter, saleReceiptRequest())).rejects.toThrow(
+      ConcurrentChainAdvanceError,
+    );
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 P3 — genesis-seed sentinel hardening (also reject 'GENESIS',
+  // non-hex, '0'*64, uppercase, wrong length).
+  // -------------------------------------------------------------------
+
+  it("round-2 P3 — rejects 'GENESIS' literal seed", async () => {
+    await adapter.execute(
+      `UPDATE terminal_state SET fiscal_event_genesis_seed = 'GENESIS' WHERE terminal_id = $1`,
+      [TERMINAL_ID],
+    );
+    await expect(engine.append(adapter, saleReceiptRequest())).rejects.toThrow(
+      ChainHeadNotInitializedError,
+    );
+  });
+
+  it('round-2 P3 — rejects uppercase-hex seed', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state SET fiscal_event_genesis_seed = $1 WHERE terminal_id = $2`,
+      ['A'.repeat(64), TERMINAL_ID],
+    );
+    await expect(engine.append(adapter, saleReceiptRequest())).rejects.toThrow(
+      ChainHeadNotInitializedError,
+    );
+  });
+
+  it('round-2 P3 — rejects 63-char (wrong length) seed', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state SET fiscal_event_genesis_seed = $1 WHERE terminal_id = $2`,
+      ['a'.repeat(63), TERMINAL_ID],
+    );
+    await expect(engine.append(adapter, saleReceiptRequest())).rejects.toThrow(
+      ChainHeadNotInitializedError,
+    );
   });
 });
 
