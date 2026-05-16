@@ -236,17 +236,24 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_envelope_missing_payload_key(): void
     {
+        // Round-2 (Codex F1): the envelope shape validator surfaces the
+        // missing field by name. Multiple fields are missing here; the
+        // failure reason lists them.
         $bytes = '{"event_type":"SALE_RECEIPT","sequence_number":1}';
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertFailed($result);
-        $this->assertStringContainsString('missing_payload', $result->failureReason ?? '');
+        $this->assertStringContainsString('envelope_field_missing', $result->failureReason ?? '');
+        $this->assertStringContainsString('payload', $result->failureReason ?? '');
     }
 
     public function test_rejects_payload_not_object(): void
     {
-        $bytes = '{"event_type":"SALE_RECEIPT","payload":"not an object"}';
+        // Use the full 14-field envelope but with payload as a string.
+        // Envelope shape validator's payload-type check fires before any
+        // other anomaly.
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', '"not an object"');
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
@@ -523,6 +530,39 @@ final class StrictCanonicalParserTest extends TestCase
         return str_replace($needle, '"payload":'.$rawPayloadJson, $placeholder);
     }
 
+    /**
+     * Build a full 14-field envelope and replace one envelope-level field's
+     * value with a raw JSON literal. **Scalars only** (string, int, null,
+     * bool) — the regex's stop-class is `[,}]`, so the helper does not
+     * cope with object/list values. Use `envelopeWithRawPayload` to swap
+     * in a composite payload value.
+     */
+    private function envelopeWithRawValue(string $eventType, string $key, string $rawJsonValue): string
+    {
+        $base = $this->validEnvelopeFor($eventType);
+        // Each envelope field has a distinct "key":value substring because
+        // json_encode emits keys in insertion (ksort'd) order; we replace
+        // the FIRST occurrence which is the envelope-level one (sub-array
+        // items with the same key name come later).
+        $regex = '/"'.preg_quote($key, '/').'":[^,}]+(?=[,}])/';
+        $count = 0;
+        $out = preg_replace($regex, '"'.$key.'":'.$rawJsonValue, $base, 1, $count);
+        $this->assertSame(1, $count, "could not find envelope key '{$key}' to replace");
+
+        return (string) $out;
+    }
+
+    private function validEnvelopeFor(string $eventType): string
+    {
+        return match ($eventType) {
+            'SALE_RECEIPT' => $this->validSaleReceiptEnvelope(),
+            'CHAIN_BREAK_DETECTED' => $this->validChainBreakDetectedEnvelope(),
+            'CHAIN_RESTART' => $this->validChainRestartEnvelope(),
+            'TERMINAL_REGISTRY_SNAPSHOT' => $this->validTerminalRegistrySnapshotEnvelope(),
+            default => throw new \LogicException('unsupported event type for helper: '.$eventType),
+        };
+    }
+
     private function validSaleReceiptEnvelope(): string
     {
         return $this->envelope('SALE_RECEIPT', [
@@ -575,5 +615,646 @@ final class StrictCanonicalParserTest extends TestCase
                 ['is_active' => false, 'terminal_code' => 'T02', 'terminal_id' => 'tm-2'],
             ],
         ]);
+    }
+
+    // =================================================================
+    // Round-2 — Codex BLOCKER + P1 + P2 closures, Opus P2-1/P2-2/P2-3/P3-1.
+    // =================================================================
+
+    // ---- BLOCKER F1: 14-field envelope shape (Codex round-2) --------
+
+    public function test_rejects_envelope_with_missing_business_date(): void
+    {
+        // Strip the business_date key from a valid envelope.
+        $base = $this->validSaleReceiptEnvelope();
+        $bytes = (string) preg_replace('/"business_date":"[^"]*",/', '', $base, 1);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_field_missing', $result->failureReason ?? '');
+        $this->assertStringContainsString('business_date', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_with_extra_field(): void
+    {
+        // Append a fifteenth key to the envelope.
+        $base = $this->validSaleReceiptEnvelope();
+        $bytes = str_replace('"terminal_id":"tm-1"', '"terminal_id":"tm-1","unexpected_field":"x"', $base);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_extra_field', $result->failureReason ?? '');
+        $this->assertStringContainsString('unexpected_field', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_with_string_event_version(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '"1"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_event_version_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_with_event_version_mismatch_to_registry(): void
+    {
+        // Phase 1 SALE_RECEIPT is event_version=1; sending v2 must reject.
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_version', '2');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_event_version_mismatch', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_with_zero_sequence_number(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'sequence_number', '0');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_sequence_number_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_previous_hash_not_64_lowercase_hex(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'previous_hash', '"NOT_HEX"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_previous_hash_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_previous_hash_uppercase_hex(): void
+    {
+        // Spec §4 mandates lowercase hex.
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'previous_hash', '"'.str_repeat('A', 64).'"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_previous_hash_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_event_time_device_without_z_suffix(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_time_device', '"2026-05-16T12:00:00"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_event_time_device_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_event_time_device_with_fractional_seconds(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'event_time_device', '"2026-05-16T12:00:00.123Z"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_event_time_device_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_business_date_with_time_component(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'business_date', '"2026-05-16T00:00:00Z"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_business_date_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_empty_tenant_id(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'tenant_id', '""');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_tenant_id_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_envelope_reference_document_id_as_integer(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'reference_document_id', '123');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_reference_document_id_invalid', $result->failureReason ?? '');
+    }
+
+    public function test_accepts_envelope_with_null_reference_document_id(): void
+    {
+        // The default envelope already sets reference_document_id to null —
+        // this test pins that the validator accepts the canonical nullable.
+        $bytes = $this->validSaleReceiptEnvelope();
+        $this->assertStringContainsString('"reference_document_id":null', $bytes);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_accepts_envelope_with_non_null_reference_document_id(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'reference_document_id', '"doc-42"');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_rejects_envelope_payload_as_list(): void
+    {
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', '[1,2,3]');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_not_object', $result->failureReason ?? '');
+        $this->assertStringContainsString('list', $result->failureReason ?? '');
+    }
+
+    // ---- BLOCKER F2: payload extras (Codex round-2) -----------------
+
+    public function test_rejects_payload_extra_field_sale_receipt(): void
+    {
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"extra_untyped":"X","lines":[],"payment_lines":[],"subtotal":"0.000",'
+            .'"tax_total":"0.000","total":"0.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+        $this->assertStringContainsString('extra_untyped', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_payload_extra_field_chain_break(): void
+    {
+        $payload = '{"last_good_hash":"'.str_repeat('a', 64).'","last_good_sequence":1,'
+            .'"offending_record_reference":{"observed_previous_hash":"'.str_repeat('b', 64).'"},'
+            .'"reason":"r","unexpected":"x"}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_BREAK_DETECTED', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_BREAK_DETECTED);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_payload_extra_field_chain_restart(): void
+    {
+        $payload = '{"last_good_anchor":{"hash":"'.str_repeat('c', 64).'","sequence_number":1},'
+            .'"new_genesis_reference":"'.str_repeat('d', 64).'",'
+            .'"operator_authorization_evidence":{"user_id":"u-1"},'
+            .'"provenance_link":{"chain_break_event_id":"evt-x"},'
+            .'"sneaky":"x"}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_RESTART', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_RESTART);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_payload_extra_field_terminal_registry_snapshot(): void
+    {
+        $payload = '{"prior_snapshot_link":null,"snapshot_hash":"'.str_repeat('e', 64).'",'
+            .'"terminals":[{"terminal_id":"tm-1","is_active":true}],"unexpected":"x"}';
+        $bytes = $this->envelopeWithRawPayload('TERMINAL_REGISTRY_SNAPSHOT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+    }
+
+    // ---- BLOCKER F3: whitespace rejected (Codex round-2) ------------
+
+    public function test_rejects_whitespace_around_envelope_keys(): void
+    {
+        // Spec §4 mandates RFC 8785/JCS canonical bytes — no whitespace.
+        $bytes = '{ "event_type":"SALE_RECEIPT","payload":{}}';
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('unexpected_character', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_whitespace_after_colon(): void
+    {
+        $bytes = '{"event_type": "SALE_RECEIPT"}';
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('unexpected_character', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_newline_between_fields(): void
+    {
+        $bytes = "{\"event_type\":\"SALE_RECEIPT\",\n\"payload\":{}}";
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('unexpected_character', $result->failureReason ?? '');
+    }
+
+    // ---- BLOCKER F4: scale-aware money format (Codex round-2) -------
+
+    public function test_rejects_top_level_total_not_in_bcformat(): void
+    {
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"not-money","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('sub_array_shape', $result->failureReason ?? '');
+        $this->assertStringContainsString('total', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_money_with_wrong_fraction_length(): void
+    {
+        // currency_scale=3 but money has 2 decimals.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"5.00","tax_total":"0.000",'
+            .'"total":"5.00","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('bcformat', $result->failureReason ?? '');
+    }
+
+    public function test_accepts_scale_0_money(): void
+    {
+        // JPY-style 0-decimal currency: integer-string money.
+        $payload = '{"currency":"JPY","currency_scale":0,"discount_total":"0",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0","tax_total":"0",'
+            .'"total":"0","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_accepts_negative_money(): void
+    {
+        // Negative values (refund) are valid bcformat.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"-5.000","tax_total":"-0.350",'
+            .'"total":"-5.350","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_rejects_money_with_leading_plus(): void
+    {
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"+5.000","tax_total":"0.000",'
+            .'"total":"5.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('bcformat', $result->failureReason ?? '');
+    }
+
+    // ---- P1 F5: list-vs-assoc on containers (Codex round-2) ---------
+
+    public function test_rejects_assoc_object_for_lines_container(): void
+    {
+        // lines must be a JSON list, not an object.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":{"k":{"product_id":"p-1","quantity":1,"unit_price":"5.000","line_total":"5.000","vat_rate":"7"}},'
+            .'"payment_lines":[],"subtotal":"5.000","tax_total":"0.000","total":"5.000",'
+            .'"vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('JSON list', $result->failureReason ?? '');
+    }
+
+    // ---- P1 F6 / Opus P1-1: hex hash format on payload fields -------
+
+    public function test_rejects_chain_break_last_good_hash_not_64_lowercase_hex(): void
+    {
+        $payload = '{"last_good_hash":"NOT_HEX","last_good_sequence":1,'
+            .'"offending_record_reference":{"observed_previous_hash":"'.str_repeat('b', 64).'"},'
+            .'"reason":"r"}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_BREAK_DETECTED', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_BREAK_DETECTED);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('last_good_hash', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_chain_break_observed_previous_hash_uppercase(): void
+    {
+        $payload = '{"last_good_hash":"'.str_repeat('a', 64).'","last_good_sequence":1,'
+            .'"offending_record_reference":{"observed_previous_hash":"'.str_repeat('B', 64).'"},'
+            .'"reason":"r"}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_BREAK_DETECTED', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_BREAK_DETECTED);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('observed_previous_hash', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_chain_restart_new_genesis_reference_short(): void
+    {
+        $payload = '{"last_good_anchor":{"hash":"'.str_repeat('c', 64).'","sequence_number":1},'
+            .'"new_genesis_reference":"abc",'
+            .'"operator_authorization_evidence":{"user_id":"u-1"},'
+            .'"provenance_link":{"chain_break_event_id":"evt-x"}}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_RESTART', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_RESTART);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('new_genesis_reference', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_chain_restart_last_good_anchor_hash_bad(): void
+    {
+        $payload = '{"last_good_anchor":{"hash":"INVALID","sequence_number":1},'
+            .'"new_genesis_reference":"'.str_repeat('d', 64).'",'
+            .'"operator_authorization_evidence":{"user_id":"u-1"},'
+            .'"provenance_link":{"chain_break_event_id":"evt-x"}}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_RESTART', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_RESTART);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('last_good_anchor.hash', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_terminal_registry_snapshot_hash_bad(): void
+    {
+        $payload = '{"prior_snapshot_link":null,"snapshot_hash":"bad",'
+            .'"terminals":[{"terminal_id":"tm-1","is_active":true}]}';
+        $bytes = $this->envelopeWithRawPayload('TERMINAL_REGISTRY_SNAPSHOT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('snapshot_hash', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_terminal_registry_prior_snapshot_link_bad_when_non_null(): void
+    {
+        $payload = '{"prior_snapshot_link":"NOT_HEX","snapshot_hash":"'.str_repeat('e', 64).'",'
+            .'"terminals":[{"terminal_id":"tm-1","is_active":true}]}';
+        $bytes = $this->envelopeWithRawPayload('TERMINAL_REGISTRY_SNAPSHOT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_hash_format', $result->failureReason ?? '');
+        $this->assertStringContainsString('prior_snapshot_link', $result->failureReason ?? '');
+    }
+
+    // ---- P2 F7: U+2028 / U+2029 rejection (Codex round-2) -----------
+
+    public function test_rejects_u2028_line_separator_in_string_raw_bytes(): void
+    {
+        // Raw UTF-8 bytes E2 80 A8 inside a payload string.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            ."\"total\":\"0.000\",\"vat_breakdown\":[],\"voucher_redemptions\":[\"\xE2\x80\xA8\"]}";
+        // The above is structurally wrong (voucher_redemptions has scalar items)
+        // — but the U+2028 byte triggers the canonical-string rejection BEFORE
+        // sub-array shape sees the scalars, so the strict-Unicode check is the
+        // active failure.
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_unicode', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_u2029_paragraph_separator_via_unicode_escape(): void
+    {
+        // (U+2029) is a paragraph separator — JCS canonical form strips these.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"\u2029","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_unicode', $result->failureReason ?? '');
+    }
+
+    // ---- Opus P2-1: surrogate-pair branch coverage ------------------
+
+    public function test_parses_basic_unicode_escape(): void
+    {
+        // é == é. Round-trip via voucher_redemptions[0].code.
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"café","amount":"0.000"}]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertSame('café', $this->voucherCodeAt($result, 0));
+    }
+
+    public function test_parses_valid_surrogate_pair_grinning_face(): void
+    {
+        // 😀 == U+1F600 (😀).
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"😀","amount":"0.000"}]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertSame("\xF0\x9F\x98\x80", $this->voucherCodeAt($result, 0));
+    }
+
+    /**
+     * Helper to drill into payload.voucher_redemptions[$index].code with
+     * proper narrowing — PHPStan can't see through `$result->payload[...]`
+     * chained array access on `array<string, mixed>|null`.
+     */
+    private function voucherCodeAt(ParseResult $result, int $index): mixed
+    {
+        $payload = $result->payload;
+        $this->assertIsArray($payload);
+        $vouchers = $payload['voucher_redemptions'] ?? null;
+        $this->assertIsArray($vouchers);
+        $this->assertArrayHasKey($index, $vouchers);
+        $item = $vouchers[$index];
+        $this->assertIsArray($item);
+
+        return $item['code'] ?? null;
+    }
+
+    public function test_rejects_lone_high_surrogate(): void
+    {
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"\ud83d","amount":"0.000"}]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_unicode_escape', $result->failureReason ?? '');
+        $this->assertStringContainsString('high surrogate', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_lone_low_surrogate(): void
+    {
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"\ude00","amount":"0.000"}]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_unicode_escape', $result->failureReason ?? '');
+        $this->assertStringContainsString('low surrogate', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_high_surrogate_followed_by_non_low_surrogate(): void
+    {
+        // \ud83d followed by A (a BMP codepoint, not a low surrogate).
+        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
+            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
+            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"\ud83dA","amount":"0.000"}]}';
+        $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('invalid_unicode_escape', $result->failureReason ?? '');
+    }
+
+    // ---- Opus P2-2: per-non-SALE_RECEIPT-type coverage --------------
+
+    public function test_rejects_chain_break_payload_missing_required_field(): void
+    {
+        $payload = '{"reason":"r"}'; // missing last_good_hash, etc.
+        $bytes = $this->envelopeWithRawPayload('CHAIN_BREAK_DETECTED', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_BREAK_DETECTED);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('schema_violation', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_chain_restart_payload_missing_required_field(): void
+    {
+        $payload = '{"new_genesis_reference":"'.str_repeat('d', 64).'"}';
+        $bytes = $this->envelopeWithRawPayload('CHAIN_RESTART', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_RESTART);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('schema_violation', $result->failureReason ?? '');
+    }
+
+    public function test_rejects_terminal_snapshot_payload_missing_required_field(): void
+    {
+        $payload = '{"snapshot_hash":"'.str_repeat('e', 64).'"}';
+        $bytes = $this->envelopeWithRawPayload('TERMINAL_REGISTRY_SNAPSHOT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('schema_violation', $result->failureReason ?? '');
+    }
+
+    public function test_returned_payload_carries_chain_restart_typed_fields(): void
+    {
+        $bytes = $this->validChainRestartEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CHAIN_RESTART);
+
+        $this->assertTrue($result->ok);
+        $this->assertNotNull($result->payload);
+        $this->assertSame(str_repeat('d', 64), $result->payload['new_genesis_reference']);
+        $this->assertSame(str_repeat('c', 64), $result->payload['last_good_anchor']['hash']);
+        $this->assertSame('evt-abc', $result->payload['provenance_link']['chain_break_event_id']);
+    }
+
+    public function test_returned_payload_carries_terminal_snapshot_typed_fields(): void
+    {
+        $bytes = $this->validTerminalRegistrySnapshotEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
+
+        $this->assertTrue($result->ok);
+        $this->assertNotNull($result->payload);
+        $this->assertSame(str_repeat('e', 64), $result->payload['snapshot_hash']);
+        $this->assertNull($result->payload['prior_snapshot_link']);
+        $this->assertCount(2, $result->payload['terminals']);
+    }
+
+    // ---- Opus P3-1: parser reuse across calls -----------------------
+
+    public function test_parser_reuses_safely_across_calls(): void
+    {
+        $parser = $this->parser();
+
+        $bad = $parser->parse('{"event_type":"SALE_RECEIPT","sequence_number":1.5}', FiscalEventType::SALE_RECEIPT);
+        $this->assertFalse($bad->ok);
+
+        $good = $parser->parse($this->validSaleReceiptEnvelope(), FiscalEventType::SALE_RECEIPT);
+        $this->assertTrue($good->ok, 'unexpected failure on reuse: '.($good->failureReason ?? '(none)'));
+
+        $bad2 = $parser->parse('{"event_type":"SALE_RECEIPT","event_type":"X"}', FiscalEventType::SALE_RECEIPT);
+        $this->assertFalse($bad2->ok);
+        $this->assertStringContainsString('duplicate_key', $bad2->failureReason ?? '');
+    }
+
+    // ---- Opus P3-2: `-0` rejected ------------------------------------
+
+    public function test_rejects_negative_zero_integer(): void
+    {
+        $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'sequence_number', '-0');
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('out_of_grammar_number', $result->failureReason ?? '');
     }
 }
