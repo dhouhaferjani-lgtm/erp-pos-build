@@ -99,6 +99,15 @@ return new class extends Migration
             // land here. Future phases that add new non-admissible classes will need to
             // extend this list (and the IntegrityExceptionClass::isAdmissibleToLedger()
             // partition simultaneously). Pinning it at the DB layer prevents drift.
+            //
+            // Phase 2 follow-up: once this CHECK widens beyond a single value, Task 8's
+            // BEFORE UPDATE trigger pattern becomes mandatory on this table to forbid
+            // reclassification post-insert (the Task 8 round-2 BLOCKER lesson). Today
+            // the single-value CHECK forecloses reclassification implicitly — there is
+            // only one valid value to set this column to, and it is the value already
+            // present. The model also excludes `integrity_exception_class` from
+            // `$fillable`, so mass-assignment cannot reach it; only `forceFill()` /
+            // `setAttribute()` from explicit code can, which is auditable.
             DB::statement(<<<'SQL'
                 ALTER TABLE fiscal_event_quarantine
                 ADD CONSTRAINT fiscal_event_quarantine_class_phase1_allowed
@@ -121,11 +130,14 @@ return new class extends Migration
             );
 
             // Hot-path index for the admin-resolution view + verifier (§15): scan
-            // unresolved incidents for a terminal. Partial — keeps long tail of
-            // resolved rows out of the hot index.
+            // unresolved incidents. Partial — keeps the long tail of resolved rows
+            // out of the hot index. Leading column is `tenant_id` to align with
+            // Task 7's `fiscal_events_tenant_terminal_sequence_unique` and the
+            // project's tenant-leading convention, so both query shapes
+            // (per-terminal verifier; per-tenant admin browse) prune efficiently.
             DB::statement(<<<'SQL'
                 CREATE INDEX fiscal_event_quarantine_unresolved_idx
-                    ON fiscal_event_quarantine (terminal_id, claimed_sequence_number)
+                    ON fiscal_event_quarantine (tenant_id, terminal_id, claimed_sequence_number)
                     WHERE resolved_at IS NULL
             SQL);
         }

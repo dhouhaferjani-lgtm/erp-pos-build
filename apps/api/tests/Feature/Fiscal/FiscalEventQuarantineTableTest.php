@@ -115,6 +115,91 @@ final class FiscalEventQuarantineTableTest extends TestCase
         $this->assertNull($row->resolved_by);
     }
 
+    public function test_current_hash_format_check_rejects_non_hex_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $this->expectException(QueryException::class);
+        $this->insertQuarantineRow(['current_hash' => 'NOT-HEX']);
+    }
+
+    public function test_previous_hash_format_check_rejects_non_hex_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $this->expectException(QueryException::class);
+        $this->insertQuarantineRow(['previous_hash' => str_repeat('Z', 64)]);
+    }
+
+    public function test_unresolved_partial_index_exists_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            'SELECT indexdef FROM pg_indexes WHERE indexname = ?',
+            ['fiscal_event_quarantine_unresolved_idx'],
+        );
+
+        $this->assertNotNull(
+            $row,
+            'Partial index fiscal_event_quarantine_unresolved_idx missing on PostgreSQL',
+        );
+        // The predicate scopes the index to in-flight (unresolved) incidents so
+        // the long tail of resolved rows stays out of the hot scan.
+        $this->assertStringContainsString('resolved_at IS NULL', $row->indexdef);
+        // Tenant-leading per project convention (Task 7's
+        // fiscal_events_tenant_terminal_sequence_unique).
+        $this->assertStringContainsString('tenant_id', $row->indexdef);
+        $this->assertStringContainsString('terminal_id', $row->indexdef);
+        $this->assertStringContainsString('claimed_sequence_number', $row->indexdef);
+    }
+
+    public function test_raw_envelope_is_jsonb_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            'SELECT data_type FROM information_schema.columns
+             WHERE table_name = ? AND column_name = ?',
+            ['fiscal_event_quarantine', 'raw_envelope'],
+        );
+
+        $this->assertNotNull($row, 'raw_envelope column missing on PostgreSQL');
+        $this->assertSame('jsonb', $row->data_type);
+    }
+
+    public function test_section_8_column_type_contract_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $expected = [
+            // High-value §8 columns where a future edit could silently degrade the
+            // type. Pinning these at the catalog level prevents column-name-only
+            // drift from passing the column-shape test.
+            'claimed_sequence_number' => ['data_type' => 'bigint', 'is_nullable' => 'NO'],
+            'canonical_bytes' => ['data_type' => 'bytea', 'is_nullable' => 'NO'],
+            'raw_envelope' => ['data_type' => 'jsonb', 'is_nullable' => 'NO'],
+            'current_hash' => ['data_type' => 'character', 'is_nullable' => 'NO'],
+            'previous_hash' => ['data_type' => 'character', 'is_nullable' => 'NO'],
+            'event_version' => ['data_type' => 'smallint', 'is_nullable' => 'NO'],
+            'business_date' => ['data_type' => 'date', 'is_nullable' => 'NO'],
+            'integrity_exception_reason' => ['data_type' => 'text', 'is_nullable' => 'NO'],
+            'resolved_at' => ['data_type' => 'timestamp with time zone', 'is_nullable' => 'YES'],
+            'resolved_by' => ['data_type' => 'uuid', 'is_nullable' => 'YES'],
+        ];
+
+        foreach ($expected as $column => $shape) {
+            $row = DB::selectOne(
+                'SELECT data_type, is_nullable FROM information_schema.columns
+                 WHERE table_name = ? AND column_name = ?',
+                ['fiscal_event_quarantine', $column],
+            );
+            $this->assertNotNull($row, "column {$column} missing on PostgreSQL");
+            $this->assertSame($shape['data_type'], $row->data_type, "{$column} data_type drift");
+            $this->assertSame($shape['is_nullable'], $row->is_nullable, "{$column} nullability drift");
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
