@@ -1,7 +1,7 @@
 # POS Fiscal Event Engine — Session Handoff / Continuation Anchor
 
 **Created:** 2026-05-14
-**Last refreshed:** 2026-05-15 — after Task 1 was promoted to `dev`, staging SSH preflight access failed non-interactively, and Phase 1 Tasks 2–6 were implemented with Opus gates. Hard stop reached at Task 7 boundary.
+**Last refreshed:** 2026-05-16 — Tasks 7–11 shipped + dual-reviewed; the schema-destructive gate is OPEN via owner attestation; branch HEAD `4aa7f9be` on `feat/pos-fiscal-event-engine-phase1` (PR #124).
 **Why this exists:** the originating session hit the context window; subsequent sessions refresh this in place. This is the durable anchor — read this first, then the artifacts it indexes.
 
 ---
@@ -69,41 +69,48 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 
 **Plan v4 is re-reviewed and cleared.** Review file: `docs/superpowers/reviews/2026-05-14-pos-phase1-fiscal-event-engine-plan-v4-codex-review.md` (verdict APPROVE-WITH-MINOR-EDITS; only P3 wording cleanup applied).
 
-**Phase 1 implementation is in progress on branch `feat/pos-fiscal-event-engine-phase1`.** Task 1 was promoted to `dev` through PR #123 (merged as `fc69ee27`). Tasks 2–5 are complete on the feature branch:
-- Task 2 — `84ff133d` (`feat(fiscal): FiscalEventType enum with Appendix A reserved values`), Opus verdict APPROVE.
-- Task 3 — `0f0e0271` (`feat(fiscal): integrity/parse/projection/signature status enums`), Opus verdict APPROVE.
-- Task 4 — `7e469e0a` (`feat(fiscal): canonical serialization golden vectors + PHP hash-only golden test`), Opus verdict APPROVE.
-- Task 5 — `296d9d61` (`feat(pos): FiscalEventCanonicalEncoder reproducing cross-language golden vectors`), Opus verdict APPROVE after P1/P3 fixes.
-- Task 6 — `3ad6fe49` (`feat(fiscal): FiscalIntegrityProvider + HashChainIntegrityProvider (PHP+TS) + SignatureProviderInterface`), Opus verdict APPROVE.
+**Phase 1 implementation is in progress on branch `feat/pos-fiscal-event-engine-phase1` (PR #124).** Branch HEAD `4aa7f9be` as of 2026-05-16. Owner sign-off on the schema-destructive preflight gate is OPEN (`apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` — attested 2026-05-15).
 
-Plan review history:
-- **v1 → Codex BLOCK (1 BLOCKER / 3 P1 / 3 P2 / 1 P3)** — `reviews/...-plan-codex-review.md`. The BLOCKER was a Task 8 ↔ Task 24 contradiction (the immutability trigger forbade the parse-failure resume transition).
-- **v2 → Codex re-review BLOCK (1 P1)** — `reviews/...-plan-v2-codex-review.md`: all 8 v1 findings verified resolved, but provider wiring was deferred to Task 26 even though Tasks 17/20/24 needed it earlier — same defect class as v1's Task-1 finding.
-- **v3 → Codex focused re-review BLOCK (1 P1 / 1 P3)** — `reviews/...-plan-v3-codex-review.md`: the incremental provider-wiring convention closes the v2 P1, but Task 19's green test required `>0` projection rows while the registry is intentionally empty until Tasks 21/22 tag real projectors. P3: Task 26 provider note wrongly listed Task 31 as already wired.
-- **v4 (current)** resolves both: Task 19 now uses a **test-local `FakeSaleReceiptProjector`** tagged in `setUp()` (asserts exactly 1 row) + a companion test for the empty-registry case (event stores, 0 rows); real POS/Treasury tags stay in Tasks 21/22. Task 26's note corrected to exclude Task 31. Not yet re-reviewed.
+### 4.1 Tasks shipped (1–11 inclusive)
 
-Open items / current hard stop:
-- **BLOCKED FOR HUMAN SIGN-OFF:** `apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` must be completed by the owner across server, device, and web-POS surfaces before schema-destructive Tasks 7–13 and 28–30. Codex cannot produce this sign-off.
-- Task 1 is promoted to `dev` through PR #123 (`fc69ee27`). The local command run failed closed because the local PostgreSQL role `autoerp` does not exist; this is recorded in the sign-off artifact. The attempted staging SSH run failed non-interactively:
+| # | Commit | Summary | Reviews |
+|---|---|---|---|
+| 1 | `fc69ee27` (promoted to `dev` via PR #123) | preflight + minimal Fiscal module provider | Opus APPROVE; sign-off attestation `d695e9cf` |
+| 2 | `84ff133d` | FiscalEventType enum (Appendix A reserved values) | Opus APPROVE |
+| 3 | `0f0e0271` | Supporting status enums (integrity/parse/projection/signature) | Opus APPROVE |
+| 4 | `7e469e0a` | Canonical golden vectors + PHP hash-only golden test | Opus APPROVE |
+| 5 | `296d9d61` | FiscalEventCanonicalEncoder TS (cross-language reproduction) | Opus APPROVE; **two deferred P2s** (vet hand-rolled SHA-256 OR add padding-boundary vectors at 55–57, 63–65, 119–120, 127–128 bytes; extract shared JCS core) — handle BEFORE Task 15 |
+| 6 | `3ad6fe49` | FiscalIntegrityProvider + HashChainIntegrityProvider + SignatureProviderInterface | Opus APPROVE |
+| 7 | `245f5e85` + `097c21a0` | `fiscal_events` table + Task 7 P3 un-skip | Opus + Codex both APPROVE-WITH-MINOR-EDITS-APPLIED |
+| 8 | `2e036485` + `9577dc62` + `73066080` | `fiscal_events` immutability triggers + 2 BLOCKER closures | Codex round-2 BLOCKER (parse-failure resolution bypass) + round-3 BLOCKER (integrity_exception_class write-once) BOTH found by Codex, missed by Opus — both closed |
+| 9 | `61444f56` + `223577ff` + `55027c0b` | `fiscal_event_projections` mutable table + reconciliation (P1 PG-gate, P2 $fillable narrowing, P2 PHPDoc) | Opus APPROVE-WITH-MINOR-EDITS; Codex APPROVE-WITH-MINOR-EDITS; consensus reconciliation applied |
+| 10 | `2e8aec56` + `c3e448d2` + `9014019b` | `fiscal_event_quarantine` (§8 non-admissible partition) + reconciliation (P1 CI-gate, 4×P2 + index widen + Phase-2 trigger note) | Opus APPROVE-WITH-MINOR-EDITS; Codex REQUEST-CHANGES (file says APPROVE-WITH-MINOR-EDITS — wrapper-summary diverged); reconciliation applied |
+| 11 | `ddc42d5c` + `00670adf` + `4aa7f9be` | `pos_receipts` gains `canonical_bytes` + `fiscal_event_id` UNIQUE FK; chain columns become mirrors. Receipt model `$fillable` extended; @property annotations added; prevent_receipt_modification trigger interaction documented; insert-based duplicate-rejection test (via explicit factory chain) added | Opus APPROVE-WITH-MINOR-EDITS; Codex APPROVE-WITH-MINOR-EDITS; 3 P2 reconciliation applied |
 
-```text
-Permission denied, please try again.
-Permission denied, please try again.
-root@157.180.71.252: Permission denied (publickey,password).
-```
+### 4.2 Per-task ground rules (carried forward from Tasks 7–11)
 
-No staging output was recorded by Codex. The owner must run against the real staging/production environment(s).
-- Rolling PR #124 contains Tasks 2–6 and is open against `dev`.
-- Task 1 Opus review file: `docs/superpowers/reviews/2026-05-14-phase1-task-01-opus-review.md`, verdict APPROVE. No open BLOCKER/P1/P2. Residual P3 notes: the four extra per-source tests added after review do not have separate red-run evidence, and the receipt-print test has an FK-required receipt fixture while still asserting the `pos_receipt_prints` source line.
-- Task 5 Opus review file: `docs/superpowers/reviews/2026-05-14-phase1-task-05-opus-review.md`, final verdict APPROVE. Deferred P2 items to handle before Task 15 wires `FiscalEventEngine.append()` into production flow: replace/vet the hand-rolled sync SHA-256 or add padding-boundary vectors (55–57, 63–65, 119–120, 127–128 bytes), and extract a shared JCS core instead of duplicating `apps/pos/src/lib/fiscal/v3/canonicalJson.ts`.
-- Task 6 Opus review file: `docs/superpowers/reviews/2026-05-14-phase1-task-06-opus-review.md`, verdict APPROVE. Informational P3s: PHP uses `hash_equals()` while TS uses plain equality for public integrity hashes (acceptable unless a future secret-bearing signature provider lands); `SignatureProviderInterface::sign()` uses a literal status union rather than the Fiscal module enum to preserve shared-contract layering. No action required before Task 7; the Task 5 deferred P2s still need handling before Task 15.
-- Full root `./scripts/preflight.sh` was run before the architecture classification fix and failed only on `ConsoleCommandTenantContextTest` for the new command missing tenant-context classification. The classification was added and targeted verification passed: Task 1 PHPUnit, console-command architecture test, PHPStan, Pint. Full root preflight was not rerun after the fix.
+1. **Per-task TDD + dual review is non-negotiable.** Codex caught the only two BLOCKERs found so far (both in Task 8). Don't skip the Codex pass even when Opus is happy.
+2. **CI PG merge-gate filter must be extended at the same commit any new fiscal table-shape test ships.** Tasks 10 and 11 reviewers both flagged this regression once already. Pattern: add the test class name to `.github/workflows/ci.yml` line ~346 + extend the comment block.
+3. **`$fillable` boundary discipline.** Lifecycle/state-machine columns belong out of `$fillable` (Task 9 lesson). Identity / insert-time FK columns are fine to include (Task 11 CLEAN-2 verified — both Receipt and FiscalEventProjectionRow follow this pattern).
+4. **Codex wrapper-summary may diverge from the actual review file.** Trust the file (`docs/superpowers/reviews/...-codex-review.md`) as source-of-truth; the wrapper summary returned by the agent runtime is generated from a different prompt path and can mis-classify severity.
+5. **Plan-vs-code wording drift on `hash_sequence` vs `chain_sequence`.** Plan says `hash_sequence`; actual `pos_receipts` column is `chain_sequence`. Migration / commit message correctly use `chain_sequence`; do not propagate the plan's wording. (Task 11 Codex CLEAN-6.)
+6. **Schema-destructive preflight gate is OPEN.** No further human checkpoints in the remaining tasks unless a new schema-destructive surface surfaces.
 
-The immediate next step:
+### 4.3 Open items going into Task 12
 
-1. **STOP at Task 7.** Task 7 creates `fiscal_events` and is schema-destructive.
-2. Wait for written owner sign-off in `apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` before Task 7. Do not start schema-destructive Tasks 7–13 or 28–30 without that sign-off.
-3. Keep running the headless Opus review gate after every task commit and update this open-items section before any interruption.
+- **Task 5 deferred P2s (still unhandled):** must close before Task 15 wires `FiscalEventEngine.append()` into the production flow:
+  - Vet/replace the hand-rolled sync SHA-256 in `apps/pos/src/lib/fiscal/v3/sha256.ts` OR add padding-boundary vectors at 55–57, 63–65, 119–120, 127–128 bytes to the canonical golden-vector fixture.
+  - Extract a shared JCS core instead of duplicating the canonicalization in `apps/pos/src/lib/fiscal/v3/canonicalJson.ts`.
+- **Task 12 next:** `add_origin_and_fiscal_event_id_to_payments` + `PaymentOrigin` enum on `apps/api/app/Modules/Treasury/Domain/Payment.php` (plan §901–948). Production-model edit; same care as Task 11. Verify the model path with `grep -rn "use App\\\\Modules\\\\Treasury\\\\Domain\\\\Payment" apps/api/app/Modules/Treasury` before editing — Task 22 writers must target the same class.
+- **Task 13 next:** Device SQLite `fiscal_events` table + triggers + `terminal_state` chain head. First Tauri-side task; locate the existing device migration set via `grep -rl "CREATE TABLE" apps/pos/src --include=*.ts` (the migrations runner the app uses for `offline_receipts`).
+- **Subagent strategy:** for Tasks 15/19/21/22/27/28/29/30, delegate to Opus subagents per the original brief. Tasks 12/13/14 are small enough to inline.
+
+### 4.4 Worktree + CI status
+
+- Working directory: `/Users/houssamr/Projects/syneriva/apps/erp.fiscal-phase1` (dedicated git worktree). Main `apps/erp/` is on detached HEAD; do NOT cd into it (parallel cleanup session may claim branches).
+- The worktree has its own APFS-cloned `apps/api/vendor` (the original symlink resolved PSR-4 baseDir through the main worktree, masking new files; replaced with a real copy in this session). Phpstan/pint/phpunit work directly from the worktree.
+- Per-commit verification: `phpunit` on the touched test, `phpstan analyse` (level 8), `pint --test` — all on the explicit file list.
+- PG-only smoke runs only happen in CI (the local SQLite runner skips them with `markTestSkipped`). The CI filter at `.github/workflows/ci.yml:346` includes: `VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest`.
 
 ---
 
@@ -142,4 +149,4 @@ Every adversarial-review prompt this effort uses (Opus or Codex): instruct the r
 
 ---
 
-**End of handoff (refreshed after v7 — Codex APPROVE; next step `writing-plans`).**
+**End of handoff (refreshed 2026-05-16 after Tasks 7–11 shipped; next: Task 12 — Treasury Payment origin + fiscal_event_id).**
