@@ -896,4 +896,189 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // POS Fiscal Event Engine — Phase 1 (Task 13).
+    //
+    // Device SQLite is the authoritative fiscal source of truth. This
+    // migration brings up the per-device `fiscal_events` chain table,
+    // hardens it with append-only triggers matching the existing
+    // `offline_receipts` discipline, and adds the per-terminal chain
+    // head to `terminal_state` (legacy `last_hash`/`hash_sequence`
+    // columns are retained as a mirror).
+    //
+    // `offline_receipts.canonical_bytes` is added as a nullable column
+    // so projection-only callers continue to work until Task 15 wires
+    // the assembler / fiscal-event seal end-to-end.
+    //
+    // Column shape mirrors Phase 1 spec v7 §3.1 (device); chain
+    // invariants — UNIQUE(tenant_id, terminal_id, sequence_number),
+    // 64-char lowercase hex hashes — mirror the server-side §3.2.
+    version: 37,
+    name: 'create_fiscal_events_and_chain_head',
+    sql: '',
+    async run(db) {
+      // ----- fiscal_events (chain) ----------------------------------------
+      // CHECK constraints:
+      //   - sequence_number > 0 — genesis seed is stored on terminal_state, not as a chain row.
+      //   - length+hex-ish format guards for current_hash / previous_hash
+      //     (lower hex 64 chars). SQLite has no native regex; we lean on
+      //     length + GLOB pattern, which is sufficient as a defense-in-depth
+      //     guard alongside the producer-side encoder.
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS fiscal_events (
+          id                          TEXT PRIMARY KEY,
+          tenant_id                   TEXT NOT NULL,
+          company_id                  TEXT NOT NULL,
+          terminal_id                 TEXT NOT NULL,
+          operator_id                 TEXT NOT NULL,
+          event_type                  TEXT NOT NULL,
+          event_version               INTEGER NOT NULL DEFAULT 1,
+          signature_version           TEXT NOT NULL,
+          sequence_number             INTEGER NOT NULL,
+          event_time_device           TEXT NOT NULL,
+          business_date               TEXT NOT NULL,
+          last_server_time_seen       TEXT,
+          reference_event_id          TEXT,
+          reference_document_id       TEXT,
+          source_event_class          TEXT,
+          source_event_id             TEXT,
+          partner_id                  TEXT,
+          partner_identity_snapshot   TEXT,
+          canonical_bytes             TEXT NOT NULL,
+          previous_hash               TEXT NOT NULL,
+          current_hash                TEXT NOT NULL,
+          signature_status            TEXT NOT NULL DEFAULT 'not_required',
+          signature_algorithm         TEXT,
+          signature_value             TEXT,
+          signature_counter           INTEGER,
+          signature_provider          TEXT,
+          signing_device_id           TEXT,
+          certificate_id              TEXT,
+          signed_payload_ref          TEXT,
+          time_source_value           TEXT,
+          time_format                 TEXT,
+          provider_transaction_id     TEXT,
+          sync_status                 TEXT NOT NULL DEFAULT 'pending',
+          sync_error                  TEXT,
+          created_at                  TEXT NOT NULL,
+          synced_at                   TEXT,
+          CHECK (sequence_number > 0),
+          CHECK (length(current_hash)  = 64 AND current_hash  GLOB '[0-9a-f]*' AND length(replace(current_hash,  '_', '')) = 64),
+          CHECK (length(previous_hash) = 64 AND previous_hash GLOB '[0-9a-f]*' AND length(replace(previous_hash, '_', '')) = 64),
+          CHECK (sync_status IN ('pending', 'syncing', 'synced', 'failed')),
+          CHECK (signature_status IN ('not_required', 'pending', 'signed', 'failed')),
+          CHECK (
+            (source_event_class IS NULL AND source_event_id IS NULL)
+            OR (source_event_class IS NOT NULL AND source_event_id IS NOT NULL)
+          )
+        );
+      `);
+
+      // Chain-integrity UNIQUE — the (tenant_id, terminal_id, sequence_number)
+      // triple is the authoritative chain key. Matches server-side spec §3.2.
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_chain_unique
+          ON fiscal_events(tenant_id, terminal_id, sequence_number);
+      `);
+
+      // Source-event idempotency — partial unique index excludes NULL pairs.
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_source_event_unique
+          ON fiscal_events(source_event_class, source_event_id)
+          WHERE source_event_id IS NOT NULL;
+      `);
+
+      // Sync-lifecycle index — the sync flusher scans pending rows
+      // ordered by sequence.
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_sync_pending
+          ON fiscal_events(sync_status, sequence_number)
+          WHERE sync_status IN ('pending', 'syncing', 'failed');
+      `);
+
+      // Reference-event / reference-document lookups for chain-recovery
+      // events and back-projection queries.
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_reference_event
+          ON fiscal_events(reference_event_id)
+          WHERE reference_event_id IS NOT NULL;
+      `);
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_reference_document
+          ON fiscal_events(reference_document_id)
+          WHERE reference_document_id IS NOT NULL;
+      `);
+
+      // ----- Immutability triggers ---------------------------------------
+      // BEFORE UPDATE OF <every non-sync column>: RAISE(ABORT).
+      // Allowed columns (sync lifecycle only): sync_status, sync_error, synced_at.
+      //
+      // SQLite's column-level UPDATE OF trigger fires only when one of the
+      // listed columns is in the UPDATE's SET list. By enumerating ALL
+      // non-sync columns we block any attempted mutation of chain content
+      // while still allowing the sync flusher to advance the lifecycle.
+      await db.execute(`
+        CREATE TRIGGER IF NOT EXISTS fiscal_events_block_update
+        BEFORE UPDATE OF
+          id, tenant_id, company_id, terminal_id, operator_id,
+          event_type, event_version, signature_version, sequence_number,
+          event_time_device, business_date, last_server_time_seen,
+          reference_event_id, reference_document_id,
+          source_event_class, source_event_id,
+          partner_id, partner_identity_snapshot,
+          canonical_bytes, previous_hash, current_hash,
+          signature_status, signature_algorithm, signature_value,
+          signature_counter, signature_provider, signing_device_id,
+          certificate_id, signed_payload_ref,
+          time_source_value, time_format, provider_transaction_id,
+          created_at
+        ON fiscal_events
+        BEGIN
+          SELECT RAISE(ABORT, 'fiscal_events is append-only; only sync_status/sync_error/synced_at may be updated');
+        END;
+      `);
+
+      // BEFORE DELETE: RAISE(ABORT) always.
+      await db.execute(`
+        CREATE TRIGGER IF NOT EXISTS fiscal_events_block_delete
+        BEFORE DELETE ON fiscal_events
+        BEGIN
+          SELECT RAISE(ABORT, 'fiscal_events rows are append-only and may not be deleted');
+        END;
+      `);
+
+      // ----- terminal_state chain head -----------------------------------
+      // Three NOT NULL DEFAULT '' columns — populated at terminal init
+      // by the device fiscal-event boot path (Task 15 wires this).
+      // Legacy last_hash/hash_sequence stay; they mirror the receipt-V3
+      // chain head for backward-compatible reads.
+      const terminalStateColumns = [
+        "ALTER TABLE terminal_state ADD COLUMN fiscal_event_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN fiscal_event_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN fiscal_event_sequence INTEGER NOT NULL DEFAULT 0',
+      ];
+      for (const stmt of terminalStateColumns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+
+      // ----- offline_receipts.canonical_bytes ----------------------------
+      // Nullable — projection-only callers continue to function until
+      // Task 15 wires fiscal-event sealing into the assembler path.
+      try {
+        await db.execute('ALTER TABLE offline_receipts ADD COLUMN canonical_bytes TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
 ];
