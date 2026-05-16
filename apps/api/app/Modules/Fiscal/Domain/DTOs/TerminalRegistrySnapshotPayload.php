@@ -34,9 +34,10 @@ final readonly class TerminalRegistrySnapshotPayload
     public static function fromArray(array $data): self
     {
         return new self(
-            terminals: $data['terminals'],
-            snapshotHash: (string) $data['snapshot_hash'],
-            priorSnapshotLink: isset($data['prior_snapshot_link']) ? (string) $data['prior_snapshot_link'] : null,
+            // @phpstan-ignore-next-line argument.type
+            terminals: FiscalPayloadArrayGuards::requireArray($data, 'terminals'),
+            snapshotHash: FiscalPayloadArrayGuards::requireString($data, 'snapshot_hash'),
+            priorSnapshotLink: FiscalPayloadArrayGuards::optionalString($data, 'prior_snapshot_link'),
         );
     }
 

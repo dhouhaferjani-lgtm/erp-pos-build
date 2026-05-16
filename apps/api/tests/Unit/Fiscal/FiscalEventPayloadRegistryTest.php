@@ -7,6 +7,7 @@ namespace Tests\Unit\Fiscal;
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
+use App\Modules\Fiscal\Domain\DTOs\CompanyDayClosureManifestPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\TerminalRegistrySnapshotPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -166,5 +167,180 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(str_repeat('d', 64), $dto->snapshotHash);
         $this->assertNull($dto->priorSnapshotLink);
         $this->assertSame($data, $dto->toArray());
+    }
+
+    // Regression for Task 14 round-2 BLOCKER-1 (Codex): the original
+    // `(string) $data['key']` cast silently coerced missing keys into ''
+    // (raising only a PHP undefined-array-key warning). The hardened
+    // fromArray uses FiscalPayloadArrayGuards::require* which throws
+    // InvalidArgumentException with a precise "missing required key"
+    // message instead.
+    public function test_from_array_rejects_missing_required_keys_on_every_implemented_dto(): void
+    {
+        $this->assertThrowsInvalidArg(fn () => SaleReceiptPayload::fromArray([]), 'currency');
+        $this->assertThrowsInvalidArg(fn () => ChainBreakDetectedPayload::fromArray([]), 'reason');
+        $this->assertThrowsInvalidArg(fn () => ChainRestartPayload::fromArray([]), 'new_genesis_reference');
+        $this->assertThrowsInvalidArg(fn () => TerminalRegistrySnapshotPayload::fromArray([]), 'terminals');
+    }
+
+    // Regression for Task 14 round-2 BLOCKER-2 (Codex): the original
+    // `(string) $data['key']` cast silently coerced floats into
+    // locale-sensitive decimal-string representations
+    // (e.g. (string) 10.5 -> '10.5', losing the float-to-decimal
+    // contract from SoT v3 §4). The hardened fromArray asserts
+    // is_string() and rejects floats outright.
+    public function test_sale_receipt_payload_rejects_float_monetary_fields(): void
+    {
+        $base = [
+            'currency' => 'TND',
+            'currency_scale' => 3,
+            'lines' => [],
+            'subtotal' => '0.000',
+            'discount_total' => '0.000',
+            'tax_total' => '0.000',
+            'total' => '0.000',
+            'vat_breakdown' => [],
+            'payment_lines' => [],
+            'voucher_redemptions' => [],
+        ];
+
+        // Float in monetary fields — every cast-site must reject.
+        foreach (['subtotal', 'discount_total', 'tax_total', 'total'] as $key) {
+            $data = $base;
+            $data[$key] = 10.5;
+            try {
+                SaleReceiptPayload::fromArray($data);
+                $this->fail("Expected float in '{$key}' to be rejected");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($key, $e->getMessage());
+                $this->assertStringContainsString('string', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_sale_receipt_payload_rejects_non_int_currency_scale(): void
+    {
+        $base = [
+            'currency' => 'TND',
+            'currency_scale' => '3', // string instead of int — must reject (no silent coercion)
+            'lines' => [],
+            'subtotal' => '0.000',
+            'discount_total' => '0.000',
+            'tax_total' => '0.000',
+            'total' => '0.000',
+            'vat_breakdown' => [],
+            'payment_lines' => [],
+            'voucher_redemptions' => [],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/currency_scale.*int/');
+        SaleReceiptPayload::fromArray($base);
+    }
+
+    public function test_sale_receipt_payload_rejects_bool_currency_scale(): void
+    {
+        $base = [
+            'currency' => 'TND',
+            'currency_scale' => true, // bool — must reject (is_int(true) === false)
+            'lines' => [],
+            'subtotal' => '0.000',
+            'discount_total' => '0.000',
+            'tax_total' => '0.000',
+            'total' => '0.000',
+            'vat_breakdown' => [],
+            'payment_lines' => [],
+            'voucher_redemptions' => [],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        SaleReceiptPayload::fromArray($base);
+    }
+
+    public function test_sale_receipt_payload_rejects_non_array_lines(): void
+    {
+        $base = [
+            'currency' => 'TND',
+            'currency_scale' => 3,
+            'lines' => 'not an array',
+            'subtotal' => '0.000',
+            'discount_total' => '0.000',
+            'tax_total' => '0.000',
+            'total' => '0.000',
+            'vat_breakdown' => [],
+            'payment_lines' => [],
+            'voucher_redemptions' => [],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/lines.*array/');
+        SaleReceiptPayload::fromArray($base);
+    }
+
+    public function test_chain_break_detected_payload_rejects_string_last_good_sequence(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/last_good_sequence.*int/');
+        ChainBreakDetectedPayload::fromArray([
+            'reason' => 'sequence_gap',
+            'last_good_sequence' => '42', // string instead of int — rejected
+            'last_good_hash' => str_repeat('a', 64),
+            'offending_record_reference' => [],
+        ]);
+    }
+
+    public function test_terminal_registry_snapshot_payload_accepts_null_prior_snapshot_link(): void
+    {
+        // Optional-string semantics: missing key OR null both allowed.
+        $dto1 = TerminalRegistrySnapshotPayload::fromArray([
+            'terminals' => [],
+            'snapshot_hash' => str_repeat('d', 64),
+            'prior_snapshot_link' => null,
+        ]);
+        $this->assertNull($dto1->priorSnapshotLink);
+
+        $dto2 = TerminalRegistrySnapshotPayload::fromArray([
+            'terminals' => [],
+            'snapshot_hash' => str_repeat('d', 64),
+            // prior_snapshot_link key absent entirely
+        ]);
+        $this->assertNull($dto2->priorSnapshotLink);
+    }
+
+    public function test_terminal_registry_snapshot_payload_rejects_non_string_prior_snapshot_link(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        TerminalRegistrySnapshotPayload::fromArray([
+            'terminals' => [],
+            'snapshot_hash' => str_repeat('d', 64),
+            'prior_snapshot_link' => 123, // int — must reject
+        ]);
+    }
+
+    // Aligned with Opus P2-1 (Task 14 round-2): both the registry AND the
+    // reserved DTO surface throw the same FiscalEventTypeNotImplemented
+    // class. Future Phase 2 callers can catch one exception type instead
+    // of branching on (FiscalEventTypeNotImplemented | \LogicException).
+    public function test_company_day_closure_manifest_payload_throws_unified_exception(): void
+    {
+        $caught = null;
+        try {
+            CompanyDayClosureManifestPayload::fromArray(['anything' => 'goes']);
+        } catch (FiscalEventTypeNotImplemented $e) {
+            $caught = $e;
+        }
+
+        $this->assertInstanceOf(FiscalEventTypeNotImplemented::class, $caught);
+        $this->assertSame(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST, $caught->type);
+    }
+
+    private function assertThrowsInvalidArg(callable $fn, string $missingKey): void
+    {
+        try {
+            $fn();
+            $this->fail("Expected InvalidArgumentException for missing key '{$missingKey}'");
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString($missingKey, $e->getMessage());
+        }
     }
 }

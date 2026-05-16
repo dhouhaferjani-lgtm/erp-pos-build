@@ -43,10 +43,13 @@ final readonly class ChainRestartPayload
     public static function fromArray(array $data): self
     {
         return new self(
-            newGenesisReference: (string) $data['new_genesis_reference'],
-            lastGoodAnchor: $data['last_good_anchor'],
-            operatorAuthorizationEvidence: $data['operator_authorization_evidence'],
-            provenanceLink: $data['provenance_link'],
+            newGenesisReference: FiscalPayloadArrayGuards::requireString($data, 'new_genesis_reference'),
+            // @phpstan-ignore-next-line argument.type
+            lastGoodAnchor: FiscalPayloadArrayGuards::requireArray($data, 'last_good_anchor'),
+            // @phpstan-ignore-next-line argument.type
+            operatorAuthorizationEvidence: FiscalPayloadArrayGuards::requireArray($data, 'operator_authorization_evidence'),
+            // @phpstan-ignore-next-line argument.type
+            provenanceLink: FiscalPayloadArrayGuards::requireArray($data, 'provenance_link'),
         );
     }
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Domain\DTOs;
 
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
+
 /**
  * COMPANY_DAY_CLOSURE_MANIFEST payload — RESERVED, schema-only.
  *
@@ -14,9 +17,15 @@ namespace App\Modules\Fiscal\Domain\DTOs;
  * NOT map this enum case to the DTO — attempting `dtoClassFor()` or
  * `eventVersionFor()` on this case throws `FiscalEventTypeNotImplemented`.
  *
- * Phase 2 will flesh out the schema (per spec v7 §11) once the company-day
- * closure workflow lands. Until then, this class is intentionally a thin
- * placeholder.
+ * `fromArray()` / `toArray()` mirror the registry's failure semantics:
+ * both throw the same `FiscalEventTypeNotImplemented` exception so any
+ * direct importer (Phase 2 enablement code paths, ad-hoc projector
+ * tests) gets a consistent error surface rather than a generic
+ * LogicException.
+ *
+ * Phase 2 will flesh out the schema (per spec v7 §11) once the
+ * company-day closure workflow lands. Until then, this class is
+ * intentionally a thin placeholder.
  */
 final readonly class CompanyDayClosureManifestPayload
 {
@@ -25,27 +34,21 @@ final readonly class CompanyDayClosureManifestPayload
     /**
      * @param  array<string, mixed>  $data
      *
-     * @throws \LogicException always — Phase 1 does not implement this payload.
+     * @throws FiscalEventTypeNotImplemented always — Phase 1 does not implement this payload.
      */
     public static function fromArray(array $data): self
     {
         unset($data);
-        throw new \LogicException(
-            'CompanyDayClosureManifestPayload is reserved schema-only in Phase 1; '.
-            'fromArray() is not implemented. See spec v7 §11 / Appendix A.',
-        );
+        throw new FiscalEventTypeNotImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST);
     }
 
     /**
      * @return array<string, mixed>
      *
-     * @throws \LogicException always — Phase 1 does not implement this payload.
+     * @throws FiscalEventTypeNotImplemented always — Phase 1 does not implement this payload.
      */
     public function toArray(): array
     {
-        throw new \LogicException(
-            'CompanyDayClosureManifestPayload is reserved schema-only in Phase 1; '.
-            'toArray() is not implemented. See spec v7 §11 / Appendix A.',
-        );
+        throw new FiscalEventTypeNotImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST);
     }
 }

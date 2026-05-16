@@ -49,16 +49,20 @@ final readonly class SaleReceiptPayload
     public static function fromArray(array $data): self
     {
         return new self(
-            currency: (string) $data['currency'],
-            currencyScale: (int) $data['currency_scale'],
-            lines: $data['lines'],
-            subtotal: (string) $data['subtotal'],
-            discountTotal: (string) $data['discount_total'],
-            taxTotal: (string) $data['tax_total'],
-            total: (string) $data['total'],
-            vatBreakdown: $data['vat_breakdown'],
-            paymentLines: $data['payment_lines'],
-            voucherRedemptions: $data['voucher_redemptions'],
+            currency: FiscalPayloadArrayGuards::requireString($data, 'currency'),
+            currencyScale: FiscalPayloadArrayGuards::requireInt($data, 'currency_scale'),
+            // @phpstan-ignore-next-line argument.type (sub-array shape deferred to Task 16 StrictCanonicalParser)
+            lines: FiscalPayloadArrayGuards::requireArray($data, 'lines'),
+            subtotal: FiscalPayloadArrayGuards::requireString($data, 'subtotal'),
+            discountTotal: FiscalPayloadArrayGuards::requireString($data, 'discount_total'),
+            taxTotal: FiscalPayloadArrayGuards::requireString($data, 'tax_total'),
+            total: FiscalPayloadArrayGuards::requireString($data, 'total'),
+            // @phpstan-ignore-next-line argument.type
+            vatBreakdown: FiscalPayloadArrayGuards::requireArray($data, 'vat_breakdown'),
+            // @phpstan-ignore-next-line argument.type
+            paymentLines: FiscalPayloadArrayGuards::requireArray($data, 'payment_lines'),
+            // @phpstan-ignore-next-line argument.type
+            voucherRedemptions: FiscalPayloadArrayGuards::requireArray($data, 'voucher_redemptions'),
         );
     }
 

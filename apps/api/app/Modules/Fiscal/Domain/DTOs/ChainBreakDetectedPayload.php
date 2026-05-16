@@ -37,10 +37,11 @@ final readonly class ChainBreakDetectedPayload
     public static function fromArray(array $data): self
     {
         return new self(
-            reason: (string) $data['reason'],
-            lastGoodSequence: (int) $data['last_good_sequence'],
-            lastGoodHash: (string) $data['last_good_hash'],
-            offendingRecordReference: $data['offending_record_reference'],
+            reason: FiscalPayloadArrayGuards::requireString($data, 'reason'),
+            lastGoodSequence: FiscalPayloadArrayGuards::requireInt($data, 'last_good_sequence'),
+            lastGoodHash: FiscalPayloadArrayGuards::requireString($data, 'last_good_hash'),
+            // @phpstan-ignore-next-line argument.type
+            offendingRecordReference: FiscalPayloadArrayGuards::requireArray($data, 'offending_record_reference'),
         );
     }
 
