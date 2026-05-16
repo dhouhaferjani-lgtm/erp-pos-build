@@ -94,4 +94,24 @@ final readonly class IngestionResult
             exceptionClass: IntegrityExceptionClass::SequenceConflict,
         );
     }
+
+    /**
+     * Step 0 path (T19-B4 round-2) — the inbound envelope failed shape
+     * validation at the ingestor boundary (non-hex hash, malformed UUID,
+     * malformed timestamp). The row was routed to
+     * `fiscal_event_quarantine` with class `malformed_envelope`; it
+     * physically cannot enter `fiscal_events` because the PG CHECK
+     * constraints would reject it. The controller renders a structured
+     * 422 or 200-with-quarantine-receipt response depending on operator
+     * policy (Task 20 contract).
+     */
+    public static function malformedEnvelope(): self
+    {
+        return new self(
+            stored: false,
+            fiscalEventId: null,
+            sequenceConflict: false,
+            exceptionClass: IntegrityExceptionClass::MalformedEnvelope,
+        );
+    }
 }

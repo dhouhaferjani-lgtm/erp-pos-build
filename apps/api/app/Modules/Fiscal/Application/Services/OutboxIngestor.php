@@ -14,12 +14,14 @@ use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use stdClass;
 use Throwable;
 
@@ -40,48 +42,79 @@ use Throwable;
  *
  * **Invariants (spec §7.2 line 380, §7.5 line 431):**
  *   - The row is ALWAYS persisted somewhere — `fiscal_events` (verified or
- *     in-table-quarantined) or `fiscal_event_quarantine` (sequence_conflict).
+ *     in-table-quarantined) or `fiscal_event_quarantine` (sequence_conflict
+ *     or malformed_envelope).
  *   - The device is NEVER blocked by a server-side anomaly: every anomaly is
  *     accepted, flagged, and routed; the ingestor's failure modes are
  *     internal-only.
+ *
+ * **Round-2 closures (Task 19 review):**
+ *   - **T19-B1 PG transaction-abort fix.** The atomic primitive is now raw
+ *     `INSERT … ON CONFLICT ON CONSTRAINT
+ *     fiscal_events_tenant_terminal_sequence_unique DO NOTHING RETURNING id`
+ *     (spec §7.2 line 380). A duplicate sequence slot returns an empty
+ *     result set with the transaction still alive; we then issue a FRESH
+ *     `SELECT` to inspect the existing row. The old
+ *     `try-catch-on-QueryException` pattern aborted the surrounding PG
+ *     transaction and made the follow-up SELECT unreachable.
+ *   - **T19-B2 source-event-id constraint disambiguation.** The atomic
+ *     `ON CONFLICT ON CONSTRAINT fiscal_events_tenant_terminal_sequence_unique`
+ *     routes ONLY sequence-slot collisions through `handleConflict()`. A
+ *     `(source_event_class, source_event_id)` collision propagates as a
+ *     `QueryException` and is handled distinctly (log + re-throw — the row
+ *     is then surfaced to the controller as a 5xx since a duplicate
+ *     source-event-id with mismatched payload is a programming bug, not a
+ *     chain anomaly).
+ *   - **T19-B3 genesis-seed validation for first events.** The
+ *     `pos_terminals.genesis_seed` column is canonical (migration
+ *     `2026_01_08_190429_create_pos_terminals_table.php:41`). First events
+ *     (`prior === null && sequence_number === 1`) MUST present a
+ *     `previous_hash` equal to the terminal's genesis seed; mismatch quarantines
+ *     as `sequence_gap`. Terminal-not-found also routes to `sequence_gap`.
+ *   - **T19-B4 envelope-shape invariants.** A malformed hash / UUID /
+ *     timestamp is now caught at the ingestor boundary via
+ *     `FiscalEventEnvelope::assertWireShape()` BEFORE any DB write —
+ *     routed to `fiscal_event_quarantine` with class
+ *     `malformed_envelope` (the quarantine CHECK was widened in migration
+ *     `2026_05_14_100007_widen_quarantine_class_check_for_malformed_envelope.php`).
+ *   - **T19-P1 / F7 clock drift threshold.** Now read from
+ *     `config('fiscal.clock_drift_limit_seconds')`; default 86400 seconds
+ *     stays the conservative ceiling but operators can override per
+ *     deployment.
+ *   - **T19-P2 / F6 server_received_at from DB NOW().** The persisted
+ *     timestamp is now driver-fetched from PostgreSQL `NOW()` (UTC) so
+ *     horizontally-scaled web boxes converge on the same clock; SQLite
+ *     falls back to `CURRENT_TIMESTAMP` for parity.
+ *   - **F3 dead-code wrap removed.** Task 18's registry catches resolver
+ *     throws internally; the OutboxIngestor's defensive wrap around
+ *     `activeProjectorsFor()` was unreachable in steady state (the only
+ *     remaining throw path was the registry constructor at container
+ *     resolution, which surfaces at OutboxIngestor instantiation, never
+ *     inside `ingest()`).
  *
  * **Carry-forward standing patterns (handoff §4.2):**
  *   - **No `(type) $array['key']` casts.** Inputs are typed
  *     `FiscalEventEnvelope` fields; reads from `stdClass` rows from the DB
  *     use explicit string casts only after `is_string`/`is_int` guards.
  *   - **Fail-closed on downstream-service exception** (Task 18 BLOCKER F1).
- *     The fiscal_events row is committed even if the projection dispatch
- *     loop throws — the registry already catches resolver exceptions; this
- *     class additionally catches Throwable around the entire projection
- *     planning block so a registry boot-fail or other unexpected exception
- *     never crashes the ingest path.
+ *     The registry's `activeProjectorsFor()` catches resolver throws
+ *     internally; this class trusts that contract.
  *   - **Regex-validate free-form fields at the boundary** (Task 15/16
- *     P1-1 pattern). The DTO carries `previous_hash` / `current_hash` /
- *     `event_time_device` / `business_date` as plain strings; the
- *     controller (Task 20) regex-validates them upstream. The ingestor
- *     trusts the DTO but defends against a malformed `event_time_device`
- *     inside the §10 clock check (CarbonImmutable parse failure → fall
- *     back to non-anomalous), so the §10 path can never bubble out.
+ *     P1-1 pattern, T19-B4). `FiscalEventEnvelope::assertWireShape()` is
+ *     re-run at the ingestor boundary so non-HTTP callers can't bypass
+ *     the controller's validation step.
  *
  * **§10 clock check (Phase 1 implementation).** The spec leaves the
  * thresholds normative-text-only. Phase 1 implements two cases:
  *   1. **Rollback** — `event_time_device` strictly less than the prior
  *      event's `event_time_device` on the same terminal.
  *   2. **Excessive drift** — `|event_time_device - server_received_at| >
- *      24 hours`. A typical NTP-drifted device is well inside this window;
- *      anything outside is implausible.
+ *      config('fiscal.clock_drift_limit_seconds')`. A typical NTP-drifted
+ *      device is well inside this window; anything outside is implausible.
  *  Both are accept-and-flag (§8 row 3); projection proceeds.
  */
 final class OutboxIngestor
 {
-    /**
-     * Phase 1 acceptance window for `event_time_device` vs `server_received_at`
-     * (the §10 "excessive drift" threshold). 24 hours covers worst-case
-     * NTP-drifted devices + timezone surprises; anything beyond is
-     * implausible enough to flag.
-     */
-    private const CLOCK_DRIFT_LIMIT_SECONDS = 24 * 60 * 60;
-
     public function __construct(
         private readonly ConnectionInterface $db,
         private readonly StrictCanonicalParser $parser,
@@ -92,14 +125,28 @@ final class OutboxIngestor
     /**
      * Ingest a single envelope into the server-side fiscal ledger.
      *
-     * Returns an `IngestionResult` discriminating among the four §7.2
-     * outcomes: stored (verified or quarantined-in-table) / idempotent
-     * re-delivery / sequence_conflict (routed to `fiscal_event_quarantine`).
+     * Returns an `IngestionResult` discriminating among the §7.2 outcomes:
+     * stored (verified or quarantined-in-table) / idempotent
+     * re-delivery / sequence_conflict / malformed_envelope (both routed to
+     * `fiscal_event_quarantine`).
      */
     public function ingest(FiscalEventEnvelope $envelope): IngestionResult
     {
+        // ---- Step 0: shape invariants (T19-B4) ----
+        // Reject malformed hashes / UUIDs / timestamps BEFORE any DB write
+        // so the row never surfaces as a PG CHECK constraint violation.
+        // Routes to fiscal_event_quarantine with class malformed_envelope.
+        try {
+            $envelope->assertWireShape();
+        } catch (InvalidArgumentException $shapeException) {
+            return $this->quarantineMalformedEnvelope($envelope, $shapeException);
+        }
+
         // ---- Step 1: validate against the envelope, BEFORE any insert ----
-        $serverReceivedAt = CarbonImmutable::now('UTC');
+        // T19-P2: server_received_at is driver-fetched (PG NOW() / SQLite
+        // CURRENT_TIMESTAMP) so the persisted timestamp doesn't vary
+        // across horizontally-scaled web boxes.
+        $serverReceivedAt = $this->fetchServerNow();
 
         $hashOk = $this->verifyHash($envelope);
         $parseResult = $this->parser->parse($envelope->canonicalBytes, $envelope->eventType);
@@ -137,51 +184,166 @@ final class OutboxIngestor
 
         try {
             return $this->db->transaction(function () use ($envelope, $row, $integrityStatus, $exceptionClass, $serverReceivedAt, $payloadParseStatus, $parseResult): IngestionResult {
-                try {
-                    $this->db->table('fiscal_events')->insert($row);
-                } catch (QueryException $e) {
-                    if (! $this->isUniqueViolation($e)) {
-                        // Some other DB error — bubble out to the outer
-                        // catch so it surfaces in logs without
-                        // misclassifying the row as a sequence conflict.
-                        throw $e;
-                    }
+                // T19-B1: raw INSERT ... ON CONFLICT ON CONSTRAINT
+                // fiscal_events_tenant_terminal_sequence_unique DO NOTHING
+                // RETURNING id. Empty result => slot occupied; the
+                // transaction is STILL alive (no abort) so the follow-up
+                // SELECT in handleConflict() works. The old
+                // try-catch-on-QueryException pattern aborted the PG
+                // transaction.
+                //
+                // T19-B2: targeting the constraint NAME (not "any unique
+                // violation") means a (source_event_class, source_event_id)
+                // collision propagates as a QueryException — handled
+                // distinctly in the outer catch.
+                $inserted = $this->insertOnConflictDoNothingReturningId($row);
 
-                    // ---- Step 4: slot occupied — examine existing ----
+                if ($inserted === null) {
+                    // Slot occupied — examine existing row in a FRESH
+                    // statement (transaction is still alive, unlike under
+                    // the old try-catch pattern).
                     return $this->handleConflict($envelope, $serverReceivedAt, $payloadParseStatus, $parseResult);
                 }
 
                 // ---- Step 3: inserted — dispatch projection rows ----
-                /** @var string $fiscalEventId */
-                $fiscalEventId = $row['id'];
-
-                $this->dispatchProjections($fiscalEventId, $envelope, $integrityStatus, $exceptionClass);
+                $this->dispatchProjections($inserted, $envelope, $integrityStatus, $exceptionClass);
 
                 if ($integrityStatus === IntegrityStatus::Quarantined && $exceptionClass !== null) {
-                    return IngestionResult::quarantined($fiscalEventId, $exceptionClass);
+                    return IngestionResult::quarantined($inserted, $exceptionClass);
                 }
 
-                return IngestionResult::stored($fiscalEventId);
+                return IngestionResult::stored($inserted);
             });
+        } catch (QueryException $e) {
+            // T19-B2: a source-event-id unique violation surfaces here.
+            // Distinguish from other QueryExceptions so the operator can
+            // diagnose. A duplicate (source_event_class, source_event_id)
+            // with mismatched payload is a device authoring bug (the
+            // device should never reuse the same source-event-id for a
+            // different fiscal event); we log critical and re-throw so the
+            // controller (Task 20) surfaces a 5xx.
+            if ($this->isSourceEventIdViolation($e)) {
+                Log::critical(
+                    'OutboxIngestor: source_event_id uniqueness violation — same (source_event_class, source_event_id) '.
+                    'tuple already exists on a different fiscal_events row. Device authoring bug.',
+                    [
+                        'envelope_id' => $envelope->envelopeId,
+                        'fiscal_event_id' => $envelope->id,
+                        'tenant_id' => $envelope->tenantId,
+                        'terminal_id' => $envelope->terminalId,
+                        'source_event_class' => $envelope->sourceEventClass,
+                        'source_event_id' => $envelope->sourceEventId,
+                        'sqlstate' => $e->getCode(),
+                        'driver_message' => $e->getMessage(),
+                    ],
+                );
+                throw $e;
+            }
+
+            // Fall through to the generic Throwable catch below.
+            $this->logUnexpectedIngestException($envelope, $e);
+            throw $e;
         } catch (Throwable $e) {
             // Last-resort fail-closed guard. The fiscal_events insert path is
             // atomic at the DB layer; the only path here is "ingest workflow
-            // itself threw" (e.g. registry boot-fail not yet wired into the
-            // F1 try/catch). Per §7.2 line 380 + handoff §4.2 standing
-            // pattern 4 the device must never be blocked — we surface a
-            // structured error log and re-throw so the controller (Task 20)
-            // can return a 5xx without leaking internals to the device.
-            Log::critical('OutboxIngestor: unexpected exception in ingest path — fiscal row may not be persisted.', [
-                'envelope_id' => $envelope->envelopeId,
-                'fiscal_event_id' => $envelope->id,
-                'tenant_id' => $envelope->tenantId,
-                'terminal_id' => $envelope->terminalId,
-                'sequence_number' => $envelope->sequenceNumber,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
+            // itself threw" (e.g. registry constructor failure at first
+            // resolution — though as a singleton it fires at app boot, not
+            // per-ingest). Per §7.2 line 380 + handoff §4.2 standing pattern
+            // 4 the device must never be blocked — we surface a structured
+            // error log and re-throw so the controller (Task 20) can return
+            // a 5xx without leaking internals to the device.
+            $this->logUnexpectedIngestException($envelope, $e);
             throw $e;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 0 — malformed envelope short-circuit (T19-B4)
+    // ------------------------------------------------------------------
+
+    private function quarantineMalformedEnvelope(FiscalEventEnvelope $envelope, InvalidArgumentException $shapeException): IngestionResult
+    {
+        // The envelope's hash/UUID/timestamp shape failed canonical regex
+        // validation; we cannot admit the row to fiscal_events (the PG
+        // CHECK constraints would reject it). We CAN preserve the verbatim
+        // raw envelope for forensics in fiscal_event_quarantine — but
+        // only when the quarantine table's own CHECK constraints + PG
+        // column types accept every mirrored field.
+        //
+        // The quarantine table:
+        //   - CHECK-constrains `previous_hash` / `current_hash` to 64-hex
+        //   - PG-types `envelope_event_id` / `tenant_id` / `terminal_id`
+        //     / `company_id` / `operator_id` / `reference_*` /
+        //     `source_event_id` / `conflicting_event_id` as `uuid`
+        //
+        // If ANY of these is malformed at the envelope, the quarantine
+        // row can't be persisted either. We fall back to a structured
+        // log and re-throw the original InvalidArgumentException so the
+        // controller (Task 20) renders a 422 to the device.
+
+        $quarantineSafe = $this->envelopeQuarantineSafe($envelope);
+
+        if (! $quarantineSafe) {
+            Log::critical(
+                'OutboxIngestor: malformed envelope rejected at boundary — cannot persist to fiscal_event_quarantine '.
+                'either (its CHECK constraints / column types reject the malformed field). '.
+                'Surfacing as ingest exception for controller 422.',
+                [
+                    'envelope_id' => $envelope->envelopeId,
+                    'fiscal_event_id' => $envelope->id,
+                    'tenant_id' => $envelope->tenantId,
+                    'terminal_id' => $envelope->terminalId,
+                    'shape_violation' => $shapeException->getMessage(),
+                ],
+            );
+
+            throw $shapeException;
+        }
+
+        $reason = 'malformed_envelope:'.$shapeException->getMessage();
+
+        $row = $this->buildQuarantineRow(
+            envelope: $envelope,
+            serverReceivedAt: $this->fetchServerNow(),
+            conflictingEventId: $envelope->id,
+            integrityClass: IntegrityExceptionClass::MalformedEnvelope,
+            reason: $reason,
+            payloadParseStatus: PayloadParseStatus::Failed,
+        );
+
+        try {
+            $this->db->table('fiscal_event_quarantine')->insert($row);
+        } catch (QueryException $insertException) {
+            // Even the quarantine table refused the row — typically a PG
+            // `timestamptz` or `uuid` column type mismatch beyond what
+            // envelopeQuarantineSafe() pre-screens (we screen UUIDs +
+            // hashes; PG's strptime accepts many timestamp forms but
+            // not all). Re-throw the original shape exception so the
+            // controller (Task 20) renders 422.
+            Log::critical(
+                'OutboxIngestor: malformed envelope rejected at boundary AND at quarantine insert — '.
+                'surfacing as ingest exception for controller 422.',
+                [
+                    'envelope_id' => $envelope->envelopeId,
+                    'fiscal_event_id' => $envelope->id,
+                    'tenant_id' => $envelope->tenantId,
+                    'terminal_id' => $envelope->terminalId,
+                    'shape_violation' => $shapeException->getMessage(),
+                    'quarantine_insert_failure' => $insertException->getMessage(),
+                ],
+            );
+
+            throw $shapeException;
+        }
+
+        Log::critical('OutboxIngestor: malformed_envelope — admin alert', [
+            'tenant_id' => $envelope->tenantId,
+            'terminal_id' => $envelope->terminalId,
+            'envelope_event_id' => $envelope->id,
+            'reason' => $reason,
+        ]);
+
+        return IngestionResult::malformedEnvelope();
     }
 
     // ------------------------------------------------------------------
@@ -201,14 +363,10 @@ final class OutboxIngestor
      *   - For a non-first event: sequence_number == prior+1 AND
      *     previous_hash == prior.current_hash. A numeric gap with valid
      *     hash linkage is STILL sequence_gap (plan §1444 invariant).
-     *   - For a first event (no prior row): sequence_number == 1.
-     *     `previous_hash` should equal the terminal's
-     *     `fiscal_event_genesis_seed`; that column lives on the device
-     *     `terminal_state` table (Task 13) only — the server has no
-     *     terminal-state mirror in Phase 1, so we do not yet validate
-     *     against it. **Documented follow-up: server-side genesis-seed
-     *     validation requires a `terminal_state` mirror that does not yet
-     *     exist; flagged for reviewers.**
+     *   - For a first event (no prior row): sequence_number == 1 AND
+     *     previous_hash == terminal's genesis_seed (T19-B3 — the
+     *     `pos_terminals.genesis_seed` column lives on the server, so the
+     *     check is enforced here and not deferred to the verifier).
      */
     private function verifyLinkage(FiscalEventEnvelope $envelope, ?stdClass $prior): ?string
     {
@@ -217,6 +375,35 @@ final class OutboxIngestor
                 return sprintf(
                     'sequence_gap:no_prior_row_but_sequence=%d_must_be_1',
                     $envelope->sequenceNumber,
+                );
+            }
+
+            // T19-B3: first-event genesis-seed check. previous_hash must
+            // equal the terminal's pos_terminals.genesis_seed.
+            $genesisSeed = $this->fetchGenesisSeed($envelope->terminalId);
+
+            if ($genesisSeed === null) {
+                return sprintf(
+                    'sequence_gap:terminal_not_found_for_genesis_seed_lookup,terminal_id=%s',
+                    $envelope->terminalId,
+                );
+            }
+
+            // Sentinel: terminal-lookup-failed (DB error). We fail closed
+            // so a transient DB hiccup quarantines the row rather than
+            // silently admitting it.
+            if ($genesisSeed === self::LOOKUP_FAILED) {
+                return 'sequence_gap:terminal_lookup_failed_db_error';
+            }
+
+            if (! hash_equals(strtolower($genesisSeed), strtolower($envelope->previousHash))) {
+                // Do not leak the full seed in cleartext; first 8 chars
+                // are enough to disambiguate during forensics without
+                // weakening operational secrecy.
+                return sprintf(
+                    'sequence_gap:genesis_seed_mismatch,expected_prefix=%s...,got_prefix=%s...',
+                    substr($genesisSeed, 0, 8),
+                    substr($envelope->previousHash, 0, 8),
                 );
             }
 
@@ -237,6 +424,50 @@ final class OutboxIngestor
         }
 
         return $errors === [] ? null : 'sequence_gap:'.implode('|', $errors);
+    }
+
+    /** Sentinel returned by `fetchGenesisSeed()` when the DB lookup throws. */
+    private const LOOKUP_FAILED = '__terminal_lookup_failed_db_error__';
+
+    /**
+     * Look up `pos_terminals.genesis_seed` for the given terminal id.
+     *
+     * Returns:
+     *   - the 64-char hex genesis_seed on success
+     *   - `null` when the terminal does not exist
+     *   - `self::LOOKUP_FAILED` when the DB lookup itself raised (e.g. a
+     *     malformed UUID would raise on PG's `uuid`-typed column). Per
+     *     the Task 17 standing pattern (fail-closed on downstream
+     *     exception) we surface this as a `sequence_gap` quarantine
+     *     reason rather than crashing the ingest path.
+     */
+    private function fetchGenesisSeed(string $terminalId): ?string
+    {
+        try {
+            /** @var stdClass|null $terminal */
+            $terminal = $this->db->table('pos_terminals')
+                ->where('id', $terminalId)
+                ->first(['genesis_seed']);
+        } catch (QueryException $e) {
+            Log::warning(
+                'OutboxIngestor: pos_terminals.genesis_seed lookup raised; failing closed.',
+                [
+                    'terminal_id' => $terminalId,
+                    'sqlstate' => $e->getCode(),
+                    'message' => $e->getMessage(),
+                ],
+            );
+
+            return self::LOOKUP_FAILED;
+        }
+
+        if ($terminal === null) {
+            return null;
+        }
+
+        return is_string($terminal->genesis_seed)
+            ? $terminal->genesis_seed
+            : (string) $terminal->genesis_seed;
     }
 
     /**
@@ -277,16 +508,30 @@ final class OutboxIngestor
             }
         }
 
+        $limit = $this->clockDriftLimitSeconds();
         $drift = abs($serverReceivedAt->getTimestamp() - $eventTime->getTimestamp());
-        if ($drift > self::CLOCK_DRIFT_LIMIT_SECONDS) {
+        if ($drift > $limit) {
             return sprintf(
                 'time_anomaly:excessive_drift,drift_seconds=%d,limit=%d',
                 $drift,
-                self::CLOCK_DRIFT_LIMIT_SECONDS,
+                $limit,
             );
         }
 
         return null;
+    }
+
+    /**
+     * T19-P1: clock drift threshold is now config-readable so multi-day
+     * offline batches can be supported per-deployment without code change.
+     * Defaults to 86400 seconds (24h) — the original conservative
+     * ceiling.
+     */
+    private function clockDriftLimitSeconds(): int
+    {
+        $configured = config('fiscal.clock_drift_limit_seconds', 24 * 60 * 60);
+
+        return is_int($configured) ? $configured : (int) $configured;
     }
 
     /**
@@ -355,7 +600,7 @@ final class OutboxIngestor
     }
 
     // ------------------------------------------------------------------
-    // Step 2 — INSERT row build + insert
+    // Step 2 — INSERT row build + atomic insert (T19-B1)
     // ------------------------------------------------------------------
 
     /**
@@ -401,6 +646,69 @@ final class OutboxIngestor
         ];
     }
 
+    /**
+     * T19-B1: raw `INSERT … ON CONFLICT ON CONSTRAINT
+     * fiscal_events_tenant_terminal_sequence_unique DO NOTHING RETURNING id`.
+     *
+     * Returns the inserted id on success, `null` when the row was
+     * suppressed by a sequence-slot conflict (the transaction is STILL
+     * alive — unlike the old try-catch-on-QueryException pattern, which
+     * aborted the surrounding PG transaction).
+     *
+     * Targeting the constraint NAME (not "any unique violation") ensures
+     * a `(source_event_class, source_event_id)` collision propagates as
+     * a QueryException — T19-B2 — so the outer catch can disambiguate
+     * the two paths.
+     *
+     * On SQLite the constraint-name targeting falls back to the unnamed
+     * `ON CONFLICT DO NOTHING` form (SQLite supports `INSERT ... ON
+     * CONFLICT DO NOTHING RETURNING ...` since 3.35; PHP 8.4's bundled
+     * SQLite is well past that). The portable form still routes a
+     * source-event-id violation through QueryException.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function insertOnConflictDoNothingReturningId(array $row): ?string
+    {
+        $driver = $this->driverName();
+        $columns = array_keys($row);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
+        $bindings = array_values($row);
+
+        if ($driver === 'pgsql') {
+            $sql = sprintf(
+                'INSERT INTO "fiscal_events" (%s) VALUES (%s) '.
+                'ON CONFLICT ON CONSTRAINT fiscal_events_tenant_terminal_sequence_unique '.
+                'DO NOTHING RETURNING id',
+                $columnList,
+                $placeholders,
+            );
+        } else {
+            // SQLite + others — explicit conflict-target on (tenant_id,
+            // terminal_id, sequence_number) so a source-event-id
+            // collision still propagates as a QueryException.
+            $sql = sprintf(
+                'INSERT INTO "fiscal_events" (%s) VALUES (%s) '.
+                'ON CONFLICT (tenant_id, terminal_id, sequence_number) '.
+                'DO NOTHING RETURNING id',
+                $columnList,
+                $placeholders,
+            );
+        }
+
+        $rows = $this->db->select($sql, $bindings);
+
+        if ($rows === []) {
+            return null;
+        }
+
+        $first = $rows[0];
+        $id = is_object($first) && property_exists($first, 'id') ? $first->id : null;
+
+        return is_string($id) ? $id : (is_scalar($id) ? (string) $id : null);
+    }
+
     // ------------------------------------------------------------------
     // Step 3 — projection dispatch
     // ------------------------------------------------------------------
@@ -414,6 +722,12 @@ final class OutboxIngestor
      * After T1 commits, dispatch one `ApplyFiscalEventProjectionJob`
      * (Task 23 — not yet implemented) per pending row, via
      * `DB::afterCommit()` so an aborted T1 produces no spurious jobs.
+     *
+     * **F3 round-2.** The defensive try/catch around `activeProjectorsFor()`
+     * is gone — Task 18's registry catches resolver throws internally
+     * (F1), and the registry's constructor-time invariants (F2/F3) fire at
+     * container resolution time, never inside this method. The path was
+     * unreachable in steady state.
      */
     private function dispatchProjections(
         string $fiscalEventId,
@@ -440,24 +754,7 @@ final class OutboxIngestor
             'event_type' => $envelope->eventType,
         ]);
 
-        try {
-            $activeProjectors = $this->projectionRegistry->activeProjectorsFor($eventModel);
-        } catch (Throwable $e) {
-            // Handoff §4.2 standing pattern 4 — fail-closed on downstream
-            // service exception. The registry already catches resolver
-            // throws (Task 18 F1). A throw escaping at this layer means
-            // the registry's boot-asserted invariants caught a config
-            // bug (Task 18 F2/F3) — log + continue with empty active set;
-            // the row is still admitted.
-            Log::error('OutboxIngestor: FiscalEventProjectionRegistry threw — failing closed (empty active projector set).', [
-                'fiscal_event_id' => $fiscalEventId,
-                'event_type' => $envelope->eventType->value,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
-
-            return;
-        }
+        $activeProjectors = $this->projectionRegistry->activeProjectorsFor($eventModel);
 
         $now = Carbon::now('UTC')->toDateTimeString();
         $pendingRows = [];
@@ -550,7 +847,7 @@ final class OutboxIngestor
             envelope: $envelope,
             serverReceivedAt: $serverReceivedAt,
             conflictingEventId: $existingId,
-            reason: $this->buildConflictReason($envelope, $existingId, $existingHash, $existingBytes),
+            reason: $this->buildConflictReason($envelope, $existingId, $existingHash, $existingBytes, $existingClass, $existingSrcId),
             payloadParseStatus: $payloadParseStatus,
             parseResult: $parseResult,
         );
@@ -561,6 +858,8 @@ final class OutboxIngestor
         string $existingId,
         string $existingHash,
         string $existingBytes,
+        ?string $existingClass,
+        ?string $existingSrcId,
     ): string {
         $diff = [];
         if ($existingId !== $envelope->id) {
@@ -571,6 +870,15 @@ final class OutboxIngestor
         }
         if (! hash_equals($existingBytes, $envelope->canonicalBytes)) {
             $diff[] = 'canonical_bytes:existing!=envelope';
+        }
+        // Opus F2: also enumerate source_event_class / source_event_id
+        // diffs so the reason string is meaningful when the only
+        // difference is on the source-event pointer.
+        if ($existingClass !== $envelope->sourceEventClass) {
+            $diff[] = 'source_event_class:existing!=envelope';
+        }
+        if ($existingSrcId !== $envelope->sourceEventId) {
+            $diff[] = 'source_event_id:existing!=envelope';
         }
 
         return 'sequence_conflict:different_event_at_occupied_slot;'.implode(',', $diff !== [] ? $diff : ['unspecified_difference']);
@@ -586,7 +894,49 @@ final class OutboxIngestor
     ): IngestionResult {
         unset($parseResult);
 
-        $row = [
+        $row = $this->buildQuarantineRow(
+            envelope: $envelope,
+            serverReceivedAt: $serverReceivedAt,
+            conflictingEventId: $conflictingEventId,
+            integrityClass: IntegrityExceptionClass::SequenceConflict,
+            reason: $reason,
+            payloadParseStatus: $payloadParseStatus,
+        );
+
+        $this->db->table('fiscal_event_quarantine')->insert($row);
+
+        // §7.2 Step 4 line 374 — "raise an admin alert". Phase 1: emit a
+        // structured Log::critical so monitoring picks it up. Task 23+
+        // can wire `NotificationDispatcherInterface` (Compliance module) if
+        // owner direction is to dispatch a FraudAlert — that model
+        // requires a `user_id` foreign key tied to a real User row, which
+        // server-side sequence_conflict envelopes don't inherently have.
+        // Deferring the FraudAlert dispatch to a follow-up keeps this
+        // task's contract focused on the §7.2/§8 invariants.
+        Log::critical('OutboxIngestor: sequence_conflict — admin alert', [
+            'tenant_id' => $envelope->tenantId,
+            'terminal_id' => $envelope->terminalId,
+            'claimed_sequence_number' => $envelope->sequenceNumber,
+            'envelope_event_id' => $envelope->id,
+            'conflicting_event_id' => $conflictingEventId,
+            'reason' => $reason,
+        ]);
+
+        return IngestionResult::sequenceConflict();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildQuarantineRow(
+        FiscalEventEnvelope $envelope,
+        CarbonImmutable $serverReceivedAt,
+        string $conflictingEventId,
+        IntegrityExceptionClass $integrityClass,
+        string $reason,
+        PayloadParseStatus $payloadParseStatus,
+    ): array {
+        return [
             'id' => (string) Str::uuid(),
             'tenant_id' => $envelope->tenantId,
             'company_id' => $envelope->companyId,
@@ -609,32 +959,11 @@ final class OutboxIngestor
             'canonical_bytes' => $envelope->canonicalBytes,
             'raw_envelope' => json_encode($this->envelopeToArray($envelope), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             'payload_parse_status' => $payloadParseStatus->value,
-            'integrity_exception_class' => IntegrityExceptionClass::SequenceConflict->value,
+            'integrity_exception_class' => $integrityClass->value,
             'integrity_exception_reason' => $reason,
             'conflicting_event_id' => $conflictingEventId,
             'server_received_at' => $serverReceivedAt->toDateTimeString(),
         ];
-
-        $this->db->table('fiscal_event_quarantine')->insert($row);
-
-        // §7.2 Step 4 line 374 — "raise an admin alert". Phase 1: emit a
-        // structured Log::critical so monitoring picks it up. Task 23+
-        // can wire `NotificationDispatcherInterface` (Compliance module) if
-        // owner direction is to dispatch a FraudAlert — that model
-        // requires a `user_id` foreign key tied to a real User row, which
-        // server-side sequence_conflict envelopes don't inherently have.
-        // Deferring the FraudAlert dispatch to a follow-up keeps this
-        // task's contract focused on the §7.2/§8 invariants.
-        Log::critical('OutboxIngestor: sequence_conflict — admin alert', [
-            'tenant_id' => $envelope->tenantId,
-            'terminal_id' => $envelope->terminalId,
-            'claimed_sequence_number' => $envelope->sequenceNumber,
-            'envelope_event_id' => $envelope->id,
-            'conflicting_event_id' => $conflictingEventId,
-            'reason' => $reason,
-        ]);
-
-        return IngestionResult::sequenceConflict();
     }
 
     /**
@@ -673,26 +1002,130 @@ final class OutboxIngestor
     // ------------------------------------------------------------------
 
     /**
-     * Detect a unique-constraint violation in a way that works on both PG
-     * (SQLSTATE 23505) and SQLite (SQLSTATE 23000 with driver code 19 +
-     * "UNIQUE constraint failed" in the message). Laravel preserves both
-     * states; checking the SQLSTATE class plus a substring is the
-     * portable detection pattern.
+     * T19-P2: fetch the server's "now" from the DRIVER (PG NOW() / SQLite
+     * CURRENT_TIMESTAMP) so the persisted `server_received_at` doesn't
+     * vary across horizontally-scaled web boxes (NTP drift between
+     * machines).
      */
-    private function isUniqueViolation(QueryException $e): bool
+    private function fetchServerNow(): CarbonImmutable
     {
-        $sqlState = $e->getCode();
-        if ($sqlState === '23505') {
-            return true; // PostgreSQL unique_violation
-        }
-        if ($sqlState === '23000') {
-            // Generic integrity constraint — SQLite's "UNIQUE constraint
-            // failed" surfaces here. Substring-match the message to avoid
-            // mis-classifying a NOT NULL violation as a sequence conflict.
-            return str_contains($e->getMessage(), 'UNIQUE constraint failed')
-                || str_contains($e->getMessage(), 'Duplicate entry');
+        $driver = $this->driverName();
+
+        $sql = $driver === 'pgsql'
+            ? "SELECT (NOW() AT TIME ZONE 'UTC')::text AS now"
+            : 'SELECT CURRENT_TIMESTAMP AS now';
+
+        /** @var stdClass|null $row */
+        $row = $this->db->selectOne($sql);
+        if ($row === null || ! is_string($row->now ?? null)) {
+            // The driver returned an unexpected shape — fall back to PHP
+            // wall-clock so we never throw out of the ingest path. The
+            // P1 fix is best-effort: if the DB clock is unreachable,
+            // PHP's clock is still the same NTP source most of the time.
+            return CarbonImmutable::now('UTC');
         }
 
-        return false;
+        try {
+            return CarbonImmutable::parse($row->now, 'UTC');
+        } catch (Throwable) {
+            return CarbonImmutable::now('UTC');
+        }
+    }
+
+    /**
+     * Detect a (source_event_class, source_event_id) uniqueness violation
+     * — T19-B2. The PG partial unique index name is
+     * `fiscal_events_source_event_unique`. SQLite has no equivalent
+     * (Phase 1 doesn't add it on the sqlite test driver), so the check
+     * is PG-shaped; on SQLite this returns `false` (and we never reach
+     * here because the sequence-slot ON CONFLICT swallowed the only
+     * SQLite unique conflict).
+     */
+    private function isSourceEventIdViolation(QueryException $e): bool
+    {
+        if ($e->getCode() !== '23505') {
+            return false;
+        }
+
+        return str_contains($e->getMessage(), 'fiscal_events_source_event_unique');
+    }
+
+    /**
+     * Return `true` when every field mirrored into a UUID-typed or
+     * CHECK-constrained column on `fiscal_event_quarantine` would be
+     * accepted by PG. A malformed UUID at the envelope's `id`
+     * (envelope_event_id), tenant/company/terminal/operator, or any
+     * reference field would otherwise fail at the quarantine insert too.
+     *
+     * Hashes are 64-hex CHECK-constrained (`previous_hash`,
+     * `current_hash`); everything else under `uuid` type checks on PG.
+     */
+    private function envelopeQuarantineSafe(FiscalEventEnvelope $envelope): bool
+    {
+        if (preg_match(FiscalEventEnvelope::HEX_64_REGEX, $envelope->previousHash) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::HEX_64_REGEX, $envelope->currentHash) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->id) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->tenantId) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->companyId) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->terminalId) !== 1) {
+            return false;
+        }
+        if (preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->operatorId) !== 1) {
+            return false;
+        }
+        if ($envelope->referenceEventId !== null && preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->referenceEventId) !== 1) {
+            return false;
+        }
+        if ($envelope->referenceDocumentId !== null && preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->referenceDocumentId) !== 1) {
+            return false;
+        }
+        if ($envelope->sourceEventId !== null && preg_match(FiscalEventEnvelope::UUID_REGEX, $envelope->sourceEventId) !== 1) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Resolve the underlying PDO driver name (`'pgsql'` / `'sqlite'` / ...).
+     *
+     * `ConnectionInterface` does not expose `getDriverName()`; it lives on
+     * the concrete `\Illuminate\Database\Connection`. The container binds
+     * the latter to the former in practice (the default container binding
+     * resolves `ConnectionInterface` via `DB::connection()`). We narrow
+     * with `instanceof` so PHPStan level 8 stays clean; tests that swap
+     * in a fake `ConnectionInterface` fall back to `'sqlite'` (the test
+     * runtime), preserving the safe portable branch.
+     */
+    private function driverName(): string
+    {
+        if ($this->db instanceof Connection) {
+            return $this->db->getDriverName();
+        }
+
+        return DB::connection()->getDriverName();
+    }
+
+    private function logUnexpectedIngestException(FiscalEventEnvelope $envelope, Throwable $e): void
+    {
+        Log::critical('OutboxIngestor: unexpected exception in ingest path — fiscal row may not be persisted.', [
+            'envelope_id' => $envelope->envelopeId,
+            'fiscal_event_id' => $envelope->id,
+            'tenant_id' => $envelope->tenantId,
+            'terminal_id' => $envelope->terminalId,
+            'sequence_number' => $envelope->sequenceNumber,
+            'exception' => $e::class,
+            'message' => $e->getMessage(),
+        ]);
     }
 }
