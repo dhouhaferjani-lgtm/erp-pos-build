@@ -71,13 +71,15 @@ use Tests\TestCase;
  * PG-only assertions skip on SQLite (CHECK constraints / hash-format CHECKs
  * / partial indexes don't exist on the in-memory test driver).
  *
- * **Test-projector pattern (plan §1353).** Production registry's tagged
- * projector set is empty until Tasks 21/22. This test file defines a
- * `FakeSaleReceiptProjector` and tags it into the container in `setUp()`
- * so the container-built `FiscalEventProjectionRegistry` sees exactly one
- * active projector — used to assert the "one pending row per active
- * projector" contract without depending on production projectors that
- * don't exist yet.
+ * **Test-projector pattern (plan §1353).** Task 21 now tags
+ * `PosCoreReceiptProjection` into the production set. To keep these
+ * tests deterministic (and to avoid coupling OutboxIngestor coverage to
+ * the projector's evolving payload contract), `setUp()` rebinds the
+ * `FiscalEventProjectionRegistry` singleton with an explicit list
+ * containing only this file's `FakeSaleReceiptProjector`. That single
+ * fake projector is what drives the "one pending row per active
+ * projector" assertions below — the production POS-core projector is
+ * intentionally swapped out for these tests.
  */
 final class OutboxIngestorTest extends TestCase
 {
@@ -199,7 +201,10 @@ final class OutboxIngestorTest extends TestCase
 
     public function test_verified_event_stores_with_zero_projection_rows_when_no_projector_is_active(): void
     {
-        // Production state until Tasks 21/22 — empty tagged set. The event
+        // Simulated zero-active-projector state — `untagAllProjectors()`
+        // strips both this test's fake projector AND any production
+        // projectors tagged at boot (e.g., `PosCoreReceiptProjection`
+        // tagged by Task 21 / `POSServiceProvider::register()`). The event
         // still lands verified, but no projection rows are created.
         $this->untagAllProjectors();
 
@@ -870,8 +875,10 @@ final class OutboxIngestorTest extends TestCase
     }
 
     /**
-     * Rebind FiscalEventProjectionRegistry with no projectors — exercises
-     * the "production state until Tasks 21/22" empty-set behavior.
+     * Rebind FiscalEventProjectionRegistry with no projectors — strips
+     * production-tagged projectors (e.g. `PosCoreReceiptProjection` from
+     * Task 21 / `POSServiceProvider::register()`) so the test can assert
+     * the zero-active-projector path cleanly.
      */
     private function untagAllProjectors(): void
     {
@@ -887,9 +894,11 @@ final class OutboxIngestorTest extends TestCase
 }
 
 // =====================================================================
-// Test-local fake projectors. Phase 1 has no production projectors yet
-// (Tasks 21/22 add them). These exist only to drive the registry from
-// inside this file's tests.
+// Test-local fake projectors. Task 21 added `PosCoreReceiptProjection`
+// as the production POS-core projector and Task 22 adds the gated
+// `TreasuryReceiptBridge`. These fakes are used in `setUp()` to swap the
+// projector set for deterministic registry behavior; they do not exist
+// in the production container otherwise.
 // =====================================================================
 
 final class FakeSaleReceiptProjector implements FiscalEventProjector

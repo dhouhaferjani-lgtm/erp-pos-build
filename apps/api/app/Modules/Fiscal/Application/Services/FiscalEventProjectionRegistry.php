@@ -34,10 +34,14 @@ use Throwable;
  * bounded-modules asymmetric seam (SoT §13.6/D16) that this seam
  * exists to enforce.
  *
- * **Phase 1 reality.** Until Tasks 21/22 tag real projectors, the
- * container-resolved registry is constructed over an empty tagged set.
- * An empty registry is a valid Phase 1 state and `activeProjectorsFor()`
- * returns `[]` cleanly.
+ * **Phase 1 reality.** Task 21 (`POSServiceProvider::register()`) tags
+ * `PosCoreReceiptProjection` into the production set as the always-active
+ * `SALE_RECEIPT` projector; Task 22 will add the gated
+ * `TreasuryReceiptBridge` (`requiresModule() === 'Treasury'`). Tests that
+ * need a deterministic projector set rebind the registry singleton with
+ * an explicit list (e.g. `OutboxIngestorTest::setUp()` overrides the
+ * tagged set so it sees exactly one fake projector). An empty registry
+ * stays a valid runtime state when no module owns a tagged projector.
  *
  * **Round-2 hardening (Codex):**
  *   - **F1 fail-closed on resolver exception.** §7.2 requires the

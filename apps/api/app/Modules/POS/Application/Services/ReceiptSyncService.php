@@ -52,13 +52,22 @@ use Illuminate\Support\Str;
  * - offline_fiscal_hash verification: server recomputes and compares against payload hash
  *
  * Task 21 status — **superseded by `PosCoreReceiptProjection`** for the
- * device-authored fiscal-event path. The voucher-redemption (`:683-710`)
- * and stock-movement (`:713-735`) sections have been relocated into the
+ * device-authored fiscal-event path. The voucher-redemption (`:692-720`,
+ * symbol `redeemVouchersForReceipt`) and stock-movement (`:722-736`,
+ * symbol `decrementStock`) sections have been relocated into the
  * projector; the service body remains intact so the legacy
  * `POST /api/pos/sync/receipts` endpoint and its callers continue to work
- * until Task 25 retires the offline-sync HTTP surface in favor of the
- * Task 20 `POST /api/v1/pos/sync/fiscal-events` endpoint. New writers
- * MUST go through the projector — do not extend this service.
+ * until Task 28 retires the offline-sync HTTP surface (`/pos/receipts/sync`)
+ * in favor of the Task 20 `POST /api/v1/pos/sync/fiscal-events` endpoint.
+ * Spec v7 §14 / §14.1 explicitly sanctions this coexistence window:
+ * the §14 table row for `ReceiptSyncService` business-effect logic reads
+ * "REUSE (relocated → `PosCoreReceiptProjection`)" — relocation, not
+ * deletion. Plan §1635 mirrors the wording. The active-projector +
+ * still-live-legacy-endpoint pair is therefore a knowingly-bounded
+ * intermediate state, not a SoT D8 violation; D8 forbids two canonical
+ * paths, and the canonical path here is the projector — the legacy
+ * surface is a retiring transport. New writers MUST go through the
+ * projector — do not extend this service.
  */
 final class ReceiptSyncService
 {

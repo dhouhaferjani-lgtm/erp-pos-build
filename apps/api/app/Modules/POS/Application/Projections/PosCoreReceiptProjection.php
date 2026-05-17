@@ -20,6 +20,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
+use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
@@ -65,23 +66,44 @@ use RuntimeException;
  * allocation is owned by `TreasuryReceiptBridge` and runs in a separate
  * projector job.
  *
- * **Logic relocation.** This projector consolidates the business-effect
- * logic previously scattered across:
+ * **Logic relocation (spec v7 §14 + plan §1635).** This projector
+ * consolidates the business-effect logic previously scattered across:
  *   - `ReceiptSyncService::syncSingleReceipt()` — voucher redemption
- *     (steps 13b) and stock decrement (step 14)
- *   - `ReceiptPaymentService::recordSplit*Payments()` — `ReceiptPayment`
- *     row creation
- * Those services remain (legacy callers untouched until Tasks 23/24/25 wire
- * the projection job pipeline); the projector is the new authoritative
- * write surface for the device-authored fiscal-event path.
+ *     (`:692-720`) and stock decrement (`:722-736`)
+ *   - `ReceiptPaymentService::processReceiptPayments()` — `ReceiptPayment`
+ *     row creation (`:306`)
+ * Per spec v7 §14 ("REUSE (relocated → `PosCoreReceiptProjection`)") and
+ * §14.1 + §14.2, those legacy services intentionally remain functional
+ * through Task 28 (`/pos/receipts/sync` retirement) / Task 29 (new-sale
+ * server-authoring disposition); the projector is the new authoritative
+ * write surface for the device-authored fiscal-event path. The legacy
+ * surface is a retiring transport, not a competing canonical path —
+ * the SoT D8 "one fiscal pattern" invariant is preserved at the
+ * canonical-path layer.
  */
 final class PosCoreReceiptProjection implements FiscalEventProjector
 {
-    /** Currency-scale used by all numeric columns on `pos_receipts*` (`decimal:3`). */
+    /**
+     * Currency-scale used for projector-internal normalization. Matches the
+     * `Receipt::$casts` claim (`decimal:3`) for the monetary fields
+     * `subtotal` / `tax_amount` / `discount_amount` / `total`.
+     *
+     * **Pre-existing model/migration drift (Opus F6):** the underlying
+     * migration declares the columns as `decimal(12, 2)` (`2026_01_08_190637_create_pos_receipts_table.php:59-61`)
+     * while the model casts them as `decimal:3`. PostgreSQL silently
+     * truncates scale-3 inputs to scale-2 on INSERT; the `pos_receipts_totals`
+     * CHECK constraint (`total = subtotal + tax_amount`) is evaluated
+     * post-truncation so it still holds. SQLite stores the scale-3 strings
+     * literally. This is an existing inconsistency inherited by the
+     * projector — out of Task 21 scope to fix; flagged here so a future
+     * reader doesn't `[fix]` the projector to match either side and
+     * accidentally break the other.
+     */
     private const int SCALE = 3;
 
     public function __construct(
         private readonly VoucherRedemptionService $voucherRedemptionService,
+        private readonly ReceiptHashService $receiptHashService,
     ) {}
 
     public function name(): string
@@ -105,9 +127,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
     public function apply(FiscalEvent $event): void
     {
-        // Idempotency guard — Task 11 UNIQUE-backed `pos_receipts.fiscal_event_id`.
-        // The `fiscal_event_projections` row tracks job-level state; this
-        // guard makes `apply()` itself safe to re-run for manual replay.
+        // Fast-path idempotency probe — the durable guard inside the
+        // transaction (atomic INSERT ... ON CONFLICT below) is what makes
+        // `apply()` race-safe; this outer probe just avoids opening a
+        // transaction when an existing row is already visible.
         if (Receipt::query()->where('fiscal_event_id', $event->id)->exists()) {
             return;
         }
@@ -123,16 +146,6 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         DB::transaction(function () use ($event, $payload): void {
-            // Re-check inside the transaction — a concurrent projector
-            // dispatch racing this one would otherwise both insert
-            // pos_receipts rows and the second would crash on the
-            // UNIQUE constraint. The check inside the transaction keeps
-            // the projector callable from a retry job without surfacing
-            // a UNIQUE-violation crash up the stack.
-            if (Receipt::query()->where('fiscal_event_id', $event->id)->exists()) {
-                return;
-            }
-
             $terminal = $this->resolveTerminal($event);
             // Terminal lookup is intentionally non-fatal: a malformed
             // `terminal_id` UUID or a deleted terminal must not crash the
@@ -172,31 +185,49 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $event->sequence_number,
             );
 
-            // pos_receipts INSERT. Mirror columns come straight from the
-            // authoritative fiscal_events row; legacy `fiscal_status` is
-            // set to Fiscalized inline because the chain seal has already
-            // occurred device-side and the server verified it in Task 19.
+            // T21-B5 round-2 — compute the legacy per-section hashes
+            // BEFORE inserting children so the pos_receipts row can carry
+            // the correct content-addressed values. This keeps the
+            // still-wired `pos:verify-chains` operator command green for
+            // projection-written rows (F1 BLOCKER). The legacy verifier
+            // folds these columns into `serializeForHashing()` =>
+            // `receipt_number|posted_at|total|currency|vat_hash|payment_hash`.
+            // Computing them from the canonical payload preserves the
+            // legacy chain semantics through the rollout window until
+            // Task 25 / Task 31 retire the legacy verifier in favor of
+            // `fiscal:verify-event-chain`.
+            $vatBreakdownHash = $this->computeVatBreakdownHash($payload);
+            $paymentMethodsHash = $this->computePaymentMethodsHash($payload, $terminal);
+
+            // T21-B3 round-2 — atomic INSERT ... ON CONFLICT ON CONSTRAINT
+            // pos_receipts_fiscal_event_id_unique DO NOTHING RETURNING id.
+            // Replaces the pre-round-1 check-then-insert pattern that
+            // could surface a UNIQUE-violation crash under concurrent
+            // dispatch. The constraint NAME is explicitly targeted so a
+            // collision on `pos_receipts_location_receipt_number_unique`
+            // (the other UNIQUE on this table) propagates as a
+            // QueryException rather than being silently swallowed.
             //
-            // `id` is not in Receipt::$fillable (HasUuids would otherwise
-            // auto-generate one and silently discard the explicit value).
-            // Construct + assign + save so the deterministic receiptId
-            // round-trips correctly, then use it as the FK for lines /
-            // VAT / payments.
-            $receipt = new Receipt([
+            // Mirror columns come straight from the authoritative
+            // fiscal_events row; legacy `fiscal_status` is set to
+            // Fiscalized inline because the chain seal has already
+            // occurred device-side and the server verified it in Task 19.
+            $insertedId = $this->insertReceiptOnConflictDoNothing([
+                'id' => $receiptId,
                 'tenant_id' => $event->tenant_id,
                 'company_id' => $event->company_id,
-                'location_id' => $terminal->location_id,
+                'location_id' => (string) $terminal->location_id,
                 'terminal_id' => $event->terminal_id,
                 'receipt_number' => $receiptNumber,
-                'receipt_type' => ReceiptType::Sale,
+                'receipt_type' => ReceiptType::Sale->value,
                 // Mirror columns — sourced from $event, not advanced independently.
                 'chain_sequence' => $event->sequence_number,
                 'receipt_year' => $receiptYear,
                 'fiscal_hash' => $event->current_hash,
                 'previous_hash' => $event->previous_hash,
-                'vat_breakdown_hash' => $this->placeholderHash(),
-                'payment_methods_hash' => $this->placeholderHash(),
-                'posted_at' => $postedAt,
+                'vat_breakdown_hash' => $vatBreakdownHash,
+                'payment_methods_hash' => $paymentMethodsHash,
+                'posted_at' => $postedAt->format('Y-m-d H:i:s'),
                 'cashier_id' => $event->operator_id,
                 'cashier_name' => $cashierName,
                 'subtotal' => $subtotalNorm,
@@ -204,7 +235,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'discount_amount' => $discountAmountNorm,
                 'total' => $totalNorm,
                 'currency' => $currency,
-                'fiscal_status' => FiscalStatus::Fiscalized,
+                'fiscal_status' => FiscalStatus::Fiscalized->value,
                 'is_voided' => false,
                 'is_training' => false,
                 // Task 11 mirror + linkage columns. NOT in the immutability
@@ -212,9 +243,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // MUST NEVER be UPDATEd later.
                 'canonical_bytes' => $event->canonical_bytes,
                 'fiscal_event_id' => $event->id,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
-            $receipt->id = $receiptId;
-            $receipt->save();
+
+            if ($insertedId === null) {
+                // A concurrent projector dispatch won the race; the
+                // existing row is the canonical projection. Idempotent
+                // no-op — DO NOT continue to write child rows under a
+                // foreign receipt_id that we never owned.
+                return;
+            }
 
             $this->writeLines($receiptId, $payload);
             $this->writeVatBreakdown($receiptId, $payload);
@@ -222,6 +261,65 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $this->redeemVouchers($receiptId, $event, $payload);
             $this->decrementStockForLines($receiptId, $event, $terminal, $payload);
         });
+    }
+
+    /**
+     * Atomic `INSERT INTO pos_receipts (...) VALUES (...)
+     * ON CONFLICT ON CONSTRAINT pos_receipts_fiscal_event_id_unique
+     * DO NOTHING RETURNING id` — Task 19's standing pattern carried
+     * forward (T21-B3 round-2). Targets the constraint NAME explicitly
+     * so the other UNIQUE (`pos_receipts_location_receipt_number_unique`)
+     * still propagates as a QueryException — we do NOT want to silently
+     * swallow a receipt_number collision as "idempotent".
+     *
+     * Returns the inserted id on success, `null` when the row was
+     * suppressed by a fiscal_event_id conflict (idempotent re-arrival).
+     * The transaction is STILL alive in both branches — the named
+     * ON CONFLICT does not abort the outer transaction.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function insertReceiptOnConflictDoNothing(array $row): ?string
+    {
+        $driver = DB::connection()->getDriverName();
+        $columns = array_keys($row);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
+        $bindings = array_values($row);
+
+        if ($driver === 'pgsql') {
+            $sql = sprintf(
+                'INSERT INTO "pos_receipts" (%s) VALUES (%s) '.
+                'ON CONFLICT ON CONSTRAINT pos_receipts_fiscal_event_id_unique '.
+                'DO NOTHING RETURNING id',
+                $columnList,
+                $placeholders,
+            );
+        } else {
+            // SQLite — explicit conflict-target on (fiscal_event_id) so a
+            // receipt_number collision still propagates as a QueryException.
+            // SQLite supports `INSERT ... ON CONFLICT ... DO NOTHING
+            // RETURNING ...` since 3.35 (PHP 8.4's bundled SQLite is well
+            // past that).
+            $sql = sprintf(
+                'INSERT INTO "pos_receipts" (%s) VALUES (%s) '.
+                'ON CONFLICT (fiscal_event_id) '.
+                'DO NOTHING RETURNING id',
+                $columnList,
+                $placeholders,
+            );
+        }
+
+        $rows = DB::select($sql, $bindings);
+
+        if ($rows === []) {
+            return null;
+        }
+
+        $first = $rows[0];
+        $id = is_object($first) && property_exists($first, 'id') ? $first->id : null;
+
+        return is_string($id) ? $id : (is_scalar($id) ? (string) $id : null);
     }
 
     /**
@@ -382,13 +480,23 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * This is the **single owner** of `ReceiptPayment` row creation regardless
      * of input path — relocated from `ReceiptPaymentService::recordSplit*Payments`
-     * (`:297`). The Treasury `Payment` row + GL post + allocation that the
+     * (`:306`). The Treasury `Payment` row + GL post + allocation that the
      * legacy service also did is owned by `TreasuryReceiptBridge` (Task 22)
      * and runs only when the Treasury module is active.
      *
-     * Cross-tenant `payment_method_id` is rejected: the `PaymentMethod` lookup
-     * is scoped by the fiscal event's tenant + company so a foreign FK lands
-     * as `null` and the row insert fails on the NOT NULL FK — atomic rollback.
+     * **Cross-tenant `payment_method_id` rejection (Opus F3 round-2).**
+     * The raw payload string is what gets written to
+     * `pos_receipt_payments.payment_method_id` — NOT `$method->id`. The
+     * `payment_methods` FK does NOT enforce tenant scope on its own (it
+     * only requires the PK to exist), so the security gate is enforced
+     * application-side: when the tenant+company-scoped `$method` lookup
+     * returns null, we throw RuntimeException inside the wrapping
+     * `DB::transaction` block, which rolls back the receipt + lines + VAT
+     * + payments atomically. A regression that widened the lookup scope,
+     * silently coerced a missing method to NULL, or removed the throw
+     * would re-open the cross-tenant attack. The throw is the bounded-
+     * modules seam invariant (SoT §13.6/D16): inbound reference-data
+     * lookup is permitted ONLY within the event's own tenant+company scope.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -430,10 +538,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             }
 
             // Inbound mirrored reference-data lookup — permitted per
-            // SoT §13.6/D16 (bounded-modules asymmetric seam). Scoped by
-            // the fiscal event's tenant + company so a foreign
-            // payment_method_id resolves to null and the row insert
-            // crashes on the NOT NULL FK — atomic rollback.
+            // SoT §13.6/D16 (bounded-modules asymmetric seam). Scoped
+            // by the fiscal event's tenant + company so a foreign
+            // payment_method_id does not resolve.
             try {
                 $method = PaymentMethod::query()
                     ->where('tenant_id', $terminal->tenant_id)
@@ -443,11 +550,34 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $method = null;
             }
 
+            // Opus F3 round-2 — fail-closed when the payment_method_id is
+            // not visible to this tenant+company. The pos_receipt_payments
+            // FK on payment_method_id does NOT enforce tenant scope (the
+            // FK only requires the PK to exist), so without this gate a
+            // cross-tenant attack would silently mirror a foreign tenant's
+            // payment_method_id into our projection row. Throwing here
+            // rolls back the wrapping projection transaction (the receipt
+            // INSERT inside the same `DB::transaction` is undone with it).
+            //
+            // Skipping the lookup result altogether (i.e. writing
+            // `$paymentMethodId` regardless) was the round-1 behaviour
+            // and is a real security gap — the SoT §13.6/D16 inbound seam
+            // ONLY permits reference-data lookup within the event's own
+            // tenant+company scope.
+            if ($method === null) {
+                throw new RuntimeException(sprintf(
+                    'PosCoreReceiptProjection: payment_method_id %s not visible to tenant %s / company %s',
+                    $paymentMethodId,
+                    $terminal->tenant_id,
+                    $terminal->company_id,
+                ));
+            }
+
             $instrumentKind = $instrumentType !== null && $instrumentType !== ''
                 ? PaymentInstrumentKind::from($instrumentType)
                 : null;
 
-            $paymentType = $method !== null ? $method->name : $methodCode;
+            $paymentType = $method->name;
 
             ReceiptPayment::query()->create([
                 'id' => Str::uuid()->toString(),
@@ -466,9 +596,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // projection does not depend on Treasury.
                 'treasury_payment_id' => null,
             ]);
-
-            unset($event);
         }
+
+        // $event is used implicitly by the writes' tenant/company scoping
+        // upstream (via the resolved $terminal); the parameter is retained
+        // for future per-payment audit hooks. F7 round-2 — the stray
+        // `unset($event)` inside the foreach body in round-1 was removed
+        // (it operated on the local parameter ref, not the array element).
     }
 
     /**
@@ -661,17 +795,111 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
-     * The legacy `vat_breakdown_hash` / `payment_methods_hash` columns are
-     * NOT NULL on the table and CHECK-constrained to 64 chars (PG only).
-     * Pre-fiscal-engine these were content-addressed hashes; under §13's
-     * mirror-column regime the authoritative hash is `fiscal_events.current_hash`
-     * (mirrored to `fiscal_hash`) and the legacy per-section hashes are
-     * deprecated. We populate them with a deterministic 64-char sentinel
-     * so the constraint passes without inventing content-meaningful hash
-     * values that downstream readers might mistake for v2-style chain inputs.
+     * Compute the legacy `vat_breakdown_hash` value from the canonical
+     * payload's `vat_breakdown[]` rows.
+     *
+     * **Why real hashes, not the round-1 zero sentinel (Opus F1 BLOCKER).**
+     * The legacy operator command `pos:verify-chains` is still registered
+     * in `POSServiceProvider::boot()` and re-runs `ReceiptHashService::calculateHash`
+     * for every receipt. `calculateHash` folds `vat_breakdown_hash` +
+     * `payment_methods_hash` into the pipe-string input
+     * (`receipt_number|posted_at|total|currency|vat_hash|payment_hash`).
+     * The round-1 zero sentinel produced a `fiscal_hash` mismatch for every
+     * projection-written row, surfacing as "Sequence #N (hash)" chain
+     * breaks. By computing the real per-section hashes via
+     * `ReceiptHashService::hashVATBreakdown()` / `hashPaymentMethods()`
+     * we preserve verifier compatibility through the rollout window
+     * until Task 31 ships `fiscal:verify-event-chain` and Task 25 retires
+     * the legacy verifier.
+     *
+     * The canonical-payload `vat_breakdown` shape is
+     * `{rate, base, amount}` per `SaleReceiptPayload`; the legacy hash
+     * helper expects `{tax_rate, net_amount, vat_amount, gross_amount}`.
+     * We map between the two shapes here.
+     *
+     * @param  array<string, mixed>  $payload
      */
-    private function placeholderHash(): string
+    private function computeVatBreakdownHash(array $payload): string
     {
-        return str_repeat('0', 64);
+        $vatBreakdown = FiscalPayloadArrayGuards::requireArray($payload, 'vat_breakdown');
+
+        $rows = [];
+        foreach ($vatBreakdown as $vat) {
+            if (! is_array($vat)) {
+                throw new RuntimeException('PosCoreReceiptProjection: vat_breakdown[] entry is not an array');
+            }
+            /** @var array<string, mixed> $vat */
+            $rate = FiscalPayloadArrayGuards::requireString($vat, 'rate');
+            $base = FiscalPayloadArrayGuards::requireString($vat, 'base');
+            $amount = FiscalPayloadArrayGuards::requireString($vat, 'amount');
+            $gross = bcadd($this->normalize($base), $this->normalize($amount), self::SCALE);
+
+            $rows[] = [
+                'tax_rate' => $rate,
+                'net_amount' => $base,
+                'vat_amount' => $amount,
+                'gross_amount' => $gross,
+            ];
+        }
+
+        return $this->receiptHashService->hashVATBreakdown($rows);
+    }
+
+    /**
+     * Compute the legacy `payment_methods_hash` value from the canonical
+     * payload's `payment_lines[]` rows. See `computeVatBreakdownHash()`
+     * docblock for the operator-command rationale (Opus F1 BLOCKER).
+     *
+     * The legacy `hashPaymentMethods()` helper sorts by `payment_type`,
+     * which is the `PaymentMethod->name` snapshot (or the raw method_code
+     * fallback for cross-tenant rejection). We mirror the resolution logic
+     * in `writePayments()` exactly so the hash matches what the verifier
+     * later recomputes from `pos_receipt_payments` rows.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function computePaymentMethodsHash(array $payload, Terminal $terminal): string
+    {
+        $paymentLines = FiscalPayloadArrayGuards::requireArray($payload, 'payment_lines');
+
+        $rows = [];
+        foreach ($paymentLines as $line) {
+            if (! is_array($line)) {
+                throw new RuntimeException('PosCoreReceiptProjection: payment_lines[] entry is not an array');
+            }
+            /** @var array<string, mixed> $line */
+            $paymentMethodId = FiscalPayloadArrayGuards::requireString($line, 'payment_method_id');
+            $amount = FiscalPayloadArrayGuards::requireString($line, 'amount');
+            $methodCode = FiscalPayloadArrayGuards::requireString($line, 'method_code');
+
+            // Mirror the writePayments() resolution exactly — same scoping,
+            // same fail-closed gate (Opus F3 round-2). When the lookup
+            // misses, writePayments() itself will throw and the wrapping
+            // transaction rolls back; we mirror the lookup here only so
+            // the stored `payment_methods_hash` deterministically matches
+            // what `payment_type` writePayments() stamps on each row.
+            try {
+                $method = PaymentMethod::query()
+                    ->where('tenant_id', $terminal->tenant_id)
+                    ->where('company_id', $terminal->company_id)
+                    ->find($paymentMethodId);
+            } catch (QueryException) {
+                $method = null;
+            }
+
+            // Defensive fallback — `writePayments()` will throw before any
+            // pos_receipt_payments row lands if `$method === null`, so
+            // the projection rolls back atomically and the hash value
+            // here is never persisted. We still use `$methodCode` here
+            // to keep the hash computation pure (no throw inside hash
+            // helper); the security gate lives in `writePayments()`.
+            $paymentType = $method !== null ? $method->name : $methodCode;
+            $rows[] = [
+                'payment_type' => $paymentType,
+                'amount' => $amount,
+            ];
+        }
+
+        return $this->receiptHashService->hashPaymentMethods($rows);
     }
 }

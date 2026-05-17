@@ -354,6 +354,18 @@ jobs:
         #     `fiscal_event_quarantine.integrity_exception_class`
         #     (Task 10 + the round-2 widening for `malformed_envelope`)
         #     only fire there.
+        #   - PosCoreReceiptProjectionTest (Feature, Task 21): the
+        #     POS-core projector writes into `pos_receipts` (PG-only
+        #     CHECK constraints — `pos_receipts_totals`,
+        #     `pos_receipts_hash_length`, `pos_receipts_discount_positive`),
+        #     `pos_receipt_payments` (PG-only `pos_receipt_payments_amount`
+        #     CHECK + tenant-scoped `payment_method_id` FK), and
+        #     `pos_receipt_vat_details` (PG-only `pos_receipt_vat_details_gross_calc`
+        #     CHECK). The atomic INSERT ... ON CONFLICT ON CONSTRAINT
+        #     `pos_receipts_fiscal_event_id_unique` idempotency primitive
+        #     also only resolves to the named constraint on PG. SQLite
+        #     covers the happy-path locally; PG is the production truth
+        #     for the projector's failure-mode contract.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -363,7 +375,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

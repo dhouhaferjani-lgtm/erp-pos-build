@@ -105,8 +105,11 @@ final class FiscalEventProjectionRegistryTest extends TestCase
 
     public function test_empty_projector_set_yields_empty_active_list(): void
     {
-        // Task 18 ships with no real projectors tagged — Tasks 21/22 add them.
-        // An empty registry is a valid Phase 1 state and must not throw.
+        // Task 21 tags `PosCoreReceiptProjection` into the production set,
+        // but this constructor-injection test uses an explicit empty list
+        // to validate the registry's behavior in the no-projector edge
+        // case. An empty registry is a valid runtime state and must not
+        // throw.
         $registry = new FiscalEventProjectionRegistry([], $this->resolverReporting([]));
 
         $this->assertSame([], $registry->activeProjectorsFor($this->saleReceiptEvent()));
@@ -336,7 +339,9 @@ final class FiscalEventProjectionRegistryTest extends TestCase
 // =====================================================================
 // Fake projectors used by this test file. They live in the same file
 // (test-only helpers) so the Test class self-contains its fixtures —
-// Phase 1 has no production projectors yet (Tasks 21/22 add them).
+// Task 21 / Task 22 add the production projectors
+// (`PosCoreReceiptProjection`, `TreasuryReceiptBridge`); the registry's
+// shape contract is exercised here against deterministic test doubles.
 // =====================================================================
 
 final class FakePosCore implements FiscalEventProjector

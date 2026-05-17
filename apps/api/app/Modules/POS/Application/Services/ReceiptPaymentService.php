@@ -41,14 +41,18 @@ use Illuminate\Support\Str;
  *
  * CRITICAL: POS payments are DIRECT TO REVENUE (no AR account).
  *
- * Task 21 status — the `ReceiptPayment::create` portion (`:297`) has been
- * **relocated to `PosCoreReceiptProjection`** for the device-authored
- * fiscal-event path. The Treasury `Payment` + GL portion remains here
- * until Task 22 (`TreasuryReceiptBridge`) moves it to the Treasury
- * module's projector. The legacy online POS endpoint that calls this
- * service stays functional until Task 25 retires it in favor of the
- * Task 20 fiscal-events endpoint. New write surfaces MUST go through
- * the projector — do not extend the `ReceiptPayment::create` branch here.
+ * Task 21 status — the `ReceiptPayment::create` portion (`:306` in this
+ * file, post-docblock) has been **relocated to `PosCoreReceiptProjection`**
+ * for the device-authored fiscal-event path. The Treasury `Payment` + GL
+ * portion remains here until Task 22 (`TreasuryReceiptBridge`) moves it
+ * to the Treasury module's projector. The legacy online POS endpoint that
+ * calls this service stays functional through Task 29 (web POS + Tauri-
+ * online new-sale-authoring disposition) and is fully retired by Task 30
+ * (the §14.3 two-chokepoint CI grep gate). Per spec v7 §14.2 the legacy
+ * surface is the knowingly-retained server-authoring path for `void` /
+ * `processReturn` only; new-sale `SALE_RECEIPT` authoring is closed for
+ * all callers by Task 29. New write surfaces MUST go through the
+ * projector — do not extend the `ReceiptPayment::create` branch here.
  */
 final class ReceiptPaymentService
 {

@@ -132,19 +132,32 @@ final class ReceiptHashService
      * Validates that all receipts in the terminal's chain are correctly hashed
      * and linked to each other.
      *
+     * **Phase 1 fiscal-event projection carve-out (Task 21 F1 round-2).**
+     * Rows where `fiscal_event_id IS NOT NULL` are projection rows written
+     * by `PosCoreReceiptProjection` from a verified `fiscal_events` row.
+     * Their `fiscal_hash` is the canonical-bytes SHA-256 from the fiscal
+     * event (the §13 mirror contract), NOT the legacy
+     * `sha256(receipt_number|posted_at|total|currency|vat_hash|payment_hash)`
+     * shape this verifier recomputes. The authoritative integrity for those
+     * rows lives in `fiscal_events.current_hash` and is verified by
+     * `fiscal:verify-event-chain` (Task 31). Skipping them here is the
+     * interim bridge for the rollout window between Task 21 (projection
+     * rows start landing) and Task 25 / Task 31 (legacy verifier retires).
+     *
      * @param  Terminal  $terminal  The terminal to verify
      * @return bool True if chain is valid, false if broken
      */
     public function verifyTerminalChain(Terminal $terminal): bool
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
+            ->whereNull('fiscal_event_id')
             ->where('is_voided', false)
             ->where('is_training', false)
             ->orderBy('chain_sequence')
             ->get();
 
         if ($receipts->isEmpty()) {
-            return true; // Empty chain is valid
+            return true; // Empty chain (or only projection rows) is valid
         }
 
         $previousHash = null;
@@ -167,7 +180,12 @@ final class ReceiptHashService
             $previousHash = $receipt->fiscal_hash;
         }
 
-        // Verify terminal's last_hash matches the final receipt
+        // Verify terminal's last_hash matches the final legacy receipt.
+        // When all rows are projection rows, $previousHash stays null and
+        // we deliberately do NOT compare to $terminal->last_hash — the
+        // legacy `last_hash` is a stale concept for projection-only terminals
+        // (their chain head lives on the `fiscal_events` row's
+        // `current_hash` and is walked by `fiscal:verify-event-chain`).
         if ($previousHash !== $terminal->last_hash) {
             return false;
         }
