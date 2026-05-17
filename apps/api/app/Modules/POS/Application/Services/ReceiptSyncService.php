@@ -50,6 +50,15 @@ use Illuminate\Support\Str;
  * - Chain break propagation (if receipt N fails, N+1..N+M all fail)
  * - v3-aware finalization: delegates hash computation to ReceiptFinalizationService
  * - offline_fiscal_hash verification: server recomputes and compares against payload hash
+ *
+ * Task 21 status — **superseded by `PosCoreReceiptProjection`** for the
+ * device-authored fiscal-event path. The voucher-redemption (`:683-710`)
+ * and stock-movement (`:713-735`) sections have been relocated into the
+ * projector; the service body remains intact so the legacy
+ * `POST /api/pos/sync/receipts` endpoint and its callers continue to work
+ * until Task 25 retires the offline-sync HTTP surface in favor of the
+ * Task 20 `POST /api/v1/pos/sync/fiscal-events` endpoint. New writers
+ * MUST go through the projector — do not extend this service.
  */
 final class ReceiptSyncService
 {

@@ -132,13 +132,23 @@ final class OutboxIngestorTest extends TestCase
         // UUID is fine.
         $this->operatorId = Str::uuid()->toString();
 
-        // Tag the test-local fake projector into the container BEFORE the
-        // FiscalEventProjectionRegistry singleton is resolved. The
-        // production tagged set is still empty (Tasks 21/22 add real
-        // projectors) — this fake exists ONLY to prove "one projection
-        // row per active projector" without depending on prod projectors
-        // that don't yet exist.
-        $this->app->tag([FakeSaleReceiptProjector::class], FiscalEventProjector::class);
+        // Rebind FiscalEventProjectionRegistry with ONLY the test-local
+        // fake projector. This isolates these tests from production
+        // projectors that get tagged in their own service providers
+        // (Task 21's `PosCoreReceiptProjection` via `POSServiceProvider`,
+        // Task 22's `TreasuryReceiptBridge` via `TreasuryServiceProvider`)
+        // so the "one projection row per active projector" assertions
+        // remain deterministic. The production tag set is implicitly
+        // ignored here because the registry constructor takes the
+        // projector list as a constructor argument, not at resolve time.
+        $this->app->forgetInstance(FiscalEventProjectionRegistry::class);
+        $this->app->singleton(
+            FiscalEventProjectionRegistry::class,
+            fn (): FiscalEventProjectionRegistry => new FiscalEventProjectionRegistry(
+                [new FakeSaleReceiptProjector],
+                $this->app->make(ModuleActivationResolver::class),
+            ),
+        );
 
         // Avoid Job dispatch in tests — projection enqueue is Task 23's
         // job class which doesn't exist yet. The OutboxIngestor passes a
@@ -428,10 +438,19 @@ final class OutboxIngestorTest extends TestCase
                 }
             };
         });
+        // Rebind the registry with the POS-core fake + the Treasury-bound
+        // fake. The Treasury-bound projector forces the resolver to be
+        // invoked (POS-core always-active projectors don't ask the
+        // resolver). The setUp() binding is replaced because we need the
+        // new resolver instance picked up by the registry.
         $this->app->forgetInstance(FiscalEventProjectionRegistry::class);
-        // Also tag a Treasury-bound projector so the resolver is actually
-        // invoked (POS-core always-active projectors don't ask the resolver).
-        $this->app->tag([FakeTreasuryBoundProjector::class], FiscalEventProjector::class);
+        $this->app->singleton(
+            FiscalEventProjectionRegistry::class,
+            fn (): FiscalEventProjectionRegistry => new FiscalEventProjectionRegistry(
+                [new FakeSaleReceiptProjector, new FakeTreasuryBoundProjector],
+                $this->app->make(ModuleActivationResolver::class),
+            ),
+        );
 
         // The thrown-resolver fake will log via Log::error in the
         // registry's F1 fail-closed handler. Silence it cleanly.

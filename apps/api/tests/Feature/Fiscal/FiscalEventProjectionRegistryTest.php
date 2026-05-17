@@ -187,12 +187,18 @@ final class FiscalEventProjectionRegistryTest extends TestCase
     {
         // The FiscalServiceProvider binding makes the registry container-
         // resolvable so Task 19 (`OutboxIngestor`) can constructor-inject
-        // it. The tagged set is empty until Tasks 21/22 — verify the
-        // empty case resolves cleanly.
+        // it. After Task 21 (`PosCoreReceiptProjection` tagged in
+        // `POSServiceProvider::register()`), the production tagged set
+        // contains at least the POS-core projector — assert it resolves
+        // cleanly and the projector is active for a SALE_RECEIPT event.
         $registry = $this->app->make(FiscalEventProjectionRegistry::class);
 
         $this->assertInstanceOf(FiscalEventProjectionRegistry::class, $registry);
-        $this->assertSame([], $registry->activeProjectorsFor($this->saleReceiptEvent()));
+        $names = array_map(
+            static fn (FiscalEventProjector $p): string => $p->name(),
+            $registry->activeProjectorsFor($this->saleReceiptEvent()),
+        );
+        $this->assertContains('pos_core_receipt', $names);
     }
 
     // -----------------------------------------------------------------

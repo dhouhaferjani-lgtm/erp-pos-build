@@ -40,6 +40,15 @@ use Illuminate\Support\Str;
  * 3. General Ledger entries
  *
  * CRITICAL: POS payments are DIRECT TO REVENUE (no AR account).
+ *
+ * Task 21 status — the `ReceiptPayment::create` portion (`:297`) has been
+ * **relocated to `PosCoreReceiptProjection`** for the device-authored
+ * fiscal-event path. The Treasury `Payment` + GL portion remains here
+ * until Task 22 (`TreasuryReceiptBridge`) moves it to the Treasury
+ * module's projector. The legacy online POS endpoint that calls this
+ * service stays functional until Task 25 retires it in favor of the
+ * Task 20 fiscal-events endpoint. New write surfaces MUST go through
+ * the projector — do not extend the `ReceiptPayment::create` branch here.
  */
 final class ReceiptPaymentService
 {
