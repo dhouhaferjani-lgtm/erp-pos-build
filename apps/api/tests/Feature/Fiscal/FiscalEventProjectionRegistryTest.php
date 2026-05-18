@@ -167,12 +167,16 @@ final class FiscalEventProjectionRegistryTest extends TestCase
         $this->assertSame(0, $resolver->callCount);
     }
 
-    public function test_active_projectors_returned_in_registration_order(): void
+    public function test_active_projectors_returned_in_priority_then_name_order(): void
     {
-        // Determinism: the registry preserves the order projectors were
-        // registered in. This matters because `OutboxIngestor` (Task 19)
-        // creates projection rows + enqueues jobs in this order; a stable
-        // ordering keeps the audit trail predictable.
+        // Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+        // dispatch order is sorted by (priority ASC, name ASC) at
+        // construction. POS-core declares 50; the Treasury bridge
+        // declares 150. Even when the tagged set is registered in
+        // reverse provider-registration order, POS-core sorts FIRST.
+        // OutboxIngestor (Task 19) creates projection rows + enqueues
+        // jobs in this priority order, so the bridge always sees the
+        // pos_receipts row written by POS-core's prior projection job.
         $registry = new FiscalEventProjectionRegistry(
             [new FakeTreasury, new FakePosCore],
             $this->resolverReporting(['Treasury' => true]),
@@ -183,7 +187,47 @@ final class FiscalEventProjectionRegistryTest extends TestCase
             $registry->activeProjectorsFor($this->saleReceiptEvent()),
         );
 
-        $this->assertSame(['treasury_receipt_bridge', 'pos_core_receipt'], $names);
+        // POS-core (50) before Treasury bridge (150) — even though the
+        // constructor received [Treasury, POS-core].
+        $this->assertSame(['pos_core_receipt', 'treasury_receipt_bridge'], $names);
+    }
+
+    public function test_priority_tiebreak_is_alphabetical_by_name(): void
+    {
+        // Two projectors with the same priority value are dispatched in
+        // name ASC order — strcmp tiebreaker. Guards against PHP's
+        // non-stable `usort` causing flaky audit-trail ordering under a
+        // priority collision.
+        $registry = new FiscalEventProjectionRegistry(
+            [new FakeSamePriorityB, new FakeSamePriorityA],
+            $this->resolverReporting([]),
+        );
+
+        $names = array_map(
+            static fn (FiscalEventProjector $p): string => $p->name(),
+            $registry->activeProjectorsFor($this->saleReceiptEvent()),
+        );
+
+        // Both projectors `requiresModule() === null` (always-active);
+        // 'pos_core_a' sorts before 'pos_core_b' by name ASC even though
+        // the constructor received B first.
+        $this->assertSame(['pos_core_a', 'pos_core_b'], $names);
+    }
+
+    public function test_constructor_rejects_negative_priority(): void
+    {
+        // Task 22 round-2 — boot-time invariant: priority() must be >= 0.
+        // Standing pattern from Task 18 — constructor asserts; a
+        // LogicException at boot is cheaper to diagnose than an
+        // out-of-order dispatch at runtime that silently flips the
+        // bridge's deferred-bail-out branch into the steady-state path.
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageMatches('/returned a negative priority/');
+
+        new FiscalEventProjectionRegistry(
+            [new FakeNegativePriorityProjector],
+            $this->resolverReporting([]),
+        );
     }
 
     public function test_resolves_from_container_singleton(): void
@@ -392,6 +436,12 @@ final class FakePosCore implements FiscalEventProjector
         // no-op fake
         unset($event);
     }
+
+    public function priority(): int
+    {
+        // Matches the production PosCoreReceiptProjection::priority() — Task 22 round-2.
+        return 50;
+    }
 }
 
 final class FakeTreasury implements FiscalEventProjector
@@ -417,6 +467,12 @@ final class FakeTreasury implements FiscalEventProjector
     public function apply(FiscalEvent $event): void
     {
         unset($event);
+    }
+
+    public function priority(): int
+    {
+        // Matches the production TreasuryReceiptBridge::priority() — Task 22 round-2.
+        return 150;
     }
 }
 
@@ -445,6 +501,11 @@ final class FakeLowercaseTreasury implements FiscalEventProjector
     {
         unset($event);
     }
+
+    public function priority(): int
+    {
+        return 150;
+    }
 }
 
 // Empty-token + whitespace-token fakes used by the Codex F3 round-2 tests.
@@ -472,6 +533,11 @@ final class FakeEmptyTokenProjector implements FiscalEventProjector
     {
         unset($event);
     }
+
+    public function priority(): int
+    {
+        return 100;
+    }
 }
 
 final class FakeWhitespaceTokenProjector implements FiscalEventProjector
@@ -496,5 +562,98 @@ final class FakeWhitespaceTokenProjector implements FiscalEventProjector
     public function apply(FiscalEvent $event): void
     {
         unset($event);
+    }
+
+    public function priority(): int
+    {
+        return 100;
+    }
+}
+
+// Task 22 round-2 — fakes used by the priority-tiebreak + negative-priority tests.
+
+final class FakeSamePriorityA implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'pos_core_a';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::SALE_RECEIPT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+
+    public function priority(): int
+    {
+        return 75;
+    }
+}
+
+final class FakeSamePriorityB implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'pos_core_b';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::SALE_RECEIPT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+
+    public function priority(): int
+    {
+        return 75;
+    }
+}
+
+final class FakeNegativePriorityProjector implements FiscalEventProjector
+{
+    public function name(): string
+    {
+        return 'negative_priority_bug';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        unset($type);
+
+        return true;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+
+    public function priority(): int
+    {
+        return -10;
     }
 }

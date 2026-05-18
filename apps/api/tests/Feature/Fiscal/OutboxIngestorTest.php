@@ -924,6 +924,11 @@ final class FakeSaleReceiptProjector implements FiscalEventProjector
         // actual invoker; for ingest-path tests we never execute apply().
         unset($event);
     }
+
+    public function priority(): int
+    {
+        return 50;
+    }
 }
 
 final class FakeTreasuryBoundProjector implements FiscalEventProjector
@@ -948,5 +953,10 @@ final class FakeTreasuryBoundProjector implements FiscalEventProjector
     public function apply(FiscalEvent $event): void
     {
         unset($event);
+    }
+
+    public function priority(): int
+    {
+        return 150;
     }
 }

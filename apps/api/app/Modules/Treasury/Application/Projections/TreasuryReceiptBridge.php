@@ -13,6 +13,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Database\QueryException;
@@ -60,15 +61,31 @@ use RuntimeException;
  *   `if (Payment::where('fiscal_event_id', $event->id)
  *          ->where('origin', PaymentOrigin::Pos)->exists()) return;`
  *
- * **Race-safety contract.** `apply()` is single-flight in production
- * under the Task 23 (`ApplyFiscalEventProjectionJob`) lifecycle, which
- * acquires `lockForUpdate()` on the `fiscal_event_projections` row keyed
- * on `(fiscal_event_id, 'treasury_receipt_bridge')` BEFORE invoking the
- * projector. Manual operator replay (e.g.,
- * `fiscal:enqueue-resolved-event-projections`) MUST run after the active
- * job completes — DO NOT bypass the projection row. A concurrent
- * apply() bypassing the lock would race the existence probe and write
- * duplicate Payment rows.
+ * **Race-safety contract (Task 22 round-2 — Codex F1 P1).** `apply()` is
+ * single-flight via two complementary fences:
+ *   1. **PG transaction-scoped advisory lock** acquired inside the
+ *      wrapping `DB::transaction()` keyed on
+ *      `hashtext($event->id . ':treasury_receipt_bridge')`. The lock
+ *      is held until the transaction commits or rolls back, then
+ *      released automatically. Concurrent `apply()` invocations for the
+ *      same event serialize at the lock — the second waiter sees the
+ *      first's committed rows and short-circuits via the inner re-check
+ *      below. The hash key is bridge-scoped so other projectors for the
+ *      same event run in parallel. SQLite has no advisory locks; the
+ *      `pg_advisory_xact_lock` call is wrapped in a PG-driver guard.
+ *   2. **Task 23 projection-row `lockForUpdate()`** (forward-promise) —
+ *      `ApplyFiscalEventProjectionJob` is expected to take a row lock
+ *      on the `fiscal_event_projections` row keyed on
+ *      `(fiscal_event_id, 'treasury_receipt_bridge')` BEFORE invoking
+ *      the projector. The Task 23 plan does not currently spell this
+ *      out; the bridge's advisory lock is belt-and-braces insurance
+ *      that doesn't depend on Task 23's exact lifecycle design.
+ *
+ * Manual operator replay paths (e.g.,
+ * `fiscal:enqueue-resolved-event-projections`) inherit the advisory
+ * lock semantics automatically — two concurrent replays serialize at
+ * the lock, the second sees the first's idempotency-probe hit and
+ * returns cleanly.
  *
  * **Bounded-modules guardrail (SoT §13.6/D16).** This class imports
  * ZERO Fiscal-engine internals; it depends only on:
@@ -81,16 +98,19 @@ use RuntimeException;
  *
  * **§14 retention disposition.** The legacy
  * `ReceiptPaymentService::processReceiptPayments()` still writes a
- * Treasury `Payment` + GL entry inline when invoked from the legacy
- * `/pos/receipts/sync` HTTP path. Per spec v7 §14.2 / Task 21
- * adjudication that legacy write is "knowingly retained no-new-writers"
- * with retirement routed to Task 28 (`/pos/receipts/sync` retirement)
- * and Task 30 (the two-chokepoint CI grep gate). DO NOT physically
- * remove the legacy `Payment::create` call — the documented disposition
- * keeps it functional through the rollout window. The legacy call gets
- * stamped `origin = PaymentOrigin::Pos` + `fiscal_event_id = null`
- * (no fiscal event was authored device-side for this server-recompute
- * code path).
+ * Treasury `Payment` + GL entry inline when invoked from
+ * `ReceiptController::storePayments()` (`POST /pos/receipts/{id}/payments`,
+ * the web-POS + Tauri-online new-sale path — `/pos/receipts/sync` goes
+ * through `ReceiptSyncService`, not this service). Per spec v7
+ * §14.1 (`/pos/receipts/sync` retirement, Task 28) + §14.2 (new-sale
+ * authoring disposition, Task 29) + §14.3 (two-chokepoint CI grep
+ * gate, Task 30) that legacy write is "knowingly retained
+ * no-new-writers" through the rollout window. DO NOT physically
+ * remove the legacy `Payment::create` call — the documented
+ * disposition keeps it functional until Tasks 28-30 land. The legacy
+ * call gets stamped `origin = PaymentOrigin::Pos` + `fiscal_event_id
+ * = null` (no fiscal event was authored device-side for this server-
+ * recompute code path).
  */
 final class TreasuryReceiptBridge implements FiscalEventProjector
 {
@@ -117,6 +137,24 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         return 'Treasury';
     }
 
+    public function priority(): int
+    {
+        // Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+        // the bridge depends on PosCoreReceiptProjection having written
+        // the `pos_receipts` row for the same fiscal event (it scopes
+        // its Treasury Payment writes to that receipt). The registry
+        // sorts projectors by (priority ASC, name ASC); PosCoreReceiptProjection
+        // declares 50 and runs first. The bridge declares 150 and runs
+        // after. Before this round-2 change, dispatch order accidentally
+        // tracked `bootstrap/providers.php` registration order — Treasury
+        // is registered BEFORE POS at L65/L76, so the bridge ran first,
+        // hit the deferred-bail-out branch, returned cleanly, and was
+        // marked `applied` by Task 23 — silently skipping Treasury Payment +
+        // GL writes for every event. See the class docblock for the
+        // full race-safety contract.
+        return 150;
+    }
+
     public function apply(FiscalEvent $event): void
     {
         // Fast-path idempotency probe. The race-safety fence in production
@@ -141,12 +179,15 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
         // The Treasury bridge writes rows scoped to the receipt row that
         // PosCoreReceiptProjection (Task 21) wrote for the same event.
-        // The POS-core projector runs first (its `fiscal_event_projections`
-        // row is enqueued ahead of ours by `OutboxIngestor` — Task 19's
-        // tagged-set iteration order), but we do not assume strict
-        // ordering: if the receipt row is not yet visible we treat the
-        // event as not-yet-projectable and bail. Task 23 will retry the
-        // job per its lifecycle.
+        // Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+        // dispatch order is now self-described by `priority()` —
+        // PosCoreReceiptProjection declares 50, the bridge declares 150;
+        // the registry sorts the tagged set by (priority ASC, name ASC)
+        // at boot. So the POS-core projector's `fiscal_event_projections`
+        // row is enqueued ahead of the bridge's by `OutboxIngestor`
+        // (Task 19). The deferred-bail-out below is defense-in-depth
+        // for manual replay paths and rare race windows around Task 23's
+        // job lifecycle — NOT the steady-state first-attempt code path.
         try {
             $receipt = Receipt::query()
                 ->where('tenant_id', $event->tenant_id)
@@ -171,13 +212,29 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         }
 
         DB::transaction(function () use ($event, $payload, $receipt): void {
-            // Re-check inside the transaction. Belt-and-braces — the
-            // production race fence is Task 23's row lock, but if a
-            // manual replay path collides with an in-flight job both
-            // would clear the outer probe; this inner check prevents
-            // duplicate writes if both paths reach the transaction
-            // body. Using a fresh query (not the outer probe's cached
-            // result) ensures we see commits by concurrent writers.
+            // Task 22 round-2 (Codex F1 P1) — PG transaction-scoped
+            // advisory lock keyed on (event_id, projector_name). The lock
+            // is held until the transaction commits or rolls back, then
+            // released. Serializes concurrent apply() calls for the same
+            // event — the second waiter blocks until the first commits,
+            // then short-circuits at the inner re-check below. Other
+            // projectors for the same event are NOT blocked because the
+            // hash includes the projector name. SQLite has no advisory
+            // locks; the driver-guard makes the SQLite test runner skip
+            // the statement without disabling the inner re-check (which
+            // still defends against the manual-replay race window).
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement(
+                    'SELECT pg_advisory_xact_lock(hashtext(?))',
+                    [$event->id.':treasury_receipt_bridge'],
+                );
+            }
+
+            // Re-check inside the transaction. With the advisory lock
+            // above, the second waiter sees the first's committed rows
+            // here and returns cleanly. Without the lock (SQLite tests,
+            // future driver migrations), this is the only defense
+            // against double-write — keep it.
             if ($this->paymentsForEventExist($event)) {
                 return;
             }
@@ -214,6 +271,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * repository onto this tenant's payment row. Throw `RuntimeException`
      * inside the transaction → the wrapping `DB::transaction` rolls back
      * the in-progress bridge writes atomically.
+     *
+     * **`payment_method_id` cross-tenant gate (Task 22 round-2 — Opus F1 BLOCKER).**
+     * Identical posture, identical defense. The `payments.payment_method_id`
+     * FK is to `payment_methods.id` (`2025_11_30_120000_create_treasury_tables.php:143`)
+     * and the FK only enforces PK existence. Without the application-side
+     * tenant-scoped lookup a foreign tenant's `payment_method_id` smuggled
+     * into the payload would silently bind onto this tenant's Payment row.
+     * Mirror of the `repository_id` gate below.
      *
      * @param  array<string, mixed>  $line
      */
@@ -274,18 +339,43 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ));
         }
 
+        // Task 22 round-2 (Opus F1 BLOCKER): mirror the repository_id gate
+        // for payment_method_id. The payments.payment_method_id FK only
+        // enforces PK existence — tenant scope is the bridge's
+        // responsibility. Same try/catch wrap as repository_id for the
+        // PG malformed-UUID defense (QueryException at the driver layer
+        // for non-UUID strings).
+        try {
+            $paymentMethod = PaymentMethod::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->find($paymentMethodId);
+        } catch (QueryException) {
+            $paymentMethod = null;
+        }
+
+        if ($paymentMethod === null) {
+            throw new RuntimeException(sprintf(
+                'TreasuryReceiptBridge: payment_method_id %s not visible to tenant %s / company %s',
+                $paymentMethodId,
+                $event->tenant_id,
+                $event->company_id,
+            ));
+        }
+
         // Create the Treasury `Payment` row stamped with origin=pos +
-        // fiscal_event_id (spec §13 writer row 1). The wrapping
-        // transaction inherits the receipt + repository tenant-scope —
-        // a regression that wrote a foreign-tenant payment_method_id
-        // would still be caught by the §13 writer-inventory tests +
-        // the FK on `fiscal_event_id` → `fiscal_events.id`.
+        // fiscal_event_id (spec §13 writer row 1). Both `payment_method_id`
+        // and `repository_id` were resolved through tenant-scoped lookups
+        // above — using the verified `$paymentMethod->id` / `$repository->id`
+        // is belt-and-braces (the payload value is already validated; this
+        // makes a code regression that drops the gate fail-loud in code
+        // review rather than silently in production).
         $payment = Payment::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $event->tenant_id,
             'company_id' => $event->company_id,
             'partner_id' => $receipt->partner_id,
-            'payment_method_id' => $paymentMethodId,
+            'payment_method_id' => $paymentMethod->id,
             'repository_id' => $repository->id,
             'amount' => $amount,
             'currency' => $receipt->currency,
@@ -320,8 +410,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         $this->generalLedgerService->postEntry($journalEntry, $receipt->cashier);
 
         // Link the journal entry back onto the Payment for downstream
-        // navigation. Single UPDATE — not subject to immutability
-        // triggers (none on payments table).
+        // navigation. Single UPDATE — no immutability triggers exist on
+        // `payments` as of the migration set through 2026_05_17_*. If a
+        // future migration adds an immutability trigger to
+        // `payments.journal_entry_id` (or to `origin` / `fiscal_event_id`
+        // per a §13 hardening), this single UPDATE must move into the
+        // bridge's idempotency window or use `forceSaveQuietly()` — see
+        // Task 11's `pos_receipts` immutability pattern.
         $payment->journal_entry_id = $journalEntry->id;
         $payment->save();
     }
@@ -330,10 +425,15 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * Idempotency probe: any Treasury Payment row already linked to this
      * fiscal event with origin=pos. The (fiscal_event_id, origin=pos)
      * tuple is what the bridge writes; a row with that shape proves a
-     * prior apply() completed for this event. Legacy rows pre-dating
-     * Task 12 have `origin = NULL` and are correctly skipped by the
-     * `origin` predicate — those came in via the legacy
-     * `ReceiptPaymentService` path before Phase 1 §13 stamping.
+     * prior apply() completed for this event.
+     *
+     * Task 22 round-2 (Opus F5 P2): legacy rows pre-dating Task 12 are
+     * backfilled to `origin = unknown_legacy` by
+     * `2026_05_17_120000_backfill_legacy_payment_origin.php`; they are
+     * correctly skipped by the `origin = pos` predicate here. (Pre-
+     * round-2 those rows kept `origin = NULL` and were also skipped by
+     * this predicate — the round-2 backfill closes the spec §13
+     * divergence without changing the probe's behavior.)
      */
     private function paymentsForEventExist(FiscalEvent $event): bool
     {

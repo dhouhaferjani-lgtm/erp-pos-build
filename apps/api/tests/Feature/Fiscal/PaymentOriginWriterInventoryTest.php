@@ -36,6 +36,7 @@ use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Modules\Treasury\Domain\Services\VendorRefundService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -365,6 +366,66 @@ final class PaymentOriginWriterInventoryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // §13 rows 7+8 — NULL-origin legacy fallback (Codex T22-B2 BLOCKER)
+    //
+    // Pre-Task-12 payments have `origin = NULL`. Spec §13 mandates legacy
+    // rows map to `unknown_legacy`; spec §17.6 mandates every §13 writer
+    // stamps a non-NULL `origin`. Without the fallback every refund of a
+    // legacy payment would itself silently land with NULL — defeating
+    // the §13 invariant and the spec §17.6 rule.
+    // -----------------------------------------------------------------
+
+    public function test_refund_payment_falls_back_to_unknown_legacy_when_original_origin_is_null(): void
+    {
+        $original = $this->seedNullOriginPayment('100.00');
+
+        $refund = $this->app->make(PaymentRefundService::class)->refundPayment(
+            $original,
+            reason: 'legacy refund',
+            userId: $this->user->id,
+        );
+
+        // Spec §13 — legacy rows map to `unknown_legacy`. DO NOT silently
+        // stamp NULL — `unknown_legacy` is the deliberate sentinel that
+        // lets ops reason about pre-Task-12 data.
+        $this->assertSame(PaymentOrigin::UnknownLegacy, $refund->origin);
+    }
+
+    public function test_partial_refund_falls_back_to_unknown_legacy_when_original_origin_is_null(): void
+    {
+        $original = $this->seedNullOriginPayment('200.00');
+
+        $refund = $this->app->make(PaymentRefundService::class)->partialRefund(
+            $original,
+            amount: '50.00',
+            reason: 'legacy partial refund',
+            userId: $this->user->id,
+        );
+
+        $this->assertSame(PaymentOrigin::UnknownLegacy, $refund->origin);
+    }
+
+    public function test_proration_refund_falls_back_to_unknown_legacy_when_original_origin_is_null(): void
+    {
+        // Build a Receipt + linked POS-typed Payment with origin = NULL
+        // (legacy pre-Task-12). The proration query filters payment_type=POS
+        // (not origin), so a NULL-origin POS-typed payment IS reachable
+        // here in steady state.
+        $receipt = $this->seedReceiptWithLinkedPayment(amount: '50.00', linkedOrigin: null);
+
+        $allocations = $this->app->make(PaymentRefundService::class)->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.000',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $this->assertCount(1, $allocations);
+        $refundRow = Payment::query()->findOrFail($allocations[0]->paymentId);
+        $this->assertSame(PaymentOrigin::UnknownLegacy, $refundRow->origin);
+    }
+
+    // -----------------------------------------------------------------
     // §13 row 9 — receipt-proration refund rows inherit original origin
     // -----------------------------------------------------------------
 
@@ -386,6 +447,36 @@ final class PaymentOriginWriterInventoryTest extends TestCase
         $this->assertCount(1, $allocations);
         $refundRow = Payment::query()->findOrFail($allocations[0]->paymentId);
         $this->assertSame(PaymentOrigin::Pos, $refundRow->origin);
+    }
+
+    public function test_proration_refund_inherits_web_admin_origin_when_original_is_web_admin(): void
+    {
+        // Task 22 round-2 (Opus F2 P1): the §13 row 9 contract is
+        // "inherit the original payment's `origin`" — unqualified. The
+        // proration query filters `payment_type = POS` (line :349), so
+        // in steady state only POS-typed originals are reachable. But
+        // `origin` is independent of `payment_type` per the enum + the
+        // §13 disposition, so a POS-typed original CAN carry
+        // `web_admin` origin (e.g. an admin-side manual payment recorded
+        // against a POS-typed sale; or a future broadening of the
+        // proration query). This test pins the universal-inheritance
+        // contract so a future code change that drops the helper's
+        // `originForRefund()` call won't slip past the §13 invariant.
+        $receipt = $this->seedReceiptWithLinkedPayment(
+            amount: '60.00',
+            linkedOrigin: PaymentOrigin::WebAdmin,
+        );
+
+        $allocations = $this->app->make(PaymentRefundService::class)->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '60.000',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $this->assertCount(1, $allocations);
+        $refundRow = Payment::query()->findOrFail($allocations[0]->paymentId);
+        $this->assertSame(PaymentOrigin::WebAdmin, $refundRow->origin);
     }
 
     // -----------------------------------------------------------------
@@ -508,14 +599,68 @@ final class PaymentOriginWriterInventoryTest extends TestCase
     }
 
     /**
+     * Seed a pre-Task-12 legacy Payment row with `origin = NULL`. Task 22
+     * round-2 (Codex T22-B2 BLOCKER): refund writers must fall back to
+     * `unknown_legacy` when the original origin is NULL. Bypass the model's
+     * `origin` enum cast by using raw DB::table insert — Eloquent factories
+     * would coerce a `null` to NULL (which works), but a forceFill/raw insert
+     * is the unambiguous way to produce a true NULL persisted row.
+     */
+    private function seedNullOriginPayment(string $amount): Payment
+    {
+        $id = Str::uuid()->toString();
+
+        DB::table('payments')->insert([
+            'id' => $id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->cashRegister->id,
+            'amount' => $amount,
+            'currency' => 'EUR',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed->value,
+            'payment_type' => PaymentType::DocumentPayment->value,
+            'origin' => null, // The thing this helper exists to express.
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        /** @var Payment $payment */
+        $payment = Payment::query()->findOrFail($id);
+
+        // Sanity — confirm the cast resolves to null, not a fallback enum.
+        $this->assertNull(
+            $payment->origin,
+            'seedNullOriginPayment must produce a row with origin = NULL, '.
+            'otherwise the NULL-origin refund-fallback tests are not exercising the gap.',
+        );
+
+        return $payment;
+    }
+
+    /**
      * Build a minimal Receipt + linked Treasury Payment + pos_receipt_payments
      * row so refundReceiptPayments() can walk the linkage. The PG-level
      * partial-unique-index on (company_id, original_payment_id, refund_request_id)
      * also needs to be respected — we don't pre-write a refund, just the
      * original.
+     *
+     * Task 22 round-2:
+     *  - `linkedOrigin = null` produces a Payment whose `origin` column is
+     *    NULL (legacy pre-Task-12 row), used by the Codex T22-B2 BLOCKER
+     *    coverage.
+     *  - `linkedOrigin = PaymentOrigin::WebAdmin` produces a POS-typed
+     *    payment carrying web_admin origin (an unusual but valid combination
+     *    per the §13 disposition: origin and payment_type are independent),
+     *    used by the Opus F2 symmetric-inherit coverage.
+     *  - default `PaymentOrigin::Pos` is the steady-state case.
      */
-    private function seedReceiptWithLinkedPayment(string $amount): Receipt
-    {
+    private function seedReceiptWithLinkedPayment(
+        string $amount,
+        ?PaymentOrigin $linkedOrigin = PaymentOrigin::Pos,
+    ): Receipt {
         $location = Location::factory()->create([
             'company_id' => $this->company->id,
         ]);
@@ -537,7 +682,43 @@ final class PaymentOriginWriterInventoryTest extends TestCase
                 'currency' => 'EUR',
             ]);
 
-        $original = $this->seedPosOriginPayment($amount);
+        // The original IS POS-typed (proration query filters on
+        // payment_type = POS). The `linkedOrigin` parameter controls only
+        // the `origin` column.
+        if ($linkedOrigin === null) {
+            $originalId = Str::uuid()->toString();
+            DB::table('payments')->insert([
+                'id' => $originalId,
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->customer->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'repository_id' => $this->cashRegister->id,
+                'amount' => $amount,
+                'currency' => 'EUR',
+                'payment_date' => now()->toDateString(),
+                'status' => PaymentStatus::Completed->value,
+                'payment_type' => PaymentType::POS->value,
+                'origin' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            /** @var Payment $original */
+            $original = Payment::query()->findOrFail($originalId);
+        } else {
+            $original = Payment::factory()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->customer->id,
+                'payment_method_id' => $this->cashMethod->id,
+                'repository_id' => $this->cashRegister->id,
+                'amount' => $amount,
+                'currency' => 'EUR',
+                'status' => PaymentStatus::Completed,
+                'payment_type' => PaymentType::POS,
+                'origin' => $linkedOrigin,
+            ]);
+        }
 
         // Link via pos_receipt_payments.treasury_payment_id — the proration
         // query reads this linkage to find originals.

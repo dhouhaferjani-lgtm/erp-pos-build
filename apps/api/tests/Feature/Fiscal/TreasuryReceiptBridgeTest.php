@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -208,6 +209,91 @@ final class TreasuryReceiptBridgeTest extends TestCase
         $this->assertContains('pos_core_receipt', $names);
     }
 
+    public function test_bridge_declares_priority_after_pos_core(): void
+    {
+        // Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+        // dispatch order is sorted by priority() at registry construction.
+        // The bridge depends on PosCoreReceiptProjection having written
+        // the `pos_receipts` row, so it MUST declare a higher priority
+        // (== runs later). A regression that flipped these values would
+        // silently re-introduce the production silent-applied bug.
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+        $posCore = $this->app->make(PosCoreReceiptProjection::class);
+
+        $this->assertGreaterThan(
+            $posCore->priority(),
+            $bridge->priority(),
+            'TreasuryReceiptBridge must declare a higher priority than '.
+            'PosCoreReceiptProjection so the registry dispatches POS-core first. '.
+            'See FiscalEventProjector::priority() docblock and Task 22 round-2 review.',
+        );
+    }
+
+    public function test_registry_sorts_pos_core_before_treasury_bridge(): void
+    {
+        // Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+        // pin the actual dispatch-order contract end-to-end in the
+        // production container. Pre-round-2 the registry preserved
+        // provider-registration order, which placed Treasury BEFORE
+        // POS-core (TreasuryServiceProvider at bootstrap/providers.php:65,
+        // POSServiceProvider at :76). After round-2 the registry sorts by
+        // (priority ASC, name ASC) — so POS-core (50) lands before the
+        // bridge (150) regardless of provider order.
+        $registry = $this->app->make(
+            FiscalEventProjectionRegistry::class,
+        );
+
+        // Build an event with the test fixture's tenant/company so the
+        // production ModuleActivationResolver reports Treasury active
+        // (assuming the test tenant has the Treasury module — the
+        // resolver gate is exercised in FiscalEventProjectionRegistryTest;
+        // here we only need the active list to contain both names in
+        // priority order to prove the sort works in container resolution).
+        $event = $this->storeSaleReceiptFiscalEvent();
+        $active = $registry->activeProjectorsFor($event);
+
+        $names = array_map(
+            static fn (FiscalEventProjector $p): string => $p->name(),
+            $active,
+        );
+
+        // POS-core is always-active; the Treasury bridge gates on the
+        // resolver verdict. Either way, if both appear, POS-core comes first.
+        $posCoreIndex = array_search('pos_core_receipt', $names, true);
+        $bridgeIndex = array_search('treasury_receipt_bridge', $names, true);
+
+        $this->assertNotFalse($posCoreIndex, 'pos_core_receipt must be active');
+        if ($bridgeIndex !== false) {
+            $this->assertLessThan(
+                $bridgeIndex,
+                $posCoreIndex,
+                'POS-core projector must be dispatched before Treasury bridge — '.
+                'see Task 22 round-2 BLOCKER fix.',
+            );
+        }
+    }
+
+    public function test_production_sequence_pos_core_then_bridge_writes_payment(): void
+    {
+        // Task 22 round-2 — simulate the production sequence: POS-core
+        // projector applies first (writes pos_receipts), then the bridge
+        // applies (writes Treasury Payment + GL). Re-applying the bridge
+        // must be idempotent.
+        $event = $this->projectedSaleReceiptFiscalEvent(); // POS-core has projected
+        $bridge = $this->app->make(TreasuryReceiptBridge::class);
+
+        // First apply — writes one Payment + GL entry.
+        $bridge->apply($event);
+        $this->assertSame(1, DB::table('payments')->count());
+        $glAfterFirst = DB::table('journal_entries')->count();
+        $this->assertGreaterThan(0, $glAfterFirst);
+
+        // Re-apply — outer probe short-circuits, no duplicate writes.
+        $bridge->apply($event);
+        $this->assertSame(1, DB::table('payments')->count());
+        $this->assertSame($glAfterFirst, DB::table('journal_entries')->count());
+    }
+
     // =================================================================
     // Discriminated-union variants
     // =================================================================
@@ -268,6 +354,63 @@ final class TreasuryReceiptBridgeTest extends TestCase
 
         $this->assertSame($paymentRowsAfterFirst, DB::table('payments')->count());
         $this->assertSame($glEntriesAfterFirst, DB::table('journal_entries')->count());
+    }
+
+    public function test_cross_tenant_payment_method_id_is_rejected_fail_closed(): void
+    {
+        // Task 22 round-2 (Opus F1 BLOCKER) — symmetric defense to the
+        // repository_id gate. `payments.payment_method_id` is a FK to
+        // `payment_methods.id` that only enforces PK existence; without
+        // the application-side tenant-scoped lookup a foreign tenant's
+        // payment_method_id smuggled into the payload would bind onto
+        // our tenant's Payment row. The bridge throws RuntimeException
+        // inside the wrapping `DB::transaction` — atomic rollback.
+        //
+        // PosCoreReceiptProjection also fails-closed on cross-tenant
+        // payment_method_id (Task 21 round-2 Opus F3) — so the foreign
+        // payload would crash POS-core's projection before the bridge
+        // gets a chance to defend. To exercise the bridge's own gate in
+        // isolation (the point of THIS test), bypass POS-core by:
+        //   (1) building the fiscal_events row directly
+        //       (`storeSaleReceiptFiscalEvent` — no projection),
+        //   (2) seeding a stand-in pos_receipts row via the bridge-only
+        //       `seedPosReceiptRowFor` helper.
+        // Same harness as `test_malformed_payload_payment_method_id_rolls_bridge_back`.
+        $otherTenant = Tenant::factory()->create();
+        $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
+        $foreignMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'code' => 'CARD',
+            'name' => 'Card',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            paymentLinesOverride: [
+                [
+                    // Foreign tenant's payment_method_id; repository is valid.
+                    'payment_method_id' => $foreignMethod->id,
+                    'amount' => '10.00',
+                    'method_code' => 'CARD',
+                    'repository_id' => $this->repositoryId,
+                ],
+            ],
+        );
+        $this->seedPosReceiptRowFor($event);
+
+        try {
+            $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+            $this->fail('Expected RuntimeException for cross-tenant payment_method_id');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('payment_method_id', $e->getMessage());
+            $this->assertStringContainsString('not visible to tenant', $e->getMessage());
+            // Sanity — the bridge threw, not PosCoreReceiptProjection.
+            $this->assertStringContainsString('TreasuryReceiptBridge', $e->getMessage());
+        }
+
+        // Atomic rollback — no Payment row, no GL entry.
+        $this->assertSame(0, DB::table('payments')->count());
+        $this->assertSame(0, DB::table('journal_entries')->count());
     }
 
     public function test_cross_tenant_repository_id_is_rejected_fail_closed(): void

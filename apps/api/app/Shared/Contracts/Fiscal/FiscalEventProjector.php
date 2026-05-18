@@ -77,4 +77,38 @@ interface FiscalEventProjector
      * `fiscal_event_projections` idempotency contract.
      */
     public function apply(FiscalEvent $event): void;
+
+    /**
+     * Deterministic dispatch priority — lower runs first.
+     *
+     * Task 22 round-2 (Codex T22-B1 / Opus F3 — convergent BLOCKER):
+     * Laravel's `app->tagged()` returns the tagged set in container
+     * insertion (== provider-registration) order. That insertion order
+     * is opaque to projector authors and was found to be `Treasury,
+     * POS-core` in production — exactly the reverse of what
+     * `TreasuryReceiptBridge` assumes (it reads `pos_receipts`, so it
+     * must run AFTER `PosCoreReceiptProjection`). A bridge running first
+     * with no receipt visible would fall through its deferred-bail-out
+     * branch, return cleanly, and be marked `applied` by Task 23 —
+     * silently skipping the Treasury Payment + GL writes for every
+     * event. To make ordering self-describing at the projector layer
+     * rather than provider-registration-order accidental, every
+     * projector declares its priority. The registry sorts the tagged
+     * set once at boot time by `(priority ASC, name ASC)`.
+     *
+     * **Convention.**
+     *   - POS-core projectors that own canonical projection-row rows
+     *     (e.g. `pos_receipts`) → `50` (run first).
+     *   - Module bridges that depend on a canonical projection row
+     *     being visible (e.g. `TreasuryReceiptBridge` reads
+     *     `pos_receipts`) → `150` (run after).
+     *   - Reserve `0..49` for future high-priority infrastructure
+     *     projectors and `>=200` for purely cosmetic / read-model
+     *     projectors that depend on everyone else.
+     *
+     * Negative priorities are rejected at registry-construction time
+     * with a `LogicException` (standing pattern: boot-time invariants
+     * constructor-asserted, Task 18).
+     */
+    public function priority(): int;
 }

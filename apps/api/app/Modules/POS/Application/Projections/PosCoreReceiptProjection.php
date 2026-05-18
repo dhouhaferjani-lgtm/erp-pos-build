@@ -125,6 +125,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         return null;
     }
 
+    public function priority(): int
+    {
+        // Task 22 round-2 — POS-core owns the canonical `pos_receipts`
+        // projection row that module bridges (Treasury, future Accounting
+        // bridges, etc.) read to scope their writes. Run FIRST in the
+        // projector dispatch order. Registry sorts by (priority ASC, name ASC);
+        // 50 is the convention for canonical-row owners (see
+        // FiscalEventProjector::priority() docblock).
+        return 50;
+    }
+
     public function apply(FiscalEvent $event): void
     {
         // Fast-path idempotency probe — the durable guard inside the

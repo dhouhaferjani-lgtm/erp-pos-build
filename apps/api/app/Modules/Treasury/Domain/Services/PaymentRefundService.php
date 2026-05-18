@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
@@ -30,6 +31,28 @@ class PaymentRefundService
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Spec §13 refund-origin inheritance with NULL-origin fallback.
+     *
+     * Task 22 round-2 (Codex T22-B2 BLOCKER): refund writers inherit
+     * the original payment's `origin`. Pre-Task-12 legacy rows have
+     * `origin = NULL`; the spec §13 mandates those map to `unknown_legacy`.
+     * Without this normalization, every refund of a legacy payment
+     * would itself stamp NULL — defeating the §13 invariant ("every
+     * §13 writer stamps origin"). This helper centralizes the fallback
+     * so all three refund writers (`refundPayment`, `partialRefund`,
+     * `refundReceiptPayments`) share one source of truth.
+     *
+     * DO NOT change the fallback to silently NULL — `unknown_legacy` is
+     * a deliberate sentinel that lets ops reason about pre-Task-12
+     * data in the audit log instead of mistaking NULL for "not yet
+     * stamped" or "missed §13 writer".
+     */
+    private function originForRefund(Payment $original): PaymentOrigin
+    {
+        return $original->origin ?? PaymentOrigin::UnknownLegacy;
     }
 
     /**
@@ -69,9 +92,13 @@ class PaymentRefundService
             // Spec §13 writer-inventory row 7 — `PaymentRefundService::refundPayment()`
             // → inherit the original payment's `origin`. A refund of a POS-origin
             // payment is itself POS-origin; a refund of a web_admin payment is
-            // web_admin. Legacy rows with `origin = NULL` inherit NULL (the same
-            // ambiguity their parent row carries — refusing to coerce). `fiscal_event_id`
-            // is NOT inherited — refunds are not authored by the device.
+            // web_admin. Task 22 round-2 (Codex T22-B2 BLOCKER): legacy rows
+            // pre-dating Task 12 have `origin = NULL`; `originForRefund()` falls
+            // back to `PaymentOrigin::UnknownLegacy` so the refund row still
+            // stamps a non-NULL origin per spec §17.6. DO NOT inline this —
+            // see the helper docblock for the deliberate-sentinel rationale.
+            // `fiscal_event_id` is NOT inherited — refunds are not authored by
+            // the device.
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -85,7 +112,7 @@ class PaymentRefundService
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
                 'payment_type' => PaymentType::Refund,
-                'origin' => $payment->origin,
+                'origin' => $this->originForRefund($payment),
                 'reference' => "Refund for payment {$payment->reference}",
                 'notes' => "Refund: {$reason}",
                 'created_by' => $userId,
@@ -161,7 +188,9 @@ class PaymentRefundService
             //
             // Spec §13 writer-inventory row 8 — `PaymentRefundService::partialRefund()`
             // → inherit the original payment's `origin`. Same disposition as
-            // `refundPayment()` above.
+            // `refundPayment()` above. Task 22 round-2 (Codex T22-B2 BLOCKER):
+            // `originForRefund()` falls back to `PaymentOrigin::UnknownLegacy`
+            // for NULL-origin legacy originals — see helper docblock.
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -175,7 +204,7 @@ class PaymentRefundService
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
                 'payment_type' => PaymentType::Refund,
-                'origin' => $payment->origin,
+                'origin' => $this->originForRefund($payment),
                 'reference' => "Partial refund for payment {$payment->reference}",
                 'notes' => "Partial refund ({$amount}): {$reason}",
                 'created_by' => $userId,
@@ -450,6 +479,13 @@ class PaymentRefundService
                     // proration refund rows → inherit the original payment's `origin`.
                     // A proration refund of POS-origin payments stays POS-origin (so the
                     // refund row's audit lineage matches the receipt's authoring surface).
+                    // Task 22 round-2 (Codex T22-B2 BLOCKER): `originForRefund()`
+                    // falls back to `PaymentOrigin::UnknownLegacy` for NULL-origin
+                    // legacy originals — see helper docblock. NOTE: the proration
+                    // query above (`:349`) filters `payment_type = POS`, so in
+                    // steady state this writer only sees POS-typed originals. But
+                    // the §13 contract is unconditional; the helper handles every
+                    // input variant uniformly.
                     $refundRow = Payment::create([
                         'id' => Str::uuid()->toString(),
                         'tenant_id' => $original->tenant_id,
@@ -465,7 +501,7 @@ class PaymentRefundService
                         'status' => PaymentStatus::Completed,
                         // IMPORTANT: always explicit — never rely on column default (Codex review 2 §4.3)
                         'payment_type' => PaymentType::Refund,
-                        'origin' => $original->origin,
+                        'origin' => $this->originForRefund($original),
                         // Audit columns (spec §3.6 / F27)
                         'original_payment_id' => $originalPaymentId,
                         'refund_request_id' => $refundRequestId,

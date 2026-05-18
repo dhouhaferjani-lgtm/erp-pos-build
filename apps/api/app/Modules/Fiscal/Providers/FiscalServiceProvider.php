@@ -22,9 +22,12 @@ final class FiscalServiceProvider extends ServiceProvider
         $this->app->bind(ModuleActivationResolver::class, DefaultModuleActivationResolver::class);
 
         // Singleton — Task 19's OutboxIngestor constructor-injects this and
-        // expects a stable instance per process. The tagged
-        // FiscalEventProjector set is empty in Phase 1 until Tasks 21/22
-        // register real projectors; an empty registry is valid.
+        // expects a stable instance per process. Phase 1 tagged set:
+        // Task 21 tags `PosCoreReceiptProjection` (priority=50, always-active);
+        // Task 22 tags `TreasuryReceiptBridge` (priority=150, gated on the
+        // `Treasury` module). The registry sorts the materialized tagged
+        // set by (priority ASC, name ASC) once at construction (Task 22
+        // round-2). An empty tagged set is still a valid runtime state.
         $this->app->singleton(
             FiscalEventProjectionRegistry::class,
             static fn (Application $app): FiscalEventProjectionRegistry => new FiscalEventProjectionRegistry(

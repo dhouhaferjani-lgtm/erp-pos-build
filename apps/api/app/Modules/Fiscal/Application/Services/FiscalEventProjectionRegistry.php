@@ -22,11 +22,19 @@ use Throwable;
  *      calls `ModuleActivationResolver::isActive($module,
  *      $event->tenant_id, $event->company_id)`.
  *
- * **Determinism.** Projectors are returned in **registration order** —
- * the order the constructor's `iterable` yielded them. Task 19's
- * `OutboxIngestor` creates `fiscal_event_projections` rows and enqueues
- * jobs in this order, so a stable ordering keeps the audit trail
- * predictable.
+ * **Determinism (Task 22 round-2 — Codex T22-B1 / Opus F3 BLOCKER).**
+ * Projectors are returned in **priority-then-name order** — the
+ * constructor sorts the materialized tagged set once by
+ * `(priority() ASC, name() ASC)`. This replaces the pre-round-2
+ * registration-order semantics, which silently inherited Laravel's
+ * provider-registration order (Treasury was tagged BEFORE POS in
+ * `bootstrap/providers.php`, causing `TreasuryReceiptBridge` —
+ * `priority=150`, depends on `pos_receipts` rows — to run BEFORE
+ * `PosCoreReceiptProjection` — `priority=50`). Task 19's
+ * `OutboxIngestor` creates `fiscal_event_projections` rows + enqueues
+ * jobs in this sorted order, so dispatch order is now self-described by
+ * the projector layer rather than accidentally inherited from provider
+ * boot order.
  *
  * **Boundary-clean.** Depends only on `FiscalEventProjector` +
  * `ModuleActivationResolver`. The registry never imports Treasury /
@@ -34,14 +42,18 @@ use Throwable;
  * bounded-modules asymmetric seam (SoT §13.6/D16) that this seam
  * exists to enforce.
  *
- * **Phase 1 reality.** Task 21 (`POSServiceProvider::register()`) tags
- * `PosCoreReceiptProjection` into the production set as the always-active
- * `SALE_RECEIPT` projector; Task 22 will add the gated
- * `TreasuryReceiptBridge` (`requiresModule() === 'Treasury'`). Tests that
- * need a deterministic projector set rebind the registry singleton with
- * an explicit list (e.g. `OutboxIngestorTest::setUp()` overrides the
- * tagged set so it sees exactly one fake projector). An empty registry
- * stays a valid runtime state when no module owns a tagged projector.
+ * **Phase 1 reality.** Both production projectors are now tagged:
+ *   - Task 21 — `POSServiceProvider::register()` tags
+ *     `PosCoreReceiptProjection` (priority=50, always-active SALE_RECEIPT
+ *     projector).
+ *   - Task 22 — `TreasuryServiceProvider::register()` tags
+ *     `TreasuryReceiptBridge` (priority=150, gated on the `Treasury`
+ *     module via `requiresModule() === 'Treasury'`).
+ * Tests that need a deterministic projector set rebind the registry
+ * singleton with an explicit list (e.g. `OutboxIngestorTest::setUp()`
+ * overrides the tagged set so it sees exactly one fake projector). An
+ * empty registry stays a valid runtime state when no module owns a
+ * tagged projector.
  *
  * **Round-2 hardening (Codex):**
  *   - **F1 fail-closed on resolver exception.** §7.2 requires the
@@ -66,6 +78,20 @@ use Throwable;
  *     fast at constructor time rather than silently routing `''` to
  *     `CompanyConfig::hasModule()` (which strict-compares and always
  *     reports false, masking the bug).
+ *
+ * **Task 22 round-2 hardening (Codex T22-B1 / Opus F3 — convergent BLOCKER):**
+ *   - **Deterministic priority-based ordering.** Every projector
+ *     declares an integer `priority()`; the registry sorts the
+ *     materialized tagged set once at construction by
+ *     `(priority ASC, name ASC)`. POS-core projectors that own
+ *     canonical projection rows use `priority=50`; module bridges
+ *     that depend on those rows being visible (e.g.
+ *     `TreasuryReceiptBridge` reads `pos_receipts`) use
+ *     `priority=150`. Replaces the pre-round-2 registration-order
+ *     semantics that accidentally let provider-registration order
+ *     control dispatch order — a real silent-applied bug in production.
+ *     Negative priorities are rejected at construction with a
+ *     `LogicException`.
  */
 final class FiscalEventProjectionRegistry
 {
@@ -75,11 +101,13 @@ final class FiscalEventProjectionRegistry
     /**
      * @param  iterable<FiscalEventProjector>  $projectors  Tagged via `app->tagged(FiscalEventProjector::class)` in
      *                                                      `FiscalServiceProvider`; the iterable is captured once at
-     *                                                      construction (singleton lifetime) — tasks 21/22 will tag the
-     *                                                      real POS-core + Treasury projectors.
+     *                                                      construction (singleton lifetime). Task 21 tags
+     *                                                      `PosCoreReceiptProjection`; Task 22 tags
+     *                                                      `TreasuryReceiptBridge`.
      *
-     * @throws LogicException when two projectors share a `name()` (Codex F2 round-2) or when a non-null
-     *                        `requiresModule()` is empty / whitespace-only (Codex F3 round-2).
+     * @throws LogicException when two projectors share a `name()` (Codex F2 round-2), when a non-null
+     *                        `requiresModule()` is empty / whitespace-only (Codex F3 round-2), or when
+     *                        a `priority()` is negative (Task 22 round-2 — Codex T22-B1 / Opus F3).
      */
     public function __construct(
         iterable $projectors,
@@ -111,13 +139,46 @@ final class FiscalEventProjectionRegistry
                     $name,
                 ));
             }
+
+            // Task 22 round-2 — priority() must be non-negative. Standing
+            // pattern from Task 18 — boot-time invariants are constructor-
+            // asserted. A LogicException at boot is cheaper to diagnose than
+            // an out-of-order dispatch at runtime that silently flips the
+            // bridge's deferred-bail-out into the steady-state path.
+            $priority = $projector->priority();
+            if ($priority < 0) {
+                throw new LogicException(sprintf(
+                    'FiscalEventProjector "%s" returned a negative priority (%d) — must be >= 0. '.
+                    'Convention: POS-core projectors that own canonical rows use 50; module bridges '.
+                    'that depend on them use 150. See FiscalEventProjector::priority() docblock.',
+                    $name,
+                    $priority,
+                ));
+            }
         }
+
+        // Task 22 round-2 — sort by (priority ASC, name ASC). Stable
+        // deterministic order means dispatch order is self-described by the
+        // projector layer, not accidentally inherited from
+        // `bootstrap/providers.php` registration order. usort is not stable
+        // but the secondary `name()` tiebreaker makes the result fully
+        // deterministic anyway.
+        usort($materialized, static function (FiscalEventProjector $a, FiscalEventProjector $b): int {
+            $cmp = $a->priority() <=> $b->priority();
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+
+            return strcmp($a->name(), $b->name());
+        });
 
         $this->projectors = $materialized;
     }
 
     /**
-     * @return list<FiscalEventProjector> active projectors in registration order
+     * @return list<FiscalEventProjector> active projectors in priority-then-name order
+     *                                    (Task 22 round-2 — replaces pre-round-2
+     *                                    registration-order semantics)
      */
     public function activeProjectorsFor(FiscalEvent $event): array
     {

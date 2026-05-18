@@ -42,18 +42,29 @@ use Illuminate\Support\Str;
  *
  * CRITICAL: POS payments are DIRECT TO REVENUE (no AR account).
  *
- * Task 21 status — the `ReceiptPayment::create` portion (`:306` in this
- * file, post-docblock) has been **relocated to `PosCoreReceiptProjection`**
- * for the device-authored fiscal-event path. The Treasury `Payment` + GL
- * portion remains here until Task 22 (`TreasuryReceiptBridge`) moves it
- * to the Treasury module's projector. The legacy online POS endpoint that
- * calls this service stays functional through Task 29 (web POS + Tauri-
- * online new-sale-authoring disposition) and is fully retired by Task 30
- * (the §14.3 two-chokepoint CI grep gate). Per spec v7 §14.2 the legacy
- * surface is the knowingly-retained server-authoring path for `void` /
- * `processReturn` only; new-sale `SALE_RECEIPT` authoring is closed for
- * all callers by Task 29. New write surfaces MUST go through the
- * projector — do not extend the `ReceiptPayment::create` branch here.
+ * **Task 22 status.** Both the `ReceiptPayment::create` portion (see the
+ * `ReceiptPayment::create([...])` call below in `processReceiptPayments`)
+ * and the Treasury `Payment` + GL portion have been **relocated** for
+ * the device-authored fiscal-event path:
+ *   - `ReceiptPayment` rows → `PosCoreReceiptProjection` (Task 21).
+ *   - Treasury `Payment` row + POS-payment GL entry →
+ *     `TreasuryReceiptBridge` (Task 22).
+ *
+ * The legacy online-POS endpoint that calls this service stays functional
+ * through the rollout window. Per spec v7 §14:
+ *   - §14.1 (`/pos/receipts/sync` retirement, Task 28) retires the
+ *     batch-sync transport.
+ *   - §14.2 (web POS + Tauri-online new-sale authoring disposition,
+ *     Task 29) closes server-side new-sale `SALE_RECEIPT` authoring for
+ *     all callers; the legacy `void` / `processReturn` paths are the
+ *     knowingly-retained server-side carve-out.
+ *   - §14.3 (two-chokepoint CI grep gate, Task 30) installs the
+ *     completeness check that fails CI on any new server-authoring caller.
+ *
+ * New write surfaces MUST go through the projectors — do not extend
+ * the `Payment::create` or `ReceiptPayment::create` branches here.
+ * Treasury writes here stamp `origin = PaymentOrigin::Pos` +
+ * `fiscal_event_id = null` per the legacy-retention contract (spec §13).
  */
 final class ReceiptPaymentService
 {
