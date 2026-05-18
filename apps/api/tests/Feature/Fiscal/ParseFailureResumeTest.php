@@ -1,0 +1,665 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Fiscal;
+
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
+use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
+use App\Modules\Fiscal\Application\Services\ParseFailureResolutionService;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
+use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\InvalidCorrectedPayloadException;
+use App\Modules\Fiscal\Domain\Exceptions\ParseFailureResolutionPreconditionException;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCommand;
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Terminal;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Database\ConnectionInterface;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
+
+/**
+ * Task 24 — Parse-failure resume contract (spec v7 §7.5, §15.2).
+ *
+ * Validates two surfaces:
+ *
+ *   1. `ParseFailureResolutionService::resolve($eventId, $payload, $resolver)`
+ *      writes the corrected payload + flips `payload_parse_status` `failed →
+ *      parsed` + flips `integrity_status` `quarantined → verified` + stamps
+ *      `integrity_resolved_at` / `integrity_resolved_by` + creates one
+ *      `pending` `fiscal_event_projections` row per currently-active
+ *      projector — all in ONE database transaction, satisfying the Task 8
+ *      immutability trigger's gated `failed → parsed` resume transition. The
+ *      queue dispatch (one job per pending row) happens AFTER commit via
+ *      `DB::afterCommit()`, mirroring the `OutboxIngestor` pattern (Task 19
+ *      standing pattern F4 round-2).
+ *
+ *   2. `fiscal:enqueue-resolved-event-projections` (spec §15.2) is the named
+ *      recovery path for the "resolution committed but enqueue never ran"
+ *      crash window. It (a) creates any MISSING `pending` projection rows
+ *      for currently-active projectors against an already-resolved fiscal
+ *      event (via `INSERT … ON CONFLICT … DO NOTHING` — Task 19 standing
+ *      pattern), (b) enqueues every `pending` row, and (c) NEVER touches
+ *      `running` / `applied` / `dead_lettered` rows (those are owned by
+ *      Horizon's lifecycle per Task 23). Permission-gated by
+ *      `fiscal.events.resolve_quarantine`.
+ *
+ * **`integrity_exception_class` is forensic metadata.** Per the Task 8
+ * trigger source (`apps/api/database/migrations/2026_05_14_100002_create_fiscal_events_immutability.php`
+ * lines 128–136), this column is write-once: once set on a quarantined row
+ * it cannot be changed nor unset. The resolution UPDATE LEAVES it at
+ * `canonical_parse_failure` — the resolved-by + resolved-at + integrity-status
+ * stamps tell the operator the row was resolved, and the persistent
+ * forensic class tells them WHY it was quarantined in the first place.
+ *
+ * **Test matrix.**
+ *   - 4 plan tests (atomic resolution + projection rows, crash recovery,
+ *     command idempotency, command permission gate)
+ *   - 5 lifecycle-edge tests added in round-1 (resolution preconditions,
+ *     invalid corrected payload, command no-op on non-parsed, command
+ *     no-op when all rows terminal, command --tenant filter)
+ */
+final class ParseFailureResumeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private string $tenantId;
+
+    private string $companyId;
+
+    private string $locationId;
+
+    private string $terminalId;
+
+    private string $operatorId;
+
+    private User $resolverUser;
+
+    /** Genesis seed seeded into `pos_terminals`. */
+    private string $genesisSeed;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->genesisSeed = str_repeat('0', 64);
+
+        $tenant = Tenant::factory()->create();
+        $this->tenantId = $tenant->id;
+
+        // Spatie's `tenant_id`-scoped permission storage requires the
+        // registrar team id be set BEFORE `givePermissionTo` / `can()`
+        // calls — otherwise pivot inserts violate the NOT NULL
+        // `model_has_permissions.tenant_id` constraint.
+        $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenantId);
+
+        $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $this->companyId = $company->id;
+
+        $location = Location::factory()->create(['company_id' => $this->companyId]);
+        $this->locationId = $location->id;
+
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $this->locationId,
+            'genesis_seed' => $this->genesisSeed,
+        ]);
+        $this->terminalId = $terminal->id;
+
+        $user = User::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'name' => 'Resolver',
+        ]);
+        $user->givePermissionTo('fiscal.events.resolve_quarantine');
+        $this->resolverUser = $user;
+
+        $this->operatorId = Str::uuid()->toString();
+
+        // Rebind FiscalEventProjectionRegistry with a single test-local fake
+        // SALE_RECEIPT projector so projection-row creation is deterministic
+        // and independent of production projectors tagged by other service
+        // providers (Task 21 POS-core, Task 22 Treasury bridge).
+        $this->registerFakeProjectors([
+            new ResumeFakeProjector('pos_core_receipt', null, 50),
+        ]);
+
+        // Catch dispatched jobs without running them — the recovery-path tests
+        // assert via Queue::assertPushed.
+        Queue::fake();
+    }
+
+    // =================================================================
+    // Plan §1823 — 4 core tests
+    // =================================================================
+
+    public function test_resolution_writes_payload_flips_status_and_creates_projection_rows_atomically(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayload(), $this->resolverUser);
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('parsed', $row->payload_parse_status);
+        $this->assertSame('verified', $row->integrity_status);
+        $this->assertNotNull($row->payload);
+        $this->assertNotNull($row->integrity_resolved_at);
+        $this->assertSame($this->resolverUser->id, $row->integrity_resolved_by);
+        // Per Task 8 trigger source — integrity_exception_class is write-once
+        // forensic metadata; it STAYS at 'canonical_parse_failure' after
+        // resolution. The resolved-at/by stamps tell the operator the row is
+        // resolved; the persistent class tells them WHY it was quarantined.
+        $this->assertSame(
+            IntegrityExceptionClass::CanonicalParseFailure->value,
+            $row->integrity_exception_class,
+        );
+
+        $this->assertGreaterThan(
+            0,
+            DB::table('fiscal_event_projections')
+                ->where('fiscal_event_id', $event->id)
+                ->where('projection_status', ProjectionStatus::Pending->value)
+                ->count(),
+        );
+
+        // Jobs dispatched after T1 commit — exactly one per pending row.
+        Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
+    }
+
+    public function test_crash_between_commit_and_enqueue_is_recoverable_without_rewriting_payload(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        // Simulate: the resolution transaction committed (payload written +
+        // pending projection rows created) but the after-commit enqueue
+        // never ran. The standalone command must enqueue the pending rows
+        // without re-writing the now-write-once payload.
+        $this->resolveButSkipEnqueue($event->id);
+
+        // Sanity — row already resolved + at least one pending projection.
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('parsed', $row->payload_parse_status);
+        $this->assertNotNull($row->payload);
+        $pendingBefore = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $event->id)
+            ->where('projection_status', ProjectionStatus::Pending->value)
+            ->count();
+        $this->assertGreaterThan(0, $pendingBefore);
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        Queue::assertPushed(ApplyFiscalEventProjectionJob::class, $pendingBefore);
+
+        // The write-once payload is untouched — the row was already parsed
+        // when the command ran, so the trigger's payload-write gate (Step 4)
+        // would have raised on a second write.
+        $rowAfter = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($rowAfter);
+        $this->assertSame($row->payload, $rowAfter->payload);
+    }
+
+    public function test_command_is_idempotent_and_safe_to_rerun(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayload(), $this->resolverUser);
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        // No duplicate projection rows — the UNIQUE
+        // (fiscal_event_id, projector_name) constraint backs idempotency.
+        $total = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $event->id)
+            ->count();
+        $distinct = DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $event->id)
+            ->distinct()
+            ->count('projector_name');
+        $this->assertSame($total, $distinct);
+    }
+
+    public function test_command_is_permission_gated(): void
+    {
+        $unprivileged = User::factory()->create(['tenant_id' => $this->tenantId]);
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => Str::uuid()->toString(),
+            '--actor-id' => $unprivileged->id,
+        ])->assertExitCode(1);
+    }
+
+    // =================================================================
+    // Round-1 lifecycle-edge tests (discriminated-union completeness)
+    // =================================================================
+
+    public function test_resolution_rejects_non_quarantined_row_with_typed_throw(): void
+    {
+        // A verified event has no quarantine to resolve.
+        $event = $this->storeVerifiedFiscalEvent();
+
+        $this->expectException(ParseFailureResolutionPreconditionException::class);
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayload(), $this->resolverUser);
+    }
+
+    public function test_resolution_rejects_invalid_corrected_payload_and_row_stays_parse_failed(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        // Missing required SALE_RECEIPT keys — DTO::fromArray() will throw,
+        // and the service must surface it as a typed
+        // InvalidCorrectedPayloadException without mutating the row.
+        $invalid = ['only' => 'one_field'];
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $invalid, $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException.');
+        } catch (InvalidCorrectedPayloadException) {
+            // expected — row must be untouched.
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertNull($row->payload);
+        $this->assertNull($row->integrity_resolved_at);
+        $this->assertNull($row->integrity_resolved_by);
+
+        // No projection rows created — the transaction rolled back.
+        $this->assertSame(
+            0,
+            DB::table('fiscal_event_projections')
+                ->where('fiscal_event_id', $event->id)
+                ->count(),
+        );
+        Queue::assertNothingPushed();
+    }
+
+    public function test_command_is_noop_on_still_parse_failed_row(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        // The event was never resolved — payload_parse_status is still
+        // 'failed'. The command queries by parse_status='parsed' and so
+        // skips this row.
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        $this->assertSame(
+            0,
+            DB::table('fiscal_event_projections')
+                ->where('fiscal_event_id', $event->id)
+                ->count(),
+        );
+        Queue::assertNothingPushed();
+    }
+
+    public function test_command_does_not_redispatch_running_applied_or_dead_lettered_rows(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayload(), $this->resolverUser);
+
+        Queue::fake(); // reset — drop the after-commit dispatch from resolve()
+
+        // Move every projection row through to a non-pending terminal /
+        // in-flight state so the command finds nothing to dispatch.
+        DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $event->id)
+            ->update([
+                'projection_status' => ProjectionStatus::Applied->value,
+                'applied_at' => now()->utc(),
+            ]);
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_command_filters_by_tenant_when_tenant_option_provided(): void
+    {
+        // Two tenants, each with a resolved parse-failed event. The --tenant
+        // filter must enqueue only the matching tenant's projection rows.
+        $eventA = $this->storeParseFailedFiscalEvent();
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($eventA->id, $this->correctedPayload(), $this->resolverUser);
+
+        // Build a fresh tenant + matching terminal + parse-failed event.
+        $otherTenant = Tenant::factory()->create();
+        $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
+        $otherLocation = Location::factory()->create(['company_id' => $otherCompany->id]);
+        $otherTerminal = Terminal::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'location_id' => $otherLocation->id,
+            'genesis_seed' => $this->genesisSeed,
+        ]);
+
+        $eventB = $this->storeParseFailedFiscalEvent(
+            tenantId: $otherTenant->id,
+            companyId: $otherCompany->id,
+            terminalId: $otherTerminal->id,
+        );
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($eventB->id, $this->correctedPayload(), $this->resolverUser);
+
+        Queue::fake(); // reset — drop the two after-commit dispatches above
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--tenant' => $this->tenantId,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        // Only tenant A's projection row was dispatched. With one fake
+        // projector tagged per event, exactly one job per event.
+        Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
+    }
+
+    // =================================================================
+    // Helpers
+    // =================================================================
+
+    /**
+     * Insert a quarantined `canonical_parse_failure` event into
+     * `fiscal_events`. payload is NULL, payload_parse_status is 'failed',
+     * integrity_status is 'quarantined' — the exact preconditions the Task
+     * 8 trigger's gated `failed → parsed` resume requires.
+     */
+    private function storeParseFailedFiscalEvent(
+        ?string $tenantId = null,
+        ?string $companyId = null,
+        ?string $terminalId = null,
+    ): FiscalEvent {
+        $tenantId ??= $this->tenantId;
+        $companyId ??= $this->companyId;
+        $terminalId ??= $this->terminalId;
+
+        $eventTime = now()->utc();
+        $businessDate = $eventTime->copy()->startOfDay();
+        $previousHash = $this->genesisSeed;
+        $canonicalBytes = '{"a":1,"a":2}'; // duplicate-key — fails the strict parser
+        $currentHash = hash('sha256', $canonicalBytes);
+
+        $event = FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'terminal_id' => $terminalId,
+            'operator_id' => $this->operatorId,
+            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $this->nextSequenceFor($terminalId),
+            'event_time_device' => $eventTime,
+            'business_date' => $businessDate,
+            'last_server_time_seen' => null,
+            'server_received_at' => $eventTime,
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => null,
+            'source_event_id' => null,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => $previousHash,
+            'current_hash' => $currentHash,
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Quarantined,
+            'integrity_exception_class' => IntegrityExceptionClass::CanonicalParseFailure->value,
+            'integrity_exception_reason' => 'duplicate_key:a',
+            'payload' => null,
+            'payload_parse_status' => PayloadParseStatus::Failed,
+        ]);
+
+        return $event->refresh();
+    }
+
+    private function nextSequenceFor(string $terminalId): int
+    {
+        $max = DB::table('fiscal_events')
+            ->where('terminal_id', $terminalId)
+            ->max('sequence_number');
+
+        return is_numeric($max) ? ((int) $max) + 1 : 1;
+    }
+
+    /**
+     * A verified SALE_RECEIPT event — used by the precondition-violation test.
+     */
+    private function storeVerifiedFiscalEvent(): FiscalEvent
+    {
+        $payload = $this->correctedPayload();
+        $eventTime = now()->utc();
+        $businessDate = $eventTime->copy()->startOfDay();
+        $canonicalBytes = '{}';
+        $currentHash = hash('sha256', $canonicalBytes);
+
+        $event = FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminalId,
+            'operator_id' => $this->operatorId,
+            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $this->nextSequenceFor($this->terminalId),
+            'event_time_device' => $eventTime,
+            'business_date' => $businessDate,
+            'last_server_time_seen' => null,
+            'server_received_at' => $eventTime,
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => null,
+            'source_event_id' => null,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => $this->genesisSeed,
+            'current_hash' => $currentHash,
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'integrity_exception_class' => null,
+            'integrity_exception_reason' => null,
+            'payload' => $payload,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ]);
+
+        return $event->refresh();
+    }
+
+    /**
+     * @return array<string, mixed> a minimal valid SALE_RECEIPT payload
+     */
+    private function correctedPayload(): array
+    {
+        return [
+            'currency' => 'EUR',
+            'currency_scale' => 2,
+            'discount_total' => '0.00',
+            'lines' => [
+                ['sku' => 'X', 'unit_price' => '10.00', 'line_total' => '10.00'],
+            ],
+            'payment_lines' => [
+                ['method' => 'CASH', 'amount' => '10.00', 'tendered' => '10.00', 'change' => '0.00'],
+            ],
+            'subtotal' => '10.00',
+            'tax_total' => '0.00',
+            'total' => '10.00',
+            'vat_breakdown' => [
+                ['rate' => '0', 'base' => '10.00', 'amount' => '0.00'],
+            ],
+            'voucher_redemptions' => [],
+        ];
+    }
+
+    /**
+     * Simulate the resolution transaction COMMITTING (payload written +
+     * pending projection rows created) but the after-commit enqueue NEVER
+     * RUNNING — the precise crash-between-commit-and-enqueue window the
+     * recovery command is named for.
+     *
+     * We use a fresh ParseFailureResolutionService BUT discard everything
+     * Queue::fake() captured up to this point, so the test's later
+     * `Queue::assertPushed` only sees the recovery command's dispatches.
+     */
+    private function resolveButSkipEnqueue(string $fiscalEventId): void
+    {
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($fiscalEventId, $this->correctedPayload(), $this->resolverUser);
+
+        // The fake queue captured the after-commit dispatch — for the
+        // crash-recovery test we want to assert ONLY the post-recovery
+        // enqueue, so reset the captured set here.
+        Queue::fake();
+    }
+
+    /**
+     * Rebind the projection registry with a deterministic list of
+     * projectors. Mirrors `OutboxIngestorTest::setUp()` and
+     * `ApplyFiscalEventProjectionJobTest::registerProjectors()`.
+     *
+     * @param  list<FiscalEventProjector>  $projectors
+     */
+    private function registerFakeProjectors(array $projectors): void
+    {
+        $this->app->forgetInstance(FiscalEventProjectionRegistry::class);
+        $this->app->singleton(
+            FiscalEventProjectionRegistry::class,
+            fn (): FiscalEventProjectionRegistry => new FiscalEventProjectionRegistry(
+                $projectors,
+                new ResumeAlwaysActiveResolver,
+            ),
+        );
+
+        // Reset the cached Artisan console application — once
+        // `Kernel::getArtisan()` lazily builds it, the resolved command
+        // instances are cached on `Application::$commands` for the
+        // lifetime of the kernel. We have to additionally re-bind the
+        // command class itself to a factory closure that resolves the
+        // CURRENT registry from the container at construction time —
+        // because the `Artisan::starting` bootstrappers are static (the
+        // closures were captured by the FiscalServiceProvider at boot
+        // BEFORE this rebind ran). Even though `setArtisan(null)` clears
+        // the application cache and forces a fresh build, the
+        // bootstrappers re-fire and re-resolve commands through the
+        // container — and the container's `make()` for the command
+        // ends up with the rebound registry. The defensive
+        // `app->bind(...)` on the command itself is belt-and-braces:
+        // it ensures the closure is invoked anew on every container
+        // resolution.
+        $this->app->bind(
+            EnqueueResolvedEventProjectionsCommand::class,
+            fn ($app) => new EnqueueResolvedEventProjectionsCommand(
+                $app->make(ConnectionInterface::class),
+                $app->make(FiscalEventProjectionRegistry::class),
+            ),
+        );
+        $kernel = $this->app->make(Kernel::class);
+        // PHPStan can't prove the contract resolves to the foundation
+        // kernel here, but ApplicationBuilder binds the contract to the
+        // foundation kernel singleton (`vendor/laravel/framework/src/
+        // Illuminate/Foundation/Configuration/ApplicationBuilder.php:65`).
+        if ($kernel instanceof \Illuminate\Foundation\Console\Kernel) {
+            $kernel->setArtisan(null);
+        }
+
+        Log::spy();
+    }
+}
+
+/**
+ * Test-local SALE_RECEIPT projector — no-op apply, always handles. Used by
+ * the registry so projection-row creation is deterministic.
+ */
+final class ResumeFakeProjector implements FiscalEventProjector
+{
+    public function __construct(
+        private readonly string $name,
+        private readonly ?string $requiresModule,
+        private readonly int $priority,
+    ) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::SALE_RECEIPT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return $this->requiresModule;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+
+    public function priority(): int
+    {
+        return $this->priority;
+    }
+}
+
+/**
+ * Test-local always-active resolver — matches the pattern from
+ * `ApplyFiscalEventProjectionJobTest::TreasuryAlwaysActiveResolver`. The
+ * registry's `requiresModule()` invariants need a real resolver wired even
+ * when no projector exercises the activation gate.
+ */
+final class ResumeAlwaysActiveResolver implements ModuleActivationResolver
+{
+    public function isActive(string $module, string $tenantId, string $companyId): bool
+    {
+        unset($module, $tenantId, $companyId);
+
+        return true;
+    }
+}

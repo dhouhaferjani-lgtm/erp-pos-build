@@ -7,6 +7,7 @@ namespace App\Modules\Fiscal\Providers;
 use App\Modules\Fiscal\Application\Services\DefaultModuleActivationResolver;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\HashChainIntegrityProvider;
+use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\PreflightFiscalGateCommand;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
@@ -42,6 +43,11 @@ final class FiscalServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 PreflightFiscalGateCommand::class,
+                // Task 24 — parse-failure resolution recovery path (spec
+                // §15.2). Permission-gated by
+                // `fiscal.events.resolve_quarantine` against an
+                // --actor-id supplied at invocation.
+                EnqueueResolvedEventProjectionsCommand::class,
             ]);
         }
 

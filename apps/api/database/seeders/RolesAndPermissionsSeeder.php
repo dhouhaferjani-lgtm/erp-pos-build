@@ -287,6 +287,24 @@ class RolesAndPermissionsSeeder extends Seeder
             'compliance.verify_chains',
             'compliance.view_reprint_log',
 
+            // Fiscal Event Engine (Phase 1) — operator-only privileged ops on
+            // the immutable fiscal-event ledger.
+            //
+            // - `fiscal.events.resolve_quarantine` — gates
+            //   `fiscal:enqueue-resolved-event-projections` (spec §15.2) and
+            //   the in-app parse-failure resolution action (Task 24). The
+            //   atomic UPDATE writes the corrected payload + flips
+            //   payload_parse_status `failed → parsed` + flips
+            //   integrity_status `quarantined → verified`, which the Task 8
+            //   immutability trigger gates strictly.
+            //
+            // - `fiscal.events.verify_chain` — gates the
+            //   `fiscal:verify-event-chain` command (spec §15.1) added in
+            //   Task 31; pre-registered here so Task 24's seeder edit
+            //   doesn't need a follow-up bump.
+            'fiscal.events.resolve_quarantine',
+            'fiscal.events.verify_chain',
+
             // Compliance / Fraud Detection
             'fraud-settings.view',
             'fraud-settings.update',

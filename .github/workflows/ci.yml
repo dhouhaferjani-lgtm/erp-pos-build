@@ -380,6 +380,14 @@ jobs:
         #     + the partial-unique index on
         #     (company_id, original_payment_id, refund_request_id) for
         #     receipt-proration idempotency only fire on PG.
+        #   - ParseFailureResumeTest (Feature, Task 24): the atomic
+        #     `failed → parsed` resume contract is gated by the PG-only
+        #     immutability trigger (Task 8 migration lines 154–230) —
+        #     the trigger is what raises if the resolution UPDATE misses
+        #     any of the four columns (payload / payload_parse_status /
+        #     integrity_status / integrity_resolved_(at|by)) in one
+        #     statement. SQLite has no trigger so the unit-level
+        #     contract is only fully exercised on PG.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -389,7 +397,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
