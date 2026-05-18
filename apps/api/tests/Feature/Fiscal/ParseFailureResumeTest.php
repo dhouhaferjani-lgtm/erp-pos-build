@@ -842,25 +842,6 @@ final class ResumeAlwaysActiveResolver implements ModuleActivationResolver
 }
 
 /**
- * Test-local resolver that throws on every `isActive()` call — used as a
- * type-system mirror of the "module-activation outage" hazard. The
- * `FiscalEventProjectionRegistry::activeProjectorsFor()` round-2 F1
- * fail-closed pattern catches this internally (excludes the gated
- * projector, logs critical, continues), so this resolver on its own does
- * NOT propagate a throw to the command — exercising the command's
- * exit-code-2 path requires `ResumeThrowingProjector` below.
- */
-final class ResumeThrowingResolver implements ModuleActivationResolver
-{
-    public function isActive(string $module, string $tenantId, string $companyId): bool
-    {
-        unset($module, $tenantId, $companyId);
-
-        throw new \RuntimeException('module activation resolver outage (test)');
-    }
-}
-
-/**
  * Test-local projector whose `handlesEventType()` throws — exercises the
  * command's exit-code-2 fail-closed per-row catch (Task 18 F1 standing
  * pattern at the command layer). `activeProjectorsFor()` calls
@@ -870,6 +851,18 @@ final class ResumeThrowingResolver implements ModuleActivationResolver
  * Round-1 docblock contract: exit 2 = transient failure (registry-
  * resolver hard error, DB connection lost mid-loop). This pins the
  * contract at the projector-throws-on-dispatch variant.
+ *
+ * Round-3 (Codex T24-P3): we explicitly chose this projector-throw path
+ * over the resolver-throw alternative. A `ModuleActivationResolver` whose
+ * `isActive()` throws does NOT surface exit-code-2 because
+ * `FiscalEventProjectionRegistry::activeProjectorsFor()` round-2 F1
+ * fail-closed pattern catches resolver throws internally (excludes the
+ * gated projector, logs critical, continues). Only a projector-side
+ * throw (or other registry-external failure) propagates up the stack
+ * into the command's per-row catch. The previous dead
+ * `ResumeThrowingResolver` test class documented this asymmetry; that
+ * documentation now lives here on the class that actually exercises the
+ * exit-code-2 contract.
  */
 final class ResumeThrowingProjector implements FiscalEventProjector
 {

@@ -6,6 +6,7 @@ namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
+use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use Tests\TestCase;
@@ -24,7 +25,10 @@ final class StrictCanonicalParserTest extends TestCase
 {
     private function parser(): StrictCanonicalParser
     {
-        return new StrictCanonicalParser(new FiscalEventPayloadRegistry);
+        return new StrictCanonicalParser(
+            new FiscalEventPayloadRegistry,
+            new FiscalPayloadConstraintValidator,
+        );
     }
 
     // -----------------------------------------------------------------

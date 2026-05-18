@@ -95,16 +95,7 @@ final class StrictCanonicalParser
 
     private int $len = 0;
 
-    private readonly FiscalPayloadConstraintValidator $constraintValidator;
-
     /**
-     * The per-event payload constraint validator (`FiscalPayloadConstraintValidator`)
-     * is constructor-injected when supplied (production wiring) and
-     * defaulted to a fresh instance otherwise. The fallback exists so
-     * round-1 tests that build a bare parser via `new StrictCanonicalParser($registry)`
-     * keep working — the validator is a pure-function class with no
-     * dependencies of its own.
-     *
      * Round-2 (Task 24 Opus F2 / Codex T24-P1): the per-event constraint
      * validation surface was extracted into
      * `FiscalPayloadConstraintValidator` so the parser AND
@@ -112,13 +103,20 @@ final class StrictCanonicalParser
      * what a trusted payload looks like. Without the extraction, the
      * resolver only ran the DTO's top-level type checks — a real
      * correctness gap.
+     *
+     * Round-3 (Codex T24-P1): the validator is a REQUIRED constructor
+     * parameter — no nullable fallback, no `new` in the constructor body.
+     * CLAUDE.md rule 13 ("Constructor injection only — never use `app()`")
+     * applies equivalently to `new` in the constructor body for
+     * dependencies that should be container-resolved. Test call sites
+     * must construct the validator explicitly (it is a pure-function
+     * class with no dependencies of its own, so `new FiscalPayloadConstraintValidator`
+     * in test code is trivial).
      */
     public function __construct(
         private readonly FiscalEventPayloadRegistry $registry,
-        ?FiscalPayloadConstraintValidator $constraintValidator = null,
-    ) {
-        $this->constraintValidator = $constraintValidator ?? new FiscalPayloadConstraintValidator;
-    }
+        private readonly FiscalPayloadConstraintValidator $constraintValidator,
+    ) {}
 
     public function parse(string $canonicalBytes, FiscalEventType $type): ParseResult
     {
