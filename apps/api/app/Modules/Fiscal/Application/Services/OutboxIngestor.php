@@ -721,8 +721,9 @@ final class OutboxIngestor
      * to project; resume via `fiscal:enqueue-resolved-event-projections`).
      *
      * After T1 commits, dispatch one `ApplyFiscalEventProjectionJob`
-     * (Task 23 — not yet implemented) per pending row, via
-     * `DB::afterCommit()` so an aborted T1 produces no spurious jobs.
+     * per pending row via `DB::afterCommit()` so an aborted T1 produces
+     * no spurious jobs. The closure is `static` (no `$this` capture) so
+     * the queued payload doesn't drag the ingestor instance in.
      *
      * **F3 round-2.** The defensive try/catch around `activeProjectorsFor()`
      * is gone — Task 18's registry catches resolver throws internally

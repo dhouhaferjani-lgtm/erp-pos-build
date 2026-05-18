@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
@@ -13,15 +16,23 @@ use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -73,12 +84,20 @@ use Tests\TestCase;
  *
  * **PG-only behaviors not asserted here.** `lockForUpdate()` semantics differ
  * between SQLite (database-level serialization) and PG (row-level locks).
- * Per the plan §1796 amendment + the implementer's brief option (b): these
- * tests assert lifecycle semantics in a single-worker scenario only and
- * trust the PG driver to honor `lockForUpdate()` at runtime. The seven
- * tests below cover all the lifecycle paths — happy, attempt-accounting,
- * dead-letter, chain-immutability, partial cluster, two short-circuits —
- * without depending on actual concurrent locking.
+ * Per the plan §1796 amendment + the implementer's brief option (b): the
+ * row-level T_lock tests assert lifecycle semantics in a single-worker
+ * scenario only and trust the PG driver to honor `lockForUpdate()` at
+ * runtime. The Codex T23-B1 round-2 concurrent-delivery tests exercise
+ * the queue-level `WithoutOverlapping` middleware directly against the
+ * `array` cache driver — that path is portable.
+ *
+ * **Test matrix (round-1 + round-2).** The 7 round-1 lifecycle tests
+ * (happy / attempt-accounting / dead-letter / chain-immutability /
+ * partial cluster / 2 short-circuits) plus the 8 round-2 additions
+ * (T23-B1 middleware presence + duplicate-delivery drop + 2 stale-running
+ * variants; T23-B2 cross-worker race; T23-P3-1 failed-handler idempotency;
+ * T23-P3-2 missing-FiscalEvent + missing-projector) cover the full
+ * discriminated-union enumeration of `handle()` / `failed()` paths.
  */
 final class ApplyFiscalEventProjectionJobTest extends TestCase
 {
@@ -95,6 +114,8 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
     private string $operatorId;
 
     private string $paymentMethodId;
+
+    private string $repositoryId;
 
     /**
      * Test-local projector storage keyed by `name()` so each test can
@@ -140,6 +161,29 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
             'name' => 'Cash',
         ]);
         $this->paymentMethodId = $method->id;
+
+        // Seed chart of accounts so the real PosCoreReceiptProjection (used
+        // by the partial-cluster test via F1 round-2 closure) can resolve
+        // GL accounts when the projector's voucher / GL-posting paths
+        // wake. The seed is harmless for the pure-fake-projector tests.
+        $companyModel = Company::query()->findOrFail($this->companyId);
+        $this->app->make(ChartOfAccountsService::class)->seedForCompany($companyModel);
+
+        // Payment repository with a real GL account linkage — required if
+        // the real PosCoreReceiptProjection touches voucher redemption /
+        // GL posting paths. Test fixtures here keep payloads to plain
+        // cash so the projector doesn't ask for it, but the F1 round-2
+        // partial-cluster test needs the repository in place anyway for
+        // PaymentRepository::factory()-driven seeders that mirror the
+        // PosCoreReceiptProjectionTest baseline.
+        $cashAccount = Account::findByPurposeOrFail($this->companyId, SystemAccountPurpose::Cash);
+        $repository = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+        $this->repositoryId = $repository->id;
 
         // Default to a registry that resolves an always-succeeds POS-core
         // fake + a configurable Treasury bridge fake. Each test that needs
@@ -241,27 +285,31 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
     {
         // Cross-projector partial-cluster invariant (plan §1756): one
         // projector succeeds, another dead-letters; the successful
-        // projector's effects survive untouched. Uses a counter projector
-        // that records `apply()` invocations against an in-memory side
-        // table — proves "applied" is observable as a real business effect,
-        // not just a row flag.
-        $applyLog = new ApplyLog;
-        $this->registerFakeProjectors([
-            new ConfigurableFakeProjector(
-                name: 'pos_core_receipt',
-                requiresModule: null,
-                priority: 50,
-                shouldThrow: false,
-                applyLog: $applyLog,
-            ),
-            new ConfigurableFakeProjector(
-                name: 'treasury_receipt_bridge',
-                requiresModule: 'Treasury',
-                priority: 150,
-                shouldThrow: true,
-                applyLog: $applyLog,
-            ),
-        ]);
+        // projector's effects survive untouched.
+        //
+        // Task 23 round-2 (Codex T23-P1-1 / Opus F1 — convergent P1)
+        // closure: round-1 substituted a `ConfigurableFakeProjector` +
+        // in-memory `ApplyLog` for the plan §1761 literal
+        // `DB::table('pos_receipts')->count() === 1` assertion. That
+        // proved the projector's `apply()` was called once, but lost the
+        // cross-projector projection-atomicity invariant — that POS-core's
+        // already-committed business writes are NOT rolled back by a
+        // sibling projector's failure (spec §7.5 line 454: each
+        // projection job runs in its own transaction). Round-2 swaps in
+        // the REAL `PosCoreReceiptProjection` so the assertion lands on
+        // the actual `pos_receipts` row. The Treasury side stays fake —
+        // the test's invariant is about POS-core's effects SURVIVING
+        // Treasury's dead-letter, so a configurable always-throws fake
+        // on the Treasury slot is the simplest way to force the
+        // dead-letter side of the cluster.
+        $realPosCore = $this->app->make(PosCoreReceiptProjection::class);
+        $treasuryFake = new ConfigurableFakeProjector(
+            name: 'treasury_receipt_bridge',
+            requiresModule: 'Treasury',
+            priority: 150,
+            shouldThrow: true,
+        );
+        $this->registerProjectors([$realPosCore, $treasuryFake]);
 
         $event = $this->storeSaleReceiptFiscalEvent();
         $posRow = $this->seedPendingProjectionRow($event, 'pos_core_receipt');
@@ -270,8 +318,25 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $this->runProjection($event, 'pos_core_receipt'); // succeeds
         $this->failProjectionToDeadLetter($event, 'treasury_receipt_bridge');
 
-        // POS-core projector ran exactly once and its row is `applied`.
-        $this->assertSame(1, $applyLog->countFor('pos_core_receipt'));
+        // Plan §1761 literal — the real POS-core projector wrote exactly
+        // one `pos_receipts` row scoped to this fiscal event.
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts')->where('fiscal_event_id', $event->id)->count(),
+        );
+
+        // Sanity check on POS-core line writes — the receipt row carries
+        // children (lines, payments). If a future refactor moves the
+        // child writes out of the bridge's transaction, this assertion
+        // catches the silent drop.
+        $receiptId = DB::table('pos_receipts')->where('fiscal_event_id', $event->id)->value('id');
+        $this->assertNotNull($receiptId);
+        $this->assertGreaterThan(
+            0,
+            DB::table('pos_receipt_lines')->where('receipt_id', $receiptId)->count(),
+        );
+
+        // POS-core row is `applied`.
         $posAfter = DB::table('fiscal_event_projections')->where('id', $posRow->id)->first();
         $this->assertNotNull($posAfter);
         $this->assertSame('applied', $posAfter->projection_status);
@@ -281,12 +346,12 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $treasuryAfter = DB::table('fiscal_event_projections')->where('id', $treasuryRow->id)->first();
         $this->assertNotNull($treasuryAfter);
         $this->assertSame('dead_lettered', $treasuryAfter->projection_status);
-        $this->assertSame(0, $applyLog->countFor('treasury_receipt_bridge'));
 
-        // POS-core side effect was NOT rolled back by the Treasury failure
-        // (the two projectors run in independent jobs with independent
-        // transactions per §7.5 — partial cluster is the spec contract).
-        $this->assertSame(['pos_core_receipt'], $applyLog->names());
+        // Zero Treasury Payment rows — the dead-lettered Treasury job
+        // never wrote anything. (Belt-and-braces — `failed()` doesn't
+        // invoke `apply()`, but a future bug that swapped them would
+        // be caught here.)
+        $this->assertSame(0, DB::table('payments')->count());
     }
 
     public function test_already_applied_row_short_circuits_on_re_dispatch(): void
@@ -353,6 +418,401 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // test — `failed()` never calls it, and the post-dead-letter
         // re-dispatch short-circuited before reaching it.
         $this->assertSame(0, $applyLog->countFor('treasury_receipt_bridge'));
+    }
+
+    // =================================================================
+    // Task 23 round-2 — Codex T23-B1 (concurrent delivery defense)
+    // =================================================================
+
+    public function test_middleware_includes_without_overlapping_keyed_by_projection_row_id(): void
+    {
+        // Codex T23-B1 BLOCKER closure (layer 1 — queue-level overlap lock).
+        // The job exposes a `middleware()` method that returns a
+        // `WithoutOverlapping` instance keyed on the projection row id,
+        // with `expireAfter` matching the job's `$timeout` (crash-recovery
+        // lock release) and `dontRelease()` (duplicate delivery is dropped,
+        // not re-queued). Without this middleware, a duplicate Horizon
+        // delivery could enter `apply()` concurrently with the in-flight
+        // worker — round-1 had no such defense.
+        $projectionRowId = (string) Str::uuid();
+        $job = new ApplyFiscalEventProjectionJob($projectionRowId);
+
+        $middleware = $job->middleware();
+        $this->assertCount(1, $middleware);
+
+        $first = $this->withoutOverlappingMiddleware($job);
+        $this->assertSame($projectionRowId, $first->key);
+        // `dontRelease()` sets releaseAfter to null — duplicate delivery
+        // is silently dropped (not re-queued for retry).
+        $this->assertNull($first->releaseAfter);
+        // `expireAfter($timeout)` aligns the cache-lock lifetime with the
+        // job's own timeout so a crashed worker's lock auto-releases for
+        // recovery on the next retry.
+        $this->assertSame($job->timeout, $first->expiresAfter);
+    }
+
+    public function test_without_overlapping_middleware_rejects_duplicate_delivery_while_first_in_flight(): void
+    {
+        // Codex T23-B1 regression — exercise the middleware twice in
+        // sequence, asserting the cache lock holds across the second
+        // invocation. The middleware's `handle()` invokes `$next($job)`
+        // when the lock is acquired; otherwise it either re-queues
+        // (`releaseAfter`) or silently drops (`dontRelease`). We pin
+        // `dontRelease()` here: the second invocation MUST NOT invoke
+        // `$next` because the lock is still held from the first.
+        $projectionRowId = (string) Str::uuid();
+        $job1 = new ApplyFiscalEventProjectionJob($projectionRowId);
+        $job2 = new ApplyFiscalEventProjectionJob($projectionRowId);
+
+        $middleware1 = $this->withoutOverlappingMiddleware($job1);
+        $middleware2 = $this->withoutOverlappingMiddleware($job2);
+
+        // Acquire the lock manually for the duration of the assertion so
+        // we don't have to fork to simulate two live workers. This is
+        // exactly what `WithoutOverlapping::handle()` does internally
+        // (`Cache::lock($key, $expiresAfter)->get()`).
+        $lockKey = $middleware1->getLockKey($job1);
+        $lock = Cache::lock($lockKey, $job1->timeout);
+        $this->assertTrue($lock->get(), 'precondition: lock must be acquirable on first try');
+
+        try {
+            // While the lock is held by the "first worker", invoke the
+            // middleware for the "second delivery". `$next` must not be
+            // called — duplicate delivery is silently dropped.
+            $nextWasCalled = false;
+            $middleware2->handle($job2, function () use (&$nextWasCalled): void {
+                $nextWasCalled = true;
+            });
+            $this->assertFalse(
+                $nextWasCalled,
+                'WithoutOverlapping must drop duplicate delivery while sibling worker holds the lock.',
+            );
+        } finally {
+            $lock->release();
+        }
+
+        // After release, a fresh delivery proceeds normally.
+        $nextWasCalledAfterRelease = false;
+        $middleware2->handle($job2, function () use (&$nextWasCalledAfterRelease): void {
+            $nextWasCalledAfterRelease = true;
+        });
+        $this->assertTrue(
+            $nextWasCalledAfterRelease,
+            'After lock release, the next delivery acquires the lock and proceeds.',
+        );
+    }
+
+    /**
+     * Locate the `WithoutOverlapping` instance among the job's middleware
+     * stack and return it strongly typed. PHPStan can't narrow a generic
+     * `list<object>` return so we narrow here via `assertInstanceOf` then
+     * the surrounding method's call sites have a concrete type to use.
+     */
+    private function withoutOverlappingMiddleware(
+        ApplyFiscalEventProjectionJob $job,
+    ): WithoutOverlapping {
+        foreach ($job->middleware() as $entry) {
+            if ($entry instanceof WithoutOverlapping) {
+                return $entry;
+            }
+        }
+
+        throw new RuntimeException('ApplyFiscalEventProjectionJob has no WithoutOverlapping middleware');
+    }
+
+    public function test_fresh_running_row_short_circuits_belt_and_braces(): void
+    {
+        // Codex T23-B1 — belt-and-braces defense (layer 2). The
+        // `WithoutOverlapping` cache lock is the primary fence; this
+        // test pins the stale-running age check that defends if the
+        // cache lock fails open (e.g., a misconfigured cache driver
+        // that doesn't share state across worker processes).
+        //
+        // Scenario: a sibling worker flipped the row to `running` and
+        // is currently in `apply()` — `last_attempted_at` is fresh.
+        // The arriving handle() must SHORT-CIRCUIT (return false from
+        // T_lock) without invoking the projector.
+        $applyLog = new ApplyLog;
+        $this->registerFakeProjectors([
+            new ConfigurableFakeProjector(
+                name: 'pos_core_receipt',
+                requiresModule: null,
+                priority: 50,
+                shouldThrow: false,
+                applyLog: $applyLog,
+            ),
+        ]);
+
+        [$event, $projectionRow] = $this->pendingProjection('pos_core_receipt');
+
+        // Simulate "sibling worker mid-apply": flip to running + freshly
+        // attempted (within the timeout window).
+        $projectionRow->projection_status = ProjectionStatus::Running;
+        $projectionRow->last_attempted_at = Carbon::now('UTC')->subSeconds(5);
+        $projectionRow->save();
+
+        $this->runJobInline($projectionRow->id);
+
+        // The arriving handle() short-circuited — projector was NOT
+        // invoked, row remains `running` with the original timestamp.
+        $this->assertSame(0, $applyLog->countFor('pos_core_receipt'));
+        $row = DB::table('fiscal_event_projections')->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('running', $row->projection_status);
+    }
+
+    public function test_stale_running_row_is_recovered_on_re_dispatch(): void
+    {
+        // Codex T23-B1 — the crash-recovery side of the stale-running
+        // age check. If `last_attempted_at` is older than `$timeout`
+        // (or null — the row was flipped to `running` by an earlier
+        // handle() that crashed BEFORE any apply() attempt advanced the
+        // timestamp), treat as crash recovery and re-attempt. Pin the
+        // contract so a future refactor of the age check doesn't break
+        // recovery.
+        $applyLog = new ApplyLog;
+        $this->registerFakeProjectors([
+            new ConfigurableFakeProjector(
+                name: 'pos_core_receipt',
+                requiresModule: null,
+                priority: 50,
+                shouldThrow: false,
+                applyLog: $applyLog,
+            ),
+        ]);
+
+        [$event, $projectionRow] = $this->pendingProjection('pos_core_receipt');
+
+        // Simulate "sibling worker died mid-apply long ago": `running`
+        // with `last_attempted_at` past the timeout window.
+        $job = new ApplyFiscalEventProjectionJob($projectionRow->id);
+        $projectionRow->projection_status = ProjectionStatus::Running;
+        $projectionRow->last_attempted_at = Carbon::now('UTC')->subSeconds($job->timeout + 60);
+        $projectionRow->save();
+
+        $this->runJobInline($projectionRow->id);
+
+        // Recovery: the projector ran, row is `applied`.
+        $this->assertSame(1, $applyLog->countFor('pos_core_receipt'));
+        $row = DB::table('fiscal_event_projections')->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('applied', $row->projection_status);
+    }
+
+    // =================================================================
+    // Task 23 round-2 — Codex T23-B2 (deferred-bail-out cross-worker race)
+    // =================================================================
+
+    public function test_treasury_first_then_pos_core_resolves_via_retry_contract(): void
+    {
+        // Codex T23-B2 BLOCKER regression — the cross-worker race the
+        // round-1 silent-applied bug actually triggered. Treasury job
+        // runs first (under multi-Horizon-worker dispatch), throws
+        // `ProjectionDependencyMissingException` because the
+        // `pos_receipts` row doesn't yet exist, attempts++ on the
+        // Treasury row, and the wrapping job re-throws. Meanwhile (in
+        // this single-threaded test, we simulate "meanwhile" by
+        // explicitly running POS-core next), POS-core lands and writes
+        // the row. The Treasury retry then succeeds.
+        $realPosCore = $this->app->make(PosCoreReceiptProjection::class);
+        $realTreasury = $this->app->make(
+            TreasuryReceiptBridge::class,
+        );
+        $this->registerProjectors([$realPosCore, $realTreasury]);
+
+        $event = $this->storeSaleReceiptFiscalEventForBridge();
+        $posRow = $this->seedPendingProjectionRow($event, 'pos_core_receipt');
+        $treasuryRow = $this->seedPendingProjectionRow($event, 'treasury_receipt_bridge');
+
+        // 1) Treasury runs FIRST — must throw the dependency-missing
+        // exception, advance attempts, leave row `running` (not `applied`).
+        $caught = null;
+        try {
+            $this->runJobInline($treasuryRow->id);
+        } catch (\Throwable $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'Treasury job must throw when pos_receipts row is missing.');
+        $this->assertInstanceOf(
+            ProjectionDependencyMissingException::class,
+            $caught,
+        );
+
+        $treasuryAfterFirst = DB::table('fiscal_event_projections')
+            ->where('id', $treasuryRow->id)->first();
+        $this->assertNotNull($treasuryAfterFirst);
+        $this->assertSame('running', $treasuryAfterFirst->projection_status);
+        $this->assertSame(1, (int) $treasuryAfterFirst->attempts);
+        $this->assertStringContainsString(
+            'pos_receipts',
+            (string) $treasuryAfterFirst->last_error,
+        );
+        // Critical: no Treasury Payment row was written.
+        $this->assertSame(0, DB::table('payments')->count());
+
+        // 2) POS-core lands second (POS-core's job runs).
+        $this->runJobInline($posRow->id);
+        $posAfter = DB::table('fiscal_event_projections')
+            ->where('id', $posRow->id)->first();
+        $this->assertNotNull($posAfter);
+        $this->assertSame('applied', $posAfter->projection_status);
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts')->where('fiscal_event_id', $event->id)->count(),
+        );
+
+        // 3) Treasury retry — now the dependency is visible, succeeds.
+        // Advance the stale-running clock so the retry doesn't get
+        // short-circuited by the belt-and-braces age check (which
+        // assumes "fresh running = sibling worker mid-apply"). In
+        // production, Horizon's backoff exceeds the freshness window.
+        DB::table('fiscal_event_projections')
+            ->where('id', $treasuryRow->id)
+            ->update([
+                'last_attempted_at' => Carbon::now('UTC')->subSeconds(
+                    (new ApplyFiscalEventProjectionJob($treasuryRow->id))->timeout + 60,
+                ),
+            ]);
+
+        $this->runJobInline($treasuryRow->id);
+
+        $treasuryAfterRetry = DB::table('fiscal_event_projections')
+            ->where('id', $treasuryRow->id)->first();
+        $this->assertNotNull($treasuryAfterRetry);
+        $this->assertSame('applied', $treasuryAfterRetry->projection_status);
+
+        // Treasury Payment + GL entry now written.
+        $this->assertSame(1, DB::table('payments')->count());
+        $this->assertGreaterThan(0, DB::table('journal_entries')->count());
+    }
+
+    // =================================================================
+    // Task 23 round-2 — Codex T23-P3-1 (failed() re-invocation idempotency)
+    // =================================================================
+
+    public function test_failed_re_invocation_preserves_original_dead_lettered_at(): void
+    {
+        // Codex T23-P3-1 closure — round-1 code line 333 gates the
+        // terminal-state write so a re-invocation does NOT overwrite the
+        // first failure's `dead_lettered_at` timestamp. Round-1 had no
+        // test pinning the behavior; this is the regression.
+        [$event, $projectionRow] = $this->pendingProjection('treasury_receipt_bridge');
+        $job = new ApplyFiscalEventProjectionJob($projectionRow->id);
+
+        $job->failed(new RuntimeException('first failure'));
+
+        $first = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($first);
+        $firstTimestamp = (string) $first->dead_lettered_at;
+        $firstError = (string) $first->last_error;
+        $this->assertNotSame('', $firstTimestamp);
+        $this->assertStringContainsString('first failure', $firstError);
+
+        // Advance the clock and re-invoke. The terminal-state gate at
+        // line 333 must short-circuit the write: dead_lettered_at and
+        // last_error are unchanged.
+        Carbon::setTestNow(Carbon::now('UTC')->addSeconds(60));
+        $job->failed(new RuntimeException('second failure'));
+
+        $second = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($second);
+        $this->assertSame($firstTimestamp, (string) $second->dead_lettered_at);
+        $this->assertSame($firstError, (string) $second->last_error);
+        $this->assertSame('dead_lettered', $second->projection_status);
+
+        Carbon::setTestNow();
+    }
+
+    // =================================================================
+    // Task 23 round-2 — Codex T23-P3-2 (hard-misconfig branches)
+    // =================================================================
+
+    public function test_missing_fiscal_event_records_hard_failure_and_throws(): void
+    {
+        // Codex T23-P3-2 closure — round-1 lines 237-248 implement the
+        // missing-FiscalEvent hard-misconfig path (Log::critical +
+        // recordHardFailure + throw), but no test pinned the behavior.
+        //
+        // Build a projection row whose `fiscal_event_id` points at a row
+        // that never existed (we cannot DELETE FiscalEvent — Task 8's
+        // BEFORE DELETE trigger forbids deletes — so we use a fresh UUID).
+        $event = $this->storeSaleReceiptFiscalEvent();
+        $projectionRow = $this->seedPendingProjectionRow($event, 'pos_core_receipt');
+
+        // Sever the FK by updating in place — fiscal_event_id is NOT
+        // immutable on `fiscal_event_projections` (only on `fiscal_events`).
+        DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)
+            ->update(['fiscal_event_id' => (string) Str::uuid()]);
+
+        Log::shouldReceive('critical')->atLeast()->once();
+
+        try {
+            $this->runJobInline($projectionRow->id);
+            $this->fail('Expected RuntimeException for missing FiscalEvent.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('FiscalEvent', $e->getMessage());
+            $this->assertStringContainsString('not found', $e->getMessage());
+        }
+
+        $after = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($after);
+        // recordHardFailure advanced attempts + last_error + last_attempted_at.
+        $this->assertSame(1, (int) $after->attempts);
+        $this->assertStringContainsString(
+            'FiscalEvent row not found',
+            (string) $after->last_error,
+        );
+        $this->assertNotNull($after->last_attempted_at);
+        // Status stays `running` between Horizon retries; only `failed()`
+        // flips to `dead_lettered`.
+        $this->assertSame('running', $after->projection_status);
+    }
+
+    public function test_missing_projector_records_hard_failure_and_throws(): void
+    {
+        // Codex T23-P3-2 closure — round-1 lines 252-272 implement the
+        // missing-projector hard-misconfig path (projector deregistered
+        // between ingest and run; registry's byName() returns null;
+        // Log::critical + recordHardFailure + throw). No test pinned it.
+        //
+        // Seed a row referencing a projector name not in the registry.
+        $event = $this->storeSaleReceiptFiscalEvent();
+        $projectionRow = $this->seedPendingProjectionRow($event, 'projector_was_removed');
+
+        // Rebind the registry with NO matching projector so byName()
+        // returns null for `projector_was_removed`.
+        $this->registerFakeProjectors([
+            new ConfigurableFakeProjector(
+                name: 'something_else',
+                requiresModule: null,
+                priority: 50,
+                shouldThrow: false,
+            ),
+        ]);
+
+        Log::shouldReceive('critical')->atLeast()->once();
+
+        try {
+            $this->runJobInline($projectionRow->id);
+            $this->fail('Expected RuntimeException for missing projector.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('projector_was_removed', $e->getMessage());
+            $this->assertStringContainsString('no projector named', $e->getMessage());
+        }
+
+        $after = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($after);
+        $this->assertSame(1, (int) $after->attempts);
+        $this->assertStringContainsString(
+            'projector deregistered',
+            (string) $after->last_error,
+        );
+        $this->assertSame('running', $after->projection_status);
     }
 
     // =================================================================
@@ -457,9 +917,19 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
     /**
      * Persist a verified SALE_RECEIPT fiscal_events row directly via the
      * Eloquent model. Pattern carried forward from
-     * `PosCoreReceiptProjectionTest::storeSaleReceiptFiscalEvent`.
+     * `PosCoreReceiptProjectionTest::storeSaleReceiptFiscalEvent`. The
+     * payload includes `repository_id` on the payment_line so the real
+     * `TreasuryReceiptBridge` accepts it under the Codex T23-B2 round-2
+     * regression test — the bridge requires `repository_id` to issue
+     * the POS-payment GL entry. The real `PosCoreReceiptProjection`
+     * tolerates the extra field harmlessly.
      */
     private function storeSaleReceiptFiscalEvent(): FiscalEvent
+    {
+        return $this->storeSaleReceiptFiscalEventForBridge();
+    }
+
+    private function storeSaleReceiptFiscalEventForBridge(): FiscalEvent
     {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -473,7 +943,12 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
                 ['sku' => 'X', 'unit_price' => '10.00', 'line_total' => '10.00', 'quantity' => '1', 'tax_rate' => '0', 'tax_amount' => '0.00'],
             ],
             'payment_lines' => [
-                ['payment_method_id' => $this->paymentMethodId, 'amount' => '10.00', 'method_code' => 'CASH'],
+                [
+                    'payment_method_id' => $this->paymentMethodId,
+                    'amount' => '10.00',
+                    'method_code' => 'CASH',
+                    'repository_id' => $this->repositoryId,
+                ],
             ],
             'subtotal' => '10.00',
             'tax_total' => '0.00',
@@ -548,6 +1023,20 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
      * @param  list<ConfigurableFakeProjector>  $projectors
      */
     private function registerFakeProjectors(array $projectors): void
+    {
+        $this->registerProjectors($projectors);
+    }
+
+    /**
+     * Same shape as `registerFakeProjectors` but accepts a heterogeneous
+     * mix of real + fake projectors. Used by the F1 round-2 closure to
+     * swap a real `PosCoreReceiptProjection` into the partial-cluster
+     * test alongside a `ConfigurableFakeProjector` for the Treasury
+     * dead-letter side.
+     *
+     * @param  list<FiscalEventProjector>  $projectors
+     */
+    private function registerProjectors(array $projectors): void
     {
         $this->projectorsByName = [];
         foreach ($projectors as $p) {

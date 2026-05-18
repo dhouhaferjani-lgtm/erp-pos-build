@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Application\Projections;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Fiscal\Domain\DTOs\FiscalPayloadArrayGuards;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
@@ -185,9 +186,26 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // the registry sorts the tagged set by (priority ASC, name ASC)
         // at boot. So the POS-core projector's `fiscal_event_projections`
         // row is enqueued ahead of the bridge's by `OutboxIngestor`
-        // (Task 19). The deferred-bail-out below is defense-in-depth
-        // for manual replay paths and rare race windows around Task 23's
-        // job lifecycle — NOT the steady-state first-attempt code path.
+        // (Task 19).
+        //
+        // Task 23 round-2 (Codex T23-B2 BLOCKER) — `priority()` only
+        // constrains the ENQUEUE order. Under multiple Horizon workers
+        // the EXECUTION order is whatever order workers reserve jobs off
+        // the queue. The Treasury worker can run first; if it does, the
+        // pos_receipts row is not yet committed and the lookup below
+        // returns null. Round-1 returned cleanly (`Log::warning + return`)
+        // and `ApplyFiscalEventProjectionJob` then marked the row
+        // `applied` — silently skipping Treasury Payment + GL writes for
+        // every event that hit that race window.
+        //
+        // Round-2 fix: throw `ProjectionDependencyMissingException` on
+        // null. The job's fail-closed `catch (Throwable)` advances
+        // `attempts` accounting + re-throws → Horizon retries with
+        // backoff → POS-core's sibling job lands first → the bridge's
+        // next attempt sees the receipt → succeeds. The `QueryException`
+        // path stays a clean return — the driver-layer error has its own
+        // backoff via the surrounding job's retry; throwing here would
+        // double-count attempts.
         try {
             $receipt = Receipt::query()
                 ->where('tenant_id', $event->tenant_id)
@@ -204,11 +222,11 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         }
 
         if ($receipt === null) {
-            Log::warning('TreasuryReceiptBridge: pos_receipt not yet projected for fiscal event', [
-                'fiscal_event_id' => $event->id,
-            ]);
-
-            return;
+            throw new ProjectionDependencyMissingException(
+                projectorName: $this->name(),
+                fiscalEventId: $event->id,
+                missingDependency: 'pos_receipts row (PosCoreReceiptProjection not yet committed)',
+            );
         }
 
         DB::transaction(function () use ($event, $payload, $receipt): void {

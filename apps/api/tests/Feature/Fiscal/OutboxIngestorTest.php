@@ -153,10 +153,14 @@ final class OutboxIngestorTest extends TestCase
             ),
         );
 
-        // Avoid Job dispatch in tests — projection enqueue is Task 23's
-        // job class which doesn't exist yet. The OutboxIngestor passes a
-        // closure to `DB::afterCommit()`; Queue::fake() catches any
-        // future job dispatch.
+        // Queue::fake() catches the real `ApplyFiscalEventProjectionJob`
+        // dispatches without executing them. Task 23 shipped the real job
+        // class + the dispatch wiring in `OutboxIngestor::dispatchProjections`,
+        // so without `Queue::fake()` each ingest test would actually run
+        // the projection lifecycle inline against the sqlite test DB.
+        // The `test_projection_dispatch_only_after_commit` test asserts
+        // the dispatch contract via `Queue::assertPushed`; the rest of
+        // the suite just needs the dispatcher silenced.
         Queue::fake();
     }
 

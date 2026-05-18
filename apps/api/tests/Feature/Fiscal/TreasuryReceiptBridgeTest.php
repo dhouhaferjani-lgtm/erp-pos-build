@@ -14,6 +14,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
@@ -61,9 +62,14 @@ use Tests\TestCase;
  * and no duplicate GL entries (the (fiscal_event_id, origin=pos) probe
  * is the projector-level guard documented in the bridge class).
  *
- * Boundary discipline: a deployment without a pre-existing `pos_receipts`
- * row for the event (POS-core projection not yet run) is handled as a
- * deferred bail-out — the bridge does not crash; Task 23 retries.
+ * Boundary discipline: if `PosCoreReceiptProjection` hasn't yet committed
+ * the `pos_receipts` row for the event, the bridge throws
+ * `ProjectionDependencyMissingException` — `ApplyFiscalEventProjectionJob`'s
+ * fail-closed catch advances attempt accounting + re-throws → Horizon
+ * retries with backoff → POS-core's sibling job lands first → the bridge's
+ * next attempt sees the receipt → succeeds. Codex T23-B2 round-2 closure;
+ * round-1 returned cleanly which let the job mark `applied` with zero
+ * Treasury effects under the multi-worker dispatch-order race.
  */
 final class TreasuryReceiptBridgeTest extends TestCase
 {
@@ -537,21 +543,41 @@ final class TreasuryReceiptBridgeTest extends TestCase
             ]);
     }
 
-    public function test_no_pos_receipt_for_event_is_a_deferred_bail_out_not_a_crash(): void
+    public function test_no_pos_receipt_for_event_throws_projection_dependency_missing(): void
     {
         // Boundary discipline — if PosCoreReceiptProjection hasn't yet
-        // written the pos_receipts row for the event, the bridge logs +
-        // skips and returns cleanly. Task 23's job will retry per its
-        // lifecycle. We test this by creating a fiscal event WITHOUT
-        // first running the POS-core projector (the helper does this
-        // when `project=false`).
+        // written the pos_receipts row for the event, the bridge MUST
+        // throw `ProjectionDependencyMissingException` so the wrapping
+        // `ApplyFiscalEventProjectionJob` advances attempt accounting +
+        // re-throws → Horizon retries → the sibling POS-core job commits
+        // → the bridge's next attempt succeeds.
+        //
+        // Task 23 round-2 (Codex T23-B2 BLOCKER) closure — round-1 returned
+        // cleanly (`Log::warning + return`) and the job marked the row
+        // `applied` with zero Treasury effects. The renamed test pins the
+        // retry contract: this is the "deferred-bail-out test smell"
+        // lesson from Task 22 inverted — a test that asserts "no crash"
+        // can mask a silent-applied bug. The contract is "throws the
+        // retryable exception", not "returns silently".
         $event = $this->projectedSaleReceiptFiscalEvent(project: false);
 
-        // Should NOT throw.
-        $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+        try {
+            $this->app->make(TreasuryReceiptBridge::class)->apply($event);
+            $this->fail('Expected ProjectionDependencyMissingException when pos_receipts row is missing.');
+        } catch (ProjectionDependencyMissingException $e) {
+            $this->assertSame('treasury_receipt_bridge', $e->projectorName);
+            $this->assertSame($event->id, $e->fiscalEventId);
+            $this->assertStringContainsString('pos_receipts', $e->missingDependency);
+            $this->assertStringContainsString('RETRYABLE', $e->getMessage());
+        }
 
-        // No Payment rows written.
+        // No Payment rows written — the throw happened before the
+        // wrapping DB::transaction was opened, but assert the invariant
+        // anyway so a regression that moves the lookup INSIDE the
+        // transaction without re-checking idempotency still fails loud.
         $this->assertSame(0, DB::table('payments')->count());
+        // No GL entries written either — Treasury writes both atomically.
+        $this->assertSame(0, DB::table('journal_entries')->count());
     }
 
     public function test_zero_payment_lines_event_writes_no_payments_no_gl(): void

@@ -14,6 +14,7 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -74,6 +75,35 @@ use Throwable;
  * commits T_lock + returns, never invoking the projector. This is the
  * second of two defense layers atop Task 22's projector-level
  * `pg_advisory_xact_lock`; neither alone is sufficient.
+ *
+ * **Concurrent-delivery defense (Task 23 round-2 — Codex T23-B1 BLOCKER).**
+ * `lockForUpdate()` only serializes the SHORT T_lock window (lifecycle
+ * status flip + terminal-state short-circuit), NOT the LONG T_apply
+ * window (the projector body). Without further protection, two workers
+ * could each pass T_lock on a non-terminal row and concurrently invoke
+ * `apply()`. Two defenses close this:
+ *
+ *   1. **Queue-level overlap lock** (this job's `middleware()` method)
+ *      — `WithoutOverlapping($projectionRowId)->expireAfter($timeout)
+ *      ->dontRelease()`. Holds a cache-backed lock for the duration of
+ *      the job; a duplicate delivery is silently dropped. The
+ *      `expireAfter` matches `$timeout` so a worker crash auto-releases
+ *      the lock and crash recovery proceeds on retry.
+ *
+ *   2. **Stale-running age check** (belt-and-braces in `handle()`). If
+ *      T_lock observes `projection_status = running` AND
+ *      `last_attempted_at` is younger than `$timeout` seconds, treat
+ *      the row as currently in-flight on another worker (the queue lock
+ *      MUST have held but a misconfigured cache driver or test-only
+ *      `array` store across processes could break that invariant) and
+ *      short-circuit. If `last_attempted_at` is older than `$timeout`
+ *      (or null — the row was flipped to `running` by an earlier
+ *      handle() that crashed mid-projector), treat as crash recovery
+ *      and re-attempt.
+ *
+ * Together these mean: a sibling worker's duplicate delivery while the
+ * first worker is alive cannot enter `apply()` concurrently; after a
+ * crash/timeout, recovery proceeds cleanly on the next retry.
  *
  * **Fail-closed on registry / model lookup misconfiguration.**
  * If the projection row vanishes (impossible under normal operation, but
@@ -142,6 +172,29 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
     }
 
     /**
+     * Queue-level concurrent-delivery defense (Task 23 round-2 — Codex T23-B1
+     * BLOCKER). `WithoutOverlapping` acquires a cache-backed lock keyed on
+     * the projection row id; a duplicate delivery while the first worker is
+     * still in the `apply()` body sees the lock held and is silently dropped
+     * (`dontRelease()` — no re-queue, no retry). `expireAfter($timeout)`
+     * matches the job's own timeout so a worker crash auto-releases the
+     * lock; crash recovery proceeds on the next retry without operator
+     * intervention. See the class docblock for the full two-defense
+     * design (this is layer 1; the stale-running age check in `handle()` is
+     * layer 2).
+     *
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping($this->projectionRowId))
+                ->expireAfter($this->timeout)
+                ->dontRelease(),
+        ];
+    }
+
+    /**
      * Execute the projection.
      *
      * Step 1 (T_lock): load the row with `lockForUpdate()`, short-circuit
@@ -188,6 +241,26 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
             ) {
                 // Returning `false` tells the outer flow to skip T_apply.
                 // The lock is released by the surrounding commit.
+                return false;
+            }
+
+            // Stale-running age check (Task 23 round-2 — Codex T23-B1
+            // belt-and-braces). The `WithoutOverlapping` middleware
+            // SHOULD have dropped any duplicate delivery while a sibling
+            // worker holds the cache lock — but a misconfigured cache
+            // driver (e.g., `array` store across processes that don't
+            // share memory) could break that invariant. If we observe
+            // `running` AND `last_attempted_at` is fresher than
+            // `$timeout` seconds, treat the row as currently in flight
+            // on a sibling worker and short-circuit; otherwise
+            // (`last_attempted_at` is null OR older than `$timeout`)
+            // proceed as crash recovery — the prior worker died
+            // mid-apply and we re-attempt.
+            if ($row->projection_status === ProjectionStatus::Running
+                && $this->isRecentlyAttempted($row)
+            ) {
+                // Sibling worker is mid-apply on this row. Drop silently
+                // — the duplicate delivery never enters T_apply.
                 return false;
             }
 
@@ -418,6 +491,32 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
         $row->last_error = $this->truncateError($reason);
         $row->last_attempted_at = Carbon::now('UTC');
         $row->save();
+    }
+
+    /**
+     * Belt-and-braces stale-running check (Task 23 round-2 — Codex T23-B1).
+     * Returns true if `last_attempted_at` is within the job's `$timeout`
+     * window — interpreted as "sibling worker is mid-apply on this row".
+     * False on null `last_attempted_at` (the row was flipped to `running`
+     * by an earlier handle() that crashed BEFORE any apply() attempt
+     * advanced the timestamp) OR on a stale timestamp (the sibling
+     * worker died, lock expired, recovery time).
+     *
+     * The `WithoutOverlapping` cache lock is the primary defense; this
+     * check exists for the case where the cache lock somehow fails open
+     * (e.g., misconfigured `array` cache driver under tests with multiple
+     * processes). In steady-state production this check should never
+     * fire.
+     */
+    private function isRecentlyAttempted(FiscalEventProjectionRow $row): bool
+    {
+        if ($row->last_attempted_at === null) {
+            return false;
+        }
+
+        return $row->last_attempted_at->isAfter(
+            Carbon::now('UTC')->subSeconds($this->timeout),
+        );
     }
 
     /**
