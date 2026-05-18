@@ -13,6 +13,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
@@ -197,6 +198,9 @@ class PaymentController extends Controller
                 ? PaymentType::Advance
                 : PaymentType::DocumentPayment;
 
+            // Spec §13 writer-inventory row 2 — `PaymentController::store()` →
+            // `web_admin`. `fiscal_event_id` stays NULL (no fiscal event for
+            // an admin-side web payment).
             $payment = Payment::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
@@ -209,6 +213,7 @@ class PaymentController extends Controller
                 'payment_date' => $validated['payment_date'],
                 'status' => PaymentStatus::Completed,
                 'payment_type' => $paymentType,
+                'origin' => PaymentOrigin::WebAdmin,
                 'reference' => $validated['reference'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'created_by' => $user->id,
@@ -570,6 +575,8 @@ class PaymentController extends Controller
                     ? PaymentType::DocumentPayment
                     : PaymentType::Advance;
 
+                // Spec §13 writer-inventory row 3 — `PaymentController::storeMultiple()`
+                // → `web_admin`. `fiscal_event_id` stays NULL.
                 $payment = Payment::create([
                     'tenant_id' => $tenantId,
                     'company_id' => $companyId,
@@ -581,6 +588,7 @@ class PaymentController extends Controller
                     'payment_date' => $validated['payment_date'],
                     'status' => PaymentStatus::Completed,
                     'payment_type' => $paymentType,
+                    'origin' => PaymentOrigin::WebAdmin,
                     'reference' => $paymentLine['reference'] ?? 'Payment '.($index + 1)." for {$primaryDocument->document_number}",
                     'notes' => 'Multi-payment (part '.($index + 1).' of '.count($validated['payments']).')',
                     'created_by' => $user->id,

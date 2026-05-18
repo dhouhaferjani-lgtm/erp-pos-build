@@ -17,6 +17,7 @@ use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
@@ -262,6 +263,15 @@ final class ReceiptPaymentService
                 }
 
                 // Create Treasury Payment record
+                //
+                // Spec §13 writer-inventory row 1 — `ReceiptPaymentService` (POS receipt
+                // payment lines). Origin = `pos`. `fiscal_event_id` stays NULL on this
+                // legacy code path: it's the server-recompute path retained for the
+                // legacy `/pos/receipts/sync` HTTP transport (§14.2 — knowingly-retained
+                // no-new-writers, retired by Task 28); no device-authored fiscal event
+                // exists for this Payment row. The device-authored path lands the same
+                // origin via `TreasuryReceiptBridge::apply()` (Task 22) which ALSO
+                // stamps `fiscal_event_id = $event->id`.
                 $treasuryPayment = Payment::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $receipt->tenant_id,
@@ -274,6 +284,7 @@ final class ReceiptPaymentService
                     'payment_date' => $receipt->posted_at,
                     'status' => PaymentStatus::Completed,
                     'payment_type' => PaymentType::POS,
+                    'origin' => PaymentOrigin::Pos,
                     'reference' => "POS Receipt {$receipt->receipt_number} - Payment ".($index + 1),
                     'notes' => 'POS payment ('.($index + 1).' of '.count($payments).')',
                 ]);

@@ -366,6 +366,20 @@ jobs:
         #     also only resolves to the named constraint on PG. SQLite
         #     covers the happy-path locally; PG is the production truth
         #     for the projector's failure-mode contract.
+        #   - TreasuryReceiptBridgeTest (Feature, Task 22): the Treasury
+        #     bridge writes `payments` rows with the PG-only
+        #     `payments_fiscal_event_id_fk` FK + `payments_fiscal_event_id_idx`
+        #     partial index (Task 12 migration) and exercises the cross-
+        #     tenant `repository_id` fail-closed lookup. SQLite passes
+        #     the happy path; PG is the production truth for the FK +
+        #     index behaviour the bridge depends on for idempotency-tail
+        #     hot scans.
+        #   - PaymentOriginWriterInventoryTest (Feature, Task 22): pins
+        #     `payments.origin` stamping across the complete §13 writer
+        #     inventory (10 rows) — the PG-only `payments_fiscal_event_id_fk`
+        #     + the partial-unique index on
+        #     (company_id, original_payment_id, refund_request_id) for
+        #     receipt-proration idempotency only fire on PG.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -375,7 +389,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

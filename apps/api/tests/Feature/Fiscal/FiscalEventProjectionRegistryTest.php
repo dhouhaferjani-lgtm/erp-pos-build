@@ -204,6 +204,32 @@ final class FiscalEventProjectionRegistryTest extends TestCase
         $this->assertContains('pos_core_receipt', $names);
     }
 
+    public function test_tagged_set_contains_both_pos_core_and_treasury_bridge_in_production(): void
+    {
+        // Task 22 cross-task wiring sanity check — after both
+        // `POSServiceProvider::register()` (Task 21) and
+        // `TreasuryServiceProvider::register()` (Task 22) have tagged
+        // their projectors, the container's tagged set MUST contain
+        // BOTH names. A missing tag on either side would leave a
+        // `SALE_RECEIPT` ingest with an incomplete projector set —
+        // either no POS-core projection (no `pos_receipts` row) or no
+        // Treasury bridge (no `payments` row + no GL post). This
+        // assertion catches a regression in either provider's
+        // `register()` independently.
+        /** @var list<FiscalEventProjector> $tagged */
+        $tagged = iterator_to_array(
+            $this->app->tagged(FiscalEventProjector::class),
+            false,
+        );
+        $names = array_map(
+            static fn (FiscalEventProjector $p): string => $p->name(),
+            $tagged,
+        );
+
+        $this->assertContains('pos_core_receipt', $names);
+        $this->assertContains('treasury_receipt_bridge', $names);
+    }
+
     // -----------------------------------------------------------------
     // Codex round-2 — F1 fail-closed / F2 unique names / F3 empty token
     // -----------------------------------------------------------------

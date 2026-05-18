@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Providers;
 
+use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
+use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Support\ServiceProvider;
 
@@ -20,6 +22,21 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->singleton(
             PaymentToleranceCheckerContract::class,
             PaymentToleranceService::class,
+        );
+
+        // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector
+        // for `SALE_RECEIPT` fiscal events. Owns the Treasury `Payment` +
+        // POS-payment GL post relocated from `ReceiptPaymentService`. The
+        // Fiscal module's registry (Task 18 — FiscalEventProjectionRegistry)
+        // consumes the tagged set via `app->tagged(FiscalEventProjector::class)`
+        // and gates dispatch on `ModuleActivationResolver::isActive('Treasury',
+        // tenant, company)` (the bridge's `requiresModule()` returns the
+        // canonical 'Treasury' token). Tag at register() (not boot()) — the
+        // registry is a singleton constructed off the tagged set and a
+        // boot-time tag would leave the registry's $projectors array empty.
+        $this->app->tag(
+            [TreasuryReceiptBridge::class],
+            FiscalEventProjector::class,
         );
     }
 

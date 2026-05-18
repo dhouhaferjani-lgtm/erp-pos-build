@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -58,6 +59,8 @@ class MultiPaymentService
             $payments = [];
 
             foreach ($paymentSplits as $index => $split) {
+                // Spec §13 writer-inventory row 4 — `MultiPaymentService::createSplitPayment()`
+                // → `web_admin`. Non-fiscal admin-side split-payment authoring.
                 $payment = Payment::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $document->tenant_id,
@@ -70,6 +73,7 @@ class MultiPaymentService
                     'currency' => $document->currency,
                     'payment_date' => now(),
                     'status' => PaymentStatus::Completed,
+                    'origin' => PaymentOrigin::WebAdmin,
                     'reference' => $split['reference'] ?? 'Split payment '.($index + 1)." for {$document->document_number}",
                     'notes' => "Split payment {$split['amount']} (part ".($index + 1).' of '.count($paymentSplits).')',
                     'created_by' => $userId,
@@ -130,6 +134,8 @@ class MultiPaymentService
             $notes,
             $userId
         ): Payment {
+            // Spec §13 writer-inventory row 5 — `MultiPaymentService::recordDeposit()`
+            // → `web_admin`. Unallocated deposits / advances authored from the web admin.
             return Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenantId,
@@ -142,6 +148,7 @@ class MultiPaymentService
                 'currency' => $currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
+                'origin' => PaymentOrigin::WebAdmin,
                 'reference' => $reference ?? 'Deposit payment',
                 'notes' => ($notes ?? 'Advance payment/deposit').' [UNALLOCATED]',
                 'created_by' => $userId,
@@ -270,6 +277,8 @@ class MultiPaymentService
             $notes,
             $userId
         ): Payment {
+            // Spec §13 writer-inventory row 6 — `MultiPaymentService::recordPaymentOnAccount()`
+            // → `web_admin`. Customer-account credit-balance payment authored from the web admin.
             return Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenantId,
@@ -280,6 +289,7 @@ class MultiPaymentService
                 'currency' => $currency,
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
+                'origin' => PaymentOrigin::WebAdmin,
                 'reference' => $reference ?? 'Payment on account',
                 'notes' => ($notes ?? 'Payment on account - credit balance').' [ON_ACCOUNT]',
                 'created_by' => $userId,

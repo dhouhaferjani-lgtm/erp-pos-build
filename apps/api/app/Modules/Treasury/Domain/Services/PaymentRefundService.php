@@ -65,6 +65,13 @@ class PaymentRefundService
             // Create refund payment (negative amount)
             // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
             // default 'document_payment' (Codex review 2 additional finding).
+            //
+            // Spec §13 writer-inventory row 7 — `PaymentRefundService::refundPayment()`
+            // → inherit the original payment's `origin`. A refund of a POS-origin
+            // payment is itself POS-origin; a refund of a web_admin payment is
+            // web_admin. Legacy rows with `origin = NULL` inherit NULL (the same
+            // ambiguity their parent row carries — refusing to coerce). `fiscal_event_id`
+            // is NOT inherited — refunds are not authored by the device.
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -78,6 +85,7 @@ class PaymentRefundService
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
                 'payment_type' => PaymentType::Refund,
+                'origin' => $payment->origin,
                 'reference' => "Refund for payment {$payment->reference}",
                 'notes' => "Refund: {$reason}",
                 'created_by' => $userId,
@@ -150,6 +158,10 @@ class PaymentRefundService
             // Create partial refund payment (negative amount)
             // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
             // default 'document_payment' (Codex review 2 additional finding).
+            //
+            // Spec §13 writer-inventory row 8 — `PaymentRefundService::partialRefund()`
+            // → inherit the original payment's `origin`. Same disposition as
+            // `refundPayment()` above.
             $refund = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $payment->tenant_id,
@@ -163,6 +175,7 @@ class PaymentRefundService
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
                 'payment_type' => PaymentType::Refund,
+                'origin' => $payment->origin,
                 'reference' => "Partial refund for payment {$payment->reference}",
                 'notes' => "Partial refund ({$amount}): {$reason}",
                 'created_by' => $userId,
@@ -433,6 +446,10 @@ class PaymentRefundService
                         bcmul($positiveAmount, '-1', $scale),
                         $scale
                     );
+                    // Spec §13 writer-inventory row 9 — `PaymentRefundService` receipt-
+                    // proration refund rows → inherit the original payment's `origin`.
+                    // A proration refund of POS-origin payments stays POS-origin (so the
+                    // refund row's audit lineage matches the receipt's authoring surface).
                     $refundRow = Payment::create([
                         'id' => Str::uuid()->toString(),
                         'tenant_id' => $original->tenant_id,
@@ -448,6 +465,7 @@ class PaymentRefundService
                         'status' => PaymentStatus::Completed,
                         // IMPORTANT: always explicit — never rely on column default (Codex review 2 §4.3)
                         'payment_type' => PaymentType::Refund,
+                        'origin' => $original->origin,
                         // Audit columns (spec §3.6 / F27)
                         'original_payment_id' => $originalPaymentId,
                         'refund_request_id' => $refundRequestId,
