@@ -242,8 +242,12 @@ export interface FiscalEventAppendResult {
  * `SqliteTestAdapter` which structurally satisfies this surface. The
  * caller controls the surrounding transaction with explicit `BEGIN` /
  * `COMMIT` / `ROLLBACK` `execute()` calls.
+ *
+ * Exported (Task 25) so sibling services that delegate to
+ * `engine.append()` — like `ChainRecoveryService` — share the same
+ * relaxed-but-typed handle shape.
  */
-interface SqlSurface {
+export interface SqlSurface {
   execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number; lastInsertId?: number }>;
   select<T>(sql: string, params?: unknown[]): Promise<T>;
 }

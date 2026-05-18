@@ -121,6 +121,14 @@ final class OutboxIngestor
         private readonly StrictCanonicalParser $parser,
         private readonly FiscalIntegrityProvider $integrity,
         private readonly FiscalEventProjectionRegistry $projectionRegistry,
+        // Task 25 — clock-anomaly detection extracted out so the same
+        // admissibility surface (§10) is callable from non-ingestor
+        // callers (verifier, resolver) without dragging the ingestor in.
+        // Constructor-injected, no nullable default — CLAUDE.md rule 13 +
+        // Task 24 round-3 lesson. The Laravel container auto-resolves it
+        // (the detector has zero constructor dependencies beyond
+        // `config('fiscal.clock_drift_limit_seconds')`).
+        private readonly ClockAnomalyDetector $clockAnomalyDetector,
     ) {}
 
     /**
@@ -472,31 +480,59 @@ final class OutboxIngestor
     }
 
     /**
-     * §10 clock check.
+     * §10 clock check — delegates to `ClockAnomalyDetector::isWithinTolerance()`
+     * (Task 25) and reconstructs the structured forensic reason on a
+     * fail. The detector is the single authority for §10 admissibility;
+     * the ingestor still owns the *reason-string format* because it's
+     * the field that ends up in `integrity_exception_reason` and the
+     * verifier reads it back.
      *
      * Returns `null` when clock is admissible, otherwise a structured
      * reason. Two cases — rollback vs prior, excessive drift vs server
      * time. A malformed `event_time_device` (Carbon parse failure) is
-     * defensively treated as admissible: the StrictCanonicalParser also
-     * enforces the ISO-8601 format on the canonical bytes, so a
-     * malformed timestamp here would already have been caught at the
-     * parse layer. Belt-and-braces — never throw out of the clock check.
+     * defensively treated as admissible by the detector: the
+     * StrictCanonicalParser also enforces the ISO-8601 format on the
+     * canonical bytes, so a malformed timestamp here would already have
+     * been caught at the parse layer. Belt-and-braces — never throw out
+     * of the clock check.
      */
     private function verifyClock(FiscalEventEnvelope $envelope, ?stdClass $prior, CarbonImmutable $serverReceivedAt): ?string
     {
+        $priorTimeRaw = $prior === null
+            ? null
+            : (is_string($prior->event_time_device)
+                ? $prior->event_time_device
+                : (string) $prior->event_time_device);
+
+        if ($this->clockAnomalyDetector->isWithinTolerance(
+            deviceTime: $envelope->eventTimeDevice,
+            lastServerTimeSeen: $priorTimeRaw,
+            serverReceivedAt: $serverReceivedAt,
+        )) {
+            return null;
+        }
+
+        // Detector flagged. Reconstruct the structured reason in the
+        // same format the verifier + existing tests expect. Carbon::parse
+        // here cannot throw — the detector only flags after successfully
+        // parsing `deviceTime`. We still defend with try-catch so a
+        // future detector evolution that admits malformed input cannot
+        // surface as an ingestor throw.
         try {
             $eventTime = CarbonImmutable::parse($envelope->eventTimeDevice);
         } catch (Throwable) {
-            return null; // malformed timestamp is the parser's anomaly, not the clock check's
+            // Detector said "not admissible" yet deviceTime is unparseable
+            // — impossible in steady state (the detector's malformed
+            // branch returns true). Fall through with a defensive reason.
+            return 'time_anomaly:detector_flagged_unparseable_event_time_device';
         }
 
-        if ($prior !== null) {
+        // Rollback branch — strict less-than vs prior. Only emit when
+        // the prior row's timestamp parses cleanly; otherwise drift is
+        // the only remaining cause.
+        if ($priorTimeRaw !== null) {
             try {
-                $priorTime = CarbonImmutable::parse(
-                    is_string($prior->event_time_device)
-                        ? $prior->event_time_device
-                        : (string) $prior->event_time_device,
-                );
+                $priorTime = CarbonImmutable::parse($priorTimeRaw);
                 if ($eventTime->lessThan($priorTime)) {
                     return sprintf(
                         'time_anomaly:rollback,prior=%s,current=%s',
@@ -505,28 +541,29 @@ final class OutboxIngestor
                     );
                 }
             } catch (Throwable) {
-                // Prior row's timestamp unparseable — skip the rollback check.
+                // Prior row's timestamp unparseable — fall through to drift.
             }
         }
 
         $limit = $this->clockDriftLimitSeconds();
         $drift = abs($serverReceivedAt->getTimestamp() - $eventTime->getTimestamp());
-        if ($drift > $limit) {
-            return sprintf(
-                'time_anomaly:excessive_drift,drift_seconds=%d,limit=%d',
-                $drift,
-                $limit,
-            );
-        }
 
-        return null;
+        return sprintf(
+            'time_anomaly:excessive_drift,drift_seconds=%d,limit=%d',
+            $drift,
+            $limit,
+        );
     }
 
     /**
-     * T19-P1: clock drift threshold is now config-readable so multi-day
+     * T19-P1: clock drift threshold is config-readable so multi-day
      * offline batches can be supported per-deployment without code change.
      * Defaults to 86400 seconds (24h) — the original conservative
      * ceiling.
+     *
+     * Task 25 — also read by `ClockAnomalyDetector` directly; kept here
+     * for the local reason-string reconstruction in `verifyClock()`
+     * (the format includes the limit value for forensic clarity).
      */
     private function clockDriftLimitSeconds(): int
     {
