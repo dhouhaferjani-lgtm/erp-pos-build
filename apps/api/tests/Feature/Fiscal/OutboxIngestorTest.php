@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\IngestionResult;
+use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\OutboxIngestor;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -406,20 +407,30 @@ final class OutboxIngestorTest extends TestCase
     {
         // Handoff §4.2 standing pattern. The §7.2 Step 3 contract: jobs
         // are enqueued AFTER the transaction commits. Queue::fake() in
-        // setUp(); a successful ingest must produce at least one queued
-        // job assertion (the closure DB::afterCommit() fires the
-        // dispatcher only on commit success).
-        $this->ingest($this->validEnvelope(['sequence_number' => 1]));
+        // setUp(); a successful ingest must produce one queued
+        // ApplyFiscalEventProjectionJob per pending projection row (one
+        // per active projector — `FakeSaleReceiptProjector` in setUp()).
+        $result = $this->ingest($this->validEnvelope(['sequence_number' => 1]));
+        $this->assertNotNull($result->fiscalEventId);
 
-        // Queue::fake() captures the dispatch; ApplyFiscalEventProjectionJob
-        // doesn't ship until Task 23. Until then, the ingestor calls
-        // `DB::afterCommit()` with a closure that, in the production
-        // wiring, will dispatch jobs. We assert the row was created and
-        // that the closure path did NOT throw. (Task 23 will lock the
-        // exact job-class assertion.) Use Queue::assertNothingPushed()
-        // as a Phase-1-bound check that the integration seam is
-        // present but the future job class is not invented in this task.
-        Queue::assertNothingPushed();
+        // Task 23 wires the real dispatch: one job per pending row,
+        // dispatched via `DB::afterCommit()` AFTER T1 commits. With
+        // exactly one fake projector in setUp(), exactly one job lands
+        // on the queue.
+        Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
+
+        // The dispatched job carries the projection-row id (NOT the
+        // fiscal-event id — the job is keyed on the projection-row
+        // identity per spec §7.5, since one event can have multiple
+        // projection rows).
+        $projectionRowId = (string) DB::table('fiscal_event_projections')
+            ->where('fiscal_event_id', $result->fiscalEventId)
+            ->value('id');
+
+        Queue::assertPushed(
+            ApplyFiscalEventProjectionJob::class,
+            static fn (ApplyFiscalEventProjectionJob $job): bool => $job->projectionRowId === $projectionRowId,
+        );
     }
 
     public function test_resolver_exception_does_not_crash_ingest(): void

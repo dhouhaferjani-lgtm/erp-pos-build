@@ -1760,6 +1760,30 @@ public function test_pos_core_success_with_treasury_dead_letter_leaves_pos_core_
     $this->failProjectionToDeadLetter($event, 'treasury_receipt_bridge');
     $this->assertSame(1, \DB::table('pos_receipts')->count()); // POS-core effects intact
 }
+
+public function test_already_applied_row_short_circuits_on_re_dispatch(): void
+{
+    // Task 22 cross-task implication: the row-level lifecycle lock + idempotent
+    // short-circuit prevents a re-delivery (Horizon double-dispatch or
+    // crash-recovery on a finished row) from re-running the projector.
+    [$event, $projectionRow] = $this->pendingProjection('pos_core_receipt');
+    (new ApplyFiscalEventProjectionJob($projectionRow->id))->handle();
+    (new ApplyFiscalEventProjectionJob($projectionRow->id))->handle(); // re-delivery
+    $row = \DB::table('fiscal_event_projections')->where('id', $projectionRow->id)->first();
+    $this->assertSame('applied', $row->projection_status);
+    $this->assertSame(0, $row->attempts); // success path never increments attempts; re-delivery is a no-op
+}
+
+public function test_dead_lettered_row_short_circuits_on_re_dispatch(): void
+{
+    // Dead-lettered terminal state is also short-circuited — operator
+    // resolution moves through a separate command, never a re-handle().
+    [$event, $projectionRow] = $this->pendingProjection('treasury_receipt_bridge');
+    (new ApplyFiscalEventProjectionJob($projectionRow->id))->failed(new \RuntimeException('boom'));
+    (new ApplyFiscalEventProjectionJob($projectionRow->id))->handle(); // accidental re-dispatch
+    $row = \DB::table('fiscal_event_projections')->where('id', $projectionRow->id)->first();
+    $this->assertSame('dead_lettered', $row->projection_status);
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1769,7 +1793,7 @@ Expected: FAIL — job class not found.
 
 - [ ] **Step 3: Implement the job + wire enqueue**
 
-`ApplyFiscalEventProjectionJob` is a standard queued job with `public int $tries` and `public function backoff(): array` (exponential). Ctor takes the `fiscal_event_projections` row id. `handle()`: load the projection row + the `FiscalEvent`; resolve the named projector from the registry; set `projection_status='running'` at start; run `projector.apply($event)` **in its own transaction**, idempotently; on success → `applied` + `applied_at`; on throw → update `attempts`/`last_error`/`last_attempted_at` and re-throw so Horizon retries. `failed(Throwable $e)`: set `dead_lettered` + `dead_lettered_at`, raise an operator alert, leave the row in the operator-visible dead-letter view. Wire `OutboxIngestor` (§7.2 Step 3): after T1 commits, `ApplyFiscalEventProjectionJob::dispatch($rowId)` per pending row. **Invariant:** a projection failure never mutates/deletes the `fiscal_events` row; a projection is never run inside the ingest transaction.
+`ApplyFiscalEventProjectionJob` is a standard queued job with `public int $tries` and `public function backoff(): array` (exponential). Ctor takes the `fiscal_event_projections` row id. `handle()`: **open a DB transaction (T_lock) and load the projection row with `lockForUpdate()`** — this serializes any concurrent dispatch of the same row across Horizon workers (the row-level lifecycle lock per Task 22's cross-task implication; two-layer defense atop the projector-level `pg_advisory_xact_lock` from Task 22 round-2). **If `projection_status` is already `applied` or `dead_lettered`, commit T_lock + return (idempotent re-delivery — never re-run a terminal-state row).** Otherwise set `projection_status='running'` (covers both `pending` first-run and `running` crash-recovery re-entry from a worker that died mid-apply), load the `FiscalEvent`, resolve the named projector from the registry, **commit T_lock** (releases the row lock so a sibling worker on a DIFFERENT row isn't blocked while this one runs the projector — the lock's job is to serialize *the same* row, not gate all dispatch). Then run `projector.apply($event)` **in its own transaction (T_apply)**, idempotently; on success → `applied` + `applied_at`; on throw → update `attempts`/`last_error`/`last_attempted_at` (outside T_apply, so the rollback doesn't lose attempt accounting) and re-throw so Horizon retries. `failed(Throwable $e)`: set `dead_lettered` + `dead_lettered_at`, raise an operator alert, leave the row in the operator-visible dead-letter view. Wire `OutboxIngestor` (§7.2 Step 3): after T1 commits, `ApplyFiscalEventProjectionJob::dispatch($rowId)` per pending row (replace the existing `TODO(Task 23)` no-op closure in `OutboxIngestor::dispatchProjections()` at the `DB::afterCommit()` site). **Invariants:** a projection failure never mutates/deletes the `fiscal_events` row; a projection is never run inside the ingest transaction; the SAME row is never re-applied after reaching a terminal status; the row-level lifecycle lock + the projector-level advisory lock (Task 22) are the two layers of defense — neither alone is sufficient.
 
 - [ ] **Step 4: Run test to verify it passes**
 

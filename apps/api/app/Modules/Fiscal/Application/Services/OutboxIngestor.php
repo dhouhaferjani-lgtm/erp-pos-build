@@ -7,6 +7,7 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\IngestionResult;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
+use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -775,19 +776,22 @@ final class OutboxIngestor
         }
 
         // After-commit hook: enqueue one ApplyFiscalEventProjectionJob per
-        // pending row. Task 23 owns the job class; until it ships, the
-        // hook is wired but does nothing (no job class to dispatch).
-        // Wiring it now guarantees that when Task 23 lands, the closure
-        // body changes inside a single class — the ingest path doesn't
-        // shift.
+        // pending row. The closure is `static` (no `$this` capture) so a
+        // serialized queue payload doesn't drag the ingestor instance in.
+        // `DB::afterCommit()` honors the OUTER transaction's rollback —
+        // jobs only fire if the surrounding commit succeeds (F4 round-2
+        // pattern).
+        //
+        // Task 23 lands here: the previous TODO no-op is replaced with the
+        // real dispatch. Rows arrive priority-sorted (Task 22 round-2 —
+        // the registry's `(priority ASC, name ASC)` sort), so dispatch
+        // order mirrors lifecycle dependency (POS-core first @ 50, Treasury
+        // bridge after @ 150).
         $rowsForDispatch = $pendingRows;
         DB::afterCommit(static function () use ($rowsForDispatch): void {
-            // TODO(Task 23): replace this closure body with `dispatch(new
-            // ApplyFiscalEventProjectionJob($row['id']))` per pending
-            // row. Until that job class exists, the closure is a no-op —
-            // the dispatch site is wired so the rest of the ingestor
-            // contract is observable in tests today.
-            unset($rowsForDispatch);
+            foreach ($rowsForDispatch as $row) {
+                ApplyFiscalEventProjectionJob::dispatch($row['id']);
+            }
         });
     }
 

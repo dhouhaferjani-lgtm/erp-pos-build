@@ -176,6 +176,33 @@ final class FiscalEventProjectionRegistry
     }
 
     /**
+     * Resolve a projector by its `name()` identifier — used by the projection
+     * job at run time (Task 23). Unlike `activeProjectorsFor()`, this lookup
+     * IGNORES current module-activation status: at job-run time the
+     * `fiscal_event_projections` row already exists (activation gating happened
+     * at ingest time), so a module deactivated between ingest and run must
+     * still be able to resolve its projector — otherwise the row would be
+     * orphaned indefinitely. The uniqueness invariant enforced by the
+     * constructor (Codex F2 round-2) guarantees a single match.
+     *
+     * Returns `null` when no projector with the given name is registered.
+     * The caller (`ApplyFiscalEventProjectionJob`) treats this as a hard
+     * misconfiguration: log critical, dead-letter the projection row, and
+     * throw — the same fail-closed discipline applied to a missing
+     * `FiscalEvent` row.
+     */
+    public function byName(string $name): ?FiscalEventProjector
+    {
+        foreach ($this->projectors as $projector) {
+            if ($projector->name() === $name) {
+                return $projector;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return list<FiscalEventProjector> active projectors in priority-then-name order
      *                                    (Task 22 round-2 — replaces pre-round-2
      *                                    registration-order semantics)
