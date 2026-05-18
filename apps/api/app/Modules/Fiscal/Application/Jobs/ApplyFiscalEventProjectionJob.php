@@ -288,7 +288,28 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
             // worker that died mid-apply. Both flip to `running` here; the
             // attempts column already reflects prior failures (advanced
             // outside T_apply on the earlier throw path).
+            //
+            // Round-4 R3-P1-1 (Codex): also stamp `last_attempted_at` at
+            // the Running flip. Without this stamp, a row genuinely
+            // in-flight (T_lock just flipped to Running, apply() not yet
+            // returned) sits at `(Running, last_attempted_at=null)`. If
+            // `WithoutOverlapping`'s cache lock fails open (Redis flap,
+            // misconfigured cache driver, cache backend down), a
+            // duplicate delivery from a sibling worker would reach this
+            // T_lock, the in-flight guard's `last_attempted_at === null`
+            // branch would return false, the guard would NOT fire, T_lock
+            // would re-flip Running, the duplicate would enter T_apply
+            // concurrently with Worker A. Stamping the column here means
+            // the in-flight guard correctly identifies the row as
+            // in-flight even when the cache lock has failed open. The
+            // column's semantics shift slightly — "when did we last CLAIM
+            // this row for an attempt" rather than "when did we last try
+            // and fail" — but downstream queries are unaffected (no
+            // production query orders by this column; failure accounting
+            // overwrites it on every failure so operator semantics are
+            // preserved).
             $row->projection_status = ProjectionStatus::Running;
+            $row->last_attempted_at = Carbon::now('UTC');
             $row->save();
 
             return true;
@@ -552,25 +573,38 @@ final class ApplyFiscalEventProjectionJob implements ShouldQueue
      * apply() attempt advanced the timestamp) OR on a stale timestamp
      * (the sibling worker died, lock expired, recovery time).
      *
-     * **Why this is now a narrow corner case (round-3).** Round-2 paired
-     * this check with `advanceFailureAccounting` setting
-     * `last_attempted_at = now()` AND leaving status = Running on every
-     * failure — so the very next Horizon retry hit the stale-running
-     * branch and silently no-op'd, killing the retry path. Round-3 reset
-     * the status back to `pending` on failure, so the only path into
-     * "status=Running + fresh last_attempted_at" now is: another worker
-     * is actually in T_apply RIGHT NOW (the primary defense
-     * `WithoutOverlapping` should have caught) OR the worker crashed
-     * between recording the timestamp inside T_apply and reaching either
-     * the failure or success terminal write (impossible under the
-     * current code shape — `last_attempted_at` is ONLY advanced by
-     * `advanceFailureAccounting` / `recordHardFailure`, both of which
-     * reset status to `pending` in the same `save()`).
+     * **Round-3 → round-4 evolution.** Round-2 paired this check with
+     * `advanceFailureAccounting` setting `last_attempted_at = now()` AND
+     * leaving status = Running on every failure — so the very next Horizon
+     * retry hit the stale-running branch and silently no-op'd, killing the
+     * retry path. Round-3 reset the status back to `pending` on failure.
+     * Round-4 (Codex R3-P1-1 closure) added the matching stamp at T_lock's
+     * Running flip — without it, a row that's GENUINELY in flight (T_lock
+     * just past the flip, apply() not yet returned) would sit at
+     * `(Running, last_attempted_at=null)`; if `WithoutOverlapping`'s cache
+     * lock failed open (Redis flap, misconfigured cache driver), the
+     * null-path in this check would return false, the guard would NOT
+     * fire, and a duplicate delivery would enter T_apply concurrently
+     * with the original worker.
      *
-     * In steady-state production this check should never fire. It exists
-     * only as defense-in-depth for the case where the cache lock fails
-     * open (e.g., misconfigured `array` cache driver under tests with
-     * multiple processes).
+     * **Bounded residual race window (Opus R3-F1, round-4 disclosure).**
+     * If a worker is SIGKILL'd between T_apply's `apply()` throw and
+     * `advanceFailureAccounting`'s reset-to-Pending write (a window of
+     * milliseconds), the row stays `Running` with the freshly-stamped
+     * `last_attempted_at`. The stale-running guard then short-circuits
+     * subsequent deliveries for up to `$timeout` (~120s) until the
+     * timestamp ages past the window. After that, the next delivery
+     * enters T_lock, sees `(Running, stale)`, the guard returns false,
+     * T_lock re-flips Running (with a fresh stamp), and retry proceeds.
+     * The window is double-bounded: from the cache layer side,
+     * `WithoutOverlapping::expireAfter($timeout)` releases the queue
+     * lock at the same horizon, so the next Horizon re-delivery can
+     * acquire it.
+     *
+     * In steady-state production this check fires ONLY when the cache
+     * lock has failed open (e.g., misconfigured `array` cache driver
+     * under multi-process workers, Redis flap mid-job). The primary
+     * defense is the `WithoutOverlapping` middleware.
      */
     private function isRecentlyAttempted(FiscalEventProjectionRow $row): bool
     {

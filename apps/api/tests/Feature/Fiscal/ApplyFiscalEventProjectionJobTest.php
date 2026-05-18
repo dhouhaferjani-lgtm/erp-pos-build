@@ -29,6 +29,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
@@ -831,20 +832,127 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // Clear the throw so the retry actually applies.
         $this->clearProjectorThrow('treasury_receipt_bridge');
 
-        // Retry: MUST proceed (NOT short-circuit). Without round-3 this
-        // would silently no-op and leave the row stuck.
+        try {
+            // Retry: MUST proceed (NOT short-circuit). Without round-3 this
+            // would silently no-op and leave the row stuck.
+            $this->runJobInline($projectionRow->id);
+
+            $afterRetry = DB::table('fiscal_event_projections')
+                ->where('id', $projectionRow->id)->first();
+            $this->assertNotNull($afterRetry);
+            $this->assertSame(
+                'applied',
+                $afterRetry->projection_status,
+                'Round-3 T23-R2-B1 contract: the Horizon retry must reach apply() and mark the row applied. If this fails, the stale-running short-circuit silently killed the retry path.',
+            );
+        } finally {
+            // Round-4 R3-F2: reset MUST live in finally so a mid-test
+            // assertion failure cannot leak `Carbon::setTestNow(+10s)`
+            // into the next test in the suite (would surface as a flake
+            // in any time-sensitive test that runs after this one).
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_in_flight_running_row_short_circuits_even_when_cache_lock_fails_open(): void
+    {
+        // Codex R3-P1-1 BLOCKER (round-4 fix). The Task 23 two-defense
+        // design relies on the in-flight guard to short-circuit a duplicate
+        // delivery whose `WithoutOverlapping` cache lock failed open
+        // (Redis flap, misconfigured cache driver, cross-process `array`
+        // store, etc.). The guard fires on `(status=Running &&
+        // isRecentlyAttempted)`, but `isRecentlyAttempted` returns false
+        // when `last_attempted_at IS NULL`.
+        //
+        // **The bug round-3 left open.** Round-3's T_lock flipped the
+        // status to `Running` and saved — but did NOT stamp
+        // `last_attempted_at`. So a row that was genuinely in-flight
+        // (Worker A just past T_lock, mid-`apply()`) sat at
+        // `(Running, last_attempted_at=null)`. If the cache lock failed
+        // open and Worker B's middleware let the duplicate through,
+        // Worker B's T_lock loaded the row, the guard's null-path returned
+        // false, the guard did NOT fire, T_lock re-flipped Running + saved,
+        // returned `true`, and Worker B entered `apply()` concurrently
+        // with Worker A. Double execution. (Note that
+        // `advanceFailureAccounting` and `recordHardFailure` DO stamp
+        // `last_attempted_at`, but those only run AFTER apply() —
+        // round-3's guard had no in-flight signal during the first attempt
+        // because the only writer of `last_attempted_at` was failure
+        // accounting.)
+        //
+        // **Round-4 fix.** T_lock now stamps `last_attempted_at =
+        // Carbon::now('UTC')` in the same `save()` as the Running flip.
+        // The column's semantics shift slightly — "when did we last CLAIM
+        // this row for an attempt" rather than "when did we last try and
+        // fail" — but the shift is downstream-safe (no production query
+        // orders by this column; the stale-running guard's
+        // `now - last_attempted_at > timeout` check still works because
+        // claim time and try time are within seconds of each other; the
+        // failure-accounting path overwrites the timestamp on every
+        // failure so the operator-visible "last attempted" semantic is
+        // preserved).
+        //
+        // **Test mechanism (bug-pinner).** Use a re-entrant projector
+        // whose first `apply()` invocation simulates Worker B's
+        // middleware-bypassed re-delivery by directly invoking a fresh
+        // `handle()` on the same projection row. This is the literal
+        // shape of "cache lock failed open and the duplicate entered the
+        // job's `handle()` body".
+        //
+        // Trace on round-3 (no stamp):
+        //   Worker A T_lock: (Pending, null) → (Running, null), commits.
+        //   Worker A enters apply(). Inside apply, simulate Worker B by
+        //     invoking handle() again.
+        //   Worker B T_lock: loads (Running, null) → not terminal → guard
+        //     sees `Running && isRecentlyAttempted(null) = false` → falls
+        //     through → re-flips status (still Running) + saves → returns
+        //     true → enters apply() → projector recursively invoked.
+        //     invocationCount = 2.
+        //   Test FAILS the assertSame(1, ...) — round-3 bug pinned.
+        //
+        // Trace on round-4 (T_lock stamps last_attempted_at):
+        //   Worker A T_lock: (Pending, null) → (Running, now), commits.
+        //   Worker A enters apply(). Inside apply, simulate Worker B.
+        //   Worker B T_lock: loads (Running, now) → not terminal → guard
+        //     sees `Running && isRecentlyAttempted(now) = true` → returns
+        //     false → T_lock short-circuits → handle() returns without
+        //     invoking apply().
+        //   invocationCount = 1. Test passes.
+        $reentrant = new ReentrantFakeProjector(
+            name: 'pos_core_receipt',
+            requiresModule: null,
+            priority: 50,
+            container: $this->app,
+        );
+        $this->registerProjectors([$reentrant]);
+
+        [$event, $projectionRow] = $this->pendingProjection('pos_core_receipt');
+
         $this->runJobInline($projectionRow->id);
 
-        $afterRetry = DB::table('fiscal_event_projections')
-            ->where('id', $projectionRow->id)->first();
-        $this->assertNotNull($afterRetry);
+        // Round-4 contract: projector invoked EXACTLY once. The re-entrant
+        // (simulated Worker B) handle() invocation must have short-
+        // circuited inside T_lock via the in-flight guard — because the
+        // round-4 T_lock stamped `last_attempted_at` when it flipped to
+        // Running.
         $this->assertSame(
-            'applied',
-            $afterRetry->projection_status,
-            'Round-3 T23-R2-B1 contract: the Horizon retry must reach apply() and mark the row applied. If this fails, the stale-running short-circuit silently killed the retry path.',
+            1,
+            $reentrant->invocationCount,
+            'R3-P1-1 round-4 contract: T_lock must stamp last_attempted_at when flipping to Running so the in-flight guard correctly identifies the row as in-flight even when WithoutOverlapping fails open. Without the stamp, the duplicate delivery enters apply() concurrently — invocationCount would be 2.',
         );
 
-        Carbon::setTestNow();
+        // Cross-check: from inside the re-entrant apply, the row SHOULD
+        // have been observable as `(Running, last_attempted_at=now)` —
+        // record that observation here.
+        $this->assertNotNull(
+            $reentrant->observedLastAttemptedAtDuringReentry,
+            'R3-P1-1 round-4 invariant: between T_lock commit and apply() entry, the row MUST carry last_attempted_at IS NOT NULL. A null observation here means T_lock did not stamp the column on Running entry — duplicate deliveries hitting a failed-open cache lock would see the in-flight guard fail.',
+        );
+
+        // Sanity: the row ends `applied` (Worker A completed normally).
+        $row = DB::table('fiscal_event_projections')->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('applied', $row->projection_status);
     }
 
     // =================================================================
@@ -874,16 +982,21 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // line 333 must short-circuit the write: dead_lettered_at and
         // last_error are unchanged.
         Carbon::setTestNow(Carbon::now('UTC')->addSeconds(60));
-        $job->failed(new RuntimeException('second failure'));
+        try {
+            $job->failed(new RuntimeException('second failure'));
 
-        $second = DB::table('fiscal_event_projections')
-            ->where('id', $projectionRow->id)->first();
-        $this->assertNotNull($second);
-        $this->assertSame($firstTimestamp, (string) $second->dead_lettered_at);
-        $this->assertSame($firstError, (string) $second->last_error);
-        $this->assertSame('dead_lettered', $second->projection_status);
-
-        Carbon::setTestNow();
+            $second = DB::table('fiscal_event_projections')
+                ->where('id', $projectionRow->id)->first();
+            $this->assertNotNull($second);
+            $this->assertSame($firstTimestamp, (string) $second->dead_lettered_at);
+            $this->assertSame($firstError, (string) $second->last_error);
+            $this->assertSame('dead_lettered', $second->projection_status);
+        } finally {
+            // Round-4 R3-F2: reset MUST live in finally so a mid-test
+            // assertion failure cannot leak `Carbon::setTestNow(+60s)`
+            // into the next test in the suite.
+            Carbon::setTestNow();
+        }
     }
 
     // =================================================================
@@ -1403,5 +1516,113 @@ final class ReleaseRecordingJobSpy
     {
         $this->wasReleased = true;
         $this->releaseDelay = $delay;
+    }
+}
+
+/**
+ * Test-local re-entrant projector for the Task 23 round-4 R3-P1-1
+ * regression — simulates the literal cache-lock-failed-open scenario
+ * by, inside its first `apply()` invocation, dispatching a fresh
+ * `ApplyFiscalEventProjectionJob::handle()` for the same projection
+ * row id. This mirrors the production shape where a duplicate
+ * delivery whose `WithoutOverlapping` cache lock failed open would
+ * land in the job's `handle()` body while Worker A is still mid-apply.
+ *
+ * Records the invocation count + the row's `last_attempted_at`
+ * observation taken from inside the FIRST `apply()` body (BEFORE the
+ * re-entrant handle() call) so the round-4 invariant ("T_lock stamps
+ * last_attempted_at when flipping to Running") can be asserted
+ * directly.
+ *
+ * Guards against unbounded recursion: tracks `invocationCount` and
+ * skips the re-entrant dispatch on subsequent calls — but the round-4
+ * contract is that the re-entrant call short-circuits inside T_lock
+ * BEFORE reaching apply(), so `invocationCount` should stay at 1.
+ * If the round-3 bug is present, the re-entrant call DOES reach
+ * apply(), and the recursion guard fires on the second call to
+ * prevent infinite recursion — invocationCount becomes 2 (or more,
+ * depending on the guard's exact placement). Either way the
+ * assertion `assertSame(1, invocationCount)` catches the bug.
+ */
+final class ReentrantFakeProjector implements FiscalEventProjector
+{
+    public int $invocationCount = 0;
+
+    public ?Carbon $observedLastAttemptedAtDuringReentry = null;
+
+    public function __construct(
+        private readonly string $name,
+        private readonly ?string $requiresModule,
+        private readonly int $priority,
+        private readonly Application $container,
+    ) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::SALE_RECEIPT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return $this->requiresModule;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        $this->invocationCount++;
+
+        if ($this->invocationCount > 1) {
+            // Recursion guard — if this fires, the round-3 bug is present
+            // (the re-entrant handle() did NOT short-circuit inside T_lock,
+            // so apply() was invoked again). The test's
+            // `assertSame(1, $reentrant->invocationCount)` will catch
+            // this; we return early here to avoid infinite recursion.
+            return;
+        }
+
+        // From INSIDE Worker A's apply(), observe the row state. The
+        // round-4 invariant is `last_attempted_at IS NOT NULL` (T_lock
+        // stamped it on Running entry). Round-3 leaves it null because
+        // T_lock didn't stamp it and apply() has not yet thrown / advanced
+        // failure accounting.
+        $row = FiscalEventProjectionRow::query()
+            ->whereKey($this->resolveProjectionRowIdFor($event->id))
+            ->first();
+
+        $this->observedLastAttemptedAtDuringReentry = $row?->last_attempted_at;
+
+        // Simulate Worker B's middleware-bypassed re-delivery — invoke a
+        // fresh handle() on the same projection row. Round-4 contract:
+        // this MUST short-circuit inside T_lock without re-entering
+        // apply(). Round-3 bug: this reaches apply() (caught by the
+        // recursion guard above).
+        if ($row !== null) {
+            $duplicate = new ApplyFiscalEventProjectionJob($row->id);
+            $this->container->call([$duplicate, 'handle']);
+        }
+    }
+
+    public function priority(): int
+    {
+        return $this->priority;
+    }
+
+    /**
+     * Resolve the projection row id for the given fiscal_event_id +
+     * this projector's name. In the test there is exactly one such row.
+     */
+    private function resolveProjectionRowIdFor(string $fiscalEventId): ?string
+    {
+        $row = FiscalEventProjectionRow::query()
+            ->where('fiscal_event_id', $fiscalEventId)
+            ->where('projector_name', $this->name)
+            ->first();
+
+        return $row?->id;
     }
 }
