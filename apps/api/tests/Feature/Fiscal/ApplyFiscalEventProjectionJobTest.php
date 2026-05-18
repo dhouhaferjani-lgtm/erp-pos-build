@@ -241,9 +241,14 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $this->assertNotNull($row->last_error);
         $this->assertStringContainsString('configurable fake projector failure', $row->last_error);
         $this->assertNotNull($row->last_attempted_at);
-        // Status remains `running` between Horizon retries — the row is
-        // visible to operator tooling as in-flight, not stuck pending.
-        $this->assertSame('running', $row->projection_status);
+        // Task 23 round-3 (Codex T23-R2-B1): status RESET to `pending`
+        // after the failure so the next Horizon retry's T_lock proceeds
+        // normally without tripping the stale-running guard. Operator
+        // visibility for the in-flight retry comes from `attempts > 0` +
+        // `last_error IS NOT NULL` (asserted above), NOT from the status
+        // column. Pre-round-3 this assertion was `running` — but that
+        // pinned the bug, not the contract.
+        $this->assertSame('pending', $row->projection_status);
         $this->assertNull($row->applied_at);
         $this->assertNull($row->dead_lettered_at);
     }
@@ -430,10 +435,10 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // The job exposes a `middleware()` method that returns a
         // `WithoutOverlapping` instance keyed on the projection row id,
         // with `expireAfter` matching the job's `$timeout` (crash-recovery
-        // lock release) and `dontRelease()` (duplicate delivery is dropped,
-        // not re-queued). Without this middleware, a duplicate Horizon
-        // delivery could enter `apply()` concurrently with the in-flight
-        // worker — round-1 had no such defense.
+        // lock release) and `releaseAfter($timeout + 30)` (Task 23 round-3
+        // closure for Codex T23-R2-B2 — replaces round-2's `dontRelease()`
+        // so a duplicate delivery hitting a stale-held lock is re-queued
+        // with delay rather than permanently dropped).
         $projectionRowId = (string) Str::uuid();
         $job = new ApplyFiscalEventProjectionJob($projectionRowId);
 
@@ -442,9 +447,14 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
 
         $first = $this->withoutOverlappingMiddleware($job);
         $this->assertSame($projectionRowId, $first->key);
-        // `dontRelease()` sets releaseAfter to null — duplicate delivery
-        // is silently dropped (not re-queued for retry).
-        $this->assertNull($first->releaseAfter);
+        // Task 23 round-3 (Codex T23-R2-B2): `releaseAfter($timeout + 30)`
+        // — the +30s buffer ensures the re-queued delivery returns AFTER
+        // the worst-case window where the original lock's `expireAfter`
+        // has elapsed. With the round-2 `dontRelease()`, a duplicate that
+        // hit a stale-held lock (crashed worker between Redis retry_after
+        // and our expireAfter) was permanently dropped — no operator
+        // alert, no dead-letter. The re-queue path survives that race.
+        $this->assertSame($job->timeout + 30, $first->releaseAfter);
         // `expireAfter($timeout)` aligns the cache-lock lifetime with the
         // job's own timeout so a crashed worker's lock auto-releases for
         // recovery on the next retry.
@@ -456,50 +466,128 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // Codex T23-B1 regression — exercise the middleware twice in
         // sequence, asserting the cache lock holds across the second
         // invocation. The middleware's `handle()` invokes `$next($job)`
-        // when the lock is acquired; otherwise it either re-queues
-        // (`releaseAfter`) or silently drops (`dontRelease`). We pin
-        // `dontRelease()` here: the second invocation MUST NOT invoke
-        // `$next` because the lock is still held from the first.
+        // when the lock is acquired; otherwise (Task 23 round-3 fix for
+        // Codex T23-R2-B2) it re-queues the duplicate via `release()`.
+        // We pin BOTH: the second invocation MUST NOT invoke `$next` and
+        // MUST call `release()` so the duplicate is re-queued rather than
+        // silently lost (round-2's `dontRelease()` regression).
+        //
+        // Implementation note: the held lock is acquired against the
+        // SPY's own lock key so the middleware sees an exact collision
+        // when it tries to acquire the lock for `$job2`. (The real
+        // job and the spy live in different class namespaces, so the
+        // `getLockKey()` derivation produces different keys for each;
+        // the assertion is about the middleware's release contract, not
+        // about cross-class lock-key parity.)
         $projectionRowId = (string) Str::uuid();
-        $job1 = new ApplyFiscalEventProjectionJob($projectionRowId);
-        $job2 = new ApplyFiscalEventProjectionJob($projectionRowId);
+        $referenceJob = new ApplyFiscalEventProjectionJob($projectionRowId);
+        $spy = new ReleaseRecordingJobSpy($projectionRowId);
+        $spy->timeout = $referenceJob->timeout; // mirror the real timeout so the delay assertion is meaningful
 
-        $middleware1 = $this->withoutOverlappingMiddleware($job1);
-        $middleware2 = $this->withoutOverlappingMiddleware($job2);
+        $middleware = $this->withoutOverlappingMiddleware($referenceJob);
 
         // Acquire the lock manually for the duration of the assertion so
         // we don't have to fork to simulate two live workers. This is
         // exactly what `WithoutOverlapping::handle()` does internally
         // (`Cache::lock($key, $expiresAfter)->get()`).
-        $lockKey = $middleware1->getLockKey($job1);
-        $lock = Cache::lock($lockKey, $job1->timeout);
+        $spyLockKey = $middleware->getLockKey($spy);
+        $lock = Cache::lock($spyLockKey, $referenceJob->timeout);
         $this->assertTrue($lock->get(), 'precondition: lock must be acquirable on first try');
 
         try {
             // While the lock is held by the "first worker", invoke the
             // middleware for the "second delivery". `$next` must not be
-            // called — duplicate delivery is silently dropped.
+            // called — but unlike round-2's `dontRelease()`, `release()`
+            // MUST be invoked with the configured delay (Task 23 round-3
+            // T23-R2-B2 fix) so the duplicate survives the lock-held window.
             $nextWasCalled = false;
-            $middleware2->handle($job2, function () use (&$nextWasCalled): void {
+            $middleware->handle($spy, function () use (&$nextWasCalled): void {
                 $nextWasCalled = true;
             });
             $this->assertFalse(
                 $nextWasCalled,
-                'WithoutOverlapping must drop duplicate delivery while sibling worker holds the lock.',
+                'WithoutOverlapping must not invoke $next while sibling worker holds the lock.',
+            );
+            $this->assertTrue(
+                $spy->wasReleased,
+                'Duplicate delivery must be re-queued via release(), not silently dropped (Task 23 round-3 T23-R2-B2).',
+            );
+            $this->assertSame(
+                $referenceJob->timeout + 30,
+                $spy->releaseDelay,
+                'release() delay must equal timeout + 30s buffer so the re-queued delivery returns AFTER the original lock could plausibly have expired.',
             );
         } finally {
             $lock->release();
         }
 
-        // After release, a fresh delivery proceeds normally.
+        // After release, a fresh delivery proceeds normally — middleware
+        // acquires the lock and invokes $next; release() is NOT called.
+        $spy2 = new ReleaseRecordingJobSpy($projectionRowId);
+        $spy2->timeout = $referenceJob->timeout;
         $nextWasCalledAfterRelease = false;
-        $middleware2->handle($job2, function () use (&$nextWasCalledAfterRelease): void {
+        $middleware->handle($spy2, function () use (&$nextWasCalledAfterRelease): void {
             $nextWasCalledAfterRelease = true;
         });
         $this->assertTrue(
             $nextWasCalledAfterRelease,
             'After lock release, the next delivery acquires the lock and proceeds.',
         );
+        $this->assertFalse(
+            $spy2->wasReleased,
+            'When the lock is acquirable, the middleware must NOT call release() — the job proceeds normally.',
+        );
+    }
+
+    public function test_without_overlapping_re_queues_duplicate_delivery_when_lock_already_held(): void
+    {
+        // Codex T23-R2-B2 BLOCKER regression. Round-2 used `dontRelease()`
+        // which would silently DROP a duplicate delivery hitting a
+        // stale-held lock. If worker A crashes between Redis's
+        // `retry_after` (default 90s) and the lock's `expireAfter` (120s),
+        // the duplicate is permanently lost — no operator alert, no
+        // dead-letter, the projection is stuck in a phantom state.
+        //
+        // Round-3 fix: `releaseAfter($timeout + 30)`. When the lock is
+        // already held, `WithoutOverlapping::handle()` calls
+        // `$job->release($this->releaseAfter)` (vendor middleware line 82)
+        // — the queued job is re-pushed onto its queue with the configured
+        // delay. By the time the delayed delivery comes back, either the
+        // original lock-holder has finished + released, or the lock has
+        // expired and the re-delivery can acquire it cleanly.
+        $projectionRowId = (string) Str::uuid();
+        $referenceJob = new ApplyFiscalEventProjectionJob($projectionRowId);
+        $duplicate = new ReleaseRecordingJobSpy($projectionRowId);
+        $duplicate->timeout = $referenceJob->timeout;
+
+        $middleware = $this->withoutOverlappingMiddleware($referenceJob);
+        // Lock key derives from the spy's class — acquire against the
+        // exact key the middleware will check for the duplicate.
+        $duplicateLockKey = $middleware->getLockKey($duplicate);
+
+        // Simulate worker A holding the lock (mid-apply or crashed).
+        $lock = Cache::lock($duplicateLockKey, $referenceJob->timeout);
+        $this->assertTrue($lock->get(), 'precondition: first lock acquisition must succeed');
+
+        try {
+            // Worker B receives the duplicate delivery. Middleware must
+            // re-queue via release() — NOT silently drop.
+            $middleware->handle($duplicate, function (): void {
+                $this->fail('Middleware must NOT invoke $next when the lock is already held.');
+            });
+
+            $this->assertTrue(
+                $duplicate->wasReleased,
+                'Round-3 contract: duplicate delivery hitting a held lock must call release(), not silently drop (round-2 regression).',
+            );
+            $this->assertSame(
+                $referenceJob->timeout + 30,
+                $duplicate->releaseDelay,
+                'Round-3 contract: release() delay must equal $timeout + 30s buffer.',
+            );
+        } finally {
+            $lock->release();
+        }
     }
 
     /**
@@ -641,7 +729,10 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $treasuryAfterFirst = DB::table('fiscal_event_projections')
             ->where('id', $treasuryRow->id)->first();
         $this->assertNotNull($treasuryAfterFirst);
-        $this->assertSame('running', $treasuryAfterFirst->projection_status);
+        // Round-3 (Codex T23-R2-B1): status reset to `pending` after
+        // the dependency-missing throw so the retry path can re-enter
+        // T_lock without tripping the stale-running guard.
+        $this->assertSame('pending', $treasuryAfterFirst->projection_status);
         $this->assertSame(1, (int) $treasuryAfterFirst->attempts);
         $this->assertStringContainsString(
             'pos_receipts',
@@ -662,17 +753,13 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         );
 
         // 3) Treasury retry — now the dependency is visible, succeeds.
-        // Advance the stale-running clock so the retry doesn't get
-        // short-circuited by the belt-and-braces age check (which
-        // assumes "fresh running = sibling worker mid-apply"). In
-        // production, Horizon's backoff exceeds the freshness window.
-        DB::table('fiscal_event_projections')
-            ->where('id', $treasuryRow->id)
-            ->update([
-                'last_attempted_at' => Carbon::now('UTC')->subSeconds(
-                    (new ApplyFiscalEventProjectionJob($treasuryRow->id))->timeout + 60,
-                ),
-            ]);
+        //
+        // Pre-round-3 this section had to manually age `last_attempted_at`
+        // past the freshness window to dodge the stale-running guard;
+        // that workaround masked the round-2 BLOCKER Codex caught
+        // (T23-R2-B1). Round-3 reset status to `pending` on failure, so
+        // the retry's T_lock now sees `pending` and proceeds normally —
+        // no clock-juggling needed.
 
         $this->runJobInline($treasuryRow->id);
 
@@ -684,6 +771,80 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         // Treasury Payment + GL entry now written.
         $this->assertSame(1, DB::table('payments')->count());
         $this->assertGreaterThan(0, DB::table('journal_entries')->count());
+    }
+
+    public function test_horizon_retry_after_failure_does_not_hit_stale_running_short_circuit(): void
+    {
+        // Codex T23-R2-B1 BLOCKER regression. Round-2 added a belt-and-
+        // braces stale-running check to T_lock: if status=Running AND
+        // last_attempted_at is fresh (within $timeout), short-circuit as
+        // "sibling worker mid-apply". BUT advanceFailureAccounting() set
+        // last_attempted_at = now() after every failure AND left status =
+        // Running. So the next Horizon retry's T_lock saw status=Running
+        // + fresh timestamp → short-circuited → projector never re-ran.
+        // The Treasury retry path was silently dead.
+        //
+        // Round-3 fix: advanceFailureAccounting() now resets
+        // projection_status to Pending after recording a failure, so the
+        // next retry's T_lock sees Pending and proceeds normally. The
+        // stale-running guard now only fires for genuinely anomalous
+        // rows (Running with no failure log between attempts).
+        //
+        // The round-2 cross-worker race test passed only because
+        // runJobInline runs sequentially without Carbon::setTestNow
+        // advancing between attempts — so by the time the test forced
+        // the retry, the prior runJobInline had completed and the test
+        // explicitly aged last_attempted_at past the freshness window.
+        // In production, Horizon's actual delay-then-retry would always
+        // hit the in-flight branch first.
+        [$event, $projectionRow] = $this->pendingProjection('treasury_receipt_bridge');
+        $this->forceProjectorToThrow('treasury_receipt_bridge');
+
+        // First attempt: throws. Failure is recorded; round-3 contract
+        // is status reset to Pending.
+        try {
+            $this->runJobInline($projectionRow->id);
+            $this->fail('First attempt must throw — projector was forced to throw.');
+        } catch (\Throwable) {
+            // expected
+        }
+
+        $afterFirst = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($afterFirst);
+        $this->assertSame(1, (int) $afterFirst->attempts);
+        $this->assertNotNull($afterFirst->last_attempted_at);
+        // R3 INVARIANT: status reset to `pending` so the next retry's
+        // T_lock proceeds (instead of tripping the stale-running guard).
+        $this->assertSame(
+            'pending',
+            $afterFirst->projection_status,
+            'Round-3 T23-R2-B1 fix: advanceFailureAccounting must reset status to Pending so retry proceeds.',
+        );
+
+        // Simulate Horizon backoff — short delay, WELL within the
+        // stale-running freshness window ($timeout = 120s). Without the
+        // round-3 fix, this is exactly the timing that round-2's guard
+        // tripped on.
+        Carbon::setTestNow(Carbon::now('UTC')->addSeconds(10));
+
+        // Clear the throw so the retry actually applies.
+        $this->clearProjectorThrow('treasury_receipt_bridge');
+
+        // Retry: MUST proceed (NOT short-circuit). Without round-3 this
+        // would silently no-op and leave the row stuck.
+        $this->runJobInline($projectionRow->id);
+
+        $afterRetry = DB::table('fiscal_event_projections')
+            ->where('id', $projectionRow->id)->first();
+        $this->assertNotNull($afterRetry);
+        $this->assertSame(
+            'applied',
+            $afterRetry->projection_status,
+            'Round-3 T23-R2-B1 contract: the Horizon retry must reach apply() and mark the row applied. If this fails, the stale-running short-circuit silently killed the retry path.',
+        );
+
+        Carbon::setTestNow();
     }
 
     // =================================================================
@@ -767,9 +928,13 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
             (string) $after->last_error,
         );
         $this->assertNotNull($after->last_attempted_at);
-        // Status stays `running` between Horizon retries; only `failed()`
-        // flips to `dead_lettered`.
-        $this->assertSame('running', $after->projection_status);
+        // Task 23 round-3 (Codex T23-R2-B1, symmetric fix in
+        // recordHardFailure): status reset to `pending` between Horizon
+        // retries so the retry's T_lock proceeds. Operator visibility
+        // for hard-misconfig retries comes from `last_error` containing
+        // the misconfig reason. Only `failed()` flips to `dead_lettered`
+        // after Horizon exhausts `$tries`.
+        $this->assertSame('pending', $after->projection_status);
     }
 
     public function test_missing_projector_records_hard_failure_and_throws(): void
@@ -812,7 +977,10 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
             'projector deregistered',
             (string) $after->last_error,
         );
-        $this->assertSame('running', $after->projection_status);
+        // Round-3 (Codex T23-R2-B1 symmetric fix): status reset to
+        // `pending` so Horizon's retry path proceeds and ultimately
+        // dead-letters via `failed()` after `$tries` exhaustion.
+        $this->assertSame('pending', $after->projection_status);
     }
 
     // =================================================================
@@ -869,6 +1037,24 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
             ));
         }
         $existing->shouldThrow = true;
+    }
+
+    /**
+     * Inverse of `forceProjectorToThrow` — flip the projector back to the
+     * "always succeeds" mode. Used by the Codex T23-R2-B1 round-3
+     * regression test to simulate "the transient downstream failure
+     * resolved between Horizon attempts".
+     */
+    private function clearProjectorThrow(string $name): void
+    {
+        $existing = $this->projectorsByName[$name] ?? null;
+        if (! $existing instanceof ConfigurableFakeProjector) {
+            throw new RuntimeException(sprintf(
+                'clearProjectorThrow("%s"): no test-local ConfigurableFakeProjector registered with this name.',
+                $name,
+            ));
+        }
+        $existing->shouldThrow = false;
     }
 
     /**
@@ -1182,5 +1368,40 @@ final class TreasuryAlwaysActiveResolver implements ModuleActivationResolver
         unset($module, $tenantId, $companyId);
 
         return true;
+    }
+}
+
+/**
+ * Test-local spy used by Task 23 round-3 (Codex T23-R2-B2) regressions
+ * that assert `WithoutOverlapping` re-queues a duplicate delivery via
+ * `release()` rather than silently dropping it (round-2 `dontRelease()`
+ * regression). Records whether `release()` was called and the delay.
+ *
+ * Implementation note: `ApplyFiscalEventProjectionJob` is `final` so we
+ * cannot subclass it. Instead we mirror its public-facing shape just
+ * enough for `WithoutOverlapping::handle()` to invoke `release()` when
+ * the lock is held. Per the vendor middleware
+ * (`WithoutOverlapping::getLockKey()`), the lock key derives from
+ * `get_class($job)` when the job has no `displayName()` method. The real
+ * job has no such method either — but the spy lives in a DIFFERENT class
+ * namespace, so the lock key will differ. The test compensates by
+ * acquiring the held lock against the SPY's own lock key (computed via
+ * `getLockKey($spy)`) so the lock-key collision the middleware looks for
+ * is exact.
+ */
+final class ReleaseRecordingJobSpy
+{
+    public bool $wasReleased = false;
+
+    public ?int $releaseDelay = null;
+
+    public int $timeout = 120;
+
+    public function __construct(public readonly string $projectionRowId) {}
+
+    public function release(int $delay = 0): void
+    {
+        $this->wasReleased = true;
+        $this->releaseDelay = $delay;
     }
 }
