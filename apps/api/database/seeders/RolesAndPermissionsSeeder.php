@@ -302,6 +302,15 @@ class RolesAndPermissionsSeeder extends Seeder
             //   `fiscal:verify-event-chain` command (spec §15.1) added in
             //   Task 31; pre-registered here so Task 24's seeder edit
             //   doesn't need a follow-up bump.
+            //   ROUND-2 NOTE (Task 24 Opus F4 P2): deliberate scope
+            //   expansion — KEPT per round-2 disposition. CLAUDE.md
+            //   rule 4 ("One Task at a Time — No Scope Creep") favors
+            //   atomic edits, but the cost of adding the permission
+            //   twice (here in Task 24 + again in Task 31 with a
+            //   permission-name finalization risk) is worse than the
+            //   cost of pre-registering once. The name
+            //   `fiscal.events.verify_chain` is locked by spec §15.1
+            //   and consumed by Task 31 only.
             'fiscal.events.resolve_quarantine',
             'fiscal.events.verify_chain',
 

@@ -7,7 +7,6 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
-use LogicException;
 use RuntimeException;
 use Throwable;
 
@@ -90,41 +89,36 @@ final class StrictCanonicalParser
         'terminal_id',
     ];
 
-    /**
-     * Expected payload key set per event type. The DTO `fromArray()` only
-     * validates that required keys are present; the parser additionally
-     * rejects any extra keys (BLOCKER F2 round-2).
-     *
-     * @var array<value-of<FiscalEventType>, list<string>>
-     */
-    private const PAYLOAD_KEYS = [
-        'SALE_RECEIPT' => [
-            'currency', 'currency_scale', 'discount_total', 'lines',
-            'payment_lines', 'subtotal', 'tax_total', 'total',
-            'vat_breakdown', 'voucher_redemptions',
-        ],
-        'CHAIN_BREAK_DETECTED' => [
-            'last_good_hash', 'last_good_sequence',
-            'offending_record_reference', 'reason',
-        ],
-        'CHAIN_RESTART' => [
-            'last_good_anchor', 'new_genesis_reference',
-            'operator_authorization_evidence', 'provenance_link',
-        ],
-        'TERMINAL_REGISTRY_SNAPSHOT' => [
-            'prior_snapshot_link', 'snapshot_hash', 'terminals',
-        ],
-    ];
-
     private string $bytes = '';
 
     private int $pos = 0;
 
     private int $len = 0;
 
+    private readonly FiscalPayloadConstraintValidator $constraintValidator;
+
+    /**
+     * The per-event payload constraint validator (`FiscalPayloadConstraintValidator`)
+     * is constructor-injected when supplied (production wiring) and
+     * defaulted to a fresh instance otherwise. The fallback exists so
+     * round-1 tests that build a bare parser via `new StrictCanonicalParser($registry)`
+     * keep working — the validator is a pure-function class with no
+     * dependencies of its own.
+     *
+     * Round-2 (Task 24 Opus F2 / Codex T24-P1): the per-event constraint
+     * validation surface was extracted into
+     * `FiscalPayloadConstraintValidator` so the parser AND
+     * `ParseFailureResolutionService` share ONE source of truth on
+     * what a trusted payload looks like. Without the extraction, the
+     * resolver only ran the DTO's top-level type checks — a real
+     * correctness gap.
+     */
     public function __construct(
         private readonly FiscalEventPayloadRegistry $registry,
-    ) {}
+        ?FiscalPayloadConstraintValidator $constraintValidator = null,
+    ) {
+        $this->constraintValidator = $constraintValidator ?? new FiscalPayloadConstraintValidator;
+    }
 
     public function parse(string $canonicalBytes, FiscalEventType $type): ParseResult
     {
@@ -185,13 +179,13 @@ final class StrictCanonicalParser
             return ParseResult::failure('schema_violation:'.$e->getMessage());
         }
 
-        $extrasError = $this->validatePayloadKeySet($type, $payload);
+        $extrasError = $this->constraintValidator->validatePayloadKeySet($type, $payload);
         if ($extrasError !== null) {
             return ParseResult::failure($extrasError);
         }
 
         try {
-            $this->validatePerEventConstraints($type, $payload);
+            $this->constraintValidator->validatePerEventConstraints($type, $payload);
         } catch (RuntimeException $e) {
             return ParseResult::failure('sub_array_shape:'.$e->getMessage());
         }
@@ -581,234 +575,11 @@ final class StrictCanonicalParser
         return null;
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validatePayloadKeySet(FiscalEventType $type, array $payload): ?string
-    {
-        $expected = self::PAYLOAD_KEYS[$type->value] ?? null;
-        if ($expected === null) {
-            // Defense — already rejected at registry lookup, but keeps the
-            // method total over the enum.
-            return 'event_type_unimplemented:'.$type->value;
-        }
-
-        $extras = array_diff(array_keys($payload), $expected);
-        if (count($extras) > 0) {
-            return 'payload_extra_field:'.implode(',', $extras);
-        }
-
-        return null;
-    }
-
     // -----------------------------------------------------------------
-    // Per-event constraints — sub-array shape (Task 14 P2-2 carry-forward),
-    // money format (BLOCKER F4 round-2), hash format (P1 F6 / Opus P1-1).
+    // Per-event constraints + payload key set validation moved into
+    // `FiscalPayloadConstraintValidator` (round-2 Task 24 Opus F2 /
+    // Codex T24-P1). The validator is constructor-injected so the
+    // resolver shares the same constraint surface — see this class's
+    // constructor docblock.
     // -----------------------------------------------------------------
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validatePerEventConstraints(FiscalEventType $type, array $payload): void
-    {
-        match ($type) {
-            FiscalEventType::SALE_RECEIPT => $this->validateSaleReceiptPayload($payload),
-            FiscalEventType::CHAIN_BREAK_DETECTED => $this->validateChainBreakDetectedPayload($payload),
-            FiscalEventType::CHAIN_RESTART => $this->validateChainRestartPayload($payload),
-            FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT => $this->validateTerminalRegistrySnapshotPayload($payload),
-            // Opus P2-3 round-2 — explicit throw so a future Phase 1 event
-            // type cannot land without a corresponding parser clause.
-            default => throw new LogicException(
-                'StrictCanonicalParser missing per-event clause for FiscalEventType::'.$type->name
-            ),
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateSaleReceiptPayload(array $payload): void
-    {
-        $scale = $payload['currency_scale'];
-        if (! is_int($scale) || $scale < 0 || $scale > 8) {
-            throw new RuntimeException('currency_scale must be a non-negative int <= 8; got '.var_export($scale, true));
-        }
-        $moneyRegex = $this->moneyRegex($scale);
-
-        // Top-level monetary fields.
-        foreach (['subtotal', 'discount_total', 'tax_total', 'total'] as $field) {
-            $this->assertMoneyString($payload, $field, $moneyRegex, $scale);
-        }
-
-        // Sub-array containers.
-        $this->validateListOfAssoc($payload, 'lines', $moneyRegex, $scale, ['unit_price', 'line_total']);
-        $this->validateListOfAssoc($payload, 'vat_breakdown', $moneyRegex, $scale, ['base', 'amount']);
-        $this->validateListOfAssoc($payload, 'payment_lines', $moneyRegex, $scale, ['amount', 'tendered', 'change']);
-        $this->validateListOfAssoc($payload, 'voucher_redemptions', $moneyRegex, $scale, ['amount']);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateChainBreakDetectedPayload(array $payload): void
-    {
-        // `last_good_hash` is 64-char lowercase hex per spec §9.
-        $this->assertHashField($payload, 'last_good_hash');
-
-        // `offending_record_reference` is a non-empty assoc object; if it
-        // carries an `observed_previous_hash`, that's a hash.
-        $this->validateNonEmptyAssoc($payload, 'offending_record_reference');
-        /** @var array<string, mixed> $ref */
-        $ref = $payload['offending_record_reference'];
-        if (array_key_exists('observed_previous_hash', $ref)) {
-            $this->assertHashField($ref, 'observed_previous_hash', 'offending_record_reference.observed_previous_hash');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateChainRestartPayload(array $payload): void
-    {
-        $this->assertHashField($payload, 'new_genesis_reference');
-        $this->validateNonEmptyAssoc($payload, 'last_good_anchor');
-        $this->validateNonEmptyAssoc($payload, 'operator_authorization_evidence');
-        $this->validateNonEmptyAssoc($payload, 'provenance_link');
-
-        /** @var array<string, mixed> $anchor */
-        $anchor = $payload['last_good_anchor'];
-        if (array_key_exists('hash', $anchor)) {
-            $this->assertHashField($anchor, 'hash', 'last_good_anchor.hash');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateTerminalRegistrySnapshotPayload(array $payload): void
-    {
-        $this->assertHashField($payload, 'snapshot_hash');
-        // `prior_snapshot_link` is nullable; when present and non-null it's
-        // the prior snapshot's hash per spec §11 ("(carries a hash; links
-        // to the prior snapshot)").
-        if (($payload['prior_snapshot_link'] ?? null) !== null) {
-            $this->assertHashField($payload, 'prior_snapshot_link');
-        }
-
-        $this->validateListOfAssoc($payload, 'terminals', $this->moneyRegex(0), 0, []);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @param  list<string>  $monetaryStringFields  field names that, when present, must match `$moneyRegex`
-     */
-    private function validateListOfAssoc(array $payload, string $key, string $moneyRegex, int $moneyScale, array $monetaryStringFields): void
-    {
-        $items = $payload[$key] ?? null;
-        if (! is_array($items)) {
-            // Defense — DTO::fromArray() already throws on non-array.
-            throw new RuntimeException("$key must be an array; got ".get_debug_type($items));
-        }
-        // P1 F5 round-2 — the container MUST be a JSON list, not an object.
-        // `array_is_list([])` returns true so this also accepts empty lists.
-        if (! array_is_list($items)) {
-            throw new RuntimeException("$key must be a JSON list, not an object");
-        }
-        foreach ($items as $index => $item) {
-            if (! is_array($item)) {
-                throw new RuntimeException("{$key}[{$index}] must be an object; got ".get_debug_type($item));
-            }
-            if (count($item) === 0) {
-                throw new RuntimeException("{$key}[{$index}] must be a non-empty object; got empty");
-            }
-            if (array_is_list($item)) {
-                throw new RuntimeException("{$key}[{$index}] must be an object, not a list");
-            }
-            // After the is_array + count > 0 + !array_is_list checks above,
-            // $item is a non-empty associative array — safe to pass to
-            // assertMoneyString which expects `array<string, mixed>`.
-            foreach ($monetaryStringFields as $field) {
-                if (array_key_exists($field, $item)) {
-                    $this->assertMoneyString($item, $field, $moneyRegex, $moneyScale, "{$key}[{$index}].{$field}");
-                }
-            }
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function validateNonEmptyAssoc(array $payload, string $key): void
-    {
-        $value = $payload[$key] ?? null;
-        if (! is_array($value)) {
-            throw new RuntimeException("$key must be an object; got ".get_debug_type($value));
-        }
-        if (count($value) === 0) {
-            throw new RuntimeException("$key must be a non-empty object; got empty");
-        }
-        if (array_is_list($value)) {
-            throw new RuntimeException("$key must be an object, not a list");
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $bag  source object (top-level payload or nested object)
-     */
-    private function assertMoneyString(array $bag, string $field, string $regex, int $scale, ?string $reportAs = null): void
-    {
-        $label = $reportAs ?? $field;
-        $value = $bag[$field] ?? null;
-        if (! is_string($value)) {
-            throw new RuntimeException(sprintf(
-                '%s must be a CurrencyScale::bcformat() string for scale=%d; got %s',
-                $label,
-                $scale,
-                get_debug_type($value),
-            ));
-        }
-        if (preg_match($regex, $value) !== 1) {
-            throw new RuntimeException(sprintf(
-                '%s must match bcformat(scale=%d); got %s',
-                $label,
-                $scale,
-                var_export($value, true),
-            ));
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $bag
-     */
-    private function assertHashField(array $bag, string $field, ?string $reportAs = null): void
-    {
-        $label = $reportAs ?? $field;
-        $value = $bag[$field] ?? null;
-        if (! is_string($value) || preg_match(self::LOWER_HEX_64, $value) !== 1) {
-            throw new RuntimeException(sprintf(
-                'invalid_hash_format:%s must be 64-char lowercase hex; got %s',
-                $label,
-                var_export($value, true),
-            ));
-        }
-    }
-
-    /**
-     * Scale-aware regex matching `CurrencyScale::bcformat()` output:
-     *
-     *   - scale 0 (e.g. JPY)  → `0`, `-1`, `123`
-     *   - scale 2 (e.g. EUR)  → `0.00`, `-1.50`, `123.45`
-     *   - scale 3 (e.g. TND)  → `0.000`, `-1.500`, `123.456`
-     *
-     * Integer part is `0` or `[1-9]\d*` (no leading zeros); fraction is
-     * exactly `$scale` digits when `$scale > 0`.
-     */
-    private function moneyRegex(int $scale): string
-    {
-        if ($scale === 0) {
-            return '/^-?(0|[1-9]\d*)$/D';
-        }
-
-        return '/^-?(0|[1-9]\d*)\.\d{'.$scale.'}$/D';
-    }
 }

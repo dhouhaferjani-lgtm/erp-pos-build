@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 use Throwable;
 
 /**
@@ -54,6 +55,25 @@ use Throwable;
  * with an unknown user id, or with a user that lacks the permission, the
  * command exits with code 1.
  *
+ * **Spatie team context (round-2 Task 24 Codex T24-P1).** Spatie
+ * permissions are tenant-team-scoped (`config/permission.php:134`),
+ * which means `$user->can(...)` consults the team id currently set on
+ * the `PermissionRegistrar` singleton — NOT the actor's `tenant_id`.
+ * Console commands enter without any team context (Laravel sets none),
+ * so the round-1 implementation relied on whatever team id happened to
+ * be set by an earlier-in-process request or test setUp. We re-scope
+ * the registrar to the actor's tenant in a try/finally before invoking
+ * `can()`, then restore the previous team id — mirroring the
+ * `SetPermissionsTeam` middleware pattern.
+ *
+ * **`--actor-id` design note (round-1 Opus F1 deferred per round-2
+ * disposition).** Spec §15.2 names the gate but does not specify the
+ * mechanism. The `--actor-id` flag is a Phase 1 implementation choice
+ * — pragmatic for a Laravel console command without an authenticated
+ * request user. A formal spec amendment to §15.2 documenting the
+ * convention is deferred to a follow-up documentation task. Task 31's
+ * `fiscal:verify-event-chain` command should mirror this convention.
+ *
  * **Fail-closed on resolver throws.** If
  * `FiscalEventProjectionRegistry::activeProjectorsFor()` throws for one
  * row (resolver outage, registry constructor invariant violation, etc.),
@@ -81,6 +101,7 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
     public function __construct(
         private readonly ConnectionInterface $db,
         private readonly FiscalEventProjectionRegistry $projectionRegistry,
+        private readonly PermissionRegistrar $permissionRegistrar,
     ) {
         parent::__construct();
     }
@@ -102,13 +123,30 @@ final class EnqueueResolvedEventProjectionsCommand extends Command
             return self::FAILURE;
         }
 
-        if (! $actor->can('fiscal.events.resolve_quarantine')) {
-            $this->error(sprintf(
-                'Actor %s lacks the fiscal.events.resolve_quarantine permission.',
-                $actorId,
-            ));
+        // Round-2 (Task 24 Codex T24-P1) — re-scope the Spatie permission
+        // team to the actor's tenant before checking `can()`. Spatie
+        // permissions are team-scoped (config/permission.php:134); without
+        // this, `$actor->can(...)` evaluates against whatever team id was
+        // previously set on the registrar (NULL in a clean console
+        // context, leaking through any test setUp value, etc.). Mirrors
+        // the `SetPermissionsTeam` HTTP middleware pattern.
+        $previousTeamId = $this->permissionRegistrar->getPermissionsTeamId();
+        try {
+            $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
 
-            return self::FAILURE;
+            if (! $actor->can('fiscal.events.resolve_quarantine')) {
+                $this->error(sprintf(
+                    'Actor %s lacks the fiscal.events.resolve_quarantine permission.',
+                    $actorId,
+                ));
+
+                return self::FAILURE;
+            }
+        } finally {
+            // Always restore — even if `can()` threw or we returned
+            // early. Mirrors the fail-closed try/finally discipline from
+            // Task 18 F1 and Task 23 R3-F2 (Carbon::setTestNow).
+            $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
         }
 
         // ---- Resolve the target rows ----

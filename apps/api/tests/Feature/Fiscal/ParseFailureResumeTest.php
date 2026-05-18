@@ -358,6 +358,169 @@ final class ParseFailureResumeTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    // =================================================================
+    // Round-2 regression tests
+    //
+    // F2 (Opus) = T24-P1 (Codex) — corrected payload bypassed
+    // StrictCanonicalParser's per-event constraints, only ran through
+    // DTO::fromArray() top-level type checks. Three tests pin payloads
+    // that pass DTO::fromArray() but fail the strict parser's per-event
+    // grammar (extra top-level key, wrong currency scale, associative
+    // sub-array shape) — each must surface as
+    // InvalidCorrectedPayloadException and leave the row at
+    // payload_parse_status='failed'.
+    //
+    // T24-P2 (Codex) — command must scope the Spatie permission check
+    // to the actor's tenant_id via PermissionRegistrar; without that
+    // scope, `can()` consults whatever team id was previously set on
+    // the registrar (typically NULL in a console context).
+    //
+    // F6 (Opus P3) — exit code 2 transient-failure path now pinned with
+    // a throwing registry resolver.
+    // =================================================================
+
+    public function test_resolver_rejects_payload_with_extra_top_level_key_via_strict_parser(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        $payload = $this->correctedPayload();
+        // Extra payload-level key — DTO::fromArray() does not check key set;
+        // StrictCanonicalParser::validatePayloadKeySet does. Round-2 fix
+        // requires the resolver to delegate to the same constraint validator.
+        $payload['unexpected_extra_key'] = 'whatever';
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $payload, $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException for extra top-level key.');
+        } catch (InvalidCorrectedPayloadException) {
+            // expected
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertNull($row->payload);
+        $this->assertNull($row->integrity_resolved_at);
+        $this->assertNull($row->integrity_resolved_by);
+    }
+
+    public function test_resolver_rejects_money_field_with_wrong_currency_scale(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        // currency_scale=2 implies money strings like "10.00"; "10.000"
+        // (scale=3) is wrong. DTO::fromArray() accepts any string;
+        // StrictCanonicalParser::validateSaleReceiptPayload's
+        // assertMoneyString rejects the scale mismatch.
+        $payload = $this->correctedPayload();
+        $payload['total'] = '10.000'; // wrong scale (3 digits instead of 2)
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $payload, $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException for wrong-scale money string.');
+        } catch (InvalidCorrectedPayloadException) {
+            // expected
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertNull($row->payload);
+        $this->assertNull($row->integrity_resolved_at);
+        $this->assertNull($row->integrity_resolved_by);
+    }
+
+    public function test_resolver_rejects_payload_line_with_associative_array_shape(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        // `lines` must be a JSON list (sequential array). DTO::fromArray()
+        // only checks `is_array`; StrictCanonicalParser's
+        // validateListOfAssoc rejects an associative-array container.
+        $payload = $this->correctedPayload();
+        $payload['lines'] = [
+            'first' => ['sku' => 'X', 'unit_price' => '10.00', 'line_total' => '10.00'],
+        ];
+
+        try {
+            $this->app->make(ParseFailureResolutionService::class)
+                ->resolve($event->id, $payload, $this->resolverUser);
+            $this->fail('Expected InvalidCorrectedPayloadException for non-list lines container.');
+        } catch (InvalidCorrectedPayloadException) {
+            // expected
+        }
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertNull($row->payload);
+    }
+
+    public function test_command_permission_check_is_scoped_to_actor_tenant_not_request_team(): void
+    {
+        // Build a second tenant + an unprivileged user that lives in tenant B.
+        $tenantB = Tenant::factory()->create();
+        $unprivilegedB = User::factory()->create(['tenant_id' => $tenantB->id]);
+
+        // Pre-set the registrar's team id to something OTHER than either
+        // actor's tenant — this simulates a stale / wrong team context that
+        // a console command would have on entry (Laravel sets no team id by
+        // default; the round-1 implementation relied on whatever was set
+        // by the test setUp() at line 113). Tenant C does not exist; the
+        // setUp pre-sets to tenant A — clear it so we can prove the
+        // resolver re-scopes to the actor's tenant.
+        $registrar = $this->app->make(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId(Str::uuid()->toString());
+
+        // Actor A: in tenant A, has fiscal.events.resolve_quarantine
+        // permission (granted in setUp(), scoped to $this->tenantId).
+        // If the command scopes correctly to the actor's tenant, this
+        // succeeds (exit 0 — nothing to do).
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(0);
+
+        // Actor B: in tenant B, lacks the permission. The command must
+        // re-scope to tenant B and reject (exit 1). Without the fix the
+        // result is sensitive to whatever team id was set before
+        // invocation — either both succeed or both fail.
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--actor-id' => $unprivilegedB->id,
+        ])->assertExitCode(1);
+    }
+
+    public function test_command_returns_exit_code_2_on_per_row_resolver_failure(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent();
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayload(), $this->resolverUser);
+
+        // Re-bind the projection registry with a projector whose
+        // `handlesEventType()` throws — `activeProjectorsFor()` calls
+        // `handlesEventType()` OUTSIDE its fail-closed resolver-only
+        // try/catch, so the throw propagates into the command's per-row
+        // catch (Task 18 F1 standing pattern at the command layer).
+        // Exit code 2 is the transient-failure signal per the docblock
+        // contract at `EnqueueResolvedEventProjectionsCommand:63-68`.
+        $this->registerFakeProjectorsWithResolver(
+            [new ResumeThrowingProjector('exit_code_2_test', 50)],
+            new ResumeAlwaysActiveResolver,
+        );
+
+        Queue::fake(); // discard the after-commit dispatch from resolve()
+
+        $this->artisan('fiscal:enqueue-resolved-event-projections', [
+            '--fiscal-event-id' => $event->id,
+            '--actor-id' => $this->resolverUser->id,
+        ])->assertExitCode(2);
+    }
+
     public function test_command_filters_by_tenant_when_tenant_option_provided(): void
     {
         // Two tenants, each with a resolved parse-failed event. The --tenant
@@ -565,12 +728,25 @@ final class ParseFailureResumeTest extends TestCase
      */
     private function registerFakeProjectors(array $projectors): void
     {
+        $this->registerFakeProjectorsWithResolver($projectors, new ResumeAlwaysActiveResolver);
+    }
+
+    /**
+     * Variant of `registerFakeProjectors` that takes a custom
+     * `ModuleActivationResolver` — used by the exit-code-2 test to wire a
+     * resolver that throws on `isActive()` so the command's fail-closed
+     * per-row catch fires.
+     *
+     * @param  list<FiscalEventProjector>  $projectors
+     */
+    private function registerFakeProjectorsWithResolver(array $projectors, ModuleActivationResolver $resolver): void
+    {
         $this->app->forgetInstance(FiscalEventProjectionRegistry::class);
         $this->app->singleton(
             FiscalEventProjectionRegistry::class,
             fn (): FiscalEventProjectionRegistry => new FiscalEventProjectionRegistry(
                 $projectors,
-                new ResumeAlwaysActiveResolver,
+                $resolver,
             ),
         );
 
@@ -595,6 +771,7 @@ final class ParseFailureResumeTest extends TestCase
             fn ($app) => new EnqueueResolvedEventProjectionsCommand(
                 $app->make(ConnectionInterface::class),
                 $app->make(FiscalEventProjectionRegistry::class),
+                $app->make(PermissionRegistrar::class),
             ),
         );
         $kernel = $this->app->make(Kernel::class);
@@ -661,5 +838,70 @@ final class ResumeAlwaysActiveResolver implements ModuleActivationResolver
         unset($module, $tenantId, $companyId);
 
         return true;
+    }
+}
+
+/**
+ * Test-local resolver that throws on every `isActive()` call — used as a
+ * type-system mirror of the "module-activation outage" hazard. The
+ * `FiscalEventProjectionRegistry::activeProjectorsFor()` round-2 F1
+ * fail-closed pattern catches this internally (excludes the gated
+ * projector, logs critical, continues), so this resolver on its own does
+ * NOT propagate a throw to the command — exercising the command's
+ * exit-code-2 path requires `ResumeThrowingProjector` below.
+ */
+final class ResumeThrowingResolver implements ModuleActivationResolver
+{
+    public function isActive(string $module, string $tenantId, string $companyId): bool
+    {
+        unset($module, $tenantId, $companyId);
+
+        throw new \RuntimeException('module activation resolver outage (test)');
+    }
+}
+
+/**
+ * Test-local projector whose `handlesEventType()` throws — exercises the
+ * command's exit-code-2 fail-closed per-row catch (Task 18 F1 standing
+ * pattern at the command layer). `activeProjectorsFor()` calls
+ * `handlesEventType()` OUTSIDE its resolver-only try/catch, so the throw
+ * propagates up the stack into the command's per-row catch.
+ *
+ * Round-1 docblock contract: exit 2 = transient failure (registry-
+ * resolver hard error, DB connection lost mid-loop). This pins the
+ * contract at the projector-throws-on-dispatch variant.
+ */
+final class ResumeThrowingProjector implements FiscalEventProjector
+{
+    public function __construct(
+        private readonly string $name,
+        private readonly int $priority,
+    ) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        unset($type);
+
+        throw new \RuntimeException('projector handlesEventType() outage (test)');
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+    }
+
+    public function priority(): int
+    {
+        return $this->priority;
     }
 }

@@ -59,16 +59,30 @@ use Throwable;
  * §3.3, §7.5)".
  *
  * **Why the corrected payload is validated against the event-type DTO
- * (not against new canonical_bytes).** Per spec §3.3 + the Task 8
- * trigger's frozen-column whitelist (lines 73–106), `canonical_bytes` is
- * IMMUTABLE — the device's authoritative bytes are chain truth and cannot
- * be rewritten. So the resolver cannot re-derive `payload` via
- * `StrictCanonicalParser::parse($newBytes, $type)`. Instead, it validates
- * the operator-supplied corrected `payload` array directly against the
- * event-type DTO (the same schema gate StrictCanonicalParser delegates to
- * after envelope-shape validation). The DTO's `fromArray()` throw on
- * mismatch is rewrapped as `InvalidCorrectedPayloadException` so the
- * caller gets a typed boundary error.
+ * AND the strict per-event constraint validator (not against new
+ * canonical_bytes).** Per spec §3.3 + the Task 8 trigger's frozen-column
+ * whitelist (lines 73–106), `canonical_bytes` is IMMUTABLE — the
+ * device's authoritative bytes are chain truth and cannot be rewritten.
+ * So the resolver cannot re-derive `payload` via
+ * `StrictCanonicalParser::parse($newBytes, $type)`. Instead, it
+ * validates the operator-supplied corrected `payload` in TWO passes:
+ *
+ *   1. `FiscalEventPayloadRegistry::dtoClassFor($type)::fromArray($payload)`
+ *      — the top-level required-keys + scalar-type check the DTO hosts.
+ *   2. `FiscalPayloadConstraintValidator::validatePayloadKeySet(...)`
+ *      + `::validatePerEventConstraints(...)` — the per-event
+ *      constraint surface extracted from `StrictCanonicalParser`
+ *      round-2 (Task 24 Opus F2 / Codex T24-P1 convergent finding):
+ *      key-set rejection of extras, money-string scale-aware regex,
+ *      sub-array container-is-list + items-are-non-empty-assoc shape,
+ *      hash-field format. Without (2) an operator's "corrected"
+ *      payload could pass DTO validation yet violate every §4 grammar
+ *      invariant the original canonical_bytes had to satisfy.
+ *
+ * Any throw from either pass is rewrapped as
+ * `InvalidCorrectedPayloadException` so the caller gets a typed
+ * boundary error and the resolution transaction rolls back, leaving
+ * the row at `payload_parse_status='failed'`.
  *
  * **Crash recovery.** A crash AFTER T1 commits but BEFORE the after-commit
  * enqueue runs leaves `payload_parse_status='parsed'` + pending projection
@@ -82,6 +96,7 @@ final class ParseFailureResolutionService
         private readonly ConnectionInterface $db,
         private readonly FiscalEventPayloadRegistry $payloadRegistry,
         private readonly FiscalEventProjectionRegistry $projectionRegistry,
+        private readonly FiscalPayloadConstraintValidator $constraintValidator,
     ) {}
 
     /**
@@ -140,7 +155,14 @@ final class ParseFailureResolutionService
             // four columns + the two stamps in one UPDATE.
             $resolvedAt = Carbon::now('UTC');
 
-            DB::table('fiscal_events')
+            // Round-2 (Task 24 Opus F3) — use `$this->db->table(...)` so
+            // the UPDATE binds to the SAME connection as the surrounding
+            // `$this->db->transaction(...)`. The DB facade resolves the
+            // DEFAULT connection, which silently bypasses the transaction
+            // on any multi-connection deployment (tenant-scoped shard,
+            // read-write split). The sibling `OutboxIngestor` is uniform
+            // on `$this->db->table()` for the same reason.
+            $this->db->table('fiscal_events')
                 ->where('id', $event->id)
                 ->update([
                     'payload' => json_encode(
@@ -248,11 +270,21 @@ final class ParseFailureResolutionService
     }
 
     /**
-     * Validate the corrected payload against the event-type DTO. The DTO's
-     * `fromArray()` is the same schema gate StrictCanonicalParser delegates
-     * to (post envelope-shape validation), so the resolved row's payload
-     * meets the same grammar bar as a payload that came in cleanly at
-     * ingest time. A throw rewraps as `InvalidCorrectedPayloadException`.
+     * Validate the corrected payload against the event-type DTO AND the
+     * strict per-event constraint surface (round-2 Task 24 Opus F2 /
+     * Codex T24-P1).
+     *
+     * Two-pass validation so the resolved row's payload meets the SAME
+     * grammar bar `StrictCanonicalParser` enforces at ingest time:
+     *
+     *   1. DTO::fromArray — top-level required keys + scalar types.
+     *   2. FiscalPayloadConstraintValidator — payload key set
+     *      (no extras), per-event constraints (money scale-aware regex,
+     *      sub-array container-is-list shape, hash format).
+     *
+     * Any throw from either pass is rewrapped as
+     * `InvalidCorrectedPayloadException` so the caller sees a single
+     * typed boundary error.
      *
      * @param  array<string, mixed>  $correctedPayload
      */
@@ -262,6 +294,38 @@ final class ParseFailureResolutionService
 
         try {
             $dtoClass::fromArray($correctedPayload);
+        } catch (Throwable $e) {
+            throw new InvalidCorrectedPayloadException(
+                sprintf(
+                    'Corrected payload failed %s schema validation: %s',
+                    $event->event_type->value,
+                    $e->getMessage(),
+                ),
+                $e,
+            );
+        }
+
+        // Pass 2 — strict per-event constraints (extracted from
+        // StrictCanonicalParser round-2). The validator throws
+        // RuntimeException; we rewrap so the caller's exception
+        // contract is uniform.
+        $extrasError = $this->constraintValidator->validatePayloadKeySet(
+            $event->event_type,
+            $correctedPayload,
+        );
+        if ($extrasError !== null) {
+            throw new InvalidCorrectedPayloadException(sprintf(
+                'Corrected payload failed %s schema validation: %s',
+                $event->event_type->value,
+                $extrasError,
+            ));
+        }
+
+        try {
+            $this->constraintValidator->validatePerEventConstraints(
+                $event->event_type,
+                $correctedPayload,
+            );
         } catch (Throwable $e) {
             throw new InvalidCorrectedPayloadException(
                 sprintf(
