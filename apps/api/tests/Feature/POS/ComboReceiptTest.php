@@ -60,6 +60,11 @@ final class ComboReceiptTest extends TestCase
 
     public function test_receipt_with_fixed_bundle_composite_item_stores_combo_components(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Combo receipt authoring moves to device-authority (Task 29 + §18 web-POS parity).',
+        );
+
         // Create sub-components
         $coffee = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -145,6 +150,13 @@ final class ComboReceiptTest extends TestCase
 
     public function test_fixed_bundle_vat_decomposition_with_different_tax_rates(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Combo VAT decomposition path moves to device-authority (Task 29 + §18). '.
+            'The decomposeFixedBundleVat() service method is still exercised by '.
+            'test_vat_decomposition_service_method_returns_correct_structure (service-level, no route).',
+        );
+
         // Two products with different tax rates
         $sandwich = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -225,6 +237,11 @@ final class ComboReceiptTest extends TestCase
 
     public function test_stock_deduction_cascades_through_sub_recipes(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Stock cascade through sub-recipes moves to device-authority (Task 29 + §18).',
+        );
+
         // Create leaf products
         $beans = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -353,6 +370,11 @@ final class ComboReceiptTest extends TestCase
 
     public function test_standard_pricing_mode_composite_item_does_not_store_combo_components(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Standard-pricing-mode combo behaviour moves to device-authority (Task 29 + §18).',
+        );
+
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

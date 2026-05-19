@@ -1,5 +1,24 @@
 import { api, apiGet, apiPost } from '@/lib/api'
 
+/**
+ * Fiscal Phase 1 §14.2 — new-sale server-authoring retired.
+ *
+ * The new-sale write methods `createReceipt` and `processReceiptPayments`
+ * were deleted from this file. The web POS no longer authors SALE_RECEIPT
+ * server-side; receipts are device-authored and ingested via
+ * `POST /api/v1/pos/sync/fiscal-events`. The backend routes
+ * `POST /api/v1/pos/receipts` and `POST /api/v1/pos/receipts/{id}/payments`
+ * now return HTTP 410 Gone with `NEW_SALE_AUTHORING_RETIRED`.
+ *
+ * Knowingly retained per §14.2 (read-only + Phase 2+ reserved event types):
+ *   - `getReceipt` / `getReceiptDetail` — read-only lookup
+ *   - `printReceipt` / `downloadReceipt` — PDF rendering (read-only)
+ *   - `processReturn` — REFUND_RECEIPT / PARTIAL_REFUND (Phase 2+ reserved)
+ *
+ * void is reached via a separate `voidReceipt` function elsewhere (or
+ * inline `apiPost` in the void modal — not part of the §14.2 retirement).
+ */
+
 export interface ReceiptData {
   id: string
   receipt_number: string
@@ -22,111 +41,11 @@ export async function getReceipt(id: string): Promise<ReceiptData> {
   return apiGet<ReceiptData>(`/pos/receipts/${id}`)
 }
 
-/**
- * Request structure for creating a receipt
- */
-export interface CreateReceiptRequest {
-  terminal_id: string
-  lines: Array<{
-    product_id?: string | undefined
-    composite_item_id?: string | undefined
-    quantity: number
-    unit_price: string
-    modifiers?: Array<{
-      modifier_id: string
-      modifier_group_id: string
-      price_adjustment: string
-    }> | undefined
-    discount_type?: 'percentage' | 'fixed' | null | undefined
-    discount_percent?: string | undefined
-    discount_amount?: string | undefined
-    discount_reason?: string | undefined
-  }>
-  customer_id?: string | undefined
-  contact_id?: string | undefined
-  notes?: string | undefined
-  transaction_discount_amount?: string | undefined
-  transaction_discount_reason?: string | undefined
-  coupon_code?: string | undefined
-  loyalty_discount_amount?: string | undefined
-  loyalty_reward_id?: string | undefined
-  consumption_mode?: string | undefined
-  table_id?: string | undefined
-}
-
-/**
- * Response structure when creating a receipt
- */
-export interface CreateReceiptResponse {
-  id: string
-  receipt_number: string
-  total: string
-  subtotal: string
-  tax_amount: string
-  discount_amount: string
-  currency: string
-}
-
-/**
- * Create a new POS receipt from cart items
- */
-export async function createReceipt(
-  data: CreateReceiptRequest
-): Promise<CreateReceiptResponse> {
-  return apiPost<CreateReceiptResponse>('/pos/receipts', data)
-}
-
-/**
- * Request structure for processing receipt payments
- */
-export interface ProcessReceiptPaymentsRequest {
-  payments: Array<{
-    payment_method_id: string
-    amount: number
-    repository_id: string
-    card_last_four?: string | undefined
-    transaction_reference?: string | undefined
-    authorization_code?: string | undefined
-  }>
-  customer_id?: string | undefined
-}
-
-/**
- * Response structure when processing payments
- */
-export interface ProcessReceiptPaymentsResponse {
-  receipt: {
-    id: string
-    receipt_number: string
-    total: string
-  }
-  receipt_payments: Array<{
-    id: string
-    payment_method_id: string
-    amount: string
-  }>
-  treasury_payments: Array<{
-    id: string
-    journal_entry_id: string
-  }>
-  change_due: string
-}
-
-/**
- * Process payments for a receipt
- *
- * Creates Treasury Payment records and GL entries.
- * Supports split payments across multiple payment methods.
- */
-export async function processReceiptPayments(
-  receiptId: string,
-  data: ProcessReceiptPaymentsRequest
-): Promise<ProcessReceiptPaymentsResponse> {
-  return apiPost<ProcessReceiptPaymentsResponse>(
-    `/pos/receipts/${receiptId}/payments`,
-    data
-  )
-}
+// §14.2 — `createReceipt`, `processReceiptPayments`,
+// `CreateReceiptRequest`, `CreateReceiptResponse`,
+// `ProcessReceiptPaymentsRequest`, `ProcessReceiptPaymentsResponse` were
+// deleted as part of the new-sale server-authoring disposition. Do NOT
+// re-export them; new-sale flows belong on the device + `/sync/fiscal-events`.
 
 /**
  * Receipt detail with lines (for return modal)

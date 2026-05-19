@@ -650,6 +650,11 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_terminal_id(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant FK rejection now lives on the FiscalEventEnvelope intake path and is '.
+            'pinned by FiscalEventIngestionEndpointTest + PosCoreReceiptProjectionTest.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalB->id,
@@ -664,6 +669,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_product_id_on_lines(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant product_id rejection now lives on PosCoreReceiptProjection.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalA->id,
@@ -678,6 +687,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_modifier_group_id_on_lines(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant modifier_group_id rejection moves to device-authority payload validation.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalA->id,
@@ -697,6 +710,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_modifier_id_on_lines(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant modifier_id rejection moves to device-authority payload validation.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalA->id,
@@ -716,6 +733,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_customer_id(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant customer_id rejection moves to device-authority payload validation.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalA->id,
@@ -731,6 +752,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_contact_id(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant contact_id rejection moves to device-authority payload validation.',
+        );
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->postJson('/api/v1/pos/receipts', [
                 'terminal_id' => $this->terminalA->id,
@@ -852,6 +877,10 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_store_receipt_refuses_cross_tenant_composite_item_id_on_lines(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/receipts retired (HTTP 410). '.
+            'Cross-tenant composite_item_id rejection moves to device-authority payload validation.',
+        );
         // Lazy-seed composite items per tenant — kept out of the shared
         // setUp since only this round-2 test exercises them.
         $compositeA = $this->seedCompositeItem($this->tenantA->id, $this->companyA->id, 'CompA');
@@ -1853,6 +1882,11 @@ final class PosStabilizationTenantIsolationTest extends TestCase
 
     public function test_close_order_refuses_cross_tenant_order_id(): void
     {
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 — POST /api/v1/pos/orders/{id}/close retired (HTTP 410). '.
+            'The order-close → SALE_RECEIPT path no longer exists server-side; cross-tenant rejection '.
+            'on close is a vacuous contract once the route returns 410 regardless of order ownership.',
+        );
         [$orderB, , $tableB] = $this->seedTenantBOpenOrderWithLine();
 
         $response = $this->actingAsForTenant($this->userA, $this->companyA)

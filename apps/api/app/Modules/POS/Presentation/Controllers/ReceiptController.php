@@ -278,8 +278,18 @@ final class ReceiptController extends Controller
     /**
      * Create a new POS receipt.
      *
-     * Creates a receipt with line items, calculates VAT, decrements stock,
-     * and computes the fiscal hash chain.
+     * Created a receipt with line items, calculated VAT, decremented stock,
+     * and computed the fiscal hash chain.
+     *
+     * **§14.2 — NEW-SALE AUTHORING RETIRED.** The `POST /api/v1/pos/receipts`
+     * route is dispositioned to return HTTP 410 Gone with
+     * `NEW_SALE_AUTHORING_RETIRED` at the route-level closure (see
+     * `routes.php`). This controller method is preserved for the §14.3
+     * chokepoint manifest's reference to `ReceiptCreationService::createReceipt`
+     * (the `(c)` carve-outs `void` / `return` reach the service through
+     * sibling controllers — `ReceiptVoidService` / `ReceiptReturnService`
+     * — not through this method). Do not re-wire this method to a route
+     * for new-sale authoring without coordinating with Task 30's CI gate.
      */
     public function store(StoreReceiptRequest $request): JsonResponse
     {
@@ -499,8 +509,18 @@ final class ReceiptController extends Controller
     /**
      * Process payments for a receipt.
      *
-     * Supports split payments across multiple payment methods.
-     * Creates Treasury Payment records and General Ledger entries.
+     * Supported split payments across multiple payment methods. Created
+     * Treasury Payment records and General Ledger entries.
+     *
+     * **§14.2 — NEW-SALE AUTHORING RETIRED.** The
+     * `POST /api/v1/pos/receipts/{id}/payments` route is dispositioned to
+     * return HTTP 410 Gone with `NEW_SALE_AUTHORING_RETIRED` at the
+     * route-level closure (see `routes.php`). The device now authors
+     * `payment_lines[]` inside the SALE_RECEIPT envelope and the Treasury
+     * bridge (Task 22) projects the Treasury Payment + GL on ingestion.
+     * This method is preserved as a structural anchor for the writer
+     * inventory + audit; do not re-wire it to a route for new-sale
+     * authoring without coordinating with Task 30's CI gate.
      */
     public function storePayments(StoreReceiptPaymentsRequest $request, string $id): JsonResponse
     {

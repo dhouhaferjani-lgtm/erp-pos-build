@@ -69,7 +69,15 @@ final class StoreReceiptPaymentsInstrumentBindingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+            'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+            'Instrument-binding validation moves to device-authority payload validation '.
+            '(FiscalPayloadConstraintValidator on the device + FiscalEventEnvelope intake). '.
+            'Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
 
+        // Unreachable after the class-level skip — kept as documentation.
         $this->tenant = Tenant::factory()->create();
 
         Country::create([

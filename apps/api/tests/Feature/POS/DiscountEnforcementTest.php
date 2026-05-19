@@ -24,11 +24,23 @@ use Tests\TestCase;
 /**
  * Tests server-side discount enforcement for POS receipts.
  *
- * Validates:
+ * Validated:
  * - Transaction discount saved correctly and reflected in total
  * - Line discount exceeding terminal limit → 422
  * - Transaction discount > 10% without reason → 422
  * - Cashier with can_discount = false → 422
+ *
+ * **§14.2 — OBSOLETE.** This entire suite exercised the
+ * `POST /api/v1/pos/receipts` server-authoring path that fiscal Phase 1
+ * §14.2 retires. The route now returns HTTP 410 Gone with
+ * `NEW_SALE_AUTHORING_RETIRED` (pinned by
+ * `NewSaleServerAuthoringDispositionTest`). Discount enforcement moves
+ * to the device-authority chain (§6 device engine + §13.x payload
+ * validation); the device's local discount logic must mirror this
+ * behaviour. The web-POS device-authority parity work is tracked as a
+ * §18 open item; Task 29 sign-off documents the disposition. Skipping
+ * the entire class is the right level — every test method assumes 201
+ * from a path that now returns 410.
  */
 final class DiscountEnforcementTest extends TestCase
 {
@@ -51,8 +63,16 @@ final class DiscountEnforcementTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->setupTestData();
-        Sanctum::actingAs($this->cashier);
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Discount enforcement moves to device-authority (see Task 29 + §18 web-POS parity open item). '.
+            'Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
+
+        // Unreachable after the class-level skip — kept as documentation
+        // for the device-authority rebuild.
+        // $this->setupTestData();
+        // Sanctum::actingAs($this->cashier);
     }
 
     public function test_transaction_discount_saved_and_reflected_in_total(): void

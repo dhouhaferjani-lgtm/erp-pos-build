@@ -412,6 +412,18 @@ jobs:
         #     `sequence_conflict` quarantine row) yield rows PG will
         #     accept — ensuring the command's CI fixtures stay aligned
         #     with the production schema.
+        #   - NewSaleServerAuthoringDispositionTest (Feature, Task 29):
+        #     pins spec §14.2 — all three new-sale authoring routes
+        #     (POST /pos/receipts, POST /pos/receipts/{id}/payments,
+        #     POST /pos/orders/{id}/close) return HTTP 410 Gone with
+        #     `NEW_SALE_AUTHORING_RETIRED`. Also pins the knowingly-retained
+        #     carve-outs (void / processReturn) + the read-only routes +
+        #     the `/pos/receipts/sync` Task-28-handoff invariant. The
+        #     Receipt::factory + Order seed paths go through the PG-only
+        #     `pos_receipts` / `pos_orders` schemas (UUID CHECK constraints,
+        #     enum columns); SQLite passes the happy path but PG is the
+        #     production truth that the seed factories accept the inserted
+        #     rows without a constraint violation.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -421,7 +433,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

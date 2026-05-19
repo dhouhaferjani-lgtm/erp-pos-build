@@ -78,7 +78,17 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+            'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+            'Cross-tenant payment rejection now lives on TreasuryReceiptBridge (Task 22) for '.
+            'fiscal-event projected writes, and on PosCoreReceiptProjection (Task 21) for the '.
+            'pos_receipt_payments mirror. Both pin the same cross-tenant defense end-to-end. '.
+            'The service-bypass test below is unreachable in Phase 1; the projector tests carry '.
+            'the contract. Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
 
+        // Unreachable after the class-level skip — kept as documentation.
         Country::create([
             'code' => 'FR',
             'name' => 'France',

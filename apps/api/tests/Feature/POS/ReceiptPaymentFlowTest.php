@@ -55,9 +55,16 @@ final class ReceiptPaymentFlowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+            'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+            'Treasury payment writes now project from SALE_RECEIPT fiscal events via TreasuryReceiptBridge '.
+            '(pinned by TreasuryReceiptBridgeTest). Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
 
-        $this->setupTestData();
-        Sanctum::actingAs($this->user);
+        // Unreachable after the class-level skip — kept as documentation.
+        // $this->setupTestData();
+        // Sanctum::actingAs($this->user);
     }
 
     public function test_complete_receipt_payment_flow_with_single_payment(): void
