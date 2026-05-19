@@ -7,9 +7,12 @@
  * the broken segment is **never deleted** — it stays in `fiscal_events`
  * for the verifier + JET export to surface forensically.
  *
- * Tests exercise the real v37 migrations via the `SqliteTestAdapter` so
+ * Tests exercise the real v38 migrations via the `SqliteTestAdapter` so
  * we hit the actual CHECK constraints, triggers, and partial UNIQUE
- * indexes — not a mock surface.
+ * indexes — not a mock surface. (Round-2 added v38 to introduce
+ * `terminal_state.fiscal_chain_status` with the healthy/degraded
+ * CHECK constraint; the `runMigrationsUpTo(adapter, 38)` call below
+ * is the canonical version pin.)
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -648,5 +651,66 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
         },
       }),
     ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  // -------------------------------------------------------------------
+  // Task 25 round-3 — Codex P1 closure (cross-language drift gate).
+  //
+  // PHP `FiscalPayloadConstraintValidator::validatePayloadKeySet`
+  // (lines 107-109) rejects any payload that carries top-level keys
+  // outside the per-event-type `PAYLOAD_KEYS` allow-list. Round-2 added
+  // hash + non-empty-object constraints to TS but missed this
+  // extras-rejection rule, so TS authors could ship payloads with extra
+  // top-level keys that pass TS validation and fail PHP at sync time.
+  //
+  // These tests pin the rule on both CHAIN_BREAK_DETECTED and
+  // CHAIN_RESTART. They construct an otherwise-valid payload, add one
+  // unknown top-level key, and assert TS rejects it AND the error
+  // message names the offending key (matches PHP's
+  // `payload_extra_field:<csv>` discipline).
+  // -------------------------------------------------------------------
+
+  it('rejects a CHAIN_BREAK_DETECTED payload with an extra top-level key (PHP extras gate, Task 14 cross-language drift)', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_BREAK_DETECTED',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          reason: 'gap',
+          last_good_sequence: 1,
+          last_good_hash: 'a'.repeat(64),
+          offending_record_reference: { kind: 'sequence_gap', expected: 2, found: 4 },
+          evil_extra_field: 'x',
+        },
+      }),
+    ).rejects.toThrow(/evil_extra_field/);
+  });
+
+  it('rejects a CHAIN_RESTART payload with an extra top-level key (PHP extras gate, Task 14 cross-language drift)', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_RESTART',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          new_genesis_reference: 'a'.repeat(64),
+          last_good_anchor: { hash: 'a'.repeat(64) },
+          operator_authorization_evidence: { user_id: 'u' },
+          provenance_link: { chain_break_event_id: 'x' },
+          evil_extra: 'y',
+        },
+      }),
+    ).rejects.toThrow(/evil_extra/);
   });
 });

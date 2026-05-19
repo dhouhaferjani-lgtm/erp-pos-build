@@ -655,11 +655,66 @@ function validateSaleReceiptPayload(payload: unknown): void {
 }
 
 /**
+ * Allowed top-level payload keys per event type. Mirrors PHP
+ * `FiscalPayloadConstraintValidator::PAYLOAD_KEYS` byte-for-byte —
+ * Task 14 cross-language drift gate (Task 25 round-3 Codex P1 closure).
+ *
+ * The PHP authority lives at
+ * `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:68-85`.
+ * Any change there MUST land here in the same commit.
+ */
+const CHAIN_BREAK_DETECTED_PAYLOAD_KEYS = [
+  'last_good_hash',
+  'last_good_sequence',
+  'offending_record_reference',
+  'reason',
+] as const;
+
+const CHAIN_RESTART_PAYLOAD_KEYS = [
+  'last_good_anchor',
+  'new_genesis_reference',
+  'operator_authorization_evidence',
+  'provenance_link',
+] as const;
+
+/**
+ * Assert `payload` has no top-level keys outside `allowed`. Mirrors PHP
+ * `FiscalPayloadConstraintValidator::validatePayloadKeySet()` exactly —
+ * `payload_extra_field:<csv>` prefix included so the error surface is
+ * cross-language symmetric (one verifier rule, two enforcement points).
+ *
+ * @throws FiscalEventPayloadValidationError when any unknown key is found.
+ */
+function assertNoExtraTopLevelKeys(
+  payload: Record<string, unknown>,
+  allowed: ReadonlyArray<string>,
+  eventTypeLabel: string,
+): void {
+  const allowedSet = new Set<string>(allowed);
+  const extras: string[] = [];
+  for (const key of Object.keys(payload)) {
+    if (!allowedSet.has(key)) {
+      extras.push(key);
+    }
+  }
+  if (extras.length > 0) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_extra_field:${extras.join(',')} — ${eventTypeLabel} payload carries unknown top-level key(s) ` +
+        `not in PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS. ` +
+        `Allowed: ${[...allowedSet].sort().join(', ')}.`,
+    );
+  }
+}
+
+/**
  * Validate CHAIN_BREAK_DETECTED payload — mirrors the PHP
  * `FiscalPayloadConstraintValidator::validateChainBreakDetectedPayload()`
  * constraint set EXACTLY. Closes Task 25 round-2 Codex T25-P2
- * (cross-language drift gate — TS must reject what PHP rejects).
+ * (cross-language drift gate — TS must reject what PHP rejects) and
+ * Task 25 round-3 Codex P1 (extras rejection mirroring PHP
+ * `validatePayloadKeySet`).
  *
+ *   - No extra top-level keys beyond `CHAIN_BREAK_DETECTED_PAYLOAD_KEYS`.
  *   - `last_good_hash` must be 64-char lowercase hex.
  *   - `offending_record_reference` must be a non-empty object.
  *   - If `offending_record_reference.observed_previous_hash` is present,
@@ -672,6 +727,8 @@ function validateChainBreakDetectedPayload(payload: unknown): void {
     );
   }
   const p = payload as Record<string, unknown>;
+
+  assertNoExtraTopLevelKeys(p, CHAIN_BREAK_DETECTED_PAYLOAD_KEYS, 'CHAIN_BREAK_DETECTED');
 
   assertHashField(p, 'last_good_hash', 'CHAIN_BREAK_DETECTED.last_good_hash');
   assertNonEmptyAssoc(p, 'offending_record_reference', 'CHAIN_BREAK_DETECTED.offending_record_reference');
@@ -689,8 +746,11 @@ function validateChainBreakDetectedPayload(payload: unknown): void {
 /**
  * Validate CHAIN_RESTART payload — mirrors the PHP
  * `FiscalPayloadConstraintValidator::validateChainRestartPayload()`
- * constraint set EXACTLY. Closes Task 25 round-2 Codex T25-P2.
+ * constraint set EXACTLY. Closes Task 25 round-2 Codex T25-P2 and
+ * Task 25 round-3 Codex P1 (extras rejection mirroring PHP
+ * `validatePayloadKeySet`).
  *
+ *   - No extra top-level keys beyond `CHAIN_RESTART_PAYLOAD_KEYS`.
  *   - `new_genesis_reference` must be 64-char lowercase hex.
  *   - `last_good_anchor`, `operator_authorization_evidence`,
  *     `provenance_link` must each be non-empty objects.
@@ -703,6 +763,8 @@ function validateChainRestartPayload(payload: unknown): void {
     );
   }
   const p = payload as Record<string, unknown>;
+
+  assertNoExtraTopLevelKeys(p, CHAIN_RESTART_PAYLOAD_KEYS, 'CHAIN_RESTART');
 
   assertHashField(p, 'new_genesis_reference', 'CHAIN_RESTART.new_genesis_reference');
   assertNonEmptyAssoc(p, 'last_good_anchor', 'CHAIN_RESTART.last_good_anchor');
