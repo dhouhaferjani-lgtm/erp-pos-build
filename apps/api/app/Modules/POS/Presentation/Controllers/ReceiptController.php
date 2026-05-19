@@ -276,7 +276,7 @@ final class ReceiptController extends Controller
     }
 
     /**
-     * Create a new POS receipt.
+     * [RETIRED §14.2] Created a new POS receipt.
      *
      * Created a receipt with line items, calculated VAT, decremented stock,
      * and computed the fiscal hash chain.
@@ -507,7 +507,7 @@ final class ReceiptController extends Controller
     }
 
     /**
-     * Process payments for a receipt.
+     * [RETIRED §14.2] Processed payments for a receipt.
      *
      * Supported split payments across multiple payment methods. Created
      * Treasury Payment records and General Ledger entries.

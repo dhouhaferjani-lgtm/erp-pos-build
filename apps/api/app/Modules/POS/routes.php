@@ -103,6 +103,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Knowingly retained per §14.2: `void` and `processReturn` —
     // SALE_VOID, REFUND_RECEIPT, PARTIAL_REFUND event types are Phase 2+
     // reserved and both routes are shared with the offline Tauri POS.
+    //
+    // Auth-middleware contract (Opus T29-F2 P2 deferral — round-2): The 410
+    // closures below sit inside the `auth:sanctum` middleware group at
+    // routes.php:29. Anonymous callers receive 401 from auth:sanctum BEFORE
+    // reaching the closure. This is by design: the retired surface is the
+    // authenticated POS/API surface — disposition is returned to in-app
+    // (authenticated) callers, while anon probes get the standard 401 for
+    // an authenticated endpoint. Both Codex r1 and Opus r1 acknowledged
+    // this contract; Codex did not escalate. Tests assert the
+    // authenticated-caller contract via Sanctum::actingAs(). (Task 29 R2)
     Route::post('/pos/receipts', function () {
         return response()->json([
             'error' => [

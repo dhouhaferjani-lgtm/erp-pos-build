@@ -34,6 +34,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // routes above are untouched. The order itself is NOT mutated to
     // closed when the route returns 410 — the route closure short-circuits
     // before any side effect.
+    //
+    // Auth-middleware contract (Opus T29-F2 P2 deferral — round-2): The
+    // closure sits inside the `auth:sanctum` middleware group from
+    // routes.php. Anonymous callers receive 401 BEFORE reaching the
+    // closure — by design on an authenticated POS/API surface. Both
+    // reviewers acknowledged. (Task 29 R2)
     Route::post('/pos/orders/{id}/close', function (string $id) {
         return response()->json([
             'error' => [

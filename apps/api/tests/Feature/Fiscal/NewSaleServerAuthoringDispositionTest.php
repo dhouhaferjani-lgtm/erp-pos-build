@@ -9,9 +9,12 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\OrderStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Order;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -173,10 +176,17 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
 
     public function test_void_route_still_responds_in_phase_1(): void
     {
-        // The void/return event types (SALE_VOID, REFUND_RECEIPT,
-        // PARTIAL_REFUND) are Phase 2+ reserved; both routes are shared
-        // with the offline Tauri POS — disabling them would break online
-        // void/return for the offline client.
+        // Round-2 (Codex T29-F1 P2): The void path is a knowingly-retained
+        // §14.2 carve-out because SALE_VOID is Phase 2+ reserved AND the
+        // route is shared with the offline Tauri POS via VoidReturnModal.
+        // Round-1's "assertNotSame(410)" only proved "not retired" — that's
+        // the Task 22 deferred-bail-out test smell standing pattern. The
+        // contract that matters is "the route actually voids the receipt
+        // online". We seed an eligible (non-voided, posted) receipt + valid
+        // reason, hit the route, and assert 2xx + side effects:
+        //   - response: 200 + is_voided=true + void_reason mirrored
+        //   - DB: pos_receipts row updated with is_voided=true + voided_at
+        //         not null + voided_by=cashier + void_reason mirrored
         $receipt = $this->seedReceipt();
 
         $response = $this->postJson(
@@ -184,33 +194,83 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
             ['reason' => 'Test void'],
         );
 
-        // The void path may end with 2xx (success) OR 422 (validation /
-        // domain error from the void service). What matters here is that
-        // the route is NOT retired — so the disposition closure isn't
-        // reachable. Pin the contract: status != 410, and the response
-        // body does not carry the retirement code.
-        $this->assertNotSame(410, $response->status());
-        $this->assertNotSame('NEW_SALE_AUTHORING_RETIRED', $response->json('error.code'));
+        $response->assertStatus(200);
+        $this->assertSame(true, $response->json('data.is_voided'));
+        $this->assertSame('Test void', $response->json('data.void_reason'));
+        $this->assertNotNull($response->json('data.voided_at'));
+
+        // DB side effects per ReceiptVoidService::voidReceipt.
+        $row = DB::table('pos_receipts')->where('id', $receipt->id)->first();
+        $this->assertNotNull($row);
+        /** @var object{is_voided: bool|int, voided_at: ?string, voided_by: ?string, void_reason: ?string} $row */
+        $this->assertTrue((bool) $row->is_voided);
+        $this->assertNotNull($row->voided_at);
+        $this->assertSame($this->user->id, $row->voided_by);
+        $this->assertSame('Test void', $row->void_reason);
     }
 
     public function test_process_return_route_still_responds_in_phase_1(): void
     {
-        // Symmetric pin for processReturn — round-1 test matrix coverage
-        // per Task 20 discriminated-union standing pattern (template
-        // covered only void).
-        $receipt = $this->seedReceipt();
+        // Round-2 (Codex T29-F1 P2): symmetric positive-path pin for the
+        // processReturn carve-out. Round-1 posted `lines: []` and asserted
+        // "not 410", which proved nothing about the surviving online
+        // return contract. Spec v7 §14.2 line 669 keeps this route live
+        // because REFUND_RECEIPT / PARTIAL_REFUND are Phase 2+ reserved AND
+        // the offline Tauri POS shares the route via VoidReturnModal.
+        //
+        // Seed a posted sale receipt with one returnable line, request a
+        // partial return, assert 201 + return receipt shape + DB row.
+        $saleReceipt = $this->seedReceipt();
+        $line = ReceiptLine::create([
+            'receipt_id' => $saleReceipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '5.000',
+            'unit' => 'pcs',
+            'unit_price' => '10.000',
+            'line_total' => '50.000',
+            'tax_rate' => '19.00',
+            'tax_amount' => '9.500',
+            'discount_amount' => '0.000',
+        ]);
 
         $response = $this->postJson(
-            "/api/v1/pos/receipts/{$receipt->id}/return",
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
             [
                 'terminal_id' => $this->terminal->id,
-                'return_reason' => 'defective',
-                'lines' => [],
+                'return_reason' => ReturnReason::Defective->value,
+                'lines' => [
+                    ['line_id' => $line->id, 'quantity' => '2'],
+                ],
             ],
         );
 
-        $this->assertNotSame(410, $response->status());
-        $this->assertNotSame('NEW_SALE_AUTHORING_RETIRED', $response->json('error.code'));
+        $response->assertStatus(201);
+        $this->assertSame(
+            ReceiptType::Return->value,
+            $response->json('data.receipt_type'),
+        );
+        $this->assertSame(
+            $saleReceipt->id,
+            $response->json('data.original_receipt_id'),
+        );
+        $this->assertSame(
+            ReturnReason::Defective->value,
+            $response->json('data.return_reason'),
+        );
+
+        // DB side effect: a return receipt row exists with the correct
+        // type / original_receipt_id / negative total.
+        $returnId = $response->json('data.id');
+        $this->assertNotNull($returnId);
+        $this->assertDatabaseHas('pos_receipts', [
+            'id' => $returnId,
+            'receipt_type' => ReceiptType::Return->value,
+            'original_receipt_id' => $saleReceipt->id,
+            'return_reason' => ReturnReason::Defective->value,
+        ]);
     }
 
     // =================================================================

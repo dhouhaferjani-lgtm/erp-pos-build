@@ -75,20 +75,34 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
 
     private User $cashierB;
 
+    /**
+     * Per-method route-skip rationale (round-2 Codex T29-F4 P2):
+     *
+     * Round-1 used a class-level skip that ALSO disabled
+     * test_service_rejects_cross_tenant_customer_id_when_form_request_is_bypassed,
+     * a defense-in-depth assertion that calls ReceiptPaymentService directly
+     * (no HTTP route). ReceiptPaymentService is still production code
+     * reachable via ExchangeService::processExchange (§14.3 re-grep note),
+     * so the service-bypass test is queued to stay live.
+     *
+     * Route-dependent methods (POST /pos/receipts/{id}/payments) remain
+     * skipped under §14.2 disposition — their cross-tenant payment-method
+     * defense moves to PosCoreReceiptProjection (Task 21) +
+     * TreasuryReceiptBridge (Task 22) for the SALE_RECEIPT fiscal-event
+     * path.
+     */
+    private const ROUTE_SKIP_REASON =
+        'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+        'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+        'Cross-tenant payment rejection now lives on TreasuryReceiptBridge (Task 22) for '.
+        'fiscal-event projected writes, and on PosCoreReceiptProjection (Task 21) for the '.
+        'pos_receipt_payments mirror. Both pin the same cross-tenant defense end-to-end. '.
+        'Pinned by NewSaleServerAuthoringDispositionTest.';
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->markTestSkipped(
-            'Obsolete per fiscal Phase 1 §14.2 disposition — '.
-            'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
-            'Cross-tenant payment rejection now lives on TreasuryReceiptBridge (Task 22) for '.
-            'fiscal-event projected writes, and on PosCoreReceiptProjection (Task 21) for the '.
-            'pos_receipt_payments mirror. Both pin the same cross-tenant defense end-to-end. '.
-            'The service-bypass test below is unreachable in Phase 1; the projector tests carry '.
-            'the contract. Pinned by NewSaleServerAuthoringDispositionTest.',
-        );
 
-        // Unreachable after the class-level skip — kept as documentation.
         Country::create([
             'code' => 'FR',
             'name' => 'France',
@@ -189,6 +203,8 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
 
     public function test_cross_tenant_payment_method_id_is_rejected(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $receipt = $this->seedReceiptForTenantB('10.000');
         Sanctum::actingAs($this->cashierB);
 
@@ -228,6 +244,8 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
 
     public function test_cross_tenant_repository_id_is_rejected(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $receipt = $this->seedReceiptForTenantB('10.000');
         Sanctum::actingAs($this->cashierB);
 
@@ -255,6 +273,8 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
 
     public function test_cross_tenant_customer_id_is_rejected(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $receipt = $this->seedReceiptForTenantB('10.000');
         Sanctum::actingAs($this->cashierB);
 
@@ -292,6 +312,8 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
      */
     public function test_same_tenant_cross_company_is_rejected(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $companyB2 = Company::factory()->create([
             'tenant_id' => $this->tenantB->id,
             'country_code' => 'FR',
@@ -394,6 +416,8 @@ final class StoreReceiptPaymentsTenantIsolationTest extends TestCase
 
     public function test_same_tenant_payment_succeeds_as_control(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         // Positive control: the legitimate same-tenant shape MUST still succeed.
         // If this fails, the tenant-scoping fix is too aggressive.
         $receipt = $this->seedReceiptForTenantB('10.000');

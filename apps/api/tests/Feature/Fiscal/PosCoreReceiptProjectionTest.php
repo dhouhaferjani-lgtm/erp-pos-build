@@ -15,6 +15,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
+use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
@@ -697,6 +698,85 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $this->assertSame(0, DB::table('pos_receipts')->count());
         $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+    }
+
+    // =================================================================
+    // Codex T29-F3 round-2 — voucher instrument-binding defense-in-depth
+    // =================================================================
+
+    public function test_voucher_payment_line_without_instrument_type_is_rejected_by_projection(): void
+    {
+        // Codex T29-F3 round-2 — when StoreReceiptPaymentsInstrumentBindingTest
+        // was class-skipped under §14.2, the skip citation pointed at
+        // `FiscalPayloadConstraintValidator` as the surviving owner of
+        // voucher/gift-card instrument-binding enforcement. The validator
+        // (FiscalPayloadConstraintValidator::validateSaleReceiptPayload at
+        // lines 143-160) only enforces monetary shape on `payment_lines`;
+        // the defense-in-depth that actually rejects voucher tenders
+        // missing `instrument_type` lives at
+        // `PosCoreReceiptProjection::writePayments` lines 544-549 via
+        // `PaymentInstrumentKind::requiresInstrumentForMethodCode($methodCode)`
+        // + `InstrumentRequiredException::forMethodCode()`.
+        //
+        // Round-2 pins the existing-but-untested defense: a SALE_RECEIPT
+        // sealed with `method_code=store_voucher` and a null/missing
+        // `instrument_type` would otherwise bind the wrong fact into the
+        // fiscal hash chain ("some voucher paid" vs. "voucher SV-XXXX
+        // paid"). The projector must throw and roll the transaction back.
+        $event = $this->storeSaleReceiptFiscalEvent(
+            paymentLinesOverride: [
+                [
+                    'payment_method_id' => $this->voucherPaymentMethodId,
+                    'amount' => '10.00',
+                    'method_code' => 'store_voucher',
+                    // instrument_type omitted — projector must reject.
+                    'instrument_serial' => 'SV-MISSING-TYPE',
+                ],
+            ],
+        );
+
+        try {
+            $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+            $this->fail('Expected InstrumentRequiredException for missing instrument_type on store_voucher tender');
+        } catch (InstrumentRequiredException $e) {
+            $this->assertStringContainsString('store_voucher', $e->getMessage());
+        }
+
+        // Projection transaction rolled back atomically — no partial rows.
+        $this->assertSame(0, DB::table('pos_receipts')->count());
+        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+    }
+
+    public function test_voucher_payment_line_without_instrument_serial_is_rejected_by_projection(): void
+    {
+        // Codex T29-F3 round-2 — symmetric pin for `instrument_serial`.
+        // Same defense-in-depth path as the missing-type case, different
+        // branch of the `if ($instrumentSerial === null || $instrumentSerial
+        // === '')` predicate in
+        // `PosCoreReceiptProjection::writePayments` lines 545-549.
+        $event = $this->storeSaleReceiptFiscalEvent(
+            paymentLinesOverride: [
+                [
+                    'payment_method_id' => $this->voucherPaymentMethodId,
+                    'amount' => '10.00',
+                    'method_code' => 'store_voucher',
+                    'instrument_type' => 'store_voucher',
+                    // instrument_serial omitted — projector must reject.
+                ],
+            ],
+        );
+
+        try {
+            $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+            $this->fail('Expected InstrumentRequiredException for missing instrument_serial on store_voucher tender');
+        } catch (InstrumentRequiredException $e) {
+            $this->assertStringContainsString('store_voucher', $e->getMessage());
+        }
+
+        $this->assertSame(0, DB::table('pos_receipts')->count());
+        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
     }
 
     // =================================================================
