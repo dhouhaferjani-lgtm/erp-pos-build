@@ -400,6 +400,18 @@ jobs:
         #     emitter's canonical-bytes envelope yields a row PG will
         #     accept without rejecting it as a malformed hash or
         #     unwhitelisted type.
+        #   - VerifyEventChainCommandTest (Feature, Task 31): the
+        #     `fiscal:verify-event-chain` command seeds both `fiscal_events`
+        #     and `fiscal_event_quarantine` fixtures whose `current_hash` /
+        #     `previous_hash` columns go through the PG-only 64-hex CHECK
+        #     constraints, and whose `integrity_exception_class` goes
+        #     through the PG-only quarantine-class whitelist (Task 10 +
+        #     Task 19 round-2 widening for `malformed_envelope`). SQLite
+        #     passes the happy path; PG is the production truth that the
+        #     seeded fixtures (valid chain, tampered fixture,
+        #     `sequence_conflict` quarantine row) yield rows PG will
+        #     accept — ensuring the command's CI fixtures stay aligned
+        #     with the production schema.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -409,7 +421,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

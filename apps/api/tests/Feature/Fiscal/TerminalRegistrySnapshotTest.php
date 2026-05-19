@@ -654,15 +654,16 @@ final class TerminalRegistrySnapshotTest extends TestCase
         $this->assertContains('treasury_receipt_bridge', $names);
     }
 
-    public function test_fiscal_service_provider_does_not_yet_wire_verify_event_chain_command(): void
+    public function test_fiscal_service_provider_wires_verify_event_chain_command(): void
     {
-        // Task 31 plan note — `fiscal:verify-event-chain` is wired in
-        // Task 31 only. A premature wiring here would cumulatively over-
-        // assert against the incremental-wiring convention; this guard
-        // asserts the OMISSION so a future task that registers the command
-        // here without updating Task 26 surfaces immediately.
+        // Task 31 — `fiscal:verify-event-chain` is now wired (plan §31).
+        // This was a "negative" guard in Tasks 26–30 (the prior assertion
+        // was `assertNotContains` — a forcing function ensuring Task 31's
+        // wiring would surface immediately when registered). Task 31
+        // flips it to the positive form: the cumulative wiring check now
+        // requires the command IS registered on the kernel.
         $allCommands = array_keys($this->app->make(Kernel::class)->all());
-        $this->assertNotContains('fiscal:verify-event-chain', $allCommands);
+        $this->assertContains('fiscal:verify-event-chain', $allCommands);
     }
 
     public function test_pos_core_receipt_projection_is_resolvable_from_registry(): void

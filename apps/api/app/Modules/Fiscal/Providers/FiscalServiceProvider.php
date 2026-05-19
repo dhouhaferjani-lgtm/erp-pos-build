@@ -9,6 +9,7 @@ use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\HashChainIntegrityProvider;
 use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\PreflightFiscalGateCommand;
+use App\Modules\Fiscal\Infrastructure\Commands\VerifyEventChainCommand;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
@@ -48,6 +49,11 @@ final class FiscalServiceProvider extends ServiceProvider
                 // `fiscal.events.resolve_quarantine` against an
                 // --actor-id supplied at invocation.
                 EnqueueResolvedEventProjectionsCommand::class,
+                // Task 31 — operator + CI chain verifier (spec §12).
+                // Permission-gated by `fiscal.events.verify_chain`
+                // against an --actor-id supplied at invocation, mirroring
+                // the Task 24 convention.
+                VerifyEventChainCommand::class,
             ]);
         }
 
