@@ -99,9 +99,11 @@ vi.mock('@/api/paymentApi', () => ({
   fetchPaymentRepositories: vi.fn(),
 }));
 
+// Phase 1 Task 27 Pass 1: `createReceipt` / `processReceiptPayments` removed
+// from `@/api/receiptApi` — the offline-first guarantee they used to backstop
+// is now a compile-time invariant (the symbols don't exist). Only the
+// remaining read methods need a stub here.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(() => { throw new Error('must not be called offline'); }),
-  processReceiptPayments: vi.fn(() => { throw new Error('must not be called offline'); }),
   fetchReceipt: vi.fn(),
 }));
 

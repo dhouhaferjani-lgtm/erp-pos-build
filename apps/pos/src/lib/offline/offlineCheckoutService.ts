@@ -1,15 +1,9 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { useConnectivityStore } from '@/stores/connectivityStore';
-import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
+import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
 import { getCurrencyDecimals } from '@/lib/currency';
 import type { CartItem } from '@/types/cart';
-import type {
-  CreateReceiptResponse,
-  ProcessReceiptPaymentsResponse,
-} from '@/types/receipt';
-
-const ONLINE_CHECKOUT_TIMEOUT_MS = 5_000;
 
 export interface CheckoutInput {
   terminalId: string;
@@ -51,6 +45,15 @@ export interface CheckoutInput {
 }
 
 export interface CheckoutResult {
+  /**
+   * Phase 1 Task 27 Pass 1 (spec §14.3): retained for backwards-compatible
+   * callers (paymentStore reads other fields), but it now always describes
+   * locally-authored receipts. The new-sale server-authoring branch is gone;
+   * connectivity only gates whether an immediate sync flush follows. The
+   * field name is kept to avoid a downstream-rename churn that Pass 1 is
+   * scoped to avoid (the rename happens in Pass 2 / Task 27B when the
+   * assembler-rework lands).
+   */
   isOffline: boolean;
   receiptId: string;
   receiptNumber: string;
@@ -61,78 +64,29 @@ export interface CheckoutResult {
   changeDue: number;
   currency: string;
   fiscalHash?: string;
-  onlineReceipt: CreateReceiptResponse | null;
-  onlinePayment: ProcessReceiptPaymentsResponse | null;
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new Error('Checkout timeout')),
-      ms,
-    );
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timeoutId!);
-  }
-}
-
-async function onlineCheckout(
-  input: CheckoutInput,
-): Promise<CheckoutResult> {
-  const receipt = await createReceipt(
-    input.receiptData as unknown as Parameters<typeof createReceipt>[0],
-  );
-
-  // B3-followup audit (Finding 1, 2026-05-01): when split-payment data is
-  // supplied via `input.payments` (e.g. from AdvancedPaymentsModal +
-  // VoucherTender flow), forward each row to the online endpoint with its
-  // instrument fields populated. Without this, a voucher-bearing online sale
-  // produces a v3 receipt whose `pos_receipt_payments.instrument_serial` is
-  // null — defeating the v3 hash binding (the original B3 production bug,
-  // re-surfacing here at the entry point).
-  const onlinePayments = input.payments && input.payments.length > 0
-    ? input.payments.map((p) => ({
-      payment_method_id: p.paymentMethodId ?? input.paymentMethodId,
-      amount: parseFloat(p.amount),
-      repository_id: p.repositoryId ?? input.paymentRepositoryId,
-      ...(p.cardLastFour ? { card_last_four: p.cardLastFour } : {}),
-      ...(p.transactionReference ? { transaction_reference: p.transactionReference } : {}),
-      ...(p.instrumentType ? { instrument_type: p.instrumentType } : {}),
-      ...(p.instrumentSerial ? { instrument_serial: p.instrumentSerial } : {}),
-    }))
-    : [{
-      payment_method_id: input.paymentMethodId,
-      amount: parseFloat(receipt.total),
-      repository_id: input.paymentRepositoryId,
-    }];
-
-  const paymentResponse = await processReceiptPayments(receipt.id, {
-    payments: onlinePayments,
-  });
-
-  const totalAmount = parseFloat(receipt.total);
-  const changeDue = Math.max(0, input.tenderedAmount - totalAmount);
-
-  return {
-    isOffline: false,
-    receiptId: receipt.id,
-    receiptNumber: receipt.receipt_number,
-    total: receipt.total,
-    subtotal: receipt.subtotal,
-    taxAmount: receipt.tax_amount,
-    discountAmount: receipt.discount_amount,
-    changeDue,
-    currency: input.currency,
-    onlineReceipt: receipt,
-    onlinePayment: paymentResponse,
-  };
-}
-
-async function offlineCheckout(
+/**
+ * Phase 1 Task 27 Pass 1 (spec §14.3 chokepoint disposition for new-sale
+ * server-authoring callers): connectivity-independent authoring.
+ *
+ * Pre-Pass-1 the function had two branches:
+ *   - ONLINE  → the deleted server-authoring receipt methods on receiptApi
+ *   - OFFLINE → `createOfflineReceipt()` (device authors)
+ *
+ * Post-Pass-1 there is one path. The device always authors locally via
+ * `createOfflineReceipt()` (the local-first contract that paymentStore has
+ * already followed since the offline-first migration). Connectivity is
+ * polled exclusively to decide whether to KICK an immediate sync flush
+ * vs leave the SQLite-resident receipt for the next scheduler tick.
+ *
+ * Pass 2 (Task 27B, deferred) reworks `receiptService.createOfflineReceipt`
+ * into a `FiscalEventEngine.append(SALE_RECEIPT)` assembler. Until then,
+ * `createOfflineReceipt` keeps its current independent hash/seal/chain
+ * implementation — the §14.3 chokepoint closure for new-sale server-
+ * authoring callers does NOT depend on that internal refactor.
+ */
+export async function executeCheckout(
   db: Database,
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
@@ -159,9 +113,22 @@ async function offlineCheckout(
     tableId: input.tableId,
   });
 
+  // Pass 1: connectivity-aware sync flush. Online → kick an immediate flush
+  // so the device-authored receipt reaches the server quickly. Offline →
+  // skip the kick; the next scheduler tick / online-recovery flush picks
+  // it up. Either way the SQLite row already carries the seal.
+  const { isOnline } = useConnectivityStore.getState();
+  if (isOnline) {
+    // Fire-and-forget; triggerSync guards against concurrent calls.
+    useSyncStore.getState().triggerSync();
+  }
+
   return {
-    isOffline: true,
-    receiptId: `offline-${result.receiptNumber}`,
+    // Pass 1: `isOffline` describes the SYNC posture, not the authoring path
+    // (which is always local now). True when the kick was skipped because the
+    // device is offline; false when an immediate flush was triggered.
+    isOffline: !isOnline,
+    receiptId: `local-${result.localId}`,
     receiptNumber: result.receiptNumber,
     total: result.total,
     subtotal: result.subtotal,
@@ -170,31 +137,5 @@ async function offlineCheckout(
     changeDue: result.changeDue,
     currency: input.currency,
     fiscalHash: result.fiscalHash,
-    onlineReceipt: null,
-    onlinePayment: null,
   };
-}
-
-export async function executeCheckout(
-  db: Database,
-  input: CheckoutInput,
-): Promise<CheckoutResult> {
-  const { isOnline } = useConnectivityStore.getState();
-
-  if (isOnline) {
-    try {
-      return await withTimeout(
-        onlineCheckout(input),
-        ONLINE_CHECKOUT_TIMEOUT_MS,
-      );
-    } catch (error) {
-      console.warn(
-        '[POS] Online checkout failed, falling back to offline:',
-        error,
-      );
-      return await offlineCheckout(db, input);
-    }
-  }
-
-  return await offlineCheckout(db, input);
 }

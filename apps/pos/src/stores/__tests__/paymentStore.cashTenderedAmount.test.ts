@@ -24,9 +24,10 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
+// Phase 1 Task 27 Pass 1: `createReceipt` / `processReceiptPayments` removed
+// from `@/api/receiptApi`. Local-first checkout never calls them anyway —
+// stub only the remaining read methods.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(),
-  processReceiptPayments: vi.fn(),
   fetchReceipt: vi.fn(),
 }));
 

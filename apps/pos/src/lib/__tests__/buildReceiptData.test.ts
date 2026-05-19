@@ -17,7 +17,15 @@ import { buildEscPosReceiptData } from '../buildReceiptData';
 import type { FullReceiptResponse } from '@/types/receipt';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 
-/** Minimal but valid CheckoutResult fixture for offline-receipt tests */
+/**
+ * Minimal but valid CheckoutResult fixture for offline-receipt tests.
+ * Phase 1 Task 27 Pass 1 (spec §14.3): `onlineReceipt` / `onlinePayment` are
+ * gone from `CheckoutResult` — the device authors every sale locally now,
+ * so there's no online response payload to carry. `isOffline` is retained
+ * but its meaning shifted: it now describes the SYNC posture (true when
+ * the device was offline at checkout time and the immediate flush was
+ * skipped), not the authoring path (which is always local).
+ */
 function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): CheckoutResult {
   return {
     isOffline: true,
@@ -30,8 +38,6 @@ function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): Che
     changeDue: 0,
     currency: 'EUR',
     // fiscalHash is optional (string | undefined)
-    onlineReceipt: null,
-    onlinePayment: null,
     ...overrides,
   };
 }

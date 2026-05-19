@@ -6,9 +6,15 @@ import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
+// Phase 1 Task 27 Pass 1: the server-authoring receipt methods
+// (`createReceipt`, `processReceiptPayments`) have been DELETED from
+// `@/api/receiptApi`. The local-first flow's "must not call server" invariant
+// is now enforced at compile time (the symbols don't exist) plus by the
+// source-level guard in `offlineCheckoutService.test.ts`. The test below at
+// line ~85 ("writes receipt to SQLite first and never calls createReceipt
+// API") was correspondingly rewritten to assert the symbols-are-gone
+// invariant rather than a not-called assertion on a defined-but-unused mock.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(() => { throw new Error('createReceipt API must not be called in offline-first flow'); }),
-  processReceiptPayments: vi.fn(() => { throw new Error('processReceiptPayments API must not be called at checkout time'); }),
   fetchReceipt: vi.fn(),
 }));
 
@@ -82,14 +88,20 @@ describe('paymentStore offline-first cash checkout', () => {
     });
   });
 
-  it('writes receipt to SQLite first and never calls createReceipt API', async () => {
+  it('writes receipt to SQLite first; the server-authoring receipt methods are gone (Phase 1 Task 27 Pass 1)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
-    const { createReceipt } = await import('@/api/receiptApi');
 
     await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
 
     expect(createOfflineReceipt).toHaveBeenCalledOnce();
-    expect(createReceipt).not.toHaveBeenCalled();
+
+    // Spec §14.3 chokepoint disposition: the new-sale server-authoring
+    // methods (`createReceipt` / `processReceiptPayments`) are deleted at
+    // compile time from `@/api/receiptApi`. A runtime not-called assertion
+    // would be vacuous (Vitest throws on access to undefined exports of a
+    // mocked module). The stronger invariant — "those identifiers don't
+    // exist anywhere in `offlineCheckoutService.ts`" — is enforced by the
+    // source-level guard in `offlineCheckoutService.test.ts`.
 
     const state = usePaymentStore.getState();
     expect(state.lastReceipt?.receipt_number).toBe('MAIN-T001-2026-00000001');
