@@ -388,6 +388,18 @@ jobs:
         #     integrity_status / integrity_resolved_(at|by)) in one
         #     statement. SQLite has no trigger so the unit-level
         #     contract is only fully exercised on PG.
+        #   - TerminalRegistrySnapshotTest (Feature, Task 26): the
+        #     server-authored TERMINAL_REGISTRY_SNAPSHOT path persists
+        #     real `fiscal_events` rows whose `current_hash` /
+        #     `previous_hash` go through the PG-only 64-hex CHECK
+        #     constraints (`fiscal_events_current_hash_format`,
+        #     `fiscal_events_previous_hash_format`) and whose
+        #     `event_type` goes through the enum-sourced
+        #     `fiscal_events_event_type_allowed` whitelist. SQLite passes
+        #     the happy path; PG is the production truth that the
+        #     emitter's canonical-bytes envelope yields a row PG will
+        #     accept without rejecting it as a malformed hash or
+        #     unwhitelisted type.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -397,7 +409,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

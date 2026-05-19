@@ -203,6 +203,29 @@ final class FiscalEventProjectionRegistry
     }
 
     /**
+     * Iterate every registered projector in priority-then-name order
+     * (Task 22 round-2 sort), **ignoring** the per-event handlesEventType
+     * and per-tenant module-activation gates.
+     *
+     * Use this for boot-time / wiring-verification checks ("is the
+     * TreasuryReceiptBridge tag wired through the provider?") and for
+     * operator tooling that needs to enumerate the full projector set.
+     * Production ingest + projection-run paths use
+     * {@see activeProjectorsFor()} / {@see byName()} respectively.
+     *
+     * Returns a Generator so callers can `iterator_to_array()` it without
+     * exposing the registry's private list as a writable array.
+     *
+     * @return \Generator<int, FiscalEventProjector>
+     */
+    public function all(): \Generator
+    {
+        foreach ($this->projectors as $projector) {
+            yield $projector;
+        }
+    }
+
+    /**
      * @return list<FiscalEventProjector> active projectors in priority-then-name order
      *                                    (Task 22 round-2 — replaces pre-round-2
      *                                    registration-order semantics)
