@@ -1,16 +1,29 @@
 /**
  * Device-side mirror of the server `FiscalEventPayloadRegistry`.
  *
- * Resolves the `event_version` per `FiscalEventType` and exposes an
- * `isImplemented()` classifier for the four Phase 1 payload types. The
- * server (PHP) and device (TS) registries must agree on the implemented
- * set; the unit-level invariant is locked by their shared test surfaces.
+ * Resolves the `event_version` per `FiscalEventType` and exposes two
+ * orthogonal classifiers:
+ *
+ *   - `isImplemented()` — Phase 1 implemented set (matches the server
+ *     registry's implemented set so the parse path knows the payload shape).
+ *   - `isServerOnly()` — spec v7 §11.0 server-authoring carve-out. Some
+ *     "implemented" types are SERVER-ONLY: the server authors them, the
+ *     device MUST NOT. `FiscalEventEngine.append()` reads this
+ *     classification to reject the type at the device boundary
+ *     (Task 26 round-2 closure of T26-P3, cross-language drift gate per
+ *     Task 14 standing pattern).
  *
  * Phase 1 implements four event types:
- *   - SALE_RECEIPT
- *   - CHAIN_BREAK_DETECTED
- *   - CHAIN_RESTART
- *   - TERMINAL_REGISTRY_SNAPSHOT
+ *   - SALE_RECEIPT             (device-authored)
+ *   - CHAIN_BREAK_DETECTED     (device-authored)
+ *   - CHAIN_RESTART            (device-authored)
+ *   - TERMINAL_REGISTRY_SNAPSHOT (server-authored per §11.0 — device rejects)
+ *
+ * Spec v7 §11.0 server-only set (independent of implemented status — a
+ * type can be reserved AND server-only, so the device-side rejection is
+ * locked even before the type lands):
+ *   - TERMINAL_REGISTRY_SNAPSHOT (implemented)
+ *   - COMPANY_DAY_CLOSURE_MANIFEST (reserved)
  *
  * Every other case in `FISCAL_EVENT_TYPES` (the full Appendix A vocabulary)
  * is RESERVED at the device level so the chain can extend in later phases
@@ -24,7 +37,8 @@
  * — the device-side authoring path constructs the canonical payload from
  * existing in-memory state (Cart, voucher store, payment store) and feeds
  * it to `FiscalEventCanonicalEncoder` directly. The TS registry's role is
- * type + version resolution; DTO construction is server-side concern.
+ * type + version resolution + server-only classification; DTO construction
+ * is server-side concern.
  */
 
 export const FISCAL_EVENT_TYPES = [
@@ -69,6 +83,24 @@ const PHASE_1_IMPLEMENTED = [
 
 type Phase1ImplementedType = (typeof PHASE_1_IMPLEMENTED)[number];
 
+/**
+ * Spec v7 §11.0 server-only set. Device-side `append()` MUST reject
+ * these event types regardless of implementation status. Both members
+ * remain in `FISCAL_EVENT_TYPES`; both remain server-resolvable for
+ * payload DTO purposes; neither is device-authorable.
+ *
+ * COMPANY_DAY_CLOSURE_MANIFEST is listed here even though it's
+ * reserved-not-implemented so the device boundary is locked BEFORE the
+ * type lands — when the closure phase ships, no device-side code path
+ * exists that could author it.
+ */
+const SPEC_11_0_SERVER_ONLY = [
+  'TERMINAL_REGISTRY_SNAPSHOT',
+  'COMPANY_DAY_CLOSURE_MANIFEST',
+] as const satisfies readonly FiscalEventTypeValue[];
+
+type ServerOnlyType = (typeof SPEC_11_0_SERVER_ONLY)[number];
+
 export class FiscalEventTypeNotImplementedError extends Error {
   constructor(public readonly type: FiscalEventTypeValue) {
     super(
@@ -81,8 +113,20 @@ export class FiscalEventTypeNotImplementedError extends Error {
 export class FiscalEventPayloadRegistry {
   private readonly implemented = new Set<Phase1ImplementedType>(PHASE_1_IMPLEMENTED);
 
+  private readonly serverOnly = new Set<ServerOnlyType>(SPEC_11_0_SERVER_ONLY);
+
   isImplemented(type: FiscalEventTypeValue): boolean {
     return this.implemented.has(type as Phase1ImplementedType);
+  }
+
+  /**
+   * Spec v7 §11.0 — `true` for company-integrity event types the server
+   * authors and the device MUST refuse. `FiscalEventEngine.append()`
+   * checks this before resolving the version so the rejection lands
+   * before any state mutation. See `ServerAuthoredEventTypeError`.
+   */
+  isServerOnly(type: FiscalEventTypeValue): boolean {
+    return this.serverOnly.has(type as ServerOnlyType);
   }
 
   /**
@@ -98,5 +142,9 @@ export class FiscalEventPayloadRegistry {
 
   implementedTypes(): readonly FiscalEventTypeValue[] {
     return PHASE_1_IMPLEMENTED;
+  }
+
+  serverOnlyTypes(): readonly FiscalEventTypeValue[] {
+    return SPEC_11_0_SERVER_ONLY;
   }
 }

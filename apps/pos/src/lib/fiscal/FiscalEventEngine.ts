@@ -107,6 +107,33 @@ export class FiscalEventPayloadValidationError extends Error {
 }
 
 /**
+ * Thrown when `append()` is called with a server-authored event type
+ * (spec v7 §11.0 carve-out). Company-integrity event types
+ * (TERMINAL_REGISTRY_SNAPSHOT implemented; COMPANY_DAY_CLOSURE_MANIFEST
+ * reserved) are server-authored by construction — they are operator-
+ * /company-level facts with no per-device-business trigger. The device
+ * MUST refuse to author them so cross-language drift is impossible
+ * (Task 14 standing pattern + Task 26 round-2 T26-P3 closure).
+ *
+ * Distinct from `FiscalEventTypeNotImplementedError` (reserved-not-yet-
+ * implemented) — server-only is a different boundary: the type may
+ * already be implemented at the registry/DTO level, but the device is
+ * not the authoring layer for it. Callers that catch this error should
+ * route the authoring request to the server-side emitter
+ * (`TerminalRegistrySnapshotService` for TRS) rather than the engine.
+ */
+export class ServerAuthoredEventTypeError extends Error {
+  constructor(public readonly type: string) {
+    super(
+      `FiscalEventType ${type} is a server-authored company-integrity event (spec v7 §11.0); ` +
+        'the device-side FiscalEventEngine.append() does not author it. ' +
+        'Route the request to the server-side emitter (e.g. TerminalRegistrySnapshotService).',
+    );
+    this.name = 'ServerAuthoredEventTypeError';
+  }
+}
+
+/**
  * Thrown when the chain INSERT trips the v37 partial UNIQUE on
  * `(tenant_id, terminal_id, sequence_number)` — i.e. a parallel
  * `append()` already advanced this chain head between our `readChainHead`
@@ -281,6 +308,20 @@ export class FiscalEventEngine {
     request: FiscalEventAppendRequest,
   ): Promise<FiscalEventAppendResult> {
     const sql = asSql(tx);
+
+    // Step -1 (spec v7 §11.0 server-authoring carve-out enforcement) —
+    // refuse to author company-integrity event types. The device is not
+    // the authoring layer for `TERMINAL_REGISTRY_SNAPSHOT` /
+    // `COMPANY_DAY_CLOSURE_MANIFEST`; they are server-authored facts
+    // (operator-level, no per-device trigger). This rejection runs
+    // BEFORE the registry's not-implemented check so the boundary is
+    // locked uniformly for both implemented (TRS) and reserved
+    // (COMPANY_DAY_CLOSURE_MANIFEST) server-only types — cross-language
+    // drift gate per Task 14 standing pattern, Task 26 round-2 T26-P3
+    // closure.
+    if (this.registry.isServerOnly(request.event_type)) {
+      throw new ServerAuthoredEventTypeError(request.event_type);
+    }
 
     // Step 0 (defense-in-depth) — validate the envelope + payload BEFORE
     // any state read or mutation. Closes Task 15 round-2 Codex BLOCKER
@@ -530,8 +571,14 @@ export class FiscalEventEngine {
    * lowercase hex on hash fields, non-empty assoc on the four
    * non-empty-object fields. Cross-language drift gate (Task 14 standing
    * pattern): TS validation must reject what PHP rejects.
-   * `TERMINAL_REGISTRY_SNAPSHOT` remains deferred to Task 16's parser
-   * since no Phase 1 TS caller authors it (only server emits).
+   *
+   * **Task 26 round-2 (T26-P3 closure):** `TERMINAL_REGISTRY_SNAPSHOT`
+   * + `COMPANY_DAY_CLOSURE_MANIFEST` are spec §11.0 server-only and
+   * rejected at the Step -1 boundary BEFORE this validator runs — so
+   * those branches never execute here. The previous stale comment that
+   * said `TERMINAL_REGISTRY_SNAPSHOT` was deferred to the server-side
+   * parser is removed (it was correct at Task 15 round-2 but became
+   * misleading once §11.0 made the device-side rejection load-bearing).
    */
   private validateRequestPayload(request: FiscalEventAppendRequest): void {
     switch (request.event_type) {
@@ -544,14 +591,11 @@ export class FiscalEventEngine {
       case 'CHAIN_RESTART':
         validateChainRestartPayload(request.payload);
         return;
-      case 'TERMINAL_REGISTRY_SNAPSHOT':
-        // No TS authoring path in Phase 1 — sub-array validation
-        // deferred to Task 16's parser. Falling through with no
-        // engine-side checks is the intentional Phase 1 posture.
-        return;
       default:
-        // Reserved types are rejected by the registry in step 1; this
-        // branch is a defensive fallthrough.
+        // Server-only types (§11.0) are rejected at Step -1.
+        // Reserved-not-implemented types are rejected by the registry
+        // in Step 1. This branch is a defensive fallthrough that should
+        // be unreachable in practice.
         return;
     }
   }

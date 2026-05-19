@@ -22,6 +22,7 @@ import {
   ConcurrentChainAdvanceError,
   FiscalEventEngine,
   FiscalEventPayloadValidationError,
+  ServerAuthoredEventTypeError,
   type FiscalEventAppendRequest,
 } from '../FiscalEventEngine';
 import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
@@ -648,6 +649,103 @@ d('FiscalEventEngine.append', () => {
     await expect(engine.append(adapter, saleReceiptRequest())).rejects.toThrow(
       ChainHeadNotInitializedError,
     );
+  });
+
+  // -------------------------------------------------------------------
+  // Task 26 round-2 — spec §11.0 server-authoring carve-out enforcement
+  //
+  // Per spec v7 §11.0 invariant #5, the device-side engine MUST reject
+  // company-integrity event types — TERMINAL_REGISTRY_SNAPSHOT (implemented)
+  // and COMPANY_DAY_CLOSURE_MANIFEST (reserved). They are server-authored
+  // facts; allowing the device to author them would re-open the §1 device-
+  // authority ambiguity that §11.0 carves out. The TS rejection mirrors
+  // the PHP `InvalidServerAuthoredPayloadException` cross-language drift
+  // gate (Task 14 standing pattern) — TS must reject what the spec
+  // declares server-only.
+  //
+  // The rejection happens BEFORE any state mutation: no fiscal_events
+  // row, no chain-head advance. Error type is the dedicated
+  // `ServerAuthoredEventTypeError` so callers can distinguish "wrong
+  // authoring layer" from "reserved but not yet implemented".
+  // -------------------------------------------------------------------
+
+  it('Task 26 §11.0 — rejects TERMINAL_REGISTRY_SNAPSHOT with ServerAuthoredEventTypeError', async () => {
+    const trsRequest: FiscalEventAppendRequest = {
+      event_type: 'TERMINAL_REGISTRY_SNAPSHOT',
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      terminal_id: TERMINAL_ID,
+      operator_id: OPERATOR_ID,
+      event_time_device: '2026-05-16T10:00:00Z',
+      business_date: '2026-05-16',
+      payload: {
+        terminals: [],
+        snapshot_hash: 'a'.repeat(64),
+        prior_snapshot_link: null,
+      },
+    };
+
+    await expect(engine.append(adapter, trsRequest)).rejects.toBeInstanceOf(
+      ServerAuthoredEventTypeError,
+    );
+
+    // No state mutation.
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+    const head = await selectChainHead(adapter, TERMINAL_ID);
+    expect(head.fiscal_event_sequence).toBe(0);
+  });
+
+  it('Task 26 §11.0 — rejects COMPANY_DAY_CLOSURE_MANIFEST with ServerAuthoredEventTypeError (precedence over not-implemented)', async () => {
+    // COMPANY_DAY_CLOSURE_MANIFEST is reserved + server-only. The §11.0
+    // rejection MUST run before the registry's not-implemented check so
+    // the boundary is locked even before the type lands. Once implemented
+    // (later phase), the same §11.0 rejection still applies.
+    const manifestRequest: FiscalEventAppendRequest = {
+      event_type: 'COMPANY_DAY_CLOSURE_MANIFEST',
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      terminal_id: TERMINAL_ID,
+      operator_id: OPERATOR_ID,
+      event_time_device: '2026-05-16T10:00:00Z',
+      business_date: '2026-05-16',
+      payload: {},
+    };
+
+    await expect(engine.append(adapter, manifestRequest)).rejects.toBeInstanceOf(
+      ServerAuthoredEventTypeError,
+    );
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('Task 26 §11.0 — ServerAuthoredEventTypeError message cites spec §11.0 and the event type', async () => {
+    const trsRequest: FiscalEventAppendRequest = {
+      event_type: 'TERMINAL_REGISTRY_SNAPSHOT',
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      terminal_id: TERMINAL_ID,
+      operator_id: OPERATOR_ID,
+      event_time_device: '2026-05-16T10:00:00Z',
+      business_date: '2026-05-16',
+      payload: {
+        terminals: [],
+        snapshot_hash: 'a'.repeat(64),
+        prior_snapshot_link: null,
+      },
+    };
+
+    let thrown: unknown;
+    try {
+      await engine.append(adapter, trsRequest);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ServerAuthoredEventTypeError);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/TERMINAL_REGISTRY_SNAPSHOT/);
+    expect(message).toMatch(/§11\.0|11\.0/);
   });
 });
 

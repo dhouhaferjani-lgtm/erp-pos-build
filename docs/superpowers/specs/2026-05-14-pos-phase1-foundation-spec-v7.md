@@ -536,8 +536,28 @@ The quarantine row is **self-contained**: `canonical_bytes` + `raw_envelope` con
 
 `[SoT §9]`.
 
-- **`TERMINAL_REGISTRY_SNAPSHOT` — implemented in Phase 1.** It has no closure dependency: a registry snapshot (the authoritative list of terminals expected for a company at a point in time; carries a hash; links to the prior snapshot) can be emitted at terminal provisioning and on demand. Phase 1 delivers the event type, the payload DTO, the `append()` handler, and an initial-snapshot emission path.
-- **`COMPANY_DAY_CLOSURE_MANIFEST` — reserved in Phase 1.** It depends on day-closures (a later phase). Phase 1 delivers the event type registration + the payload DTO schema only; `append()` throws `FiscalEventTypeNotImplemented` for it until the closure-rollout phase.
+### 11.0 Server-authoring carve-out for company-integrity events (LOCKED)
+
+The §1 device-authority rule (the device is the fiscal source of truth; the server is verify-only `[SoT §3, §4]`) applies to **per-device transaction events** — first-class `SALE_RECEIPT` and its chain-recovery cousins `CHAIN_BREAK_DETECTED` / `CHAIN_RESTART`. The company-integrity event types listed in this section (`TERMINAL_REGISTRY_SNAPSHOT` implemented; `COMPANY_DAY_CLOSURE_MANIFEST` reserved) are **company-level facts**, not per-device transactions, and therefore have a bounded server-authoring carve-out:
+
+- They have no per-terminal chain linkage at the *business-fact* layer (they're authored against the company-integrity chain, not any single terminal's session chain); the per-terminal chain placement is forensic linkage only.
+- They are operator/server-side facts — the authoritative roster of terminals at provisioning time (or on demand from an operator path), the day-closure manifest at end-of-day — that have **no device-side trigger event** the device could author from.
+- A device-authoring path would require each device to know the authoritative set of OTHER devices (a contradiction — each device only knows its own state); the company-integrity facts are by construction observed at a layer above any single terminal.
+
+Therefore, the server **IS** authorized to author these specific event types directly, BUT must satisfy the following invariants (any future event type added to §11 must declare whether it falls under this carve-out OR follows the §1 default):
+
+1. **`signature_status = NotRequired`** — no device signature is available for a server-authored fact (the device never produced it).
+2. **`integrity_status = Verified` + `payload_parse_status = Parsed`** — the server is trusted to assert integrity for events it authored, having owned the canonical-bytes serialization itself.
+3. **`FiscalPayloadConstraintValidator` runs BEFORE the persist** — the same per-event payload-shape gate the parse path runs (`StrictCanonicalParser` for ingested device events, `ParseFailureResolutionService` for corrected payloads). The server MUST invoke `validatePayloadKeySet()` + `validatePerEventConstraints()` and refuse to write `payload_parse_status = Parsed` without it. Failure raises `InvalidServerAuthoredPayloadException` and rolls the persist back.
+4. **Chain anchor is deterministic** — first event on the authoring terminal chain uses `previous_hash = pos_terminals.genesis_seed` (mirrors device-side anchoring per §3); subsequent events chain off the prior `current_hash` for the same terminal. The chain placement step takes a row-level lock on `pos_terminals` for the authoring terminal so concurrent emissions serialize cleanly (no UNIQUE-violation race on `(tenant_id, terminal_id, sequence_number)`).
+5. **Device-side carve-out enforcement (cross-language drift gate)** — the device-side `FiscalEventEngine.append()` MUST reject these event types so no code path can ever author them on the device (closing the §1 ambiguity at the device boundary). The TS registry treats them as `serverOnly`. This is enforced by the same cross-language drift test surface that locks the implemented set (Task 14 standing pattern).
+
+This carve-out is **bounded to the event types explicitly listed in §11** (and any future §11 entry that explicitly declares it). It does NOT loosen the §1 device-authority rule for any other event type, and it does NOT permit server re-serialization of any device-authored event (§4 remains absolute for SALE_RECEIPT + chain-recovery cousins).
+
+### 11.1 Implemented + reserved event types
+
+- **`TERMINAL_REGISTRY_SNAPSHOT` — implemented in Phase 1 (server-authored per §11.0).** It has no closure dependency: a registry snapshot (the authoritative list of terminals expected for a company at a point in time; carries a hash; links to the prior snapshot) can be emitted at terminal provisioning and on demand. Phase 1 delivers the event type, the payload DTO, the **server-authored emission service** (`TerminalRegistrySnapshotService`, satisfying the §11.0 invariants), and an initial-snapshot emission path. The device `append()` rejects this event type (§11.0 #5).
+- **`COMPANY_DAY_CLOSURE_MANIFEST` — reserved in Phase 1 (server-authored carve-out when implemented).** It depends on day-closures (a later phase). Phase 1 delivers the event type registration + the payload DTO schema only; `append()` throws `FiscalEventTypeNotImplemented` for it until the closure-rollout phase. When implemented, it falls under §11.0; the device `append()` already rejects it preemptively in Phase 1 so the boundary is locked.
 
 Appendix A reflects this split.
 

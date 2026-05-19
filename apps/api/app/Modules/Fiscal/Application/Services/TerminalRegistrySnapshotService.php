@@ -9,6 +9,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\InvalidServerAuthoredPayloadException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Illuminate\Database\ConnectionInterface;
@@ -16,22 +17,29 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use RuntimeException;
 use stdClass;
+use Throwable;
 
 /**
- * Server-authored `TERMINAL_REGISTRY_SNAPSHOT` emitter (spec v7 §11).
+ * Server-authored `TERMINAL_REGISTRY_SNAPSHOT` emitter (spec v7 §11 + §11.0).
  *
- * **Why server-authored.** Spec §11 names `TERMINAL_REGISTRY_SNAPSHOT`
- * and `COMPANY_DAY_CLOSURE_MANIFEST` "company-level integrity record
- * types" — they are operator/company-level facts (the authoritative
- * roster of terminals expected for a company, the day-closure manifest),
- * not per-terminal transactions. They sit alongside the device-authority
- * pattern (§1 / D1) which governs `SALE_RECEIPT` + chain-recovery events;
- * the snapshot can be emitted at terminal provisioning or on demand from
- * a server-side operator path, so a server-authored emission path is
- * required. The emitted event still lands in `fiscal_events` and links
- * forensically into the terminal chain (sequence_number, previous_hash,
- * current_hash) so the per-terminal verifier (Task 31) can prove the
- * snapshot's place in the timeline.
+ * **Why server-authored (spec §11.0 carve-out — LOCKED).** The §1 device-
+ * authority rule (the device is the fiscal SoT; the server is verify-only
+ * `[SoT §3, §4]`) applies to per-device transaction events (SALE_RECEIPT +
+ * the chain-recovery cousins CHAIN_BREAK_DETECTED / CHAIN_RESTART).
+ * §11.0 explicitly carves out company-integrity event types
+ * (`TERMINAL_REGISTRY_SNAPSHOT` implemented; `COMPANY_DAY_CLOSURE_MANIFEST`
+ * reserved): they are operator/company-level facts (the authoritative
+ * roster at provisioning time, the day-closure manifest at end of day) with
+ * no per-terminal-business trigger, no per-terminal-chain linkage at the
+ * business-fact layer, and (by construction) no device that knows the
+ * authoritative set of OTHER devices. The carve-out is bounded to the
+ * event types listed in §11 and comes with five named invariants. This
+ * service implements those invariants for the implemented event type.
+ *
+ * The emitted event still lands in `fiscal_events` and links forensically
+ * into the terminal chain (sequence_number, previous_hash, current_hash)
+ * so the per-terminal verifier (Task 31) can prove the snapshot's place
+ * in the timeline.
  *
  * **Payload shape (§11 + Task 14 DTO + Task 24 constraint validator):**
  *   - `terminals` — authoritative list of the company's terminals, each
@@ -65,9 +73,24 @@ use stdClass;
  * **Constructor injection.** `ConnectionInterface` for DB access,
  * `FiscalIntegrityProvider` for the canonical SHA-256 primitive
  * (`HashChainIntegrityProvider` at runtime — already bound by
- * `FiscalServiceProvider::register()`). Both are Laravel-resolvable, so
- * no provider edit needed (Task 26 plan note: "if `TerminalRegistrySnapshotService`
- * needs an explicit binding, add it, otherwise no provider edit").
+ * `FiscalServiceProvider::register()`), and `FiscalPayloadConstraintValidator`
+ * for §11.0 invariant #3 (the per-event payload-shape gate that the parse
+ * path runs — server-authored events MUST run the same gate, the round-2
+ * dual-review T26-P2 closure). All three are Laravel-resolvable so no
+ * provider edit needed (CLAUDE.md rule 13).
+ *
+ * **Round-2 (T26 dual review) changes summary:**
+ *   - §11.0 carve-out documented in the class docblock (T26-B1 closure
+ *     via spec amendment §11.0).
+ *   - `FiscalPayloadConstraintValidator` constructor dependency added;
+ *     `validatePayloadKeySet()` + `validatePerEventConstraints()` run
+ *     before persist (T26-P2 closure, §11.0 invariant #3).
+ *   - Chain placement + persist wrapped in a `DB::transaction()` with
+ *     `lockForUpdate()` on `pos_terminals` (the authoring terminal row).
+ *     Concurrent emissions for the same terminal serialize cleanly — the
+ *     second waits for the first to commit, re-reads the chain head, and
+ *     computes a non-colliding `(sequence_number, previous_hash)` pair
+ *     (T26-P1 closure, §11.0 invariant #4).
  */
 final class TerminalRegistrySnapshotService
 {
@@ -77,6 +100,7 @@ final class TerminalRegistrySnapshotService
     public function __construct(
         private readonly ConnectionInterface $db,
         private readonly FiscalIntegrityProvider $integrity,
+        private readonly FiscalPayloadConstraintValidator $payloadValidator,
     ) {}
 
     /**
@@ -95,12 +119,16 @@ final class TerminalRegistrySnapshotService
         string $terminalId,
         string $operatorId,
     ): FiscalEvent {
+        // --- Pre-flight (outside transaction): authoring-terminal existence.
+        // A missing terminal is a programming error, not a race — fail
+        // closed before opening a transaction so the boundary error is
+        // unambiguous and no DB resources are tied up.
         /** @var stdClass|null $terminal */
         $terminal = $this->db->table('pos_terminals')
             ->where('id', $terminalId)
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->first(['id', 'genesis_seed']);
+            ->first(['id']);
 
         if ($terminal === null) {
             throw new RuntimeException(sprintf(
@@ -111,9 +139,6 @@ final class TerminalRegistrySnapshotService
                 $companyId,
             ));
         }
-        $genesisSeed = is_string($terminal->genesis_seed)
-            ? $terminal->genesis_seed
-            : (string) $terminal->genesis_seed;
 
         // --- Step 1: build the authoritative terminals list (deterministic order).
         $terminals = $this->loadTerminalsForCompany($tenantId, $companyId);
@@ -121,78 +146,187 @@ final class TerminalRegistrySnapshotService
         // --- Step 2: hash the canonical terminals list — the §11 snapshot anchor.
         $snapshotHash = $this->integrity->computeHash($this->canonicalEncode($terminals));
 
-        // --- Step 3: link to the prior snapshot for this company (if any).
-        $priorSnapshotLink = $this->findPriorSnapshotHash($tenantId, $companyId);
+        // --- Step 3 + 4 + 5 + 6: chain placement + envelope + persist
+        // inside ONE transaction with a row-lock on `pos_terminals` for
+        // the authoring terminal (§11.0 invariant #4 — T26-P1 closure).
+        //
+        // The row-lock serializes concurrent snapshot emissions on the
+        // SAME terminal: the second `emitInitialSnapshot()` call waits at
+        // the `lockForUpdate()` until the first commits, then reads the
+        // fresh chain head (sequence_number, prior snapshot) and computes
+        // a non-colliding placement. Without the lock, concurrent callers
+        // could read the same chain head and trip the
+        // `fiscal_events_tenant_terminal_sequence_unique` UNIQUE.
+        //
+        // The prior-snapshot lookup (§3) runs INSIDE the locked region so
+        // it observes the latest committed snapshot for the company;
+        // outside the lock a second emission could read a stale prior.
+        return $this->db->transaction(function () use (
+            $tenantId,
+            $companyId,
+            $terminalId,
+            $operatorId,
+            $terminals,
+            $snapshotHash,
+        ): FiscalEvent {
+            // Acquire the terminal-row lock — serializes concurrent
+            // snapshot emissions on this terminal. We re-read `genesis_seed`
+            // inside the lock so the seed value seen here is the committed
+            // value (a parallel provisioning rotation could theoretically
+            // change it; the lock pins the visible row for the duration).
+            /** @var stdClass|null $lockedTerminal */
+            $lockedTerminal = $this->db->table('pos_terminals')
+                ->where('id', $terminalId)
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->lockForUpdate()
+                ->first(['id', 'genesis_seed']);
 
-        $payloadDto = new TerminalRegistrySnapshotPayload(
-            terminals: $terminals,
-            snapshotHash: $snapshotHash,
-            priorSnapshotLink: $priorSnapshotLink,
-        );
-        $payloadArray = $payloadDto->toArray();
+            if ($lockedTerminal === null) {
+                // Defense — the terminal existed during the pre-flight
+                // check but disappeared before the lock. Treat identically
+                // to the pre-flight miss for a uniform boundary error.
+                throw new RuntimeException(sprintf(
+                    'TerminalRegistrySnapshotService: authoring terminal_id %s vanished between pre-flight and lock acquisition '.
+                    'for tenant=%s company=%s.',
+                    $terminalId,
+                    $tenantId,
+                    $companyId,
+                ));
+            }
+            $genesisSeed = is_string($lockedTerminal->genesis_seed)
+                ? $lockedTerminal->genesis_seed
+                : (string) $lockedTerminal->genesis_seed;
 
-        // --- Step 4: resolve chain placement on the authoring terminal.
-        [$sequenceNumber, $previousHash] = $this->resolveChainPlacement(
-            tenantId: $tenantId,
-            terminalId: $terminalId,
-            genesisSeed: $genesisSeed,
-        );
+            // Prior-snapshot link (read inside the locked region so it
+            // observes the most recent committed snapshot).
+            $priorSnapshotLink = $this->findPriorSnapshotHash($tenantId, $companyId);
 
-        // --- Step 5: build the canonical envelope bytes per spec §4 (14 keys).
-        $now = Carbon::now('UTC');
-        $envelope = [
-            'business_date' => $now->copy()->startOfDay()->toDateString(),
-            'company_id' => $companyId,
-            'event_time_device' => $now->format('Y-m-d\TH:i:s\Z'),
-            'event_type' => FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value,
-            'event_version' => 1,
-            'operator_id' => $operatorId,
-            'payload' => $payloadArray,
-            'previous_hash' => $previousHash,
-            'reference_document_id' => null,
-            'reference_event_id' => null,
-            'sequence_number' => $sequenceNumber,
-            'signature_version' => self::SERVER_AUTHORED_SIGNATURE_VERSION,
-            'tenant_id' => $tenantId,
-            'terminal_id' => $terminalId,
-        ];
-        $canonicalBytes = $this->canonicalEncode($envelope);
-        $currentHash = $this->integrity->computeHash($canonicalBytes);
+            $payloadDto = new TerminalRegistrySnapshotPayload(
+                terminals: $terminals,
+                snapshotHash: $snapshotHash,
+                priorSnapshotLink: $priorSnapshotLink,
+            );
+            $payloadArray = $payloadDto->toArray();
 
-        // --- Step 6: persist the row.
-        /** @var FiscalEvent $event */
-        $event = FiscalEvent::query()->create([
-            'id' => (string) Str::uuid(),
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            'terminal_id' => $terminalId,
-            'operator_id' => $operatorId,
-            'event_type' => FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
-            'event_version' => 1,
-            'signature_version' => self::SERVER_AUTHORED_SIGNATURE_VERSION,
-            'sequence_number' => $sequenceNumber,
-            'event_time_device' => $now,
-            'business_date' => $now->copy()->startOfDay(),
-            'last_server_time_seen' => null,
-            'server_received_at' => $now,
-            'reference_event_id' => null,
-            'reference_document_id' => null,
-            'source_event_class' => null,
-            'source_event_id' => null,
-            'partner_id' => null,
-            'partner_identity_snapshot' => null,
-            'canonical_bytes' => $canonicalBytes,
-            'previous_hash' => $previousHash,
-            'current_hash' => $currentHash,
-            'signature_status' => SignatureStatus::NotRequired,
-            'integrity_status' => IntegrityStatus::Verified,
-            'integrity_exception_class' => null,
-            'integrity_exception_reason' => null,
-            'payload' => $payloadArray,
-            'payload_parse_status' => PayloadParseStatus::Parsed,
-        ]);
+            // --- §11.0 invariant #3: validate the payload BEFORE persist.
+            // T26-P2 closure: server-authored events MUST run the same
+            // per-event payload-shape gate the parse path runs (`StrictCanonicalParser`
+            // for ingested device events, `ParseFailureResolutionService` for
+            // corrected payloads). Otherwise a drift in DTO shape would
+            // silently write `payload_parse_status=parsed` on a payload the
+            // canonical-bytes parse path would reject.
+            $this->validateServerAuthoredPayload(
+                FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+                $payloadArray,
+            );
 
-        return $event->refresh();
+            // Resolve chain placement INSIDE the lock — the prior-event
+            // query observes the committed state at lock-acquisition time.
+            [$sequenceNumber, $previousHash] = $this->resolveChainPlacement(
+                tenantId: $tenantId,
+                terminalId: $terminalId,
+                genesisSeed: $genesisSeed,
+            );
+
+            // Build the canonical envelope bytes per spec §4 (14 keys).
+            $now = Carbon::now('UTC');
+            $envelope = [
+                'business_date' => $now->copy()->startOfDay()->toDateString(),
+                'company_id' => $companyId,
+                'event_time_device' => $now->format('Y-m-d\TH:i:s\Z'),
+                'event_type' => FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value,
+                'event_version' => 1,
+                'operator_id' => $operatorId,
+                'payload' => $payloadArray,
+                'previous_hash' => $previousHash,
+                'reference_document_id' => null,
+                'reference_event_id' => null,
+                'sequence_number' => $sequenceNumber,
+                'signature_version' => self::SERVER_AUTHORED_SIGNATURE_VERSION,
+                'tenant_id' => $tenantId,
+                'terminal_id' => $terminalId,
+            ];
+            $canonicalBytes = $this->canonicalEncode($envelope);
+            $currentHash = $this->integrity->computeHash($canonicalBytes);
+
+            // Persist the row. The Eloquent `create()` is fine here because
+            // the row-lock on `pos_terminals` already serializes concurrent
+            // emissions on this terminal — no UNIQUE-violation race window
+            // remains. The DB-level UNIQUE on
+            // `(tenant_id, terminal_id, sequence_number)` is the belt-and-
+            // braces final guard (would surface as `QueryException`).
+            /** @var FiscalEvent $event */
+            $event = FiscalEvent::query()->create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'terminal_id' => $terminalId,
+                'operator_id' => $operatorId,
+                'event_type' => FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+                'event_version' => 1,
+                'signature_version' => self::SERVER_AUTHORED_SIGNATURE_VERSION,
+                'sequence_number' => $sequenceNumber,
+                'event_time_device' => $now,
+                'business_date' => $now->copy()->startOfDay(),
+                'last_server_time_seen' => null,
+                'server_received_at' => $now,
+                'reference_event_id' => null,
+                'reference_document_id' => null,
+                'source_event_class' => null,
+                'source_event_id' => null,
+                'partner_id' => null,
+                'partner_identity_snapshot' => null,
+                'canonical_bytes' => $canonicalBytes,
+                'previous_hash' => $previousHash,
+                'current_hash' => $currentHash,
+                'signature_status' => SignatureStatus::NotRequired,
+                'integrity_status' => IntegrityStatus::Verified,
+                'integrity_exception_class' => null,
+                'integrity_exception_reason' => null,
+                'payload' => $payloadArray,
+                'payload_parse_status' => PayloadParseStatus::Parsed,
+            ]);
+
+            return $event->refresh();
+        });
+    }
+
+    /**
+     * §11.0 invariant #3 — run the same per-event payload-shape gate the
+     * parse path runs (`StrictCanonicalParser` /
+     * `ParseFailureResolutionService`) BEFORE writing
+     * `payload_parse_status = Parsed`.
+     *
+     * Wraps any validator throw as `InvalidServerAuthoredPayloadException`
+     * so the caller boundary sees a typed error. Returns nothing on
+     * success; on failure the surrounding `DB::transaction()` rolls back
+     * — no `fiscal_events` row is written.
+     *
+     * @param  array<string, mixed>  $payload
+     *
+     * @throws InvalidServerAuthoredPayloadException
+     */
+    private function validateServerAuthoredPayload(FiscalEventType $type, array $payload): void
+    {
+        $keySetError = $this->payloadValidator->validatePayloadKeySet($type, $payload);
+        if ($keySetError !== null) {
+            throw new InvalidServerAuthoredPayloadException(sprintf(
+                'Server-authored %s payload failed key-set validation: %s',
+                $type->value,
+                $keySetError,
+            ));
+        }
+
+        try {
+            $this->payloadValidator->validatePerEventConstraints($type, $payload);
+        } catch (Throwable $previous) {
+            throw new InvalidServerAuthoredPayloadException(sprintf(
+                'Server-authored %s payload failed per-event constraint validation: %s',
+                $type->value,
+                $previous->getMessage(),
+            ), $previous);
+        }
     }
 
     /**

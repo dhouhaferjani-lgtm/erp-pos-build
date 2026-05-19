@@ -84,4 +84,37 @@ describe('FiscalEventPayloadRegistry', () => {
       ]),
     );
   });
+
+  // -------------------------------------------------------------------
+  // Task 26 round-2 — spec §11.0 server-only classification
+  //
+  // Per spec v7 §11.0, company-integrity event types are SERVER-ONLY:
+  // implemented at the registry/DTO level (so the parse path knows the
+  // payload shape) but NOT device-authorable. `FiscalEventEngine.append()`
+  // reads this classification to reject server-only types at the device
+  // boundary.
+  // -------------------------------------------------------------------
+
+  it('marks TERMINAL_REGISTRY_SNAPSHOT as server-only (§11.0)', () => {
+    expect(registry.isServerOnly('TERMINAL_REGISTRY_SNAPSHOT')).toBe(true);
+  });
+
+  it('marks COMPANY_DAY_CLOSURE_MANIFEST as server-only (§11.0)', () => {
+    expect(registry.isServerOnly('COMPANY_DAY_CLOSURE_MANIFEST')).toBe(true);
+  });
+
+  it('marks SALE_RECEIPT / CHAIN_BREAK_DETECTED / CHAIN_RESTART as NOT server-only (device-authored)', () => {
+    expect(registry.isServerOnly('SALE_RECEIPT')).toBe(false);
+    expect(registry.isServerOnly('CHAIN_BREAK_DETECTED')).toBe(false);
+    expect(registry.isServerOnly('CHAIN_RESTART')).toBe(false);
+  });
+
+  it('serverOnlyTypes() returns the stable §11.0 set', () => {
+    expect(new Set(registry.serverOnlyTypes())).toEqual(
+      new Set<FiscalEventTypeValue>([
+        'TERMINAL_REGISTRY_SNAPSHOT',
+        'COMPANY_DAY_CLOSURE_MANIFEST',
+      ]),
+    );
+  });
 });
