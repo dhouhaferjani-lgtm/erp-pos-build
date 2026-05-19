@@ -523,6 +523,15 @@ export class FiscalEventEngine {
    * deferred to Task 16's server-side StrictCanonicalParser (matches
    * Task 14 Opus P2-2 deferral pattern). The engine layer enforces only
    * the top-level invariants that are unambiguously monetary.
+   *
+   * **Round-2 (Task 25 Codex T25-P2 closure):** CHAIN_BREAK_DETECTED +
+   * CHAIN_RESTART now get runtime validation that MIRRORS the PHP
+   * `FiscalPayloadConstraintValidator` constraint set EXACTLY — 64-char
+   * lowercase hex on hash fields, non-empty assoc on the four
+   * non-empty-object fields. Cross-language drift gate (Task 14 standing
+   * pattern): TS validation must reject what PHP rejects.
+   * `TERMINAL_REGISTRY_SNAPSHOT` remains deferred to Task 16's parser
+   * since no Phase 1 TS caller authors it (only server emits).
    */
   private validateRequestPayload(request: FiscalEventAppendRequest): void {
     switch (request.event_type) {
@@ -530,12 +539,15 @@ export class FiscalEventEngine {
         validateSaleReceiptPayload(request.payload);
         return;
       case 'CHAIN_BREAK_DETECTED':
+        validateChainBreakDetectedPayload(request.payload);
+        return;
       case 'CHAIN_RESTART':
+        validateChainRestartPayload(request.payload);
+        return;
       case 'TERMINAL_REGISTRY_SNAPSHOT':
-        // Top-level shape is non-monetary for these three (Phase 1).
-        // Sub-array validation deferred to Task 16's parser. Falling
-        // through with no engine-side checks is the intentional Phase 1
-        // posture.
+        // No TS authoring path in Phase 1 — sub-array validation
+        // deferred to Task 16's parser. Falling through with no
+        // engine-side checks is the intentional Phase 1 posture.
         return;
       default:
         // Reserved types are rejected by the registry in step 1; this
@@ -638,6 +650,107 @@ function validateSaleReceiptPayload(payload: unknown): void {
   if (!Array.isArray(p['lines'])) {
     throw new FiscalEventPayloadValidationError(
       `SALE_RECEIPT.lines must be an array; got ${typeofTag(p['lines'])}.`,
+    );
+  }
+}
+
+/**
+ * Validate CHAIN_BREAK_DETECTED payload — mirrors the PHP
+ * `FiscalPayloadConstraintValidator::validateChainBreakDetectedPayload()`
+ * constraint set EXACTLY. Closes Task 25 round-2 Codex T25-P2
+ * (cross-language drift gate — TS must reject what PHP rejects).
+ *
+ *   - `last_good_hash` must be 64-char lowercase hex.
+ *   - `offending_record_reference` must be a non-empty object.
+ *   - If `offending_record_reference.observed_previous_hash` is present,
+ *     it must be 64-char lowercase hex.
+ */
+function validateChainBreakDetectedPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'CHAIN_BREAK_DETECTED payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  assertHashField(p, 'last_good_hash', 'CHAIN_BREAK_DETECTED.last_good_hash');
+  assertNonEmptyAssoc(p, 'offending_record_reference', 'CHAIN_BREAK_DETECTED.offending_record_reference');
+
+  const ref = p['offending_record_reference'] as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(ref, 'observed_previous_hash')) {
+    assertHashField(
+      ref,
+      'observed_previous_hash',
+      'CHAIN_BREAK_DETECTED.offending_record_reference.observed_previous_hash',
+    );
+  }
+}
+
+/**
+ * Validate CHAIN_RESTART payload — mirrors the PHP
+ * `FiscalPayloadConstraintValidator::validateChainRestartPayload()`
+ * constraint set EXACTLY. Closes Task 25 round-2 Codex T25-P2.
+ *
+ *   - `new_genesis_reference` must be 64-char lowercase hex.
+ *   - `last_good_anchor`, `operator_authorization_evidence`,
+ *     `provenance_link` must each be non-empty objects.
+ *   - If `last_good_anchor.hash` is present, it must be 64-char lowercase hex.
+ */
+function validateChainRestartPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'CHAIN_RESTART payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  assertHashField(p, 'new_genesis_reference', 'CHAIN_RESTART.new_genesis_reference');
+  assertNonEmptyAssoc(p, 'last_good_anchor', 'CHAIN_RESTART.last_good_anchor');
+  assertNonEmptyAssoc(
+    p,
+    'operator_authorization_evidence',
+    'CHAIN_RESTART.operator_authorization_evidence',
+  );
+  assertNonEmptyAssoc(p, 'provenance_link', 'CHAIN_RESTART.provenance_link');
+
+  const anchor = p['last_good_anchor'] as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(anchor, 'hash')) {
+    assertHashField(anchor, 'hash', 'CHAIN_RESTART.last_good_anchor.hash');
+  }
+}
+
+/**
+ * Assert a field on `bag` is a 64-char lowercase hex string. Mirrors
+ * `FiscalPayloadConstraintValidator::assertHashField()` exactly. Throws
+ * `FiscalEventPayloadValidationError` on violation.
+ */
+function assertHashField(bag: Record<string, unknown>, field: string, label: string): void {
+  const value = bag[field];
+  if (typeof value !== 'string' || !LOWER_HEX_64.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `${label} must be 64-char lowercase hex; got ${typeofTag(value)}${
+        typeof value === 'string' ? ` (${JSON.stringify(value)})` : ''
+      }.`,
+    );
+  }
+}
+
+/**
+ * Assert a field on `bag` is a non-empty object (not null, not an array,
+ * not a string-keyed empty object). Mirrors
+ * `FiscalPayloadConstraintValidator::validateNonEmptyAssoc()` exactly.
+ * Throws `FiscalEventPayloadValidationError` on violation.
+ */
+function assertNonEmptyAssoc(bag: Record<string, unknown>, field: string, label: string): void {
+  const value = bag[field];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `${label} must be a non-empty object; got ${typeofTag(value)}.`,
+    );
+  }
+  if (Object.keys(value as Record<string, unknown>).length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      `${label} must be a non-empty object; got empty object.`,
     );
   }
 }

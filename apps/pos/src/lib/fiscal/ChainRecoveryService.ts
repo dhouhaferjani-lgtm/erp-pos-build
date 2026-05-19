@@ -8,7 +8,7 @@
  * `degraded` mode. Recovery is **two chained incident events** (NOT
  * "signed" — no signature provider in Phase 1):
  *
- *   1. `CHAIN_BREAK_DETECTED` — `{ reason, last_good_sequence_number,
+ *   1. `CHAIN_BREAK_DETECTED` — `{ reason, last_good_sequence,
  *      last_good_hash, offending_record_reference }`
  *   2. `CHAIN_RESTART` — `{ new_genesis_reference, last_good_anchor,
  *      operator_authorization_evidence, provenance_link }`
@@ -23,14 +23,42 @@
  * Task 14 standing pattern: golden vectors keep the payload key sets +
  * monetary types in lockstep across PHP and TS).
  *
- * The service is intentionally thin — it does NOT decide *when* to call
- * (callers detect the break via §15 verifier output or local
- * structural checks) and it does NOT manage the `degraded` flag on
- * `terminal_state` (that flag is owned by the caller transaction, like
- * the receipt-assembler owns its `offline_receipts` row write). What
- * it owns: deterministic emission order, payload shape compliance,
- * and provenance linkage from CHAIN_RESTART back to the
- * CHAIN_BREAK_DETECTED it resolves.
+ * **What this service owns** (round-2):
+ *
+ *   - **Transactional atomicity** of the two recovery appends + the
+ *     `terminal_state.fiscal_chain_status = 'degraded'` flip. All three
+ *     mutations run inside a single SQLite transaction the service
+ *     opens (BEGIN) and commits (COMMIT) — or rolls back (ROLLBACK) on
+ *     any failure. Closes Task 25 round-1 Codex T25-B1.
+ *   - **Degraded-mode flag recording** on `terminal_state` — `'healthy'`
+ *     before, `'degraded'` after a successful recovery emission. Stored
+ *     in a v38 column with a CHECK-constrained allowed value set. Closes
+ *     Task 25 round-1 Codex T25-P1.
+ *   - **Deterministic emission order** — CHAIN_BREAK_DETECTED then
+ *     CHAIN_RESTART, with the RESTART's `provenance_link.chain_break_event_id`
+ *     pointing back to the BREAK row's UUID so the restart is forensically
+ *     traceable to its own break (not a sibling).
+ *   - **Payload shape compliance** — every payload key matches the PHP
+ *     `FiscalPayloadConstraintValidator::PAYLOAD_KEYS` set. The runtime
+ *     validation of hash + non-empty-assoc constraints lives in
+ *     `FiscalEventEngine.validateRequestPayload()` (Task 25 round-2
+ *     extension; mirrors PHP validator exactly).
+ *
+ * **What this service does NOT own**:
+ *
+ *   - The decision *when* to call (callers detect the break via §15
+ *     verifier output or local structural checks).
+ *   - Authoring the structured offending-reference context (callers
+ *     supply it — see `ChainBreakAndRestartRequest.offending_reference`).
+ *     Round-2 rejects an absent/empty `offending_reference` — synthetic
+ *     `{kind: 'unknown_offender'}` placeholders are NOT manufactured at
+ *     this layer (Opus F3 / Codex T25-P3 convergent fix). The caller
+ *     must supply a real structured shape — e.g. `{kind: 'sequence_gap',
+ *     expected, found}` for verifier-detected gaps, or
+ *     `{kind: 'hash_mismatch', at_sequence, observed_previous_hash}` for
+ *     hash-chain breaks. Forcing the call site to surface what triggered
+ *     the break keeps the immutable chain row from carrying manufactured
+ *     forensic context.
  */
 
 import type Database from '@tauri-apps/plugin-sql';
@@ -45,9 +73,13 @@ import {
  * Caller-supplied input describing the break + the restart authorization.
  *
  * `last_good_sequence` / `last_good_hash` identify the last verifiable
- * anchor on the chain. `offending_reference` is the (optional) identifier
- * of the row that triggered the break — typically the event UUID or the
- * synthetic key the verifier surfaced. `operator_authorization_evidence`
+ * anchor on the chain. `offending_reference` is a REQUIRED, non-empty
+ * structured object identifying WHAT triggered the break — typically
+ * `{kind: 'sequence_gap', expected, found}` for verifier-detected gaps
+ * or `{kind: 'hash_mismatch', at_sequence, observed_previous_hash}` for
+ * hash-chain breaks. The service refuses to manufacture forensic
+ * context: an absent or empty reference throws `InvalidArgumentException`
+ * (round-2 Opus F3 / Codex T25-P3 convergent fix). `operator_authorization_evidence`
  * captures who authorized the restart (manager id + role + reason code +
  * any out-of-band attestation like a manager-PIN audit id).
  */
@@ -66,20 +98,44 @@ export interface ChainBreakAndRestartRequest {
   last_good_sequence: number;
   /** The 64-char lowercase hex `current_hash` at `last_good_sequence`. */
   last_good_hash: string;
-  /** Optional identifier of the offending row (UUID, synthetic key, etc.). */
-  offending_reference?: string;
+  /**
+   * REQUIRED non-empty structured identification of what triggered the
+   * break. The service does NOT manufacture a placeholder when omitted —
+   * the caller (verifier output, structural-check site) MUST surface
+   * what it observed. Throws `InvalidArgumentException` if missing,
+   * non-object, or an empty object.
+   */
+  offending_reference: Record<string, unknown>;
   /** `{ user_id, role, reason_code, manager_pin_attestation, ... }`. */
   operator_authorization_evidence: Record<string, unknown>;
 }
 
 /**
  * Result of a successful chain-recovery emission. Both events are
- * returned so the caller can update `terminal_state.degraded` /
- * forensic logs / sync metadata against the canonical event ids.
+ * returned so the caller can update forensic logs / sync metadata
+ * against the canonical event ids. `terminal_state.fiscal_chain_status`
+ * is flipped to `'degraded'` inside the same transaction as the appends.
  */
 export interface ChainRecoveryResult {
   break: FiscalEventAppendResult;
   restart: FiscalEventAppendResult;
+}
+
+/**
+ * Thrown when `recordBreakAndRestart()` is called with an absent, non-object,
+ * or empty `offending_reference`. The CHAIN_BREAK_DETECTED row is immutable
+ * — the service refuses to manufacture forensic context so the caller is
+ * forced to surface a real structured observation.
+ */
+export class MissingOffendingReferenceError extends Error {
+  constructor(reason: string) {
+    super(
+      `ChainRecoveryService.recordBreakAndRestart: offending_reference is required and must be a non-empty object — ${reason}. ` +
+        'The service does not manufacture placeholders (round-2 Opus F3 / Codex T25-P3). Callers should supply a structured shape ' +
+        "(e.g. {kind: 'sequence_gap', expected, found} or {kind: 'hash_mismatch', at_sequence, observed_previous_hash}).",
+    );
+    this.name = 'MissingOffendingReferenceError';
+  }
 }
 
 export class ChainRecoveryService {
@@ -87,50 +143,112 @@ export class ChainRecoveryService {
 
   /**
    * Author CHAIN_BREAK_DETECTED then CHAIN_RESTART against the SAME
-   * `(tenant, terminal)` chain. The two events are emitted via
-   * `FiscalEventEngine.append()` so they participate in the usual chain
-   * head advance, hash linkage, and idempotency mechanics.
+   * `(tenant, terminal)` chain AND flip `terminal_state.fiscal_chain_status`
+   * to `'degraded'` — all three mutations inside a single SQLite
+   * transaction. The two events are emitted via `FiscalEventEngine.append()`
+   * so they participate in the usual chain head advance, hash linkage,
+   * and idempotency mechanics.
    *
-   * **Transactional posture.** Mirrors `FiscalEventEngine.append()` —
-   * runs inside the caller's transaction. If the caller wraps the call
-   * in `BEGIN`/`COMMIT`, both events land atomically (or both roll back).
-   * If the caller does NOT wrap, the underlying SQLite engine treats
-   * each `engine.append()` as its own implicit transaction; the second
-   * append still chains correctly off the first because
-   * `engine.append()` re-reads the chain head per call.
+   * **Transactional atomicity (round-2 — closes Codex T25-B1).** The
+   * service opens `BEGIN`, runs the two appends + the degraded-flag
+   * update, and commits with `COMMIT`. On ANY failure it issues
+   * `ROLLBACK` and re-throws so the chain is never left in a
+   * half-recovery state. SQLite's auto-commit was the round-1 hazard:
+   * each `engine.append()` would otherwise commit on its own, and a
+   * failure on the second append would leave the first append
+   * permanently on the chain with no restart row.
+   *
+   * **Degraded mode (round-2 — closes Codex T25-P1).** The terminal
+   * remains operational after a recovery emission but is flagged
+   * `'degraded'` so the UI / sync / verifier surfaces can pattern-match
+   * on the column to elevate the chain-break to operator attention.
+   * Flipped inside the same transaction so the flag tracks the chain
+   * mutations 1:1.
    *
    * **Provenance link.** CHAIN_RESTART's `provenance_link.chain_break_event_id`
    * is set to the UUID of the CHAIN_BREAK_DETECTED event we just
    * appended — guarantees the restart is forensically traceable to its
    * own break, not a sibling chain break.
+   *
+   * @throws MissingOffendingReferenceError when `offending_reference`
+   *         is missing, not an object, or an empty object.
    */
   async recordBreakAndRestart(
     tx: Database | SqlSurface,
     request: ChainBreakAndRestartRequest,
   ): Promise<ChainRecoveryResult> {
-    const breakResult = await this.engine.append(tx, {
-      event_type: 'CHAIN_BREAK_DETECTED',
-      tenant_id: request.tenant_id,
-      company_id: request.company_id,
-      terminal_id: request.terminal_id,
-      operator_id: request.operator_id,
-      event_time_device: request.event_time_device,
-      business_date: request.business_date,
-      payload: buildBreakPayload(request),
-    });
+    assertOffendingReference(request.offending_reference);
 
-    const restartResult = await this.engine.append(tx, {
-      event_type: 'CHAIN_RESTART',
-      tenant_id: request.tenant_id,
-      company_id: request.company_id,
-      terminal_id: request.terminal_id,
-      operator_id: request.operator_id,
-      event_time_device: request.event_time_device,
-      business_date: request.business_date,
-      payload: buildRestartPayload(request, breakResult),
-    });
+    const sql = tx as unknown as SqlSurface;
 
-    return { break: breakResult, restart: restartResult };
+    await sql.execute('BEGIN');
+    try {
+      const breakResult = await this.engine.append(tx, {
+        event_type: 'CHAIN_BREAK_DETECTED',
+        tenant_id: request.tenant_id,
+        company_id: request.company_id,
+        terminal_id: request.terminal_id,
+        operator_id: request.operator_id,
+        event_time_device: request.event_time_device,
+        business_date: request.business_date,
+        payload: buildBreakPayload(request),
+      });
+
+      const restartResult = await this.engine.append(tx, {
+        event_type: 'CHAIN_RESTART',
+        tenant_id: request.tenant_id,
+        company_id: request.company_id,
+        terminal_id: request.terminal_id,
+        operator_id: request.operator_id,
+        event_time_device: request.event_time_device,
+        business_date: request.business_date,
+        payload: buildRestartPayload(request, breakResult),
+      });
+
+      // Flip the degraded flag in the SAME transaction as the appends.
+      // Scoped per-(tenant, terminal) so a tenant-id collision on
+      // terminal_id (defensive — terminal_id is PK) cannot
+      // cross-pollute.
+      await sql.execute(
+        `UPDATE terminal_state
+            SET fiscal_chain_status = 'degraded'
+          WHERE terminal_id = $1`,
+        [request.terminal_id],
+      );
+
+      await sql.execute('COMMIT');
+      return { break: breakResult, restart: restartResult };
+    } catch (error) {
+      try {
+        await sql.execute('ROLLBACK');
+      } catch {
+        // Best-effort rollback. The outer error is the real signal;
+        // a rollback-on-rollback failure is logged via the throw.
+      }
+      throw error;
+    }
+  }
+}
+
+/**
+ * Validate the caller-supplied `offending_reference`. Round-2 closure
+ * for Opus F3 / Codex T25-P3 — the service refuses to manufacture
+ * forensic context, so the caller MUST supply a structured non-empty
+ * object identifying what triggered the break. Mirrors the PHP-side
+ * `FiscalPayloadConstraintValidator::validateNonEmptyAssoc()` semantics
+ * (non-null, object, non-empty, not a list).
+ */
+function assertOffendingReference(value: unknown): void {
+  if (value === null || value === undefined) {
+    throw new MissingOffendingReferenceError('value was null/undefined');
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new MissingOffendingReferenceError(
+      `value was ${Array.isArray(value) ? 'an array' : typeof value}, expected a non-empty object`,
+    );
+  }
+  if (Object.keys(value as Record<string, unknown>).length === 0) {
+    throw new MissingOffendingReferenceError('value was an empty object');
   }
 }
 
@@ -145,28 +263,16 @@ export class ChainRecoveryService {
  *   - `offending_record_reference` (non-empty assoc; if it carries
  *     `observed_previous_hash`, that's a hash)
  *
- * `offending_record_reference` is always emitted as a non-empty object —
- * the validator rejects an empty assoc. When the caller cannot identify
- * the offending row, we record that explicitly via a `kind` discriminator
- * so the forensic export distinguishes "unknown offender" from "offender
- * id was X".
+ * Round-2: `offending_reference` is asserted non-empty BEFORE this
+ * function runs, so the synthetic-placeholder branch is gone. The
+ * caller's structured shape lands on the immutable chain as-is.
  */
 function buildBreakPayload(request: ChainBreakAndRestartRequest): Record<string, unknown> {
-  const offending: Record<string, unknown> = request.offending_reference
-    ? {
-        offending_reference: request.offending_reference,
-        terminal_id: request.terminal_id,
-      }
-    : {
-        kind: 'unknown_offender',
-        terminal_id: request.terminal_id,
-      };
-
   return {
     reason: request.reason,
     last_good_sequence: request.last_good_sequence,
     last_good_hash: request.last_good_hash,
-    offending_record_reference: offending,
+    offending_record_reference: request.offending_reference,
   };
 }
 

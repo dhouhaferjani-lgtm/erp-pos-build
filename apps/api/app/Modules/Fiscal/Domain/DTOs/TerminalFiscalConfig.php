@@ -45,13 +45,30 @@ final readonly class TerminalFiscalConfig
             throw new InvalidArgumentException('TerminalFiscalConfig.timezone must be a non-empty IANA timezone identifier.');
         }
 
-        // Validate IANA-parseable. DateTimeZone throws on an unknown id.
-        try {
-            new \DateTimeZone($timezone);
-        } catch (\Throwable $e) {
+        // Round-2 (Opus F1 closure). PHP's `new DateTimeZone($s)` accepts
+        // BARE UTC OFFSETS ('+02:00'), abbreviations ('CEST'), and several
+        // sentinel forms in addition to canonical IANA identifiers — none of
+        // which can resolve DST transitions correctly. The DTO's normative
+        // contract is "IANA-only"; enforce it strictly by intersecting the
+        // input with `DateTimeZone::listIdentifiers()` (PHP's canonical
+        // IANA tzdb mirror). Bare offsets, abbreviations, and any other
+        // non-IANA form are now rejected at construction time, BEFORE
+        // `ClockAnomalyDetector::businessDateFor()` could silently
+        // misassign `business_date` for half the year in any DST jurisdiction.
+        //
+        // `DateTimeZone::listIdentifiers()` (default = ALL) returns the
+        // ~420 canonical IANA region/city entries (e.g. `Europe/Paris`,
+        // `Africa/Tunis`, `UTC`). It deliberately EXCLUDES the
+        // `Etc/GMT±N` backward-compat group (in PHP those live behind
+        // `DateTimeZone::ALL_WITH_BC` only). Operators should configure
+        // a canonical IANA location identifier — a static-offset zone
+        // is not a substitute for DST-aware fiscal timekeeping.
+        $ianaIdentifiers = \DateTimeZone::listIdentifiers();
+        if (! in_array($timezone, $ianaIdentifiers, strict: true)) {
             throw new InvalidArgumentException(
-                'TerminalFiscalConfig.timezone is not a valid IANA timezone: '.var_export($timezone, true),
-                previous: $e,
+                'TerminalFiscalConfig.timezone is not an IANA timezone identifier '.
+                '(bare offsets, abbreviations, and other non-IANA forms are rejected): '.
+                var_export($timezone, true),
             );
         }
 

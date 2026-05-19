@@ -512,64 +512,16 @@ final class OutboxIngestor
             return null;
         }
 
-        // Detector flagged. Reconstruct the structured reason in the
-        // same format the verifier + existing tests expect. Carbon::parse
-        // here cannot throw — the detector only flags after successfully
-        // parsing `deviceTime`. We still defend with try-catch so a
-        // future detector evolution that admits malformed input cannot
-        // surface as an ingestor throw.
-        try {
-            $eventTime = CarbonImmutable::parse($envelope->eventTimeDevice);
-        } catch (Throwable) {
-            // Detector said "not admissible" yet deviceTime is unparseable
-            // — impossible in steady state (the detector's malformed
-            // branch returns true). Fall through with a defensive reason.
-            return 'time_anomaly:detector_flagged_unparseable_event_time_device';
-        }
-
-        // Rollback branch — strict less-than vs prior. Only emit when
-        // the prior row's timestamp parses cleanly; otherwise drift is
-        // the only remaining cause.
-        if ($priorTimeRaw !== null) {
-            try {
-                $priorTime = CarbonImmutable::parse($priorTimeRaw);
-                if ($eventTime->lessThan($priorTime)) {
-                    return sprintf(
-                        'time_anomaly:rollback,prior=%s,current=%s',
-                        $priorTime->toIso8601String(),
-                        $eventTime->toIso8601String(),
-                    );
-                }
-            } catch (Throwable) {
-                // Prior row's timestamp unparseable — fall through to drift.
-            }
-        }
-
-        $limit = $this->clockDriftLimitSeconds();
-        $drift = abs($serverReceivedAt->getTimestamp() - $eventTime->getTimestamp());
-
-        return sprintf(
-            'time_anomaly:excessive_drift,drift_seconds=%d,limit=%d',
-            $drift,
-            $limit,
+        // Detector flagged. Format the structured reason via the detector
+        // — round-2 Opus F2/F5 closure. Single source of truth: the
+        // detector owns BOTH the admissibility decision AND the threshold
+        // it uses, so the reason string the verifier reads cannot
+        // misreport the limit the detector enforced.
+        return $this->clockAnomalyDetector->formatTimeAnomalyReason(
+            deviceTime: $envelope->eventTimeDevice,
+            lastServerTimeSeen: $priorTimeRaw,
+            serverReceivedAt: $serverReceivedAt,
         );
-    }
-
-    /**
-     * T19-P1: clock drift threshold is config-readable so multi-day
-     * offline batches can be supported per-deployment without code change.
-     * Defaults to 86400 seconds (24h) — the original conservative
-     * ceiling.
-     *
-     * Task 25 — also read by `ClockAnomalyDetector` directly; kept here
-     * for the local reason-string reconstruction in `verifyClock()`
-     * (the format includes the limit value for forensic clarity).
-     */
-    private function clockDriftLimitSeconds(): int
-    {
-        $configured = config('fiscal.clock_drift_limit_seconds', 24 * 60 * 60);
-
-        return is_int($configured) ? $configured : (int) $configured;
     }
 
     /**

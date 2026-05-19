@@ -1088,4 +1088,37 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // POS Fiscal Event Engine — Phase 1 (Task 25 round-2).
+    //
+    // Spec v7 §9 requires: "On a local chain break, the terminal continues
+    // operating in a recorded degraded mode." Task 25 round-1 shipped the
+    // recovery emission (CHAIN_BREAK_DETECTED + CHAIN_RESTART) but did NOT
+    // record the degraded-mode flag on `terminal_state`. Codex T25-P1
+    // flagged this as a spec-compliance gap. Round-2 closes it by adding
+    // an enum-shaped column the recovery service flips inside the same
+    // transaction that emits the two recovery events — so a transactional
+    // rollback also rolls back the degraded flag.
+    //
+    // Allowed values: 'healthy' | 'degraded'. Default 'healthy'. The
+    // CHECK constraint enforces the allowed set; we use TEXT (not an
+    // INTEGER enum) so the value reads as the enum tag in any SQLite
+    // shell inspection — forensic legibility per the standing
+    // enum-not-magic-string discipline (CLAUDE.md rule 9).
+    version: 38,
+    name: 'add_fiscal_chain_status_to_terminal_state',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          "ALTER TABLE terminal_state ADD COLUMN fiscal_chain_status TEXT NOT NULL DEFAULT 'healthy' CHECK (fiscal_chain_status IN ('healthy', 'degraded'))",
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
 ];

@@ -26,9 +26,10 @@ use Tests\TestCase;
  *      timezone + session boundary; clock anomalies never move events
  *      between closure periods.
  *
- * All time-sensitive tests wrap `CarbonImmutable::setTestNow` in
- * try/finally so a failure mid-suite cannot leak a frozen clock into
- * neighbouring tests (Task 23 R3-F2 standing pattern).
+ * Tests pass explicit `CarbonImmutable::parse(...)` instants rather than
+ * relying on `setTestNow` — the detector is pure functions over caller-
+ * supplied instants, so frozen-clock leakage is not even a hazard here.
+ * If future cases use `setTestNow`, wrap in try/finally per Task 23 R3-F2.
  */
 final class ClockAnomalyDetectorTest extends TestCase
 {
@@ -370,5 +371,141 @@ final class ClockAnomalyDetectorTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         new TerminalFiscalConfig(timezone: 'UTC', sessionBoundaryHour: -1);
+    }
+
+    // =================================================================
+    // Round-2 (Opus F1 closure) — IANA-strict timezone enforcement.
+    //
+    // PHP's `new DateTimeZone($s)` accepts bare UTC offsets ('+02:00'),
+    // abbreviations ('CEST'), and several other non-IANA forms — none of
+    // which can resolve DST transitions correctly. The DTO's normative
+    // contract is "IANA-only"; enforce by intersecting with
+    // `DateTimeZone::listIdentifiers()`.
+    // =================================================================
+
+    public function test_terminal_fiscal_config_rejects_bare_utc_offset(): void
+    {
+        // '+02:00' is parseable by DateTimeZone but is NOT in the IANA
+        // identifier set. It also cannot resolve DST — a terminal
+        // accidentally configured with this would silently produce
+        // wrong business_date values for half the year in any DST
+        // jurisdiction.
+        $this->expectException(InvalidArgumentException::class);
+        new TerminalFiscalConfig(timezone: '+02:00', sessionBoundaryHour: 0);
+    }
+
+    public function test_terminal_fiscal_config_rejects_negative_bare_utc_offset(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        new TerminalFiscalConfig(timezone: '-05:30', sessionBoundaryHour: 0);
+    }
+
+    public function test_terminal_fiscal_config_rejects_abbreviation_cest(): void
+    {
+        // 'CEST' is accepted by DateTimeZone but is NOT a canonical IANA
+        // identifier — it's an abbreviation. The IANA list contains
+        // 'Europe/Paris', not 'CEST'.
+        $this->expectException(InvalidArgumentException::class);
+        new TerminalFiscalConfig(timezone: 'CEST', sessionBoundaryHour: 0);
+    }
+
+    public function test_terminal_fiscal_config_rejects_gmt_offset_form(): void
+    {
+        // 'GMT+02:00' is parseable but not a canonical IANA identifier.
+        // The Etc/GMT... zones ARE canonical (see the next test).
+        $this->expectException(InvalidArgumentException::class);
+        new TerminalFiscalConfig(timezone: 'GMT+02:00', sessionBoundaryHour: 0);
+    }
+
+    public function test_terminal_fiscal_config_rejects_etc_gmt_form(): void
+    {
+        // 'Etc/GMT+2' is in the ALL_WITH_BC backward-compat list but NOT
+        // in `DateTimeZone::listIdentifiers()`'s default IANA list (PHP
+        // categorizes the `Etc/...` group as ALL_WITH_BC-only). The
+        // round-2 IANA-strict validator intersects with the default
+        // list, so `Etc/GMT+2` is rejected — operators should configure
+        // a canonical IANA location like 'Europe/Paris' instead. This
+        // test pins that rejection so a future relax to ALL_WITH_BC
+        // would be a deliberate review-time decision, not a silent drift.
+        $this->expectException(InvalidArgumentException::class);
+        new TerminalFiscalConfig(timezone: 'Etc/GMT+2', sessionBoundaryHour: 0);
+    }
+
+    public function test_terminal_fiscal_config_accepts_canonical_iana_names(): void
+    {
+        // Sanity — the four zones the round-1 tests exercise still pass.
+        foreach (['Africa/Tunis', 'Europe/Paris', 'UTC', 'America/New_York'] as $zone) {
+            $config = new TerminalFiscalConfig(timezone: $zone, sessionBoundaryHour: 4);
+            $this->assertSame($zone, $config->timezone);
+        }
+    }
+
+    // =================================================================
+    // Round-2 (Opus F2/F5 closure) — formatTimeAnomalyReason owns the
+    // structured reason string. OutboxIngestor delegates here so the
+    // limit reported in the reason matches the limit the detector
+    // enforced (single source of truth).
+    // =================================================================
+
+    public function test_format_time_anomaly_reason_rollback_branch(): void
+    {
+        $serverReceivedAt = CarbonImmutable::parse('2026-05-14T10:00:00Z');
+        $reason = $this->detector()->formatTimeAnomalyReason(
+            deviceTime: '2020-01-01T00:00:00Z',
+            lastServerTimeSeen: '2026-05-14T10:00:00Z',
+            serverReceivedAt: $serverReceivedAt,
+        );
+
+        $this->assertStringStartsWith('time_anomaly:rollback,prior=', $reason);
+        $this->assertStringContainsString('current=', $reason);
+    }
+
+    public function test_format_time_anomaly_reason_excessive_drift_branch(): void
+    {
+        config()->set('fiscal.clock_drift_limit_seconds', 86400);
+
+        $serverReceivedAt = CarbonImmutable::parse('2026-05-14T10:00:00Z');
+        $reason = $this->detector()->formatTimeAnomalyReason(
+            deviceTime: '2026-05-21T10:00:00Z', // +7 days
+            lastServerTimeSeen: null,
+            serverReceivedAt: $serverReceivedAt,
+        );
+
+        $this->assertStringStartsWith('time_anomaly:excessive_drift,', $reason);
+        $this->assertStringContainsString('drift_seconds=', $reason);
+        $this->assertStringContainsString('limit=86400', $reason);
+    }
+
+    public function test_format_time_anomaly_reason_reports_configured_limit_not_a_duplicate_default(): void
+    {
+        // Round-2 single-source-of-truth invariant. If the OutboxIngestor
+        // had kept its own hardcoded default (Opus F2 hazard), changing
+        // config('fiscal.clock_drift_limit_seconds') would still report
+        // the stale value. Asserts the detector reads config.
+        config()->set('fiscal.clock_drift_limit_seconds', 1);
+
+        $serverReceivedAt = CarbonImmutable::parse('2026-05-14T10:00:00Z');
+        $reason = $this->detector()->formatTimeAnomalyReason(
+            deviceTime: '2026-05-14T10:00:05Z', // +5s
+            lastServerTimeSeen: null,
+            serverReceivedAt: $serverReceivedAt,
+        );
+
+        $this->assertStringContainsString('limit=1', $reason);
+        $this->assertStringContainsString('drift_seconds=5', $reason);
+    }
+
+    public function test_format_time_anomaly_reason_unparseable_device_time_returns_defensive_branch(): void
+    {
+        // Defensive branch — the detector's isWithinTolerance returns true
+        // on a malformed deviceTime, so this branch is unreachable in
+        // steady state. Test it directly to pin the contract.
+        $serverReceivedAt = CarbonImmutable::parse('2026-05-14T10:00:00Z');
+        $reason = $this->detector()->formatTimeAnomalyReason(
+            deviceTime: 'not-a-timestamp',
+            lastServerTimeSeen: null,
+            serverReceivedAt: $serverReceivedAt,
+        );
+        $this->assertSame('time_anomaly:detector_flagged_unparseable_event_time_device', $reason);
     }
 }

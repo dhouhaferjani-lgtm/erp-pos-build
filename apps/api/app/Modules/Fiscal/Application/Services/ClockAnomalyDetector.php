@@ -152,6 +152,76 @@ final class ClockAnomalyDetector
     }
 
     /**
+     * Format the structured `integrity_exception_reason` string for a
+     * time-anomaly verdict, given the same inputs the detector consumed.
+     * Owned here (round-2 Opus F2/F5 closure) so the format AND the
+     * threshold are colocated — a future change to either is a single-file
+     * edit that cannot drift between the decision site and the reason
+     * site.
+     *
+     * Always returns a non-empty string. The caller should have checked
+     * `isWithinTolerance()` first and only invoke this method when that
+     * returned `false`. Calling it on an admissible row produces the
+     * `excessive_drift` shape with `drift_seconds=<small_int>,limit=<config>`
+     * which is harmless but semantically wrong — the caller's
+     * pre-condition is "you saw a `false` from isWithinTolerance".
+     *
+     * Reason shapes (preserved from `OutboxIngestor::verifyClock()` exactly,
+     * so the verifier + existing 20 OutboxIngestorTest cases continue to
+     * pass):
+     *
+     *   - `time_anomaly:rollback,prior=<ISO>,current=<ISO>` — when
+     *     `deviceTime < lastServerTimeSeen` (strict less-than).
+     *   - `time_anomaly:excessive_drift,drift_seconds=<int>,limit=<int>` —
+     *     when `|deviceTime - serverReceivedAt| > limit`.
+     *   - `time_anomaly:detector_flagged_unparseable_event_time_device` —
+     *     defensive: detector returned false but the caller cannot reparse
+     *     `deviceTime` (impossible in steady state; the detector's
+     *     malformed-input branch returns true).
+     *
+     * Rollback takes precedence when both `priorTime` is parseable and
+     * `eventTime < priorTime`. Drift is the fallback. Branch ordering
+     * mirrors the round-1 `OutboxIngestor::verifyClock()` priority.
+     */
+    public function formatTimeAnomalyReason(
+        string $deviceTime,
+        ?string $lastServerTimeSeen,
+        CarbonImmutable $serverReceivedAt,
+    ): string {
+        $eventTime = $this->tryParse($deviceTime);
+        if ($eventTime === null) {
+            // Detector said "not admissible" yet deviceTime is unparseable —
+            // impossible in steady state (the detector's malformed branch
+            // returns true). Defensive return so we never crash on a
+            // future detector evolution that admits malformed input.
+            return 'time_anomaly:detector_flagged_unparseable_event_time_device';
+        }
+
+        // Rollback branch — strict less-than vs prior. Only emit when the
+        // prior row's timestamp parses cleanly; otherwise drift is the
+        // only remaining cause.
+        if ($lastServerTimeSeen !== null) {
+            $priorTime = $this->tryParse($lastServerTimeSeen);
+            if ($priorTime !== null && $eventTime->lessThan($priorTime)) {
+                return sprintf(
+                    'time_anomaly:rollback,prior=%s,current=%s',
+                    $priorTime->toIso8601String(),
+                    $eventTime->toIso8601String(),
+                );
+            }
+        }
+
+        $limit = $this->clockDriftLimitSeconds();
+        $drift = abs($serverReceivedAt->getTimestamp() - $eventTime->getTimestamp());
+
+        return sprintf(
+            'time_anomaly:excessive_drift,drift_seconds=%d,limit=%d',
+            $drift,
+            $limit,
+        );
+    }
+
+    /**
      * Best-effort Carbon parse — returns `null` on failure rather than
      * throwing so the caller can branch defensively. UTC is the
      * normative interpretation per spec §4 / §6.

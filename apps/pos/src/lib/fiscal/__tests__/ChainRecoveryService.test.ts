@@ -17,9 +17,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { migrations } from '@/lib/db/migrations';
 import {
   ChainRecoveryService,
+  MissingOffendingReferenceError,
   type ChainBreakAndRestartRequest,
 } from '../ChainRecoveryService';
-import { FiscalEventEngine } from '../FiscalEventEngine';
+import {
+  FiscalEventEngine,
+  FiscalEventPayloadValidationError,
+} from '../FiscalEventEngine';
 import { FiscalEventCanonicalEncoder } from '../FiscalEventCanonicalEncoder';
 import { FiscalEventPayloadRegistry } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
@@ -51,6 +55,16 @@ async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number)
       await adapter.execute(migration.sql);
     }
   }
+}
+
+async function selectChainStatus(adapter: SqliteTestAdapter): Promise<string> {
+  const rows = await adapter.select<Array<{ fiscal_chain_status: string }>>(
+    `SELECT fiscal_chain_status FROM terminal_state WHERE terminal_id = $1`,
+    [TERMINAL_ID],
+  );
+  const row = rows[0];
+  if (!row) throw new Error('terminal_state missing');
+  return row.fiscal_chain_status;
 }
 
 async function seedTerminalState(
@@ -140,7 +154,14 @@ function defaultRequest(
     reason: 'gap',
     last_good_sequence: 4,
     last_good_hash: 'a'.repeat(64),
-    offending_reference: 'r-9',
+    // Round-2: offending_reference is required + non-empty (Opus F3 /
+    // Codex T25-P3 closure). Pass a structured shape the verifier could
+    // produce — `{kind: 'sequence_gap', expected, found}`.
+    offending_reference: {
+      kind: 'sequence_gap',
+      expected: 5,
+      found: 7,
+    },
     operator_authorization_evidence: {
       user_id: '11111111-1111-1111-1111-111111111111',
       role: 'manager',
@@ -159,7 +180,7 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
 
   beforeEach(async () => {
     adapter = new SqliteTestAdapter();
-    await runMigrationsUpTo(adapter, 37);
+    await runMigrationsUpTo(adapter, 38);
     await seedTerminalState(adapter);
     const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
     service = new ChainRecoveryService(engine);
@@ -268,7 +289,12 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
         reason: 'sequence_gap_detected_at_sync',
         last_good_sequence: 7,
         last_good_hash: 'b'.repeat(64),
-        offending_reference: 'event-uuid-bad',
+        offending_reference: {
+          kind: 'hash_mismatch',
+          at_sequence: 8,
+          observed_previous_hash: 'c'.repeat(64),
+          event_uuid: 'event-uuid-bad',
+        },
       }),
     );
 
@@ -283,8 +309,13 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
     expect(payload.reason).toBe('sequence_gap_detected_at_sync');
     expect(payload.last_good_sequence).toBe(7);
     expect(payload.last_good_hash).toBe('b'.repeat(64));
+    // The caller's structured shape lands on the immutable chain verbatim —
+    // no synthetic {kind: 'unknown_offender'} placeholder (round-2 Opus F3 /
+    // Codex T25-P3 closure).
     const offending = payload.offending_record_reference as Record<string, unknown>;
-    expect(offending.offending_reference).toBe('event-uuid-bad');
+    expect(offending.kind).toBe('hash_mismatch');
+    expect(offending.at_sequence).toBe(8);
+    expect(offending.event_uuid).toBe('event-uuid-bad');
   });
 
   it('CHAIN_RESTART canonical_bytes carry the spec §9 payload fields with provenance to the break event', async () => {
@@ -316,29 +347,56 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
   });
 
   // -------------------------------------------------------------------
-  // Optional offending reference (the offending row may be unknown when
-  // the break is detected by a structural check like a missing row).
+  // Required offending_reference (round-2 Opus F3 / Codex T25-P3 closure).
+  //
+  // The service refuses to manufacture forensic context. The caller MUST
+  // supply a structured non-empty object identifying what triggered the
+  // break — the CHAIN_BREAK_DETECTED row is immutable, so a synthetic
+  // {kind: 'unknown_offender'} placeholder would propagate to every
+  // forensic consumer with no way to distinguish "we don't know" from
+  // "the offender is the terminal itself".
   // -------------------------------------------------------------------
 
-  it('omits offending_reference when not supplied', async () => {
+  it('throws MissingOffendingReferenceError when offending_reference is absent', async () => {
     const req = defaultRequest();
-    delete req.offending_reference;
-    await service.recordBreakAndRestart(adapter, req);
+    // The service-level required field cannot be `undefined` per the
+    // interface, but a JS caller could omit it. Strip explicitly to
+    // exercise the runtime guard.
+    delete (req as { offending_reference?: unknown }).offending_reference;
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      MissingOffendingReferenceError,
+    );
+
+    // No CHAIN_BREAK_DETECTED row written (the guard runs before BEGIN).
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+    expect(await selectChainStatus(adapter)).toBe('healthy');
+  });
+
+  it('throws MissingOffendingReferenceError when offending_reference is an empty object', async () => {
+    const req = defaultRequest({ offending_reference: {} });
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      MissingOffendingReferenceError,
+    );
 
     const rows = await selectAllEvents(adapter);
-    const breakRow = rows[0];
-    expect(breakRow).toBeDefined();
-    if (!breakRow) return;
+    expect(rows).toHaveLength(0);
+    expect(await selectChainStatus(adapter)).toBe('healthy');
+  });
 
-    const canonical = JSON.parse(breakRow.canonical_bytes) as Record<string, unknown>;
-    const payload = canonical.payload as Record<string, unknown>;
-    const offending = payload.offending_record_reference as Record<string, unknown>;
-    // The container is still emitted (DTO requires non-empty) — it carries
-    // any structural context that IS known. When the caller has zero
-    // identifying context, we record that explicitly rather than failing
-    // the recovery emission.
-    expect(offending).toBeDefined();
-    expect(Object.keys(offending).length).toBeGreaterThan(0);
+  it('throws MissingOffendingReferenceError when offending_reference is an array', async () => {
+    const req = defaultRequest({
+      offending_reference: ['bad'] as unknown as Record<string, unknown>,
+    });
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      MissingOffendingReferenceError,
+    );
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
   });
 
   // -------------------------------------------------------------------
@@ -355,5 +413,240 @@ d('ChainRecoveryService.recordBreakAndRestart', () => {
     if (!restartRow) return;
     expect(head.fiscal_event_sequence).toBe(2);
     expect(head.fiscal_event_last_hash).toBe(restartRow.current_hash);
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 — Degraded-mode flag (Codex T25-P1).
+  //
+  // Spec §9: "On a local chain break, the terminal continues operating
+  // in a recorded degraded mode." v38 migration added
+  // `terminal_state.fiscal_chain_status` with allowed values
+  // 'healthy' | 'degraded'. The recovery service flips it inside the
+  // same transaction as the two appends.
+  // -------------------------------------------------------------------
+
+  it('terminal_state.fiscal_chain_status is healthy before recovery', async () => {
+    expect(await selectChainStatus(adapter)).toBe('healthy');
+  });
+
+  it('recordBreakAndRestart flips terminal_state.fiscal_chain_status to degraded', async () => {
+    await service.recordBreakAndRestart(adapter, defaultRequest());
+    expect(await selectChainStatus(adapter)).toBe('degraded');
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 — Transactional atomicity (Codex T25-B1).
+  //
+  // Round-1 issued two `engine.append()` calls back-to-back with no
+  // transaction wrapper. SQLite auto-commits each as its own implicit
+  // transaction, so a failure on the second append would leave the
+  // first append (CHAIN_BREAK_DETECTED) permanently on the chain with
+  // no matching CHAIN_RESTART — a half-recovery state that the
+  // verifier could not unwind without manual intervention.
+  //
+  // Round-2 wraps BEGIN / COMMIT around both appends + the degraded-
+  // flag update. The test below injects a failure on the second append
+  // by sabotaging the FiscalEventEngine partway through, and asserts
+  // BOTH the first append's row AND the degraded flag are rolled back.
+  // -------------------------------------------------------------------
+
+  it('rolls back BOTH appends + the degraded flag when the second append fails', async () => {
+    // Build an engine whose `append` succeeds the first time then throws
+    // on the second call. This mimics e.g. a SQLITE_BUSY on the
+    // CHAIN_RESTART insert or a downstream validation failure that
+    // surfaces between the two appends.
+    let calls = 0;
+    const sabotagedEngine = new FiscalEventEngine(
+      adapter,
+      encoder,
+      integrityProvider,
+      registry,
+    );
+    const realAppend = sabotagedEngine.append.bind(sabotagedEngine);
+    sabotagedEngine.append = async (tx, request) => {
+      calls += 1;
+      if (calls === 2) {
+        // Second call: throw AFTER the first append's row has been
+        // inserted (and the chain head advanced). If the round-2
+        // transaction wrapper holds, the BEGIN / ROLLBACK pair will
+        // undo the first INSERT + the chain-head update.
+        throw new Error('injected failure on second append');
+      }
+      return realAppend(tx, request);
+    };
+
+    const sabotagedService = new ChainRecoveryService(sabotagedEngine);
+
+    await expect(
+      sabotagedService.recordBreakAndRestart(adapter, defaultRequest()),
+    ).rejects.toThrow('injected failure on second append');
+
+    // The first append's row MUST be rolled back. If round-1's behavior
+    // persisted, this would be 1 (the BREAK row would still be there).
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+
+    // Chain head MUST be unchanged from the seed.
+    const head = await selectChainHead(adapter);
+    expect(head.fiscal_event_sequence).toBe(0);
+    expect(head.fiscal_event_last_hash).toBe('');
+
+    // Degraded flag MUST be rolled back too — atomic with the appends.
+    expect(await selectChainStatus(adapter)).toBe('healthy');
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 — Cross-language drift gate (Codex T25-P2).
+  //
+  // FiscalEventEngine.validateRequestPayload now mirrors the PHP
+  // FiscalPayloadConstraintValidator for CHAIN_BREAK_DETECTED +
+  // CHAIN_RESTART: 64-char lowercase hex on hash fields, non-empty
+  // assoc on the four non-empty-object fields. TS callers can no
+  // longer author payloads that PHP would reject at sync time.
+  //
+  // These tests round-trip the validation through the recovery service
+  // (the natural caller) — the engine raises before any chain mutation,
+  // so the service surfaces the same error.
+  // -------------------------------------------------------------------
+
+  it('rejects a non-hex last_good_hash before any chain mutation', async () => {
+    const req = defaultRequest({ last_good_hash: 'not-hex' });
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      FiscalEventPayloadValidationError,
+    );
+
+    // No row written; the validator runs in step 0 of engine.append,
+    // which runs INSIDE the recovery service's BEGIN — the catch
+    // path rolls back cleanly.
+    expect(await selectAllEvents(adapter)).toHaveLength(0);
+    expect(await selectChainStatus(adapter)).toBe('healthy');
+  });
+
+  it('rejects a non-64-char last_good_hash', async () => {
+    const req = defaultRequest({ last_good_hash: 'a'.repeat(63) });
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      FiscalEventPayloadValidationError,
+    );
+  });
+
+  it('rejects an uppercase-hex last_good_hash (PHP-side regex is lowercase-only)', async () => {
+    const req = defaultRequest({ last_good_hash: 'A'.repeat(64) });
+
+    await expect(service.recordBreakAndRestart(adapter, req)).rejects.toThrow(
+      FiscalEventPayloadValidationError,
+    );
+  });
+
+  it('rejects a CHAIN_RESTART with a non-hex new_genesis_reference', async () => {
+    // The recovery service computes new_genesis_reference = breakResult.current_hash
+    // so we hit this branch via a direct engine.append call on a hand-built
+    // payload — the test asserts the validator's CHAIN_RESTART branch fires.
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_RESTART',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          new_genesis_reference: 'not-hex',
+          last_good_anchor: { hash: 'a'.repeat(64) },
+          operator_authorization_evidence: { user_id: 'u' },
+          provenance_link: { chain_break_event_id: 'x' },
+        },
+      }),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('rejects a CHAIN_RESTART with an empty operator_authorization_evidence', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_RESTART',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          new_genesis_reference: 'a'.repeat(64),
+          last_good_anchor: { sequence_number: 1 },
+          operator_authorization_evidence: {},
+          provenance_link: { chain_break_event_id: 'x' },
+        },
+      }),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('rejects a CHAIN_BREAK_DETECTED with a non-object offending_record_reference', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_BREAK_DETECTED',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          reason: 'gap',
+          last_good_sequence: 1,
+          last_good_hash: 'a'.repeat(64),
+          offending_record_reference: 'not-an-object',
+        },
+      }),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('rejects a CHAIN_BREAK_DETECTED whose offending_record_reference.observed_previous_hash is not 64-char hex', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_BREAK_DETECTED',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          reason: 'hash_mismatch',
+          last_good_sequence: 1,
+          last_good_hash: 'a'.repeat(64),
+          offending_record_reference: {
+            kind: 'hash_mismatch',
+            observed_previous_hash: 'short',
+          },
+        },
+      }),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
+  });
+
+  it('rejects a CHAIN_RESTART whose last_good_anchor.hash (when present) is not 64-char hex', async () => {
+    const engine = new FiscalEventEngine(adapter, encoder, integrityProvider, registry);
+    await expect(
+      engine.append(adapter, {
+        event_type: 'CHAIN_RESTART',
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        terminal_id: TERMINAL_ID,
+        operator_id: OPERATOR_ID,
+        event_time_device: '2026-05-16T10:00:00Z',
+        business_date: '2026-05-16',
+        payload: {
+          new_genesis_reference: 'a'.repeat(64),
+          last_good_anchor: { hash: 'too-short' },
+          operator_authorization_evidence: { user_id: 'u' },
+          provenance_link: { chain_break_event_id: 'x' },
+        },
+      }),
+    ).rejects.toThrow(FiscalEventPayloadValidationError);
   });
 });
