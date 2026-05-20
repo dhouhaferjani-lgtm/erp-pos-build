@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
@@ -110,6 +111,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      */
     private const int SCALE = 3;
 
+    /**
+     * **Pass 2A.PHP.2 R2 (Codex P2-4 deferral).** The `PaymentMethodResolver`
+     * binding is registered by `TreasuryServiceProvider`. If a deployment
+     * excludes the Treasury module entirely (theoretical POS-only minimal
+     * profile), this constructor's container resolution would fail with
+     * `BindingResolutionException`. The current monorepo always loads
+     * Treasury alongside POS, so the risk is dormant. The Phase 1.5 roadmap
+     * tracks the fallback binding (POS-side default
+     * `EloquentPaymentMethodResolver` registered by `PosServiceProvider`
+     * when the Treasury provider is not loaded) for POS-only deployments.
+     */
     public function __construct(
         private readonly VoucherRedemptionService $voucherRedemptionService,
         private readonly ReceiptHashService $receiptHashService,
@@ -194,11 +206,32 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // populated when invoice_type_code='REFUND'|'VOID' AND
             // original_receipt_reference is present. We look up the local
             // pos_receipts.id whose fiscal_event_id matches the canonical
-            // `original_receipt_reference.fiscal_event_id`. If not found
-            // (e.g. cross-terminal refund whose original was never
-            // projected), leave NULL — the canonical payload's
-            // `original_receipt_reference` remains the authoritative link.
+            // `original_receipt_reference.fiscal_event_id`.
             $originalReceiptId = $this->resolveOriginalReceiptId($view);
+
+            // **Pass 2A.PHP.2 R2 — Codex BLOCKER-2 closure.** For
+            // REFUND/VOID, the original receipt MUST be locally resolvable
+            // before the projection can apply. Round-1 silently fell
+            // through to `ReceiptType::Sale` here, and `Nf525DataProvider::mapSaleReceipt`
+            // then exported the row as a sale — a fiscal-compliance
+            // violation (NF525 §11.2-§11.4 + spec v7 §14 require voided
+            // and return receipts to surface as the correct movement
+            // type). The validator already enforces `invoice_type_code in
+            // {REFUND,VOID} ⇒ original_receipt_reference is required`
+            // (FiscalPayloadConstraintValidator §0 lines 533-568), so the
+            // ONLY way `original_receipt_reference` is non-null but
+            // `$originalReceiptId` is null is if the original SALE_RECEIPT
+            // has not yet projected locally — a retryable dependency-
+            // missing case. Throw `OriginalReceiptUnresolvableException`
+            // (extends `ProjectionDependencyMissingException`); the job's
+            // fail-closed `catch (Throwable)` advances attempts + Horizon
+            // retries with backoff. The wrapping `DB::transaction` rolls
+            // back atomically — no pos_receipts row, no lines, no payments.
+            $this->assertOriginalReceiptResolvableForRefundOrVoid(
+                event: $event,
+                view: $view,
+                originalReceiptId: $originalReceiptId,
+            );
 
             // Receipt type — REFUND/VOID with original_receipt_reference
             // map to ReceiptType::Return. SALE/TRAINING/REFUND-without-ref
@@ -282,7 +315,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 return;
             }
 
-            $this->writeLines($receiptId, $view);
+            $this->writeLines($receiptId, $event, $view);
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
             $this->redeemVouchers($receiptId, $event, $view);
@@ -391,8 +424,14 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * the legacy `ReceiptType` enum:
      *   - SALE / TRAINING → Sale
      *   - REFUND / VOID with $originalReceiptId resolved → Return
-     *   - REFUND without resolved original → Sale (canonical reference
-     *     stays authoritative; the column-based legacy view falls back).
+     *
+     * **Pass 2A.PHP.2 R2 (Codex BLOCKER-2).** REFUND / VOID with an
+     * unresolvable `original_receipt_id` no longer falls through to Sale.
+     * The fail-closed gate lives upstream in
+     * `assertOriginalReceiptResolvableForRefundOrVoid()` — by the time this
+     * method runs, REFUND/VOID is guaranteed to have a resolved local
+     * original. Any path here is a programmer error and is treated as a
+     * hard fault.
      */
     private function resolveReceiptType(string $invoiceTypeCode, ?string $originalReceiptId): ReceiptType
     {
@@ -401,6 +440,65 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         return ReceiptType::Sale;
+    }
+
+    /**
+     * Fail-loud guard for the REFUND/VOID receipt-type compliance gate
+     * (Pass 2A.PHP.2 R2 — Codex BLOCKER-2). When `invoice_type_code` is
+     * REFUND or VOID, the canonical payload MUST carry an
+     * `original_receipt_reference` (enforced upstream by
+     * `FiscalPayloadConstraintValidator` §0 lines 533-568). The projector
+     * MUST resolve that reference to a local `pos_receipts` row before
+     * writing — otherwise the row would project with
+     * `receipt_type = 'sale'`, downgrading the NF525 export movement type
+     * and falsifying the audit trail.
+     *
+     * Throws `OriginalReceiptUnresolvableException` (extends
+     * `ProjectionDependencyMissingException`) so the Task 23 retry contract
+     * applies: the job catches `Throwable`, advances attempts, and Horizon
+     * retries with backoff. When the original SALE_RECEIPT projection
+     * commits (sync-from-device, sibling job), the next retry resolves and
+     * the REFUND/VOID lands as `ReceiptType::Return`.
+     */
+    private function assertOriginalReceiptResolvableForRefundOrVoid(
+        FiscalEvent $event,
+        SaleReceiptCanonicalView $view,
+        ?string $originalReceiptId,
+    ): void {
+        $invoiceTypeCode = $view->payload->invoiceTypeCode;
+        if ($invoiceTypeCode !== 'REFUND' && $invoiceTypeCode !== 'VOID') {
+            return;
+        }
+
+        if ($originalReceiptId !== null) {
+            return;
+        }
+
+        // `original_receipt_reference` is required by the validator when
+        // invoice_type_code in {REFUND, VOID}; guard against parser drift.
+        $ref = $view->originalReceiptReference;
+        if ($ref === null) {
+            // Validator guarantees non-null here; treat as hard programmer
+            // error rather than retryable.
+            throw new RuntimeException(sprintf(
+                'PosCoreReceiptProjection: invariant violation — '.
+                'invoice_type_code=%s with null original_receipt_reference '.
+                'should have been blocked by FiscalPayloadConstraintValidator '.
+                '(fiscal_event_id=%s, tenant_id=%s)',
+                $invoiceTypeCode,
+                $event->id,
+                $event->tenant_id,
+            ));
+        }
+
+        throw new OriginalReceiptUnresolvableException(
+            projectorName: $this->name(),
+            fiscalEventId: $event->id,
+            eventType: $invoiceTypeCode,
+            upstreamFiscalEventId: $ref->fiscalEventId,
+            originalReceiptUuid: $ref->originalReceiptUuid,
+            tenantId: $event->tenant_id,
+        );
     }
 
     /**
@@ -452,7 +550,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *   - tax_category_code (unified KSA/IT axis)
      *   - non_collected_subtype (IT future)
      */
-    private function writeLines(string $receiptId, SaleReceiptCanonicalView $view): void
+    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view): void
     {
         $lineNumber = 1;
         foreach ($view->lineItems as $line) {
@@ -462,10 +560,20 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             // (sealed snapshot), not necessarily a current `products.id`
             // — e.g. ad-hoc service lines, refund-against-deleted-product,
             // or test fixtures without a matching product row. Resolve
-            // the FK by Str::isUuid + products lookup; if no row exists,
-            // write null to the column (the canonical product_id remains
-            // authoritative inside the sealed payload).
-            $productFk = $this->resolveProductFk($line->productId);
+            // the FK by Str::isUuid + tenant-scoped products lookup; if no
+            // row exists in the event's tenant, write null to the column
+            // (the canonical product_id remains authoritative inside the
+            // sealed payload).
+            //
+            // **Pass 2A.PHP.2 R2 — Codex BLOCKER-1 closure.** The lookup
+            // MUST scope by `tenant_id` to prevent cross-tenant FK binding.
+            // Same security stance as Task 21 R2 Opus F3 closure for
+            // `payment_method_id`. A `product_id` UUID from tenant A that
+            // collides with a row in tenant B MUST NOT bind here — the
+            // resolver returns null and the column is written as null
+            // (sealed snapshot in the canonical payload remains
+            // authoritative).
+            $productFk = $this->resolveProductFk($event->tenant_id, $line->productId);
 
             ReceiptLine::query()->create([
                 'id' => Str::uuid()->toString(),
@@ -491,18 +599,31 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
     /**
      * Resolve the local `products.id` FK for the canonical `product_id`
-     * snapshot. Returns null when the snapshot isn't a UUID or no
-     * `products` row matches (snapshot-survives-deletion semantics —
-     * sealed payload remains authoritative).
+     * snapshot, scoped to the event's tenant. Returns null when the
+     * snapshot isn't a UUID, or no `products` row matches in the event's
+     * tenant scope (snapshot-survives-deletion semantics — sealed payload
+     * remains authoritative).
+     *
+     * **Pass 2A.PHP.2 R2 — Codex BLOCKER-1 closure.** The lookup is
+     * tenant-scoped: a `product_id` UUID that exists in a FOREIGN tenant
+     * (but not in the event's own tenant) MUST return null. This
+     * mirrors the Task 21 R2 Opus F3 cross-tenant FK gate for
+     * `payment_method_id`. Without the tenant scope, a malicious or
+     * malformed sealed payload could bind a `pos_receipt_lines.product_id`
+     * row to another tenant's `products.id`, smuggling cross-tenant
+     * references into reporting / stock / NF525 export joins.
      */
-    private function resolveProductFk(string $productSnapshot): ?string
+    private function resolveProductFk(string $tenantId, string $productSnapshot): ?string
     {
         if (! Str::isUuid($productSnapshot)) {
             return null;
         }
 
         try {
-            $row = DB::table('products')->where('id', $productSnapshot)->first('id');
+            $row = DB::table('products')
+                ->where('tenant_id', $tenantId)
+                ->where('id', $productSnapshot)
+                ->first('id');
         } catch (QueryException) {
             return null;
         }

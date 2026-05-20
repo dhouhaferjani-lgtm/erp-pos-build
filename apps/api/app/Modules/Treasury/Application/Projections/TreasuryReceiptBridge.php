@@ -484,10 +484,20 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * NOT carry a per-payment `repository_id` (synthesis v5 §3 — repository
      * selection is a Treasury-operational concern, not part of the audit
      * seal). The bridge picks the FIRST tenant+company-scoped repository
-     * with a non-null `gl_account_id`. Deterministic when exactly one
-     * repository exists per (tenant, company) — the common single-cash-
-     * drawer case. Phase 1.5 may introduce per-method default-repository
-     * mapping.
+     * with a non-null `gl_account_id` ordered by `id` (Codex P2-6 closure
+     * — `orderBy('id')` is the deterministic tiebreaker for the multi-
+     * repository case under concurrent transactions).
+     *
+     * **Phase 1.5 deferral (Codex P2-6).** When tenants run more than one
+     * repository per (tenant, company), the `id`-ordered tiebreaker is
+     * deterministic but not necessarily semantically correct — the bridge
+     * may bind every receipt's payments to the same repository regardless
+     * of `method_code`. The Phase 1.5 roadmap introduces a per-method
+     * default-repository mapping (e.g. `payment_methods.default_repository_id`)
+     * so that CASH lines route to the cash drawer and CARD lines route to
+     * the merchant account. Until then, single-repository deployments are
+     * unaffected and multi-repository deployments must configure the
+     * intended default via SQL fixture seeding.
      */
     private function resolveDefaultRepository(FiscalEvent $event): ?PaymentRepository
     {

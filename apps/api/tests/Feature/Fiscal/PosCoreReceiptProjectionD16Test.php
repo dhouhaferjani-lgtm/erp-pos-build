@@ -65,6 +65,14 @@ final class PosCoreReceiptProjectionD16Test extends TestCase
             ['name' => 'contact-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Contact\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
             ['name' => 'b2b-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\B2B\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
             ['name' => 'accounting-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Accounting\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
+            // Pass 2A.PHP.2 R2 — Codex P1-2 closure. The Treasury seam for
+            // the projector is `App\Shared\Contracts\Fiscal\PaymentMethodResolver`
+            // (Fiscal namespace, not Treasury). Imports under
+            // `App\Shared\Contracts\Treasury\` would route the projector
+            // back through Treasury-owned contracts — same coupling defect
+            // class as `use App\Modules\Treasury\` and forbidden by the
+            // same D16 invariant.
+            ['name' => 'treasury-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Treasury\\\\/', 'rationale' => 'D16 + Pass 2A.PHP.2 R2: Treasury seam is App\\Shared\\Contracts\\Fiscal\\PaymentMethodResolver — never Shared\\Contracts\\Treasury'],
             // Pass 2A.PHP.2 — Eloquent static-call surface (Opus P3 expansion).
             // Catches model-traversal patterns that an import-only check
             // would miss (fully-qualified static calls, or imports hidden

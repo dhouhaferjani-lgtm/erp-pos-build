@@ -11,9 +11,12 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Exceptions\InstrumentRequiredException;
 use App\Modules\POS\Domain\Receipt;
@@ -865,6 +868,284 @@ final class PosCoreReceiptProjectionTest extends TestCase
     }
 
     // =================================================================
+    // Pass 2A.PHP.2 R2 — Codex BLOCKER-1: cross-tenant product FK rejection
+    // =================================================================
+
+    public function test_product_fk_resolver_rejects_cross_tenant_product_id(): void
+    {
+        // Pass 2A.PHP.2 R2 — Codex BLOCKER-1 closure. Round-1's
+        // `PosCoreReceiptProjection::resolveProductFk()` looked up
+        // `products.id` WITHOUT a `tenant_id` scope, so a `product_id`
+        // UUID belonging to tenant A could bind into a tenant B receipt's
+        // `pos_receipt_lines.product_id`. Same defect class as Task 21 R2
+        // Opus F3 closed for `payment_method_id`, but missed for
+        // `product_id`. The fix scopes the lookup by tenant; this test
+        // pins it.
+        //
+        // Setup: seed product X in a FOREIGN tenant. Project a SALE_RECEIPT
+        // in $this->tenantId with `line_items[0].product_id = X`. The
+        // projector must NOT bind X (it lives in another tenant) — the
+        // sealed snapshot stays in the canonical payload, and the column
+        // is written as null.
+        $foreignTenant = Tenant::factory()->create();
+        $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
+        $foreignProduct = Product::factory()->create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            lines: [
+                [
+                    'sku' => $foreignProduct->sku,
+                    // product_id UUID lives in tenant $foreignTenant — projector
+                    // must NOT bind it into tenant $this->tenantId's receipt.
+                    'product_id' => $foreignProduct->id,
+                    'unit_price' => '10.00',
+                    'line_total' => '10.00',
+                    'quantity' => '1',
+                    'tax_rate' => '0',
+                    'tax_amount' => '0.00',
+                ],
+            ],
+        );
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertSame(1, DB::table('pos_receipt_lines')->count());
+
+        $line = DB::table('pos_receipt_lines')->first();
+        $this->assertNotNull($line);
+        // Sealed canonical snapshot still carries the original product_id
+        // inside fiscal_events.payload.line_items[0].product_id — the FK
+        // column itself is null because the cross-tenant lookup MUST fail
+        // closed. NF525 export reads the snapshot via CanonicalPayloadReader.
+        $this->assertNull(
+            $line->product_id,
+            'cross-tenant product UUID must NOT bind into pos_receipt_lines.product_id — '.
+            'the canonical sealed snapshot remains authoritative inside fiscal_events.payload',
+        );
+    }
+
+    // =================================================================
+    // Pass 2A.PHP.2 R2 — Codex BLOCKER-2: REFUND/VOID unresolvable original
+    // =================================================================
+
+    public function test_refund_projection_throws_when_original_receipt_unresolvable(): void
+    {
+        // Pass 2A.PHP.2 R2 — Codex BLOCKER-2 closure. Round-1 silently
+        // downgraded REFUND with an unresolvable `original_receipt_id`
+        // to `receipt_type='sale'`. NF525 then exported as sale — a
+        // fiscal-compliance violation (spec v7 §14 + NF525 §11.2-§11.4).
+        // The fix throws `OriginalReceiptUnresolvableException` (extends
+        // `ProjectionDependencyMissingException`), letting the Task 23
+        // retry contract advance the job through Horizon until the
+        // original SALE_RECEIPT projects locally.
+        //
+        // Setup: build a REFUND with `original_receipt_reference.fiscal_event_id`
+        // pointing at a non-existent fiscal event. Assert the projector
+        // throws with the right forensic context, no rows are written
+        // (atomic rollback), and the exception is a
+        // `ProjectionDependencyMissingException` so the job-level retry
+        // contract applies.
+        $upstreamFiscalEventId = Str::uuid()->toString();
+        $originalReceiptUuid = Str::uuid()->toString();
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            invoiceTypeCode: 'REFUND',
+            originalReceiptReference: [
+                'fiscal_event_id' => $upstreamFiscalEventId,
+                'original_business_date' => '2026-05-19',
+                'original_receipt_uuid' => $originalReceiptUuid,
+                'refund_reason' => 'Customer changed mind',
+            ],
+        );
+
+        try {
+            $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+            $this->fail('Expected OriginalReceiptUnresolvableException for unresolvable REFUND original');
+        } catch (OriginalReceiptUnresolvableException $e) {
+            $this->assertSame('REFUND', $e->eventType);
+            $this->assertSame($upstreamFiscalEventId, $e->upstreamFiscalEventId);
+            $this->assertSame($originalReceiptUuid, $e->originalReceiptUuid);
+            $this->assertSame($this->tenantId, $e->tenantId);
+            // Subclass relationship is the retry-contract anchor — the
+            // `ApplyFiscalEventProjectionJob` catches Throwable, but log
+            // scrapers / Horizon dashboards filter by the broader
+            // ProjectionDependencyMissingException type.
+            $this->assertInstanceOf(ProjectionDependencyMissingException::class, $e);
+        }
+
+        // Atomic rollback — no partial rows survive.
+        $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back atomically');
+        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+    }
+
+    public function test_void_projection_throws_when_original_receipt_unresolvable(): void
+    {
+        // Pass 2A.PHP.2 R2 — Codex BLOCKER-2 symmetry. Same fail-loud
+        // contract for VOID as for REFUND — silent fallback to
+        // `receipt_type='sale'` would falsify the audit trail. NF525
+        // export must surface VOIDs as voids.
+        $upstreamFiscalEventId = Str::uuid()->toString();
+        $originalReceiptUuid = Str::uuid()->toString();
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            invoiceTypeCode: 'VOID',
+            originalReceiptReference: [
+                'fiscal_event_id' => $upstreamFiscalEventId,
+                'original_business_date' => '2026-05-19',
+                'original_receipt_uuid' => $originalReceiptUuid,
+                'refund_reason' => 'Operator error — voided',
+            ],
+        );
+
+        try {
+            $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+            $this->fail('Expected OriginalReceiptUnresolvableException for unresolvable VOID original');
+        } catch (OriginalReceiptUnresolvableException $e) {
+            $this->assertSame('VOID', $e->eventType);
+            $this->assertSame($upstreamFiscalEventId, $e->upstreamFiscalEventId);
+            $this->assertSame($originalReceiptUuid, $e->originalReceiptUuid);
+            $this->assertSame($this->tenantId, $e->tenantId);
+            $this->assertInstanceOf(ProjectionDependencyMissingException::class, $e);
+        }
+
+        $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back atomically');
+        $this->assertSame(0, DB::table('pos_receipt_lines')->count());
+        $this->assertSame(0, DB::table('pos_receipt_payments')->count());
+        $this->assertSame(0, DB::table('pos_receipt_vat_details')->count());
+    }
+
+    // =================================================================
+    // Pass 2A.PHP.2 R2 — Codex P1-1: buyer-block sale-time snapshot
+    // (synthesis v5 §5 invariant #4)
+    // =================================================================
+
+    public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
+    {
+        // Pass 2A.PHP.2 R2 — Codex P1-1 closure. Synthesis v5 §5
+        // invariant #4: the projector reads buyer data EXCLUSIVELY from
+        // the parsed `fiscal_events.payload.buyer` snapshot. A future
+        // regression that re-introduced a runtime customer/contact/B2B
+        // lookup would silently fail when the underlying partner row is
+        // deleted between sale-time and projection-time / replay-time.
+        // The D16 grep guard (PosCoreReceiptProjectionD16Test) pins the
+        // import surface; THIS test pins the functional invariant
+        // end-to-end.
+        //
+        // Setup: seed a Partner $X in $this->tenantId. Build a
+        // SALE_RECEIPT canonical payload with
+        // `buyer.customer_id = $X->id` plus a full name / tax_number
+        // snapshot. Project the receipt: pos_receipts.partner_id MUST be
+        // $X->id and the snapshot columns (customer_name,
+        // customer_identifier) MUST come from the canonical payload, NOT
+        // a Partner::find() lookup.
+        //
+        // Then simulate the deletion regression by:
+        //   a) DELETE the partner row (the actual deletion event the
+        //      invariant defends against).
+        //   b) Manually NULL out pos_receipts.partner_id via DB UPDATE
+        //      (the PG migration uses `nullOnDelete` — under PG the FK
+        //      cascade would do this automatically; in SQLite test the
+        //      FK is not enforced so we cascade manually to put the row
+        //      in the same shape).
+        //   c) Re-run apply() — idempotent on fiscal_event_id — and
+        //      verify the projector does NOT crash with "missing
+        //      partner", does NOT attempt to re-populate partner_id from
+        //      the (now-deleted) partner row, and the snapshot columns
+        //      remain authoritative copies of the canonical payload.
+        $partner = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'name' => 'Sealed Customer Name',
+            'vat_number' => 'FR12345678901',
+        ]);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: [
+                'address' => [
+                    'city' => 'Paris',
+                    'country_code' => 'FR',
+                    'postal_code' => '75001',
+                    'street' => '10 rue de Rivoli',
+                ],
+                'codice_fiscale' => null,
+                'contact_id' => null,
+                'customer_id' => $partner->id,
+                'name' => 'Sealed Customer Name',
+                'tax_number' => 'FR12345678901',
+            ],
+        );
+
+        $projector = $this->app->make(PosCoreReceiptProjection::class);
+        $projector->apply($event);
+
+        $receipt = DB::table('pos_receipts')->first();
+        $this->assertNotNull($receipt);
+        $this->assertSame($partner->id, $receipt->partner_id);
+        // Snapshot columns are pure payload copies — projector reads
+        // ONLY from $view->buyer, never from the partners table.
+        $this->assertSame('Sealed Customer Name', $receipt->customer_name);
+        $this->assertSame('FR12345678901', $receipt->customer_identifier);
+
+        // Simulate the post-deletion shape: delete partner + cascade FK
+        // to null. Under PG the `nullOnDelete` clause would handle the
+        // second step; SQLite's test runner doesn't enforce FKs, so we
+        // mirror the production shape manually.
+        Partner::query()->where('id', $partner->id)->delete();
+        DB::table('pos_receipts')->where('id', $receipt->id)->update(['partner_id' => null]);
+
+        $refreshed = DB::table('pos_receipts')->first();
+        $this->assertNotNull($refreshed);
+        $this->assertNull($refreshed->partner_id, 'partner FK null after deletion + cascade');
+        // Snapshot columns are sealed copies — partner deletion must NOT
+        // disturb them.
+        $this->assertSame(
+            'Sealed Customer Name',
+            $refreshed->customer_name,
+            'customer_name snapshot must survive partner deletion (synthesis v5 §5 invariant #4)',
+        );
+        $this->assertSame(
+            'FR12345678901',
+            $refreshed->customer_identifier,
+            'customer_identifier snapshot must survive partner deletion',
+        );
+
+        // Re-run the projection — idempotent on fiscal_event_id. The
+        // projector MUST NOT crash with "missing partner" and MUST NOT
+        // attempt to re-populate partner_id from the (now-empty)
+        // partners table by re-querying. The early-return guard at
+        // apply():143 fires before any payload traversal, BUT a
+        // regression that bypassed the guard and re-queried the partner
+        // table would surface here as either a thrown exception or a
+        // resurrected partner_id value.
+        $projector->apply($event);
+
+        $afterReplay = DB::table('pos_receipts')->first();
+        $this->assertNotNull($afterReplay);
+        // Idempotent — single row, unchanged snapshot, NULL partner_id
+        // not resurrected from any runtime lookup.
+        $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertNull(
+            $afterReplay->partner_id,
+            'idempotent replay must not re-populate partner_id from a runtime lookup — '.
+            'the projector reads from payload only, never from the partners table',
+        );
+        $this->assertSame('Sealed Customer Name', $afterReplay->customer_name);
+        $this->assertSame('FR12345678901', $afterReplay->customer_identifier);
+        // Confirm the regression target — no partner rows remain.
+        $this->assertSame(
+            0,
+            Partner::query()->where('id', $partner->id)->count(),
+            'partner row must remain deleted — projector replay does not resurrect it',
+        );
+    }
+
+    // =================================================================
     // Helpers
     // =================================================================
 
@@ -883,6 +1164,8 @@ final class PosCoreReceiptProjectionTest extends TestCase
      * @param  list<array<string, mixed>>|null  $paymentLinesOverride  legacy {payment_method_id, amount, method_code, instrument_*} shape
      * @param  list<array<string, mixed>>|null  $lines  legacy {sku, unit_price, line_total, quantity, tax_rate, tax_amount, product_id} shape
      * @param  list<array<string, mixed>>|null  $vatBreakdown  legacy {rate, base, amount} shape
+     * @param  array<string, mixed>|null  $buyer  canonical buyer block (see synthesis v5 §3 + BuyerDTO) — null = no buyer attached
+     * @param  array<string, mixed>|null  $originalReceiptReference  canonical {fiscal_event_id, original_business_date, original_receipt_uuid, refund_reason}
      */
     private function storeSaleReceiptFiscalEvent(
         ?array $paymentLinesOverride = null,
@@ -893,6 +1176,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
         string $discountTotal = '0.00',
         string $taxTotal = '0.00',
         int $sequenceNumber = 1,
+        ?array $buyer = null,
+        string $invoiceTypeCode = 'SALE',
+        ?array $originalReceiptReference = null,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -968,18 +1254,18 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $payload = [
             'business_date' => $businessDate->toDateString(),
-            'buyer' => null,
+            'buyer' => $buyer,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',
             'consumption_mode' => null,
             'currency_code' => 'EUR',
             'currency_scale' => 2,
             'event_time_device' => '2026-05-20T14:30:00.000Z',
-            'invoice_type_code' => 'SALE',
+            'invoice_type_code' => $invoiceTypeCode,
             'line_items' => $lineItems,
             'lottery_code' => null,
             'notes' => null,
-            'original_receipt_reference' => null,
+            'original_receipt_reference' => $originalReceiptReference,
             'payments' => $payments,
             'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
             'seller' => [

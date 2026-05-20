@@ -46,7 +46,15 @@ use RuntimeException;
  * `critical`; the job's normal failure-accounting path emits the right
  * structured log already.
  */
-final class ProjectionDependencyMissingException extends RuntimeException
+/**
+ * **Subclassing.** Specialised retryable dependency cases extend this class
+ * (e.g. `OriginalReceiptUnresolvableException` for REFUND/VOID projections
+ * whose original `pos_receipts` row is not yet visible) so log scrapers can
+ * distinguish the specific dependency surface while the retry contract
+ * remains identical. Subclasses MUST preserve the retryable semantics —
+ * never use this hierarchy for hard misconfigurations.
+ */
+class ProjectionDependencyMissingException extends RuntimeException
 {
     public function __construct(
         public readonly string $projectorName,
