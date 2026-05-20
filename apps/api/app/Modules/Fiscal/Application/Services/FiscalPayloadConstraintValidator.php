@@ -41,6 +41,18 @@ use RuntimeException;
  *     * Enums: invoice_type_code ∈ {SALE,REFUND,VOID,TRAINING};
  *       consumption_mode ∈ {dine_in,takeaway}|null; non_collected_subtype
  *       ∈ {servizi,beni,omaggio,successiva}|null.
+ *     * **R2 closures (Pass 2A.PHP.1 round-2 Codex findings):**
+ *       - N-01: `currency_scale` restricted to `{0, 2, 3}` allowlist;
+ *         forensic prefix `payload_currency_scale_unsupported`.
+ *       - N-02: identity fields (`cashier_id`, `terminal_id`, `shift_id`,
+ *         `receipt_uuid`, `original_receipt_reference.fiscal_event_id`,
+ *         `original_receipt_reference.original_receipt_uuid`) validated
+ *         as lowercase-hex UUID (`payload_uuid_format_mismatch`).
+ *         `event_time_device` validated as ISO 8601 with milliseconds +
+ *         timezone offset / Z (`payload_datetime_format_mismatch`).
+ *       - N-03: TRAINING-flag coupling invariant —
+ *         `(invoice_type_code === 'TRAINING') ⟺ training_flag`
+ *         (`payload_training_flag_mismatch`).
  *     * Tax-number universal pattern: `^[A-Za-z0-9 \-/.]{4,40}$` + non-empty
  *       + no control chars + trimmed. Per-country strict regex DEFERRED.
  *     * tax_jurisdiction_country_code: ISO 3166-1 alpha-2 (`^[A-Z]{2}$`).
@@ -70,6 +82,35 @@ final class FiscalPayloadConstraintValidator
     /** ISO 8601 date `YYYY-MM-DD`. */
     private const ISO_8601_DATE = '/^\d{4}-\d{2}-\d{2}$/D';
 
+    /**
+     * ISO 8601 datetime with milliseconds AND timezone offset (Z or +/-HH:MM).
+     *
+     * Synthesis v3 line 51 + spec v7 §11.2 line 571 require
+     * `event_time_device` in this exact shape. Examples:
+     *   - `2026-05-20T14:30:00.000Z`
+     *   - `2026-05-20T14:30:00.123+02:00`
+     *   - `2026-05-20T14:30:00.500-05:30`
+     *
+     * Second-precision without milliseconds (`2026-05-20T14:30:00Z`) is
+     * REJECTED per the synthesis contract.
+     */
+    private const ISO_8601_DATETIME_MS_TZ = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/D';
+
+    /**
+     * Lowercase-hex UUID (any RFC 4122 form — version-agnostic at this layer).
+     *
+     * Matches `cashier_id`, `terminal_id`, `shift_id`, `receipt_uuid`,
+     * `original_receipt_reference.fiscal_event_id`,
+     * `original_receipt_reference.original_receipt_uuid` per synthesis v3
+     * lines 46-95 + spec v7 §11.2 line 571.
+     *
+     * Note: `product_id`, `buyer.customer_id`, `buyer.contact_id`,
+     * `table_id` are documented as opaque `string`, NOT UUIDs
+     * (synthesis v3 lines 61, 93, 116, 117) — they remain non-empty-string
+     * checks elsewhere.
+     */
+    private const LOWER_HEX_UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/D';
+
     /** ISO 4217 alpha-3 currency code. */
     private const ISO_4217 = '/^[A-Z]{3}$/D';
 
@@ -87,6 +128,20 @@ final class FiscalPayloadConstraintValidator
 
     /** Phase-1 fixed VAT-rate scale per synthesis v5 §6.B. */
     private const VAT_RATE_SCALE = 2;
+
+    /**
+     * Supported `currency_scale` allowlist per synthesis v3 §3 line 49-50
+     * (`currency_scale: number; // 0|2|3`) + spec v7 §11.2 line 577.
+     *
+     * 0 = JPY-style (no fractional units)
+     * 2 = EUR/USD/GBP/SAR (cents)
+     * 3 = TND (millimes)
+     *
+     * Any other value at the payload boundary is rejected with
+     * `payload_currency_scale_unsupported` — defends against drift from the
+     * locked TS/PHP contract and the golden-vector domain.
+     */
+    private const SUPPORTED_CURRENCY_SCALES = [0, 2, 3];
 
     /** invoice_type_code domain (synthesis v5 §3). */
     private const INVOICE_TYPE_CODES = ['SALE', 'REFUND', 'VOID', 'TRAINING'];
@@ -220,9 +275,24 @@ final class FiscalPayloadConstraintValidator
     {
         // ---- 1. currency_scale + currency_code first — every subsequent
         // ----    money-string check depends on the scale. ----
+        // N-01 closure: restrict to the {0, 2, 3} allowlist locked by the
+        // canonical TS/PHP contract (synthesis v3 §3 line 49-50 +
+        // spec v7 §11.2 line 577). Any other value would drift from the
+        // golden-vector domain and from CURRENCY_SCALES below.
         $scale = $payload['currency_scale'] ?? null;
-        if (! is_int($scale) || $scale < 0 || $scale > 8) {
-            throw new RuntimeException('payload_currency_scale_invalid:must be int 0-8; got '.var_export($scale, true));
+        if (! is_int($scale)) {
+            throw new RuntimeException('payload_currency_scale_invalid:must be int; got '.var_export($scale, true));
+        }
+        if ($scale < 0 || $scale > 8) {
+            // Defense-in-depth: keep the legacy range check as a typed
+            // failure for the negative / huge-int path, so the allowlist
+            // check below sees only plausible scales.
+            throw new RuntimeException('payload_currency_scale_invalid:must be int 0-8; got '.$scale);
+        }
+        if (! in_array($scale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException(
+                'payload_currency_scale_unsupported:value='.$scale.':allowed='.implode(',', self::SUPPORTED_CURRENCY_SCALES)
+            );
         }
         $moneyRegex = $this->moneyRegex($scale);
 
@@ -236,15 +306,33 @@ final class FiscalPayloadConstraintValidator
         $this->assertOptionalEnum($payload, 'consumption_mode', self::CONSUMPTION_MODES);
         $this->assertBool($payload, 'training_flag');
         $this->assertIsoDate($payload, 'business_date');
-        $this->assertNonEmptyString($payload, 'cashier_id');
+        // N-02 closure: identity fields locked to lowercase-hex UUID
+        // (synthesis v3 lines 46-95 + spec v7 §11.2 line 571).
+        // `cashier_name` stays a non-empty display string.
+        $this->assertUuid($payload, 'cashier_id');
         $this->assertNonEmptyString($payload, 'cashier_name');
-        $this->assertNonEmptyString($payload, 'event_time_device');
-        $this->assertNonEmptyString($payload, 'receipt_uuid');
-        $this->assertNonEmptyString($payload, 'shift_id');
-        $this->assertNonEmptyString($payload, 'terminal_id');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertUuid($payload, 'receipt_uuid');
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertUuid($payload, 'terminal_id');
         $this->assertOptionalNullableString($payload, 'notes');
         $this->assertOptionalNullableString($payload, 'table_id');
         $this->assertOptionalNullableString($payload, 'lottery_code');
+
+        // ---- 2a. TRAINING-flag coupling invariant (N-03 closure). ----
+        // Migration `2026_05_20_120000_*.php:22-32` documents `training_flag`
+        // as denormalized from `invoice_type_code == 'TRAINING'`. Reporting
+        // queries filter on `training_flag = FALSE`, so contradictory
+        // payloads (`SALE`+true / `TRAINING`+false) would corrupt the
+        // denormalization before PHP.2's projector writes the column.
+        $invoiceTypeIsTraining = $payload['invoice_type_code'] === 'TRAINING';
+        $trainingFlag = $payload['training_flag'];
+        if ($invoiceTypeIsTraining !== $trainingFlag) {
+            $flagLabel = $trainingFlag === true ? 'true' : 'false';
+            throw new RuntimeException(
+                'payload_training_flag_mismatch:invoice_type_code='.$payload['invoice_type_code'].':training_flag='.$flagLabel
+            );
+        }
 
         // ---- 3. top-level money fields — NON-NEGATIVE bcformat at currency_scale ----
         foreach (['subtotal', 'vat_total', 'total', 'transaction_discount_amount'] as $field) {
@@ -468,9 +556,12 @@ final class FiscalPayloadConstraintValidator
             sort($extras);
             throw new RuntimeException('payload_original_receipt_reference_extra_keys:'.implode(',', $extras));
         }
-        $this->assertNonEmptyString($ref, 'fiscal_event_id', 'original_receipt_reference.fiscal_event_id');
+        // N-02 closure: `fiscal_event_id` and `original_receipt_uuid`
+        // are documented as UUIDs (synthesis v3 lines 71-73 + spec v7
+        // §11.2). `refund_reason` is a free-text string.
+        $this->assertUuid($ref, 'fiscal_event_id', 'original_receipt_reference.fiscal_event_id');
         $this->assertIsoDate($ref, 'original_business_date', 'original_receipt_reference.original_business_date');
-        $this->assertNonEmptyString($ref, 'original_receipt_uuid', 'original_receipt_reference.original_receipt_uuid');
+        $this->assertUuid($ref, 'original_receipt_uuid', 'original_receipt_reference.original_receipt_uuid');
         $this->assertNonEmptyString($ref, 'refund_reason', 'original_receipt_reference.refund_reason');
 
         if (! $refundOrVoid) {
@@ -608,6 +699,18 @@ final class FiscalPayloadConstraintValidator
         $foreignScale = self::CURRENCY_SCALES[$fcc] ?? null;
         if ($foreignScale === null) {
             throw new RuntimeException("payload_payment_foreign_currency_unknown:{$path}.foreign_currency_code=".$fcc.' has no registered scale (extend CURRENCY_SCALES)');
+        }
+        // N-01 closure (defense-in-depth): the per-currency scale must
+        // also fall within the {0, 2, 3} allowlist. The hardcoded
+        // CURRENCY_SCALES table already honors this, but future entries
+        // (e.g. crypto with 8-decimal precision) MUST go through an
+        // explicit contract change.
+        if (! in_array($foreignScale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException(
+                'payload_currency_scale_unsupported:value='.$foreignScale.
+                ':allowed='.implode(',', self::SUPPORTED_CURRENCY_SCALES).
+                ':source='.$path.'.foreign_currency_code='.$fcc
+            );
         }
         $this->assertMoneyString($row, 'foreign_currency_amount', $this->moneyRegex($foreignScale), $foreignScale, "{$path}.foreign_currency_amount");
     }
@@ -956,6 +1059,44 @@ final class FiscalPayloadConstraintValidator
                 'payload_field_invalid:%s must be ISO 8601 date (YYYY-MM-DD); got %s',
                 $label,
                 var_export($value, true),
+            ));
+        }
+    }
+
+    /**
+     * N-02 closure helper — validate `event_time_device`-style payload
+     * timestamps as ISO 8601 with milliseconds AND timezone offset.
+     *
+     * @param  array<string, mixed>  $bag
+     */
+    private function assertIsoDateTimeWithMs(array $bag, string $field, ?string $reportAs = null): void
+    {
+        $label = $reportAs ?? $field;
+        $value = $bag[$field] ?? null;
+        if (! is_string($value) || preg_match(self::ISO_8601_DATETIME_MS_TZ, $value) !== 1) {
+            throw new RuntimeException(sprintf(
+                'payload_datetime_format_mismatch:field=%s:value=%s',
+                $label,
+                is_string($value) ? $value : var_export($value, true),
+            ));
+        }
+    }
+
+    /**
+     * N-02 closure helper — validate UUID identity fields as
+     * lowercase-hex per RFC 4122 (version-agnostic at this layer).
+     *
+     * @param  array<string, mixed>  $bag
+     */
+    private function assertUuid(array $bag, string $field, ?string $reportAs = null): void
+    {
+        $label = $reportAs ?? $field;
+        $value = $bag[$field] ?? null;
+        if (! is_string($value) || preg_match(self::LOWER_HEX_UUID, $value) !== 1) {
+            throw new RuntimeException(sprintf(
+                'payload_uuid_format_mismatch:field=%s:value=%s',
+                $label,
+                is_string($value) ? $value : var_export($value, true),
             ));
         }
     }

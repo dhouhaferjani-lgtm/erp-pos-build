@@ -66,7 +66,9 @@ final class LargeReceiptFixtureGenerator
         $currencyCode = 'EUR';
         $currencyScale = 2;
         $businessDate = '2026-05-20';
-        $eventTime = '2026-05-20T14:30:00Z';
+        // R2 N-02 closure: event_time_device requires ms + tz offset
+        // per synthesis v3 §3 line 51 + spec v7 §11.2 line 571.
+        $eventTime = '2026-05-20T14:30:00.000Z';
         $terminalUuid = '11111111-2222-3333-4444-555555555555';
         $cashierUuid = '22222222-3333-4444-5555-666666666666';
         $shiftUuid = '33333333-4444-5555-6666-777777777777';
@@ -93,8 +95,15 @@ final class LargeReceiptFixtureGenerator
 
             // Deterministic per-line values — unit_price varies, quantity
             // varies, computed line_subtotal + line_vat respect both scales.
+            //
+            // R2 N-04 closure: derive unit_price from integer minor units
+            // via bcdiv (strict BCMath), NOT (string)(minor/100) which
+            // hops through a float and contradicts the "BCMath / strict
+            // typing throughout" premise. For these inputs (multiples of
+            // 10 cents at scale=2) bcdiv truncation matches bcadd-rounded
+            // float division, so committed fixture bytes are preserved.
             $unitPriceMinor = 100 + $i * 10; // 100, 110, 120, ... — minor units
-            $unitPrice = self::bcformat((string) ($unitPriceMinor / 100), $currencyScale);
+            $unitPrice = bcdiv((string) $unitPriceMinor, '100', $currencyScale);
 
             // Use whole quantities to keep partition math exact.
             $qty = self::bcformat((string) (1 + ($i % 3)), self::QUANTITY_SCALE);

@@ -142,7 +142,7 @@ Forensic on mismatch: `payload_total_arithmetic_mismatch:lhs=<subtotal+vat_total
 5. **Mixed 0% categories** — two breakdown rows at rate "0.00" with categories "Z" + "E"; lines must match each; partition treats them distinct.
 6. **Wrong scale** — currency_scale=2 but `line_items[i].unit_price="10.000"`; expect `payload_money_scale_mismatch:field=line_items[i].unit_price`.
 7. **Total arithmetic mismatch** — subtotal+vat_total != total+transaction_discount_amount; expect `payload_total_arithmetic_mismatch`.
-8. **Negative transaction_discount** — `transaction_discount_amount="-5.00"`; expect `payload_money_format_mismatch` (regex rejects leading minus).
+8. **Negative transaction_discount** — `transaction_discount_amount="-5.00"`; expect `payload_money_scale_mismatch` (regex rejects leading minus; the scale-invariant regex per §6.B handles all monetary format failures including sign — single forensic prefix for all regex misses keeps the validator's failure surface stable across format and scale faults).
 9. **Discount-reason consistency, scale=2 zero** — `transaction_discount_amount="0.00"` paired with `transaction_discount_reason="seasonal"`; expect `payload_discount_reason_mismatch:amount=0.00:reason_present=true`. Use BCMath `bccomp("0.00", "0", 2) == 0` for the zero check (literal `=="0"` would mis-classify "0.00" as non-zero).
 10. **Discount-reason consistency, scale=2 zero positive case** — `transaction_discount_amount="0.00"` paired with `transaction_discount_reason=null`; expect PASS (this is the no-discount case at scale=2).
 11. **Discount-reason consistency, non-zero** — `transaction_discount_amount="5.00"` paired with `transaction_discount_reason=null`; expect `payload_discount_reason_mismatch:amount=5.00:reason_present=false`.

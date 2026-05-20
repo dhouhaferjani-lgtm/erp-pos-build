@@ -402,7 +402,10 @@ final class GoldenFixtureBuilder
             'consumption_mode' => null,
             'currency_code' => 'EUR',
             'currency_scale' => 2,
-            'event_time_device' => '2026-05-20T14:30:00Z',
+            // R2 N-02 closure: event_time_device requires milliseconds +
+            // timezone offset / Z per synthesis v3 §3 line 51 + spec v7
+            // §11.2 line 571.
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
             'invoice_type_code' => 'SALE',
             'line_items' => [],
             'lottery_code' => null,

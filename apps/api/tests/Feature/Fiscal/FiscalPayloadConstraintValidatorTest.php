@@ -553,6 +553,113 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     }
 
     // =================================================================
+    // R2 N-01 — currency_scale restricted to {0, 2, 3} allowlist
+    // (synthesis v3 §3 line 49-50 + spec v7 §11.2 line 577)
+    // =================================================================
+
+    /** R2 N-01: scale=8 (e.g. crypto-precision) MUST be rejected at the boundary. */
+    public function test_negative_currency_scale_8_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['currency_scale'] = 8;
+
+        $this->expectExceptionMessageMatches('/^payload_currency_scale_unsupported:value=8:allowed=0,2,3/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    // =================================================================
+    // R2 N-02 — identity UUID + event_time_device ISO 8601 ms + tz
+    // (synthesis v3 §3 lines 46-95 + spec v7 §11.2 line 571)
+    // =================================================================
+
+    /** R2 N-02: non-UUID receipt_uuid rejected with payload_uuid_format_mismatch. */
+    public function test_negative_non_uuid_receipt_uuid_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['receipt_uuid'] = 'not-a-uuid';
+
+        $this->expectExceptionMessageMatches('/^payload_uuid_format_mismatch:field=receipt_uuid:value=not-a-uuid/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-02: UUID must be lowercase hex; uppercase is rejected. */
+    public function test_negative_uppercase_uuid_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['receipt_uuid'] = '01234567-89AB-CDEF-0123-456789ABCDEF';
+
+        $this->expectExceptionMessageMatches('/^payload_uuid_format_mismatch:field=receipt_uuid/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-02: non-UUID cashier_id rejected. */
+    public function test_negative_non_uuid_cashier_id_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['cashier_id'] = 'human-readable-id';
+
+        $this->expectExceptionMessageMatches('/^payload_uuid_format_mismatch:field=cashier_id:value=human-readable-id/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-02: event_time_device without milliseconds is rejected. */
+    public function test_negative_malformed_event_time_device_no_milliseconds_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['event_time_device'] = '2026-05-20T14:30:00Z';
+
+        $this->expectExceptionMessageMatches('/^payload_datetime_format_mismatch:field=event_time_device/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-02: event_time_device without timezone offset or Z is rejected. */
+    public function test_negative_malformed_event_time_device_no_timezone_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['event_time_device'] = '2026-05-20T14:30:00.000';
+
+        $this->expectExceptionMessageMatches('/^payload_datetime_format_mismatch:field=event_time_device/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-02: original_receipt_reference.fiscal_event_id must be UUID. */
+    public function test_negative_original_receipt_reference_non_uuid_fiscal_event_id_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-09-refund-eur'];
+        $payload['original_receipt_reference']['fiscal_event_id'] = 'not-uuid-here';
+
+        $this->expectExceptionMessageMatches('/^payload_uuid_format_mismatch:field=original_receipt_reference\.fiscal_event_id/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    // =================================================================
+    // R2 N-03 — TRAINING-flag coupling invariant
+    // (migration 2026_05_20_120000_*.php:22-32 denormalization contract)
+    // =================================================================
+
+    /** R2 N-03: invoice_type_code='TRAINING' with training_flag=false is rejected. */
+    public function test_negative_training_invoice_type_with_false_training_flag_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-11-training-flag-eur'];
+        // F-11 baseline pairs TRAINING+true; break the coupling.
+        $payload['training_flag'] = false;
+
+        $this->expectExceptionMessageMatches('/^payload_training_flag_mismatch:invoice_type_code=TRAINING:training_flag=false/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    /** R2 N-03: invoice_type_code='SALE' with training_flag=true is rejected. */
+    public function test_negative_sale_invoice_type_with_true_training_flag_is_rejected(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        // F-01 baseline pairs SALE+false; break the coupling.
+        $payload['training_flag'] = true;
+
+        $this->expectExceptionMessageMatches('/^payload_training_flag_mismatch:invoice_type_code=SALE:training_flag=true/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    // =================================================================
     // CanonicalPayloadReader integration — typed DTO round-trip
     // =================================================================
 
