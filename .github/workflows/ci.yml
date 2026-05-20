@@ -90,6 +90,15 @@ jobs:
           SKIP_RECEIVER_TYPE_VALIDATOR: '1'
         run: bash apps/api/scripts/check-saleReceipt-chokepoints.sh
 
+      # Task 27B Pass 2A.TS — Pass 2B sequencing sentinel.
+      # While `apps/pos/src/lib/offline/.PASS_2B_PENDING` exists, any PR
+      # that wires `FiscalEventEngine` into the device-side checkout path
+      # (receiptService.ts / paymentStore.ts) is rejected. Pass 2B must
+      # atomically remove the marker AND add the wiring in the same commit.
+      # See synthesis v5 §8.A + Codex N-25 closure.
+      - name: Run Pass 2B sequencing sentinel
+        run: bash apps/pos/scripts/check-pass-2b-pending.sh
+
   backend-analyse:
     name: Backend Static Analysis (PHPStan)
     runs-on: ubuntu-latest

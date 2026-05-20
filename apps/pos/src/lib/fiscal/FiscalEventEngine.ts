@@ -195,28 +195,189 @@ export interface FiscalEventAppendRequest {
 // Compile-time defense — TS strict callers that build a typed input
 // object cannot pass `total: 10` (number) where `total: '10.000'`
 // (decimal string) is required. The interfaces mirror the server-side
-// PHP DTOs in `apps/api/app/Modules/Fiscal/Domain/DTOs/*Payload.php`
+// PHP DTOs in `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/*.php`
 // but at the device side every monetary field is `string` — never
 // `number`.
 //
 // The engine's runtime validator (`validateSaleReceiptPayload` etc.)
-// is the second defense: it asserts the top-level monetary fields are
-// strings BEFORE encoding the canonical bytes. Per-line monetary
-// fields and nested sub-array shape validation are intentionally left
-// to Task 16's server-side `StrictCanonicalParser`.
+// is the second defense: it enforces structural conformance (key set
+// + types + regex + enums + nested-object shape) BEFORE encoding the
+// canonical bytes. The VAT partition algorithm + invoice-total
+// arithmetic cross-checks stay server-side per synthesis v5 §6.F.
 // -------------------------------------------------------------------
 
+// -------------------------------------------------------------------
+// Task 27B Pass 2A.TS — 27-key canonical SALE_RECEIPT shape (Candidate
+// C-v3) per synthesis v5 §3. Mirrors the PHP DTO triad in
+// `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/*.php`. Every
+// monetary / quantity field is `string` (bcformat at the relevant
+// scale). Nested blocks use typed interfaces (no anonymous `Record`
+// shapes) so TS-strict callers get compile-time defense against
+// dropping required keys or mistyping nested fields.
+//
+// Pass 2B will refactor `receiptService.ts` to construct this shape
+// via the engine; until then the `.PASS_2B_PENDING` marker + CI sentinel
+// keep the device-side checkout path off of `FiscalEventEngine`.
+// -------------------------------------------------------------------
+
+/** ISO 3166-1 alpha-2 country code (`"FR"`, `"TN"`, `"SA"`, `"DE"`, `"IT"`). */
+export interface AddressInput {
+  readonly city: string;
+  readonly country_code: string;
+  readonly postal_code: string;
+  readonly street: string;
+}
+
+/** Sale-time buyer snapshot (synthesis v5 §5 / v3 §3 lines 113-120). */
+export interface BuyerBlockInput {
+  readonly address: AddressInput | null;
+  /** IT codice fiscale (future). */
+  readonly codice_fiscale: string | null;
+  /** POS-local mirror reference; non-authoritative once the receipt is sealed. */
+  readonly contact_id: string | null;
+  /** POS-local mirror reference; non-authoritative once the receipt is sealed. */
+  readonly customer_id: string | null;
+  readonly name: string | null;
+  /** Optional B2C tax number — universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  readonly tax_number: string | null;
+}
+
+/** Required seller block (NF525 / TN matricule / KSA VAT / IT P.IVA / DE USt-ID). */
+export interface SellerBlockInput {
+  readonly address: AddressInput;
+  readonly name: string;
+  /** ISO 3166-1 alpha-2. */
+  readonly tax_jurisdiction_country_code: string;
+  /** Universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  readonly tax_number: string;
+}
+
+/** One line item in `line_items[]`. */
+export interface LineItemInput {
+  /** DSFinV-K Bonpos GTIN (future). Non-empty string or null. */
+  readonly gtin: string | null;
+  /** Money at `currency_scale`; non-negative. */
+  readonly line_discount_amount: string;
+  /** Required iff `line_discount_amount > "0"`, null otherwise. */
+  readonly line_discount_reason: string | null;
+  /** Net (pre-VAT) line subtotal; money at `currency_scale`. */
+  readonly line_subtotal: string;
+  /** Line VAT amount; money at `currency_scale`. */
+  readonly line_vat: string;
+  readonly name: string;
+  /** IT future — null in Phase 1 unless the IT axis is in play. */
+  readonly non_collected_subtype: 'servizi' | 'beni' | 'omaggio' | 'successiva' | null;
+  readonly product_id: string;
+  /** Money at `quantity_scale` (fixed at 3 in Phase 1). */
+  readonly quantity: string;
+  readonly sku: string;
+  /** Unified KSA BT-151 / IT Natura axis. `""` = standard taxable. */
+  readonly tax_category_code: string;
+  /** Money at `currency_scale`. */
+  readonly unit_price: string;
+  /** Percent at `vat_rate_scale` (fixed at 2 in Phase 1; `"20.00"`, `"5.50"`). */
+  readonly vat_rate: string;
+}
+
+/** One row in `payments[]`. */
+export interface PaymentInput {
+  /** Money at `currency_scale` (in `currency_code`). */
+  readonly amount: string;
+  /** When non-null: money at the foreign currency's scale; pair with `foreign_currency_code`. */
+  readonly foreign_currency_amount: string | null;
+  /** ISO 4217 alpha-3 uppercase. Paired with `foreign_currency_amount`. */
+  readonly foreign_currency_code: string | null;
+  /** Voucher serial, card last-4, etc. */
+  readonly instrument_serial: string | null;
+  readonly instrument_type: string | null;
+  /** UN/ECE 4461 mapped at the export adapter; opaque at the payload boundary. */
+  readonly method_code: string;
+}
+
+/** One row in `vat_breakdown[]` — partition of `line_items[]` by `(vat_rate, tax_category_code)`. */
+export interface VatBreakdownInput {
+  /** Money at `currency_scale`. */
+  readonly gross_amount: string;
+  /** Money at `currency_scale`. */
+  readonly net_amount: string;
+  /** Percent at `vat_rate_scale`. */
+  readonly rate: string;
+  /** Unified axis — must match the line-level value for partition correctness. */
+  readonly tax_category_code: string;
+  /** Money at `currency_scale`. */
+  readonly vat_amount: string;
+}
+
+/** Refund / void link — required iff `invoice_type_code in {REFUND, VOID}`. */
+export interface OriginalReceiptReferenceInput {
+  /** UUID of the original SALE_RECEIPT fiscal event. */
+  readonly fiscal_event_id: string;
+  /** `YYYY-MM-DD`. */
+  readonly original_business_date: string;
+  /** UUID of the original receipt. */
+  readonly original_receipt_uuid: string;
+  readonly refund_reason: string;
+}
+
+/** One row in `vouchers_redeemed[]`. */
+export interface VoucherRedeemedInput {
+  /** Money at `currency_scale`. */
+  readonly redeemed_amount: string;
+  readonly voucher_code: string;
+}
+
+/**
+ * SALE_RECEIPT canonical payload — 27 top-level keys, sorted lex per
+ * Codex P3. Synthesis v5 §3 + spec v8 §11.2. The TS engine's runtime
+ * validator (`validateSaleReceiptPayload`) enforces STRUCTURAL
+ * conformance (key set + types + regex + enums). The PARTITION
+ * algorithm + total arithmetic checks stay server-side per v5 §6.F
+ * (the PHP `FiscalPayloadConstraintValidator` is authoritative there).
+ */
 export interface SaleReceiptPayloadInput {
-  readonly currency: string;
+  /** `YYYY-MM-DD`. */
+  readonly business_date: string;
+  readonly buyer: BuyerBlockInput | null;
+  /** UUID. */
+  readonly cashier_id: string;
+  readonly cashier_name: string;
+  readonly consumption_mode: 'dine_in' | 'takeaway' | null;
+  /** ISO 4217 alpha-3 uppercase (`"EUR"`, `"TND"`, `"SAR"`, `"USD"`, `"GBP"`). */
+  readonly currency_code: string;
+  /** Allowlist `{0, 2, 3}`. */
   readonly currency_scale: number;
-  readonly lines: ReadonlyArray<Record<string, unknown>>;
+  /** ISO 8601 with ms + tz offset (`...T10:00:00.000Z` or `...+02:00`). */
+  readonly event_time_device: string;
+  readonly invoice_type_code: 'SALE' | 'REFUND' | 'VOID' | 'TRAINING';
+  readonly line_items: ReadonlyArray<LineItemInput>;
+  /** IT codice lotteria (future). */
+  readonly lottery_code: string | null;
+  readonly notes: string | null;
+  readonly original_receipt_reference: OriginalReceiptReferenceInput | null;
+  readonly payments: ReadonlyArray<PaymentInput>;
+  /** UUID — device-authored. */
+  readonly receipt_uuid: string;
+  readonly seller: SellerBlockInput;
+  /** UUID. */
+  readonly shift_id: string;
+  /** Money at `currency_scale`; net of VAT. */
   readonly subtotal: string;
-  readonly discount_total: string;
-  readonly tax_total: string;
+  /** DSFinV-K ABRECHNUNGSKREIS (future). */
+  readonly table_id: string | null;
+  /** UUID. */
+  readonly terminal_id: string;
+  /** Money at `currency_scale`; gross (incl. VAT). */
   readonly total: string;
-  readonly vat_breakdown: ReadonlyArray<Record<string, unknown>>;
-  readonly payment_lines: ReadonlyArray<Record<string, unknown>>;
-  readonly voucher_redemptions: ReadonlyArray<Record<string, unknown>>;
+  /** Must equal `invoice_type_code === 'TRAINING'`. */
+  readonly training_flag: boolean;
+  /** Money at `currency_scale`; non-negative (no surcharge case). */
+  readonly transaction_discount_amount: string;
+  /** Required iff `transaction_discount_amount > "0"`, null otherwise. */
+  readonly transaction_discount_reason: string | null;
+  readonly vat_breakdown: ReadonlyArray<VatBreakdownInput>;
+  /** Money at `currency_scale`. */
+  readonly vat_total: string;
+  readonly vouchers_redeemed: ReadonlyArray<VoucherRedeemedInput>;
 }
 
 export interface ChainBreakDetectedPayloadInput {
@@ -553,20 +714,26 @@ export class FiscalEventEngine {
   }
 
   /**
-   * Per-event-type payload validation — asserts the top-level monetary
-   * fields are strings (per spec v7 §4: "money as CurrencyScale::bcformat()
-   * decimal strings"). Closes Task 15 round-2 Codex BLOCKER. The encoder
-   * already rejects floats; this layer additionally rejects integers in
-   * monetary-named fields, which the encoder cannot distinguish from
-   * legitimate count fields without payload-type knowledge.
+   * Per-event-type payload validation — STRUCTURAL conformance only:
+   * key set + types + regex + enums + nested-object shape. The encoder
+   * already rejects floats; this layer additionally rejects
+   * non-bcformat-conformant money values, malformed UUIDs / ISO 8601
+   * datetimes, out-of-domain enum values, etc. Closes Task 15 round-2
+   * Codex BLOCKER + P1-1.
    *
-   * Per-line monetary fields + nested sub-array shapes are intentionally
-   * deferred to Task 16's server-side StrictCanonicalParser (matches
-   * Task 14 Opus P2-2 deferral pattern). The engine layer enforces only
-   * the top-level invariants that are unambiguously monetary.
+   * **Task 27B Pass 2A.TS:** SALE_RECEIPT now validates the full 27-key
+   * Candidate C-v3 shape (synthesis v5 §3) — including nested seller /
+   * buyer / line_items / payments / vat_breakdown blocks, the
+   * training-flag invariant, discount-reason consistency, and
+   * foreign-currency pairing. The VAT partition algorithm + invoice-
+   * total arithmetic stay server-side per v5 §6.F (the PHP
+   * `FiscalPayloadConstraintValidator::validateVatPartition()` +
+   * total-arithmetic cross-check are the authoritative enforcement
+   * points; the TS validator deliberately stops at structural
+   * conformance to avoid duplicating BCMath behavior in JS).
    *
    * **Round-2 (Task 25 Codex T25-P2 closure):** CHAIN_BREAK_DETECTED +
-   * CHAIN_RESTART now get runtime validation that MIRRORS the PHP
+   * CHAIN_RESTART get runtime validation that MIRRORS the PHP
    * `FiscalPayloadConstraintValidator` constraint set EXACTLY — 64-char
    * lowercase hex on hash fields, non-empty assoc on the four
    * non-empty-object fields. Cross-language drift gate (Task 14 standing
@@ -575,10 +742,7 @@ export class FiscalEventEngine {
    * **Task 26 round-2 (T26-P3 closure):** `TERMINAL_REGISTRY_SNAPSHOT`
    * + `COMPANY_DAY_CLOSURE_MANIFEST` are spec §11.0 server-only and
    * rejected at the Step -1 boundary BEFORE this validator runs — so
-   * those branches never execute here. The previous stale comment that
-   * said `TERMINAL_REGISTRY_SNAPSHOT` was deferred to the server-side
-   * parser is removed (it was correct at Task 15 round-2 but became
-   * misleading once §11.0 made the device-side rejection load-bearing).
+   * those branches never execute here.
    */
   private validateRequestPayload(request: FiscalEventAppendRequest): void {
     switch (request.event_type) {
@@ -658,12 +822,157 @@ export class FiscalEventEngine {
 // the server-side StrictCanonicalParser's job (Task 16, Task 14 Opus P2-2).
 // -------------------------------------------------------------------
 
-const SALE_RECEIPT_STRING_MONETARY_FIELDS = [
+/**
+ * Allowed top-level payload keys per event type. Mirrors PHP
+ * `FiscalPayloadConstraintValidator::PAYLOAD_KEYS` byte-for-byte —
+ * Task 14 cross-language drift gate (Task 25 round-3 Codex P1 closure,
+ * Task 27B Pass 2A.TS for SALE_RECEIPT).
+ *
+ * The PHP authority lives at
+ * `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php`
+ * (`PAYLOAD_KEYS` const). Any change there MUST land here in the same commit.
+ *
+ * Exported so the cross-language drift gate test can assert byte-mirror
+ * equality without re-implementing the key list.
+ */
+export const SALE_RECEIPT_PAYLOAD_KEYS = [
+  'business_date',
+  'buyer',
+  'cashier_id',
+  'cashier_name',
+  'consumption_mode',
+  'currency_code',
+  'currency_scale',
+  'event_time_device',
+  'invoice_type_code',
+  'line_items',
+  'lottery_code',
+  'notes',
+  'original_receipt_reference',
+  'payments',
+  'receipt_uuid',
+  'seller',
+  'shift_id',
   'subtotal',
-  'discount_total',
-  'tax_total',
+  'table_id',
+  'terminal_id',
   'total',
+  'training_flag',
+  'transaction_discount_amount',
+  'transaction_discount_reason',
+  'vat_breakdown',
+  'vat_total',
+  'vouchers_redeemed',
 ] as const;
+
+export const CHAIN_BREAK_DETECTED_PAYLOAD_KEYS = [
+  'last_good_hash',
+  'last_good_sequence',
+  'offending_record_reference',
+  'reason',
+] as const;
+
+export const CHAIN_RESTART_PAYLOAD_KEYS = [
+  'last_good_anchor',
+  'new_genesis_reference',
+  'operator_authorization_evidence',
+  'provenance_link',
+] as const;
+
+// -------------------------------------------------------------------
+// Format / domain constants — mirror PHP
+// `FiscalPayloadConstraintValidator` `private const` block exactly.
+// Cross-language drift gate (Task 14 standing pattern).
+// -------------------------------------------------------------------
+
+/** Lowercase-hex UUID (RFC 4122 — version-agnostic at this layer). */
+const LOWER_HEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** ISO 4217 alpha-3 uppercase currency code. */
+const ISO_4217 = /^[A-Z]{3}$/;
+
+/** ISO 3166-1 alpha-2 uppercase country code. */
+const ISO_3166_ALPHA_2 = /^[A-Z]{2}$/;
+
+/**
+ * Universal tax-number regex per synthesis v5 §7 — per-country strict
+ * regex deferred to Phase 1.5. Length 4-40 over `[A-Za-z0-9 \-/.]`.
+ * Additionally rejected at the validator: empty, control chars,
+ * leading/trailing whitespace.
+ */
+const TAX_NUMBER_UNIVERSAL = /^[A-Za-z0-9 \-/.]{4,40}$/;
+
+/**
+ * ISO 8601 with millisecond precision + tz (`Z` or `±HH:MM`).
+ * Synthesis v5 §3 line 51. Note: stricter than the envelope-level
+ * `event_time_device` which uses second precision UTC; the SALE_RECEIPT
+ * payload field is millisecond precision per the canonical contract.
+ */
+const ISO_8601_DATETIME_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})$/;
+
+/** `YYYY-MM-DD` calendar date. */
+const ISO_8601_CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `tax_category_code` shape — empty string OR `^[A-Z0-9_-]+$`. */
+const TAX_CATEGORY_CODE = /^[A-Z0-9_-]+$/;
+
+/** Phase-1 fixed quantity scale per synthesis v5 §6.B. */
+const QUANTITY_SCALE = 3;
+
+/** Phase-1 fixed VAT-rate scale per synthesis v5 §6.B. */
+const VAT_RATE_SCALE = 2;
+
+/** Supported `currency_scale` allowlist per synthesis v5 (§3 / §6.B). */
+const SUPPORTED_CURRENCY_SCALES: ReadonlyArray<number> = [0, 2, 3];
+
+/** Foreign-currency scale lookup (synthesis v5 §6.B). */
+const CURRENCY_SCALES: Readonly<Record<string, number>> = {
+  EUR: 2,
+  USD: 2,
+  GBP: 2,
+  SAR: 2,
+  TND: 3,
+  JPY: 0,
+};
+
+const INVOICE_TYPE_CODES = ['SALE', 'REFUND', 'VOID', 'TRAINING'] as const;
+type InvoiceTypeCode = (typeof INVOICE_TYPE_CODES)[number];
+
+const CONSUMPTION_MODES = ['dine_in', 'takeaway'] as const;
+
+const NON_COLLECTED_SUBTYPES = ['servizi', 'beni', 'omaggio', 'successiva'] as const;
+
+/**
+ * Money regex at the given scale. Non-negative (no `^-?` prefix);
+ * refunds are modeled via `invoice_type_code='REFUND'` per v5 §6.A.
+ * For `$scale === 0` no fractional part is allowed.
+ */
+function moneyRegex(scale: number): RegExp {
+  if (scale === 0) {
+    return /^(0|[1-9]\d*)$/;
+  }
+  return new RegExp(`^(0|[1-9]\\d*)(\\.\\d{${scale}})?$`);
+}
+
+/**
+ * True when `value` is BCMath-equivalent zero at the given scale — i.e.
+ * `"0"`, `"0.00"`, `"0.000"`, etc. Used for the discount-reason
+ * consistency invariant (§6.A) where `bcformat()` at scale=2 emits
+ * `"0.00"` not `"0"`. Pre-filtered by `moneyRegex` so we can rely on
+ * the input being scale-conformant.
+ */
+function isZeroMoney(value: string): boolean {
+  return /^0(\.0+)?$/.test(value);
+}
+
+// -------------------------------------------------------------------
+// SALE_RECEIPT validator — 27-key canonical Candidate C-v3 per
+// synthesis v5 §3. STRUCTURAL conformance only: key set + types +
+// regex + enums + foreign-currency pairing + training-flag invariant
+// + discount-reason consistency. The VAT partition algorithm +
+// invoice-total arithmetic stay server-side per v5 §6.F (the PHP
+// validator is authoritative there).
+// -------------------------------------------------------------------
 
 function validateSaleReceiptPayload(payload: unknown): void {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -673,53 +982,666 @@ function validateSaleReceiptPayload(payload: unknown): void {
   }
   const p = payload as Record<string, unknown>;
 
-  if (typeof p['currency'] !== 'string') {
+  // -- 1. key-set: required + extras -- mirrors PHP validatePayloadKeySet.
+  assertExactKeySet(p, SALE_RECEIPT_PAYLOAD_KEYS, 'SALE_RECEIPT');
+
+  // -- 2. currency_scale + currency_code first; every subsequent money
+  //       check depends on the scale.
+  const scale = p['currency_scale'];
+  if (typeof scale !== 'number' || !Number.isInteger(scale)) {
     throw new FiscalEventPayloadValidationError(
-      `SALE_RECEIPT.currency must be a string; got ${typeofTag(p['currency'])}.`,
+      `payload_currency_scale_invalid:must be int; got ${typeofTag(scale)}`,
     );
   }
-  if (typeof p['currency_scale'] !== 'number' || !Number.isInteger(p['currency_scale'])) {
+  if (scale < 0 || scale > 8) {
     throw new FiscalEventPayloadValidationError(
-      `SALE_RECEIPT.currency_scale must be an integer; got ${typeofTag(p['currency_scale'])}.`,
+      `payload_currency_scale_invalid:must be int 0-8; got ${scale}`,
     );
   }
-  for (const field of SALE_RECEIPT_STRING_MONETARY_FIELDS) {
-    if (typeof p[field] !== 'string') {
+  if (!SUPPORTED_CURRENCY_SCALES.includes(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${scale}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}`,
+    );
+  }
+  const money = moneyRegex(scale);
+
+  const currencyCode = p['currency_code'];
+  if (typeof currencyCode !== 'string' || !ISO_4217.test(currencyCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(currencyCode)}`,
+    );
+  }
+
+  // -- 3. enum + format invariants on simple top-level fields --
+  const invoiceTypeCode = assertEnum(p, 'invoice_type_code', INVOICE_TYPE_CODES) as InvoiceTypeCode;
+  assertOptionalEnum(p, 'consumption_mode', CONSUMPTION_MODES);
+  const trainingFlag = assertBool(p, 'training_flag');
+  assertCalendarDate(p, 'business_date');
+  assertUuid(p, 'cashier_id');
+  assertNonEmptyString(p, 'cashier_name');
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertUuid(p, 'receipt_uuid');
+  assertUuid(p, 'shift_id');
+  assertUuid(p, 'terminal_id');
+  assertOptionalNonEmptyString(p, 'notes');
+  assertOptionalNonEmptyString(p, 'table_id');
+  assertOptionalNonEmptyString(p, 'lottery_code');
+
+  // -- 3a. TRAINING-flag coupling invariant (§3 / v5 §6) --
+  const invoiceTypeIsTraining = invoiceTypeCode === 'TRAINING';
+  if (invoiceTypeIsTraining !== trainingFlag) {
+    const flagLabel = trainingFlag ? 'true' : 'false';
+    throw new FiscalEventPayloadValidationError(
+      `payload_training_flag_mismatch:invoice_type_code=${invoiceTypeCode}:training_flag=${flagLabel}`,
+    );
+  }
+
+  // -- 4. top-level money fields (non-negative bcformat at currency_scale) --
+  for (const field of ['subtotal', 'vat_total', 'total', 'transaction_discount_amount'] as const) {
+    assertMoneyString(p, field, money, scale);
+  }
+
+  // -- 5. discount-reason consistency (§6.A; BCMath-equivalent zero check) --
+  const discountAmount = p['transaction_discount_amount'] as string;
+  const discountReason = p['transaction_discount_reason'];
+  if (discountReason !== null && (typeof discountReason !== 'string' || discountReason === '')) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:transaction_discount_reason must be non-empty string or null; got ${jsonOrType(discountReason)}`,
+    );
+  }
+  const isZeroDiscount = isZeroMoney(discountAmount);
+  const reasonPresent = discountReason !== null;
+  if (isZeroDiscount && reasonPresent) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_discount_reason_mismatch:amount=${discountAmount}:reason_present=true`,
+    );
+  }
+  if (!isZeroDiscount && !reasonPresent) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_discount_reason_mismatch:amount=${discountAmount}:reason_present=false`,
+    );
+  }
+
+  // -- 6. nested objects --
+  validateSeller(p);
+  validateBuyer(p);
+  validateOriginalReceiptReference(p, invoiceTypeCode);
+
+  // -- 7. list containers --
+  const lineItems = requireList(p, 'line_items');
+  if (lineItems.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_line_items_empty:line_items must have >= 1 row',
+    );
+  }
+  lineItems.forEach((row, idx) => validateLineItem(idx, row, money, scale));
+
+  const payments = requireList(p, 'payments');
+  if (payments.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_payments_empty:payments must have >= 1 row',
+    );
+  }
+  payments.forEach((row, idx) => validatePaymentRow(idx, row, money, scale));
+
+  const vatBreakdown = requireList(p, 'vat_breakdown');
+  if (vatBreakdown.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_vat_breakdown_empty:vat_breakdown must have >= 1 row',
+    );
+  }
+  vatBreakdown.forEach((row, idx) => validateVatBreakdownRow(idx, row, money, scale));
+
+  const vouchers = requireList(p, 'vouchers_redeemed');
+  vouchers.forEach((row, idx) => validateVoucherRow(idx, row, money, scale));
+
+  // Note: VAT partition algorithm + invoice-total arithmetic stay
+  // server-side per synthesis v5 §6.F. The PHP
+  // `FiscalPayloadConstraintValidator::validateVatPartition()` +
+  // total-arithmetic cross-check are the authoritative enforcement
+  // points; the TS validator deliberately stops at structural
+  // conformance to avoid duplicating BCMath behavior in JS.
+}
+
+// -------------------------------------------------------------------
+// Nested-object validators
+// -------------------------------------------------------------------
+
+const SELLER_KEYS = ['address', 'name', 'tax_jurisdiction_country_code', 'tax_number'] as const;
+const BUYER_KEYS = ['address', 'codice_fiscale', 'contact_id', 'customer_id', 'name', 'tax_number'] as const;
+const ADDRESS_KEYS = ['city', 'country_code', 'postal_code', 'street'] as const;
+const ORIGINAL_RECEIPT_REFERENCE_KEYS = [
+  'fiscal_event_id', 'original_business_date', 'original_receipt_uuid', 'refund_reason',
+] as const;
+const LINE_ITEM_KEYS = [
+  'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
+  'line_vat', 'name', 'non_collected_subtype', 'product_id', 'quantity',
+  'sku', 'tax_category_code', 'unit_price', 'vat_rate',
+] as const;
+const PAYMENT_KEYS = [
+  'amount', 'foreign_currency_amount', 'foreign_currency_code',
+  'instrument_serial', 'instrument_type', 'method_code',
+] as const;
+const VAT_BREAKDOWN_KEYS = ['gross_amount', 'net_amount', 'rate', 'tax_category_code', 'vat_amount'] as const;
+const VOUCHER_KEYS = ['redeemed_amount', 'voucher_code'] as const;
+
+function validateSeller(p: Record<string, unknown>): void {
+  const seller = p['seller'];
+  if (!isPlainObject(seller)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_seller_invalid:must be object; got ${typeofTag(seller)}`,
+    );
+  }
+  assertExactKeySetWithPath(seller, SELLER_KEYS, 'seller');
+
+  assertNonEmptyStringAt(seller, 'name', 'seller.name');
+
+  const jurisdiction = seller['tax_jurisdiction_country_code'];
+  if (typeof jurisdiction !== 'string' || !ISO_3166_ALPHA_2.test(jurisdiction)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_seller_tax_jurisdiction_invalid:must be ISO 3166-1 alpha-2; got ${jsonOrType(jurisdiction)}`,
+    );
+  }
+
+  assertTaxNumber(seller['tax_number'], 'seller.tax_number');
+  validateAddress(seller['address'], 'seller.address', /* required */ true);
+}
+
+function validateBuyer(p: Record<string, unknown>): void {
+  const buyer = p['buyer'];
+  if (buyer === null) {
+    return;
+  }
+  if (!isPlainObject(buyer)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_invalid:must be object or null; got ${typeofTag(buyer)}`,
+    );
+  }
+  assertExactKeySetWithPath(buyer, BUYER_KEYS, 'buyer');
+
+  for (const field of ['codice_fiscale', 'contact_id', 'customer_id', 'name'] as const) {
+    const value = buyer[field];
+    if (value !== null && (typeof value !== 'string' || value === '')) {
       throw new FiscalEventPayloadValidationError(
-        `SALE_RECEIPT.${field} must be a decimal string (e.g. "10.000"); got ${typeofTag(p[field])}. ` +
-          'Spec v7 §4 — money MUST be a CurrencyScale::bcformat() decimal string, never a number.',
+        `payload_buyer_${field}_invalid:must be non-empty string or null; got ${jsonOrType(value)}`,
       );
     }
   }
-  if (!Array.isArray(p['lines'])) {
+
+  if (buyer['tax_number'] !== null && buyer['tax_number'] !== undefined) {
+    assertTaxNumber(buyer['tax_number'], 'buyer.tax_number');
+  }
+
+  validateAddress(buyer['address'], 'buyer.address', /* required */ false);
+}
+
+function validateAddress(address: unknown, path: string, required: boolean): void {
+  if (address === null) {
+    if (required) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_address_invalid:${path} is required; got null`,
+      );
+    }
+    return;
+  }
+  if (!isPlainObject(address)) {
     throw new FiscalEventPayloadValidationError(
-      `SALE_RECEIPT.lines must be an array; got ${typeofTag(p['lines'])}.`,
+      `payload_address_invalid:${path} must be object; got ${typeofTag(address)}`,
+    );
+  }
+  assertExactKeySetWithPath(address, ADDRESS_KEYS, path);
+  assertNonEmptyStringAt(address, 'city', `${path}.city`);
+  assertNonEmptyStringAt(address, 'postal_code', `${path}.postal_code`);
+  assertNonEmptyStringAt(address, 'street', `${path}.street`);
+  const cc = address['country_code'];
+  if (typeof cc !== 'string' || !ISO_3166_ALPHA_2.test(cc)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_address_country_code_invalid:${path}.country_code must be ISO 3166-1 alpha-2; got ${jsonOrType(cc)}`,
     );
   }
 }
 
-/**
- * Allowed top-level payload keys per event type. Mirrors PHP
- * `FiscalPayloadConstraintValidator::PAYLOAD_KEYS` byte-for-byte —
- * Task 14 cross-language drift gate (Task 25 round-3 Codex P1 closure).
- *
- * The PHP authority lives at
- * `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:68-85`.
- * Any change there MUST land here in the same commit.
- */
-const CHAIN_BREAK_DETECTED_PAYLOAD_KEYS = [
-  'last_good_hash',
-  'last_good_sequence',
-  'offending_record_reference',
-  'reason',
-] as const;
+function validateOriginalReceiptReference(
+  p: Record<string, unknown>,
+  invoiceTypeCode: InvoiceTypeCode,
+): void {
+  const ref = p['original_receipt_reference'];
+  const refundOrVoid = invoiceTypeCode === 'REFUND' || invoiceTypeCode === 'VOID';
 
-const CHAIN_RESTART_PAYLOAD_KEYS = [
-  'last_good_anchor',
-  'new_genesis_reference',
-  'operator_authorization_evidence',
-  'provenance_link',
-] as const;
+  if (ref === null) {
+    if (refundOrVoid) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_invoice_type_invalid:original_receipt_reference required when invoice_type_code=${JSON.stringify(invoiceTypeCode)}`,
+      );
+    }
+    return;
+  }
+  if (!isPlainObject(ref)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_original_receipt_reference_invalid:must be object or null; got ${typeofTag(ref)}`,
+    );
+  }
+  assertExactKeySetWithPath(ref, ORIGINAL_RECEIPT_REFERENCE_KEYS, 'original_receipt_reference');
+  assertUuidAt(ref, 'fiscal_event_id', 'original_receipt_reference.fiscal_event_id');
+  assertCalendarDateAt(ref, 'original_business_date', 'original_receipt_reference.original_business_date');
+  assertUuidAt(ref, 'original_receipt_uuid', 'original_receipt_reference.original_receipt_uuid');
+  assertNonEmptyStringAt(ref, 'refund_reason', 'original_receipt_reference.refund_reason');
+
+  if (!refundOrVoid) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_invoice_type_invalid:original_receipt_reference present but invoice_type_code=${JSON.stringify(invoiceTypeCode)}`,
+    );
+  }
+}
+
+function validateLineItem(index: number, row: unknown, money: RegExp, scale: number): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_invalid:line_items[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `line_items[${index}]`;
+  assertExactKeySetWithPath(row, LINE_ITEM_KEYS, path);
+
+  assertMoneyStringAt(row, 'unit_price', money, scale, `${path}.unit_price`);
+  assertMoneyStringAt(row, 'line_subtotal', money, scale, `${path}.line_subtotal`);
+  assertMoneyStringAt(row, 'line_vat', money, scale, `${path}.line_vat`);
+  assertMoneyStringAt(row, 'line_discount_amount', money, scale, `${path}.line_discount_amount`);
+  assertMoneyStringAt(row, 'quantity', moneyRegex(QUANTITY_SCALE), QUANTITY_SCALE, `${path}.quantity`);
+  assertMoneyStringAt(row, 'vat_rate', moneyRegex(VAT_RATE_SCALE), VAT_RATE_SCALE, `${path}.vat_rate`);
+
+  assertNonEmptyStringAt(row, 'name', `${path}.name`);
+  assertNonEmptyStringAt(row, 'product_id', `${path}.product_id`);
+  assertNonEmptyStringAt(row, 'sku', `${path}.sku`);
+
+  const tcc = row['tax_category_code'];
+  if (typeof tcc !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path}.tax_category_code must be string; got ${typeofTag(tcc)}`,
+    );
+  }
+  if (tcc !== '' && !TAX_CATEGORY_CODE.test(tcc)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path}.tax_category_code must match ^[A-Z0-9_-]+$; got ${jsonOrType(tcc)}`,
+    );
+  }
+
+  for (const f of ['gtin', 'line_discount_reason'] as const) {
+    const v = row[f];
+    if (v !== null && (typeof v !== 'string' || v === '')) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_line_item_${f}_invalid:${path}.${f} must be non-empty string or null; got ${jsonOrType(v)}`,
+      );
+    }
+  }
+
+  const ncs = row['non_collected_subtype'];
+  if (ncs !== null && (typeof ncs !== 'string' || !(NON_COLLECTED_SUBTYPES as ReadonlyArray<string>).includes(ncs))) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_non_collected_subtype_invalid:${path}.non_collected_subtype must be one of ${NON_COLLECTED_SUBTYPES.join('|')} or null; got ${jsonOrType(ncs)}`,
+    );
+  }
+
+  // Line-level discount-reason consistency (symmetric with invoice-level rule).
+  const lda = row['line_discount_amount'] as string;
+  const ldr = row['line_discount_reason'];
+  const isZero = isZeroMoney(lda);
+  if (isZero && ldr !== null) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_discount_reason_mismatch:${path}:amount=${lda}:reason_present=true`,
+    );
+  }
+  if (!isZero && ldr === null) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_discount_reason_mismatch:${path}:amount=${lda}:reason_present=false`,
+    );
+  }
+}
+
+function validatePaymentRow(index: number, row: unknown, money: RegExp, scale: number): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_payment_invalid:payments[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `payments[${index}]`;
+  assertExactKeySetWithPath(row, PAYMENT_KEYS, path);
+
+  assertMoneyStringAt(row, 'amount', money, scale, `${path}.amount`);
+  assertNonEmptyStringAt(row, 'method_code', `${path}.method_code`);
+
+  for (const f of ['instrument_serial', 'instrument_type'] as const) {
+    const v = row[f];
+    if (v !== null && (typeof v !== 'string' || v === '')) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_payment_${f}_invalid:${path}.${f} must be non-empty string or null; got ${jsonOrType(v)}`,
+      );
+    }
+  }
+
+  const fca = row['foreign_currency_amount'];
+  const fcc = row['foreign_currency_code'];
+  if (fca === null && fcc === null) {
+    return;
+  }
+  if (fca === null || fcc === null) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_payment_foreign_currency_pair_invalid:${path} — foreign_currency_amount and foreign_currency_code must both be null or both non-null`,
+    );
+  }
+  if (typeof fcc !== 'string' || !ISO_4217.test(fcc)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_payment_foreign_currency_code_invalid:${path}.foreign_currency_code must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(fcc)}`,
+    );
+  }
+  const foreignScale = CURRENCY_SCALES[fcc];
+  if (foreignScale === undefined) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_payment_foreign_currency_unknown:${path}.foreign_currency_code=${fcc} has no registered scale (extend CURRENCY_SCALES)`,
+    );
+  }
+  if (!SUPPORTED_CURRENCY_SCALES.includes(foreignScale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${foreignScale}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}:source=${path}.foreign_currency_code=${fcc}`,
+    );
+  }
+  assertMoneyStringAt(row, 'foreign_currency_amount', moneyRegex(foreignScale), foreignScale, `${path}.foreign_currency_amount`);
+}
+
+function validateVatBreakdownRow(index: number, row: unknown, money: RegExp, scale: number): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_vat_breakdown_invalid:vat_breakdown[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `vat_breakdown[${index}]`;
+  assertExactKeySetWithPath(row, VAT_BREAKDOWN_KEYS, path);
+
+  assertMoneyStringAt(row, 'net_amount', money, scale, `${path}.net_amount`);
+  assertMoneyStringAt(row, 'vat_amount', money, scale, `${path}.vat_amount`);
+  assertMoneyStringAt(row, 'gross_amount', money, scale, `${path}.gross_amount`);
+  assertMoneyStringAt(row, 'rate', moneyRegex(VAT_RATE_SCALE), VAT_RATE_SCALE, `${path}.rate`);
+
+  const tcc = row['tax_category_code'];
+  if (typeof tcc !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_vat_breakdown_tax_category_invalid:${path}.tax_category_code must be string; got ${typeofTag(tcc)}`,
+    );
+  }
+  if (tcc !== '' && !TAX_CATEGORY_CODE.test(tcc)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_vat_breakdown_tax_category_invalid:${path}.tax_category_code must match ^[A-Z0-9_-]+$; got ${jsonOrType(tcc)}`,
+    );
+  }
+
+  // Note: net + vat == gross arithmetic check stays server-side per
+  // synthesis v5 §6.F. The PHP validator enforces it via BCMath; we
+  // skip it here to avoid duplicating decimal arithmetic in JS.
+}
+
+function validateVoucherRow(index: number, row: unknown, money: RegExp, scale: number): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_voucher_invalid:vouchers_redeemed[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `vouchers_redeemed[${index}]`;
+  assertExactKeySetWithPath(row, VOUCHER_KEYS, path);
+  assertMoneyStringAt(row, 'redeemed_amount', money, scale, `${path}.redeemed_amount`);
+  assertNonEmptyStringAt(row, 'voucher_code', `${path}.voucher_code`);
+}
+
+// -------------------------------------------------------------------
+// Shared assertion helpers — return-typed where the caller needs the
+// narrowed value back. Forensic-prefix conventions mirror PHP exactly.
+// -------------------------------------------------------------------
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requireList(bag: Record<string, unknown>, key: string): unknown[] {
+  const items = bag[key];
+  if (!Array.isArray(items)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_${key}_invalid:must be a JSON list; got ${typeofTag(items)}`,
+    );
+  }
+  return items;
+}
+
+function assertExactKeySet(
+  payload: Record<string, unknown>,
+  expected: ReadonlyArray<string>,
+  eventTypeLabel: string,
+): void {
+  const expectedSet = new Set<string>(expected);
+  const actual = Object.keys(payload);
+  const missing: string[] = [];
+  for (const key of expected) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+      missing.push(key);
+    }
+  }
+  if (missing.length > 0) {
+    missing.sort();
+    throw new FiscalEventPayloadValidationError(
+      `payload_missing_required:${missing.join(',')} — ${eventTypeLabel} payload missing required key(s).`,
+    );
+  }
+  const extras: string[] = [];
+  for (const key of actual) {
+    if (!expectedSet.has(key)) {
+      extras.push(key);
+    }
+  }
+  if (extras.length > 0) {
+    extras.sort();
+    throw new FiscalEventPayloadValidationError(
+      `payload_extra_field:${extras.join(',')} — ${eventTypeLabel} payload carries unknown top-level key(s) not in PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS. Allowed: ${[...expectedSet].sort().join(', ')}.`,
+    );
+  }
+}
+
+function assertExactKeySetWithPath(
+  bag: Record<string, unknown>,
+  expected: ReadonlyArray<string>,
+  path: string,
+): void {
+  const expectedSet = new Set<string>(expected);
+  const missing: string[] = [];
+  for (const key of expected) {
+    if (!Object.prototype.hasOwnProperty.call(bag, key)) {
+      missing.push(key);
+    }
+  }
+  if (missing.length > 0) {
+    missing.sort();
+    throw new FiscalEventPayloadValidationError(
+      `payload_${path}_missing_keys:${missing.join(',')}`,
+    );
+  }
+  const extras: string[] = [];
+  for (const key of Object.keys(bag)) {
+    if (!expectedSet.has(key)) {
+      extras.push(key);
+    }
+  }
+  if (extras.length > 0) {
+    extras.sort();
+    throw new FiscalEventPayloadValidationError(
+      `payload_${path}_extra_keys:${extras.join(',')}`,
+    );
+  }
+}
+
+function assertEnum<T extends string>(
+  bag: Record<string, unknown>,
+  field: string,
+  allowed: ReadonlyArray<T>,
+): T {
+  const value = bag[field];
+  if (typeof value !== 'string' || !(allowed as ReadonlyArray<string>).includes(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be one of ${allowed.join('|')}; got ${jsonOrType(value)}`,
+    );
+  }
+  return value as T;
+}
+
+function assertOptionalEnum<T extends string>(
+  bag: Record<string, unknown>,
+  field: string,
+  allowed: ReadonlyArray<T>,
+): void {
+  const value = bag[field];
+  if (value === null) return;
+  if (typeof value !== 'string' || !(allowed as ReadonlyArray<string>).includes(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be one of ${allowed.join('|')} or null; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertBool(bag: Record<string, unknown>, field: string): boolean {
+  const value = bag[field];
+  if (typeof value !== 'boolean') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be boolean; got ${typeofTag(value)}`,
+    );
+  }
+  return value;
+}
+
+function assertUuid(bag: Record<string, unknown>, field: string): void {
+  assertUuidAt(bag, field, field);
+}
+
+function assertUuidAt(bag: Record<string, unknown>, field: string, path: string): void {
+  const value = bag[field];
+  if (typeof value !== 'string' || !LOWER_HEX_UUID.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${path} must be lowercase-hex UUID (^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$); got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertNonEmptyString(bag: Record<string, unknown>, field: string): void {
+  assertNonEmptyStringAt(bag, field, field);
+}
+
+function assertNonEmptyStringAt(bag: Record<string, unknown>, field: string, path: string): void {
+  const value = bag[field];
+  if (typeof value !== 'string' || value === '') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${path} must be non-empty string; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertOptionalNonEmptyString(bag: Record<string, unknown>, field: string): void {
+  const value = bag[field];
+  if (value === null) return;
+  if (typeof value !== 'string' || value === '') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be non-empty string or null; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertCalendarDate(bag: Record<string, unknown>, field: string): void {
+  assertCalendarDateAt(bag, field, field);
+}
+
+function assertCalendarDateAt(bag: Record<string, unknown>, field: string, path: string): void {
+  const value = bag[field];
+  if (typeof value !== 'string' || !ISO_8601_CALENDAR_DATE.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${path} must be YYYY-MM-DD; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertIsoDateTimeMs(bag: Record<string, unknown>, field: string): void {
+  const value = bag[field];
+  if (typeof value !== 'string' || !ISO_8601_DATETIME_MS.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${field} must be ISO 8601 with ms + tz offset (e.g. 2026-05-16T10:00:00.000Z); got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function assertMoneyString(
+  bag: Record<string, unknown>,
+  field: string,
+  regex: RegExp,
+  scale: number,
+): void {
+  assertMoneyStringAt(bag, field, regex, scale, field);
+}
+
+function assertMoneyStringAt(
+  bag: Record<string, unknown>,
+  field: string,
+  regex: RegExp,
+  scale: number,
+  path: string,
+): void {
+  const value = bag[field];
+  if (typeof value !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_money_invalid:field=${path}:value must be bcformat decimal string at scale ${scale}; got ${typeofTag(value)}`,
+    );
+  }
+  if (!regex.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_money_scale_mismatch:field=${path}:value=${value}:expected_scale=${scale}`,
+    );
+  }
+}
+
+function assertTaxNumber(value: unknown, path: string): void {
+  if (typeof value !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_tax_number_invalid:${path} must be string; got ${typeofTag(value)}`,
+    );
+  }
+  if (value === '' || value !== value.trim()) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_tax_number_invalid:${path} must be non-empty and not have leading/trailing whitespace; got ${jsonOrType(value)}`,
+    );
+  }
+  // Reject ASCII control bytes (< 0x20) and DEL (0x7F) - mirrors PHP
+  // assertTaxNumber control-byte loop. The universal regex below also
+  // rejects them via the [A-Za-z0-9 \-/.] class, but the explicit
+  // check produces a more forensic error prefix. Built via `new RegExp`
+  // to avoid putting raw control bytes in the TS source file.
+  // eslint-disable-next-line no-control-regex
+  const CONTROL_BYTES = new RegExp('[\\x00-\\x1f\\x7f]');
+  const controlMatch = value.match(CONTROL_BYTES);
+  if (controlMatch) {
+    const offset = controlMatch.index ?? 0;
+    const byteHex = controlMatch[0].charCodeAt(0).toString(16).padStart(2, '0').toUpperCase();
+    throw new FiscalEventPayloadValidationError(
+      `payload_tax_number_invalid:${path} contains control byte 0x${byteHex} at offset ${offset}`,
+    );
+  }
+  if (!TAX_NUMBER_UNIVERSAL.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_tax_number_invalid:${path} must match ^[A-Za-z0-9 \\-/.]{4,40}$; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function jsonOrType(value: unknown): string {
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return typeofTag(value);
+}
 
 /**
  * Assert `payload` has no top-level keys outside `allowed`. Mirrors PHP

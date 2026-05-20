@@ -22,6 +22,7 @@ import {
   ConcurrentChainAdvanceError,
   FiscalEventEngine,
   FiscalEventPayloadValidationError,
+  SALE_RECEIPT_PAYLOAD_KEYS,
   ServerAuthoredEventTypeError,
   type FiscalEventAppendRequest,
 } from '../FiscalEventEngine';
@@ -86,24 +87,94 @@ async function seedTerminalState(
 }
 
 /**
- * A canonical-spec-correct SALE_RECEIPT payload. All top-level monetary
- * fields are decimal strings (spec §4); `currency_scale` is an int;
- * `lines` is a list. Per-line monetary fields are also strings for
- * good-citizen behavior, though the engine doesn't enforce per-line
- * shape (deferred to Task 16's StrictCanonicalParser).
+ * A canonical-spec-correct SALE_RECEIPT payload — 27-key Candidate C-v3
+ * shape per synthesis v5 §3 (Task 27B Pass 2A.TS). Every monetary /
+ * quantity field is a bcformat decimal string at the relevant scale;
+ * `currency_scale` is an integer in the {0, 2, 3} allowlist; nested
+ * `seller` / `buyer` / `line_items` / `payments` / `vat_breakdown` /
+ * `original_receipt_reference` / `vouchers_redeemed` blocks honor the
+ * full TS interface in `FiscalEventEngine.ts`.
+ *
+ * Default shape: SALE invoice, TND (scale=3), one line at 20.00% VAT,
+ * one cash payment, one partition row, no buyer/refund-ref/vouchers.
  */
+const SR_TERMINAL_UUID = '11111111-1111-1111-1111-111111111111';
+const SR_CASHIER_UUID = '22222222-2222-2222-2222-222222222222';
+const SR_SHIFT_UUID = '33333333-3333-3333-3333-333333333333';
+const SR_RECEIPT_UUID = '44444444-4444-4444-4444-444444444444';
+
 function validSaleReceiptPayload(): Record<string, unknown> {
   return {
-    currency: 'TND',
+    business_date: '2026-05-16',
+    buyer: null,
+    cashier_id: SR_CASHIER_UUID,
+    cashier_name: 'Alice',
+    consumption_mode: null,
+    currency_code: 'TND',
     currency_scale: 3,
-    lines: [{ sku: 'A', qty: 1, unit_price: '10.000', line_total: '10.000' }],
+    event_time_device: '2026-05-16T10:00:00.000Z',
+    invoice_type_code: 'SALE',
+    line_items: [
+      {
+        gtin: null,
+        line_discount_amount: '0.000',
+        line_discount_reason: null,
+        line_subtotal: '10.000',
+        line_vat: '2.000',
+        name: 'Espresso',
+        non_collected_subtype: null,
+        product_id: 'p-1',
+        quantity: '1.000',
+        sku: 'A',
+        tax_category_code: '',
+        unit_price: '10.000',
+        vat_rate: '20.00',
+      },
+    ],
+    lottery_code: null,
+    notes: null,
+    original_receipt_reference: null,
+    payments: [
+      {
+        amount: '12.000',
+        foreign_currency_amount: null,
+        foreign_currency_code: null,
+        instrument_serial: null,
+        instrument_type: null,
+        method_code: 'cash',
+      },
+    ],
+    receipt_uuid: SR_RECEIPT_UUID,
+    seller: {
+      address: {
+        city: 'Tunis',
+        country_code: 'TN',
+        postal_code: '1000',
+        street: '1 Rue de la Liberte',
+      },
+      name: 'Cafe Tunis',
+      tax_jurisdiction_country_code: 'TN',
+      tax_number: '1234567A/B/C/000',
+    },
+    shift_id: SR_SHIFT_UUID,
     subtotal: '10.000',
-    discount_total: '0.000',
-    tax_total: '0.000',
-    total: '10.000',
-    vat_breakdown: [],
-    payment_lines: [{ payment_method_id: 'pm-cash', amount: '10.000' }],
-    voucher_redemptions: [],
+    table_id: null,
+    terminal_id: SR_TERMINAL_UUID,
+    total: '12.000',
+    training_flag: false,
+    transaction_discount_amount: '0.000',
+    transaction_discount_reason: null,
+    vat_breakdown: [
+      {
+        gross_amount: '12.000',
+        net_amount: '10.000',
+        rate: '20.00',
+        tax_category_code: '',
+        vat_amount: '2.000',
+      },
+    ],
+    vat_total: '2.000',
+    vouchers_redeemed: [],
   };
 }
 
@@ -447,8 +518,8 @@ d('FiscalEventEngine.append', () => {
   // non-string monetary fields before any state mutation.
   // -------------------------------------------------------------------
 
-  it('round-2 BLOCKER — rejects integer in any SALE_RECEIPT monetary field', async () => {
-    for (const field of ['subtotal', 'discount_total', 'tax_total', 'total']) {
+  it('round-2 BLOCKER — rejects integer in any SALE_RECEIPT top-level monetary field', async () => {
+    for (const field of ['subtotal', 'vat_total', 'total', 'transaction_discount_amount']) {
       const payload = validSaleReceiptPayload();
       payload[field] = 10; // INTEGER — would silently slip past the encoder.
 
@@ -466,12 +537,15 @@ d('FiscalEventEngine.append', () => {
     }
   });
 
-  it('round-2 BLOCKER — rejects missing currency / non-int currency_scale', async () => {
+  it('round-2 BLOCKER — rejects missing currency_code / non-int currency_scale / non-array line_items', async () => {
     const cases: Array<Record<string, unknown>> = [
-      { ...validSaleReceiptPayload(), currency: undefined },
-      { ...validSaleReceiptPayload(), currency_scale: '3' }, // string, not int
-      { ...validSaleReceiptPayload(), currency_scale: 3.5 }, // float, not int
-      { ...validSaleReceiptPayload(), lines: 'not-an-array' },
+      // currency_code missing entirely → key-set check triggers.
+      omitKey(validSaleReceiptPayload(), 'currency_code'),
+      // currency_scale wrong types.
+      { ...validSaleReceiptPayload(), currency_scale: '3' },
+      { ...validSaleReceiptPayload(), currency_scale: 3.5 },
+      // line_items not an array.
+      { ...validSaleReceiptPayload(), line_items: 'not-an-array' },
     ];
 
     for (const payload of cases) {
@@ -747,8 +821,393 @@ d('FiscalEventEngine.append', () => {
     expect(message).toMatch(/TERMINAL_REGISTRY_SNAPSHOT/);
     expect(message).toMatch(/§11\.0|11\.0/);
   });
+
+  // -------------------------------------------------------------------
+  // Task 27B Pass 2A.TS — 27-key SALE_RECEIPT canonical contract.
+  //
+  // Mirrors the PHP `FiscalPayloadConstraintValidator::validateSaleReceiptPayload`
+  // STRUCTURAL conformance set (key set + types + regex + enums +
+  // foreign-currency pairing + training-flag invariant + discount-reason
+  // consistency). The PARTITION algorithm + invoice-total arithmetic
+  // stay server-side per synthesis v5 §6.F — those are NOT covered here.
+  //
+  // Standing pattern: discriminated-union test matrix exhaustively in
+  // round-1 (Task 20). Every failure mode the validator raises gets a
+  // dedicated test below; every cross-language drift gate (TS must
+  // reject what PHP rejects) is asserted by symmetric error-prefix
+  // matching.
+  // -------------------------------------------------------------------
+
+  it('Pass 2A.TS — happy path: 27-key SALE_RECEIPT payload validates and seals', async () => {
+    const event = await engine.append(adapter, saleReceiptRequest());
+    expect(event.sequence_number).toBe(1);
+    expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('Pass 2A.TS — rejects an extra top-level key (28th)', async () => {
+    const payload = { ...validSaleReceiptPayload(), evil_extra: 'x' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:evil_extra/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects a payload missing a required key', async () => {
+    for (const required of SALE_RECEIPT_PAYLOAD_KEYS) {
+      const payload = omitKey(validSaleReceiptPayload(), required);
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        new RegExp(`payload_missing_required:.*\\b${required}\\b`),
+      );
+    }
+  });
+
+  it('Pass 2A.TS — rejects non-UUID cashier_id', async () => {
+    const payload = { ...validSaleReceiptPayload(), cashier_id: 'not-a-uuid' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:cashier_id/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects ISO 8601 datetime missing ms', async () => {
+    const payload = { ...validSaleReceiptPayload(), event_time_device: '2026-05-16T10:00:00Z' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:event_time_device/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects ISO 8601 datetime missing tz', async () => {
+    const payload = { ...validSaleReceiptPayload(), event_time_device: '2026-05-16T10:00:00.000' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:event_time_device/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects YYYY-MM-DD failure on business_date', async () => {
+    const payload = { ...validSaleReceiptPayload(), business_date: '16/05/2026' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:business_date/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects currency_scale not in {0, 2, 3} allowlist', async () => {
+    for (const scale of [1, 4, 5, 6, 8]) {
+      const payload = recomputeForScale(validSaleReceiptPayload(), scale);
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        /payload_currency_scale_unsupported:value=/,
+      );
+    }
+  });
+
+  it('Pass 2A.TS — rejects invoice_type_code outside the enum', async () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'EXPORT' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_field_invalid:invoice_type_code/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects training_flag mismatch (SALE + true)', async () => {
+    const payload = { ...validSaleReceiptPayload(), training_flag: true };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_training_flag_mismatch:invoice_type_code=SALE:training_flag=true/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects training_flag mismatch (TRAINING + false)', async () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'TRAINING', training_flag: false };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_training_flag_mismatch:invoice_type_code=TRAINING:training_flag=false/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects negative money in any top-level field', async () => {
+    for (const field of ['subtotal', 'vat_total', 'total', 'transaction_discount_amount']) {
+      const payload = { ...validSaleReceiptPayload(), [field]: '-5.000' };
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        new RegExp(`payload_money_scale_mismatch:field=${field}`),
+      );
+    }
+  });
+
+  it('Pass 2A.TS — rejects wrong-scale money (3 decimals at scale=2)', async () => {
+    // Build an EUR (scale=2) payload but leave subtotal at "10.000".
+    const payload = recomputeForScale(validSaleReceiptPayload(), 2);
+    (payload as Record<string, unknown>)['subtotal'] = '10.000';
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_money_scale_mismatch:field=subtotal/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects discount-reason mismatch (amount=0.000 + reason set)', async () => {
+    const payload = { ...validSaleReceiptPayload(), transaction_discount_reason: 'manager override' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_discount_reason_mismatch:amount=0\.000:reason_present=true/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects discount-reason mismatch (amount=5.000 + reason null)', async () => {
+    // discount=5, subtotal=10, vat_total=2 → total = 10+2-5 = 7.
+    const payload = {
+      ...validSaleReceiptPayload(),
+      transaction_discount_amount: '5.000',
+      transaction_discount_reason: null,
+      total: '7.000',
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_discount_reason_mismatch:amount=5\.000:reason_present=false/,
+    );
+  });
+
+  it('Pass 2A.TS — accepts buyer block when present (with address + tax number)', async () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        address: {
+          city: 'Paris',
+          country_code: 'FR',
+          postal_code: '75001',
+          street: '1 Rue de Rivoli',
+        },
+        codice_fiscale: null,
+        contact_id: null,
+        customer_id: null,
+        name: 'Acme SA',
+        tax_number: 'FR12345678901',
+      },
+    };
+    const event = await engine.append(adapter, saleReceiptRequest({ payload }));
+    expect(event.sequence_number).toBe(1);
+  });
+
+  it('Pass 2A.TS — rejects buyer block with missing keys', async () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      buyer: {
+        // Missing all 6 required keys: codice_fiscale, contact_id, customer_id, name, tax_number, address.
+        name: 'Acme SA',
+      },
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_buyer_missing_keys:/,
+    );
+  });
+
+  it('Pass 2A.TS — accepts foreign_currency_amount when paired with foreign_currency_code', async () => {
+    // TND payment + EUR foreign-currency receipt — both fields present.
+    const payload = {
+      ...validSaleReceiptPayload(),
+      payments: [
+        {
+          amount: '12.000',
+          foreign_currency_amount: '4.00',
+          foreign_currency_code: 'EUR',
+          instrument_serial: null,
+          instrument_type: null,
+          method_code: 'cash',
+        },
+      ],
+    };
+    const event = await engine.append(adapter, saleReceiptRequest({ payload }));
+    expect(event.sequence_number).toBe(1);
+  });
+
+  it('Pass 2A.TS — rejects half-paired foreign currency (amount without code)', async () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      payments: [
+        {
+          amount: '12.000',
+          foreign_currency_amount: '4.00',
+          foreign_currency_code: null,
+          instrument_serial: null,
+          instrument_type: null,
+          method_code: 'cash',
+        },
+      ],
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_payment_foreign_currency_pair_invalid/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects REFUND without original_receipt_reference', async () => {
+    const payload = { ...validSaleReceiptPayload(), invoice_type_code: 'REFUND' };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_invoice_type_invalid:original_receipt_reference required/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects SALE with original_receipt_reference set', async () => {
+    const payload = {
+      ...validSaleReceiptPayload(),
+      original_receipt_reference: {
+        fiscal_event_id: '55555555-5555-5555-5555-555555555555',
+        original_business_date: '2026-05-15',
+        original_receipt_uuid: '66666666-6666-6666-6666-666666666666',
+        refund_reason: 'customer asked',
+      },
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_invoice_type_invalid:original_receipt_reference present but invoice_type_code=/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects empty line_items', async () => {
+    const payload = { ...validSaleReceiptPayload(), line_items: [] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_line_items_empty/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects empty payments', async () => {
+    const payload = { ...validSaleReceiptPayload(), payments: [] };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_payments_empty/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects line_item with bad tax_category_code shape', async () => {
+    const payload = validSaleReceiptPayload();
+    const lines = [...(payload['line_items'] as Array<Record<string, unknown>>)];
+    lines[0] = { ...lines[0], tax_category_code: 'lowercase!' };
+    payload['line_items'] = lines;
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_line_item_tax_category_invalid/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects bad seller.tax_jurisdiction_country_code', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['seller'] = {
+      ...(payload['seller'] as Record<string, unknown>),
+      tax_jurisdiction_country_code: 'TUN', // 3-char, not alpha-2
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_seller_tax_jurisdiction_invalid/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects tax_number with control byte (PHP-parity)', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['seller'] = {
+      ...(payload['seller'] as Record<string, unknown>),
+      tax_number: 'abcdef',
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_tax_number_invalid:seller\.tax_number contains control byte/,
+    );
+  });
+
+  it('Pass 2A.TS — rejects too-short tax_number (< 4 chars)', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['seller'] = {
+      ...(payload['seller'] as Record<string, unknown>),
+      tax_number: 'abc',
+    };
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_tax_number_invalid/,
+    );
+  });
+
+  // -------------------------------------------------------------------
+  // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
+  // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].
+  //
+  // Synthesis v5 §3 + Task 14 standing pattern: the device-side TS key
+  // list and the server-side PHP key list have to be kept identical;
+  // any drift would mean TS accepts what PHP rejects (silent partial
+  // failure at sync time). Test reads the PHP file at test time and
+  // extracts the SALE_RECEIPT array via regex, then asserts sorted
+  // equality with the TS const.
+  // -------------------------------------------------------------------
+
+  it('Pass 2A.TS — cross-language drift gate: SALE_RECEIPT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpSaleReceiptPayloadKeys();
+    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS].sort();
+    const sortedPhp = [...phpKeys].sort();
+    expect(tsKeys).toEqual(sortedPhp);
+    expect(tsKeys).toHaveLength(27);
+  });
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Return a shallow clone with `key` removed. Used to test required-key rejections. */
+function omitKey<T extends Record<string, unknown>>(bag: T, key: string): Record<string, unknown> {
+  const clone: Record<string, unknown> = { ...bag };
+  delete clone[key];
+  return clone;
+}
+
+/**
+ * Rebuild a fresh payload at the requested currency scale, fixing every
+ * money field to the same value with the new fractional precision so the
+ * payload remains structurally consistent. Subtotal arithmetic is left
+ * to the server-side validator (synthesis v5 §6.F).
+ */
+function recomputeForScale(payload: Record<string, unknown>, scale: number): Record<string, unknown> {
+  const next = { ...payload };
+  next['currency_scale'] = scale;
+  next['currency_code'] = scale === 3 ? 'TND' : scale === 0 ? 'JPY' : 'EUR';
+  const money = (whole: number): string => (scale === 0 ? String(whole) : `${whole}.${'0'.repeat(scale)}`);
+  next['subtotal'] = money(10);
+  next['vat_total'] = money(2);
+  next['total'] = money(12);
+  next['transaction_discount_amount'] = money(0);
+  const oldLines = next['line_items'] as Array<Record<string, unknown>>;
+  next['line_items'] = oldLines.map((line) => ({
+    ...line,
+    unit_price: money(10),
+    line_subtotal: money(10),
+    line_vat: money(2),
+    line_discount_amount: money(0),
+  }));
+  const oldPayments = next['payments'] as Array<Record<string, unknown>>;
+  next['payments'] = oldPayments.map((p) => ({ ...p, amount: money(12) }));
+  const oldBreakdown = next['vat_breakdown'] as Array<Record<string, unknown>>;
+  next['vat_breakdown'] = oldBreakdown.map((b) => ({
+    ...b,
+    net_amount: money(10),
+    vat_amount: money(2),
+    gross_amount: money(12),
+  }));
+  return next;
+}
+
+/**
+ * Cross-language drift gate helper — read the PHP validator file and
+ * extract the SALE_RECEIPT PAYLOAD_KEYS list. Uses Node `fs` directly
+ * (test-only; not bundled). Throws if the PHP file shape changes (which
+ * is exactly the drift signal we want).
+ */
+function readPhpSaleReceiptPayloadKeys(): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require('node:path') as typeof import('node:path');
+  // Walk up from this test file to the worktree root, then into apps/api.
+  // __dirname at test-time = apps/pos/src/lib/fiscal/__tests__/
+  const candidates = [
+    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
+    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
+  ];
+  const phpPath = candidates.find((p) => fs.existsSync(p));
+  if (!phpPath) {
+    throw new Error(
+      `FiscalPayloadConstraintValidator.php not found at any candidate path: ${candidates.join(', ')}`,
+    );
+  }
+  const src = fs.readFileSync(phpPath, 'utf8');
+  // Match the 'SALE_RECEIPT' => [ ... ] array literal up to its closing ],
+  // tolerating whitespace + per-line comments + trailing commas.
+  const match = src.match(/'SALE_RECEIPT'\s*=>\s*\[([\s\S]*?)\]/);
+  if (!match) {
+    throw new Error(`Could not locate 'SALE_RECEIPT' => [...] in ${phpPath}`);
+  }
+  const body = match[1] ?? '';
+  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
+  if (keys.length === 0) {
+    throw new Error(`No keys extracted from 'SALE_RECEIPT' array body in ${phpPath}`);
+  }
+  return keys;
 }

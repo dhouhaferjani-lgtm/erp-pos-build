@@ -93,18 +93,91 @@ async function seedTerminalState(
   );
 }
 
+// Task 27B Pass 2A.TS — 27-key Candidate C-v3 payload (synthesis v5 §3).
+// Each call returns a fresh `receipt_uuid` so multiple appends in a row
+// (e.g. priming the chain) don't trip the source-event idempotency path.
+const SR_CASHIER_UUID = '22222222-2222-2222-2222-222222222222';
+const SR_SHIFT_UUID = '33333333-3333-3333-3333-333333333333';
+
+let __saleReceiptUuidCounter = 0;
+function nextSaleReceiptUuid(): string {
+  __saleReceiptUuidCounter += 1;
+  const hex = __saleReceiptUuidCounter.toString(16).padStart(12, '0');
+  return `44444444-4444-4444-4444-${hex}`;
+}
+
 function validSaleReceiptPayload(): Record<string, unknown> {
   return {
-    currency: 'TND',
+    business_date: '2026-05-16',
+    buyer: null,
+    cashier_id: SR_CASHIER_UUID,
+    cashier_name: 'Alice',
+    consumption_mode: null,
+    currency_code: 'TND',
     currency_scale: 3,
-    lines: [{ sku: 'A', qty: 1, unit_price: '10.000', line_total: '10.000' }],
+    event_time_device: '2026-05-16T10:00:00.000Z',
+    invoice_type_code: 'SALE',
+    line_items: [
+      {
+        gtin: null,
+        line_discount_amount: '0.000',
+        line_discount_reason: null,
+        line_subtotal: '10.000',
+        line_vat: '2.000',
+        name: 'Espresso',
+        non_collected_subtype: null,
+        product_id: 'p-1',
+        quantity: '1.000',
+        sku: 'A',
+        tax_category_code: '',
+        unit_price: '10.000',
+        vat_rate: '20.00',
+      },
+    ],
+    lottery_code: null,
+    notes: null,
+    original_receipt_reference: null,
+    payments: [
+      {
+        amount: '12.000',
+        foreign_currency_amount: null,
+        foreign_currency_code: null,
+        instrument_serial: null,
+        instrument_type: null,
+        method_code: 'cash',
+      },
+    ],
+    receipt_uuid: nextSaleReceiptUuid(),
+    seller: {
+      address: {
+        city: 'Tunis',
+        country_code: 'TN',
+        postal_code: '1000',
+        street: '1 Rue de la Liberte',
+      },
+      name: 'Cafe Tunis',
+      tax_jurisdiction_country_code: 'TN',
+      tax_number: '1234567A/B/C/000',
+    },
+    shift_id: SR_SHIFT_UUID,
     subtotal: '10.000',
-    discount_total: '0.000',
-    tax_total: '0.000',
-    total: '10.000',
-    vat_breakdown: [],
-    payment_lines: [{ payment_method_id: 'pm-cash', amount: '10.000' }],
-    voucher_redemptions: [],
+    table_id: null,
+    terminal_id: '11111111-1111-1111-1111-111111111111',
+    total: '12.000',
+    training_flag: false,
+    transaction_discount_amount: '0.000',
+    transaction_discount_reason: null,
+    vat_breakdown: [
+      {
+        gross_amount: '12.000',
+        net_amount: '10.000',
+        rate: '20.00',
+        tax_category_code: '',
+        vat_amount: '2.000',
+      },
+    ],
+    vat_total: '2.000',
+    vouchers_redeemed: [],
   };
 }
 
