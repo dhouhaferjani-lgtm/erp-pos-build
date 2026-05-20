@@ -1409,6 +1409,13 @@ function requireList(bag: Record<string, unknown>, key: string): unknown[] {
       `payload_${key}_invalid:must be a JSON list; got ${typeofTag(items)}`,
     );
   }
+  for (let index = 0; index < items.length; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(items, index)) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_${key}_invalid:must be a dense JSON list; missing index ${index}`,
+      );
+    }
+  }
   return items;
 }
 

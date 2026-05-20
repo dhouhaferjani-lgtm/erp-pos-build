@@ -1058,6 +1058,17 @@ d('FiscalEventEngine.append', () => {
     );
   });
 
+  it('Pass 2A.TS R3 — rejects sparse list containers before canonical sealing', async () => {
+    for (const field of ['line_items', 'payments', 'vat_breakdown', 'vouchers_redeemed'] as const) {
+      const payload = validSaleReceiptPayload();
+      payload[field] = new Array(1);
+
+      await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+        new RegExp(`payload_${field}_invalid:must be a dense JSON list`),
+      );
+    }
+  });
+
   it('Pass 2A.TS — rejects empty line_items', async () => {
     const payload = { ...validSaleReceiptPayload(), line_items: [] };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
