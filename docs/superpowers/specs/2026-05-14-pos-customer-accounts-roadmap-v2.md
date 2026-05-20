@@ -1,7 +1,7 @@
 # POS Customer Accounts + Fiscal Event Engine — Phased Plan (Roadmap v2)
 
 **Created:** 2026-05-14
-**Status:** Active. Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
+**Status:** Active. Phase 1 foundation implementation is complete through Task 33 full-flow verification (2026-05-20); Phase 1.5 cleanup remains before any Phase 2 customer-facing deployment. Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
 **Grounding (all locked / done):**
 - Source-of-truth v3 — `2026-05-14-offline-first-fiscal-source-of-truth-v3.md` (Codex: SOUND-WITH-CORRECTIONS, corrections applied, LOCKED)
 - Codebase reality audit — `2026-05-14-pos-fiscal-codebase-reality.md`
@@ -25,6 +25,8 @@
 ## Phase 1 — Foundation: Fiscal Event Engine + Receipt-Chain Clean Rebuild
 
 The foundation. No customer-facing feature. Establishes the one pattern and rebuilds the receipt chain on it.
+
+**Implementation status (2026-05-20):** Complete through Task 33. The Phase 1 closure test verifies a Tauri-style device-authored `SALE_RECEIPT` sync through `/api/v1/pos/sync/fiscal-events`, server ingest and parse, POS + Treasury projections, NF525 canonical export fields, and byte-equivalence across the device-sealed canonical bytes, `fiscal_events.canonical_bytes`, and `pos_receipts.canonical_bytes`.
 
 **Scope:**
 - **`fiscal_events`** table — device SQLite + server PostgreSQL mirror. Schema includes (non-retrofittable, source-of-truth §4.2): `signature_status` lifecycle enum, the nullable structured signature object, the `canonical_bytes` binary column.
@@ -133,7 +135,7 @@ Each phase follows the same loop:
 
 ## Immediate next action
 
-Write the **Phase 1 spec** — Foundation: Fiscal Event Engine + Receipt-Chain Clean Rebuild — grounded in source-of-truth v3, the codebase reality audit, and the scoping map. Then the per-phase process loop (self-review → owner review → Codex → writing-plans → execute).
+Complete the Phase 1.5 cleanup list before opening Phase 2 customer-facing work.
 
 ---
 
