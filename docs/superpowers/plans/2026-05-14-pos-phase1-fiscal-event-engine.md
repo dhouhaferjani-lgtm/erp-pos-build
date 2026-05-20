@@ -2096,9 +2096,9 @@ git commit -m "feat(pos): receiptService becomes assembler; executeCheckout is c
 
 ## Task 27B: `receiptService.ts` → `FiscalEventEngine` assembler (Pass 2 — deferred)
 
-**Status: BLOCKED ON OWNER DESIGN INPUT (Q1–Q6 below)**
+**Status: READY TO DISPATCH (Q1–Q6 answered 2026-05-20 — see "Q1–Q6 Owner-Approved Decisions" subsection after Q6 below; owner-directed autonomous unblock; reviewer/owner may override decisions in place before dispatch)**
 
-**Precondition:** Task 27 Pass 1 shipped; owner has answered Q1–Q6.
+**Precondition:** Task 27 Pass 1 shipped (DONE `c1c30ea86`); Q1–Q6 answered (DONE 2026-05-20 in this plan).
 
 `receiptService.ts` becomes a business-document assembler calling `FiscalEventEngine.append()` inside one SQLite transaction. Until this lands, `createOfflineReceipt()` keeps its current independent v3 hash/seal/chain code (the §14.3 chokepoint disposition for new-sale server-authoring callers does NOT depend on the assembler refactor — Pass 1 closed that at the receiptApi seam).
 
@@ -2138,6 +2138,220 @@ git commit -m "feat(pos): receiptService becomes assembler; executeCheckout is c
 >  - (b) **`SqliteTestAdapter`-based integration tests** — drop mocks; use the in-memory SQLite adapter (Task 13 wired this for fiscal_events table tests); fewer tests but real engine coverage. Likely loses some line-level error-path coverage.
 >  - (c) **Hybrid** — keep unit tests of business-assembly logic (cart line totalling, voucher row dedup, currency scaling) with mocks; add a smaller set of integration tests covering the engine-append + projector-write transaction.
 >  - Whichever path the owner chooses, the source-level guard from Pass 1 must extend to receiptService (assert `computeReceiptHash` no longer exists in the file).
+
+---
+
+### Q1–Q6 — Owner-Approved Decisions (2026-05-20)
+
+**Status:** Owner (admin@otospex.com) directed autonomous unblock 2026-05-20. Decisions below are grounded in codebase patterns (Tasks 5/13/15 SqlSurface module-scope precedent, Task 14/24 `FiscalPayloadConstraintValidator` PHP contract, Task 19 `pos_terminals.genesis_seed` server-issued, Task 21 `PosCoreReceiptProjection`), spec v7 (§5.0 device-authority, §7.4 projector split, §13.4 chain-head, §14 disposition), and AutoERP CLAUDE.md rule 13 (constructor injection only, no `app()` helper).
+
+If a reviewer (or owner) overrides a decision below before Pass 2 actually ships, update this section in place and re-run the implementer brief.
+
+---
+
+**A1 — `FiscalEventEngine` singleton: option (A) module-scope memoised at `apps/pos/src/lib/fiscal/instance.ts`.**
+
+Precedent: `apps/pos/src/lib/db/sqlSurface.ts` exposes `getSqlSurface()` as a module-scope memoised factory. `apps/pos/src/lib/fiscal/canonicalCore.ts` is module-scope. Zustand is reserved for state (auth, terminal, payment cart), not services.
+
+Shape:
+```ts
+// apps/pos/src/lib/fiscal/instance.ts
+let _engine: FiscalEventEngine | null = null;
+
+export function getFiscalEventEngine(): FiscalEventEngine {
+  if (!_engine) {
+    _engine = new FiscalEventEngine({
+      sqlSurface: getSqlSurface(),
+      payloadRegistry: getFiscalEventPayloadRegistry(),
+      // no genesis-seed reader: engine reads from terminal_state.fiscal_event_genesis_seed
+      // via the SqlSurface at append() time (already implemented per Task 15 R2)
+    });
+  }
+  return _engine;
+}
+
+export function __resetFiscalEventEngineForTesting(): void {
+  _engine = null;
+}
+```
+
+The test-only reset helper mirrors `__resetSqlSurfaceForTesting()`; export it but never call from production code.
+
+**Reject option (C)** (per-checkout construction) — engine carries state (the payload registry, the JCS canonical core) that's expensive to rebuild per sale and there's no reason to inject it via DI when a module-scope singleton fits the precedent. **Reject option (B)** (Zustand) — services don't belong in Zustand stores; coupling test setup to store reset is brittle.
+
+---
+
+**A2 — `fiscal_event_genesis_seed` provisioning: option (B) server-issued at terminal-claim time.**
+
+Verified: `pos_terminals.genesis_seed` exists server-side and is populated at terminal creation (Task 19 BLOCKER T19-B3 closure grep-verified this against the migration). The seed is the trust anchor between device and server; the device must NOT mint it (that would let the device choose its trust root = violation of SoT D1 + D8 spirit).
+
+Provisioning flow:
+1. **Server** generates a 64-char lowercase hex genesis seed when `pos_terminals` row is created (existing behavior; no change).
+2. **Terminal-claim response** (`POST /api/v1/pos/terminals/claim`) gains a new field in its response body: `fiscal_event_genesis_seed: string` (64-char `^[0-9a-f]{64}$`). Add to the existing `TerminalController::claim` response payload.
+3. **Device terminal-claim handler** (`apps/pos/src/lib/terminal/claimTerminal.ts` or wherever the claim response is consumed) persists the value into `terminal_state.fiscal_event_genesis_seed` (column already exists per Task 13 migration v37).
+4. **Engine** reads from `terminal_state` at `append()` time per Task 15 R2 closure (already implemented).
+5. **Re-claim / re-activate is a security-sensitive operation** — if the seed in the claim response differs from the seed already in `terminal_state`, that's a chain-reset signal (or a tenant-hijack attempt). For Pass 2: throw `ChainGenesisSeedConflictError` if a non-empty seed already in `terminal_state` doesn't match the claim response. The operator must explicitly wipe `terminal_state` (chain-restart path per Task 25 `ChainRecoveryService`) before re-claiming.
+6. **Tests:** the `''` default in test fixtures MUST NOT survive Pass 2 — Pass 2's failing test asserts `getFiscalEventEngine().append(...)` throws `ChainHeadNotInitializedError` when `terminal_state.fiscal_event_genesis_seed` is empty (Task 15 R2 already throws this; just pin it explicitly).
+
+Backend cross-task touch needed: extend `TerminalController::claim` response in the same Pass 2 commit OR carve into Pass 2A (response extension) + Pass 2B (assembler refactor). Recommend single Pass 2 commit since the response extension is minimal and the device-side consumption is in the same flow.
+
+**Reject option (C)** (computed from `terminal.id` + per-tenant secret) — derivable seeds are weaker (server-side breach reveals the algorithm; rotating one terminal would rotate all). **Reject option (A)** (device-bootstrap) — gives the device control of the trust anchor; D1/D8 violation in spirit.
+
+---
+
+**A3 — `tenant_id` source: from `useTerminalStore.activeTerminal.tenantId`, threaded through `OfflineReceiptInput`.**
+
+Precedent: `pos_terminals.tenant_id` is the canonical tenant tag for a terminal-bound event (Task 19 envelope-validation contract). The active terminal is already loaded into `useTerminalStore` at activation time; pulling tenant_id from it is the shortest path.
+
+`company_id` flows the same way (`useTerminalStore.activeTerminal.companyId` — terminals are company-scoped per `pos_terminals.company_id`).
+
+Contract:
+```ts
+// apps/pos/src/lib/offline/receiptService.ts
+export interface OfflineReceiptInput {
+  // existing fields…
+  tenantId: string;        // NEW (required, UUID)
+  companyId: string;       // NEW (required, UUID)
+  terminalId: string;      // existing
+  // …
+}
+```
+
+**Caller update path** — `apps/pos/src/stores/paymentStore.ts` `createReceiptLocalFirst()` reads from `useTerminalStore.getState().activeTerminal` and populates `tenantId` + `companyId` before calling `receiptService.completeSale()`. Throw `ActiveTerminalRequiredError` if no active terminal.
+
+**Reject option (A)** — adding `tenantId` to `AuthState` duplicates a value the active terminal already carries; AuthState should track *user* identity, not terminal context. **Reject option (B)** — deriving from the company record assumes a one-to-one company-tenant mapping that isn't guaranteed by the schema (Synerivia multi-tenant model could theoretically allow multi-company-per-tenant). **Reject option "read in service from `useAuthStore`"** — violates AutoERP CLAUDE.md rule 13 (no `app()`-style global lookups inside services; constructor injection / explicit parameter passing only).
+
+---
+
+**A4 — Canonical `SALE_RECEIPT` payload shape: build the translation layer in Pass 2 at `apps/pos/src/lib/fiscal/payloads/SaleReceiptPayload.ts`.**
+
+The PHP-side authority is `FiscalPayloadConstraintValidator::validateSaleReceiptPayload` (Task 14 → extracted into Task 24 R2 as a standalone validator). Task 25 R2/R3 already mirrors the PHP `PAYLOAD_KEYS` constant byte-for-byte in TS and has a cross-language drift gate. Pass 2 reuses that contract.
+
+Required payload shape (TypeScript, mirrors the PHP validator):
+```ts
+export interface SaleReceiptPayload {
+  // identity
+  receipt_local_id: string;       // device-side UUID (offline_receipts.id mirror)
+  terminal_id: string;            // UUID
+  shift_id: string;               // UUID
+  cashier_id: string;             // UUID
+  business_date: string;          // YYYY-MM-DD (Task 19 regex-validated)
+  event_time_device: string;      // ISO 8601 with milliseconds + timezone offset (Task 19 regex-validated)
+  // monetary (all bcformat strings — currency_scale-aware)
+  currency_code: string;          // "EUR", "TND", "GBP", "USD" (ISO 4217)
+  currency_scale: number;         // 0|2|3 (from terminal/company config)
+  subtotal: string;               // bcformat decimal — matches moneyRegex($scale)
+  vat_total: string;
+  total: string;
+  transaction_discount_amount: string;    // "0" when no transaction discount
+  transaction_discount_reason: string | null;
+  // line items
+  line_items: Array<{
+    sku: string;
+    product_id: string;
+    name: string;
+    quantity: string;             // bcformat per quantity_scale
+    unit_price: string;           // bcformat per currency_scale
+    line_subtotal: string;
+    line_vat: string;
+    vat_rate: string;             // bcformat percentage ("0.00", "20.00", "5.50")
+    line_discount_amount: string;
+    line_discount_reason: string | null;
+  }>;
+  // payments
+  payments: Array<{
+    method_code: string;          // matches the existing PaymentMethod codes
+    amount: string;               // bcformat
+    instrument_type: string | null;  // required when method_code is voucher-like (Task 29 R2 instrument-binding contract)
+    instrument_serial: string | null;
+  }>;
+  // vouchers redeemed against this sale
+  vouchers_redeemed: Array<{
+    voucher_code: string;
+    redeemed_amount: string;      // bcformat
+  }>;
+  // optional business surface
+  customer_id: string | null;     // UUID, null when no loyalty customer attached
+  contact_id: string | null;      // UUID, null when no B2B contact attached
+  consumption_mode: 'dine_in' | 'takeaway' | null;
+  table_id: string | null;        // UUID, null when no table assignment
+  training_flag: boolean;         // true when terminal is in training mode
+  notes: string | null;
+}
+```
+
+**EXCLUDED — never put these in the payload:**
+- `receipt_number` (server-derived per Task 21 `PosCoreReceiptProjection`)
+- `pos_receipts.id` (server-derived row id)
+- `fiscal_event_id` (the envelope's id; not the payload's)
+- `fiscal_hash` / `previous_hash` (envelope-level, not payload-level)
+- VAT-breakdown hashes (Task 21 R2 computed real values)
+- Payment-methods hash (Task 21 R2 computed real values)
+
+**Cross-language drift gate** (per Task 25): the TS `SALE_RECEIPT_PAYLOAD_KEYS` constant must byte-mirror the PHP `FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT']`. Pass 2 extends the existing cross-language drift gate to cover this contract.
+
+**`bcformat` parity:** the TS implementation reuses the existing `bcformat()` helper if one exists; if not, Pass 2 ships it at `apps/pos/src/lib/fiscal/bcformat.ts` mirroring the PHP `CurrencyScale::bcformat($value, $scale)` byte-for-byte. Add golden vectors covering scale=0 (TND), scale=2 (EUR/USD/GBP), scale=3 (some legacy currencies).
+
+---
+
+**A5 — Transactional boundary: single SQLite transaction wraps everything.**
+
+Per spec §5.0 (device-authority single fiscal pattern) + §13.4 (chain head moves to the engine) + Task 13 device-side migration. The transaction wraps:
+1. `engine.append({ event_type: 'SALE_RECEIPT', payload, … })` — inserts `fiscal_events` row + advances `terminal_state.fiscal_event_chain_head` + `terminal_state.fiscal_event_sequence_number` (per Task 15).
+2. `INSERT offline_receipts` (the projector-derived business document mirror). `offline_receipts.canonical_bytes` MIRRORS `fiscal_events.canonical_bytes` from the engine return (NOT recomputed — D1 forbids).
+3. `INSERT pos_receipt_lines` (per-line rows; derived from payload `line_items`).
+4. `INSERT pos_receipt_payments` (per-payment rows; derived from payload `payments`).
+5. `UPDATE` voucher tables for redemption (decrement available balance; the `vouchers_redeemed` payload rows are the source of truth).
+6. `UPDATE` product stock (decrement on_hand per line — same logic as existing `createOfflineReceipt`).
+
+Wrap via the existing `sqlSurface.withTransaction(async tx => { … })` adapter (Task 13 + Task 15 pattern). If any sub-write fails, the entire tx aborts; no `fiscal_events` row persists; the device retries from a clean state.
+
+**Important — terminal_state chain-head advance moves to the engine:** today `createOfflineReceipt` advances `terminal_state.hash_sequence` directly. Pass 2 removes that code path; the engine's `append()` is the sole writer to `terminal_state.fiscal_event_chain_head` + `terminal_state.fiscal_event_sequence_number` (Task 15 already enforces this in PG; mirror on SQLite). The Pass 1 source-level guard extends to receiptService — `computeReceiptHash` AND any direct `terminal_state.hash_sequence`-mutating SQL in `receiptService.ts` must be absent post-refactor.
+
+**Rollback semantics:** if the projector-derived writes fail (e.g. constraint violation on a `pos_receipt_lines` insert), the engine's `fiscal_events` row also rolls back. The device retries the entire flow with the same `OfflineReceiptInput`; the engine's idempotency check (`source_event_class` + `source_event_id` per Task 15) means a retry won't double-author.
+
+---
+
+**A6 — Test-migration strategy: option (c) Hybrid.**
+
+The ~1300 LOC of mock-based tests split into three buckets:
+
+**Bucket 1 — KEEP as unit tests (mocks):**
+- Cart-line aggregation: subtotal/vat-total/total math, transaction-discount distribution.
+- Voucher-row deduplication (Task 21 R2 case).
+- Currency-scaling helpers (`bcformat` byte-checks via golden vectors).
+- Line-item discount logic.
+- These tests mock `FiscalEventEngine.append` and assert the payload shape the assembler PASSED to it. They DO NOT exercise the engine itself; they test the assembler's `buildPayload()` step.
+- Estimated: ~600-700 LOC retained.
+
+**Bucket 2 — MIGRATE to `SqliteTestAdapter` integration tests:**
+- Engine-append + projector-write transaction (single-payment happy path).
+- Split-payment.
+- Voucher-redemption (decrements voucher balance + writes `vouchers_redeemed` payload).
+- Atomic rollback on projector-write failure (constraint violation on `pos_receipt_lines`).
+- Idempotency on retry (source_event_class + source_event_id duplicate doesn't double-author).
+- Genesis-seed-empty rejection.
+- Cross-tenant guard (active terminal tenant mismatch).
+- Estimated: ~250-300 LOC added (new file or merged into existing).
+
+**Bucket 3 — DELETE:**
+- Tests of `computeReceiptHash` internals (function is gone).
+- Tests that asserted `terminal_state.hash_sequence` advance via direct SQL inspection (engine now owns it).
+- Tests that asserted v3-specific hash chain shapes (the chain shape is now defined by the engine + JCS canonical encoding).
+- Estimated: ~400 LOC deleted.
+
+**Source-level guards (extend Pass 1's regex):**
+- `computeReceiptHash` MUST NOT appear in `apps/pos/src/lib/offline/receiptService.ts` post-refactor.
+- `terminal_state` (raw SQL UPDATE) MUST NOT appear in `apps/pos/src/lib/offline/receiptService.ts` (the engine owns chain-head writes).
+- Add to the existing source-level guard test file.
+
+Net change: ~1300 LOC → ~850-1000 LOC, plus stronger coverage of the engine path.
+
+---
+
+**Pass 2 dispatch readiness:** A1-A6 above are sufficient context to dispatch the Pass 2 implementer. The implementer brief should reference this Q1-Q6 decisions block by name + the spec §14.3 + the Task 25 cross-language drift gate. Recommend a dedicated session due to scope (~2-3K LOC across 6+ files, 4+ review rounds expected).
+
+---
 
 **Recommended Pass 2 scope (Option B from the scope-concerns report — pending owner decision on Q1–Q6):**
 
