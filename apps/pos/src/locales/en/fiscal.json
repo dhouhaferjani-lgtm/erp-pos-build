@@ -1,0 +1,14 @@
+{
+  "unsyncedRisk": {
+    "label": {
+      "normal": "All synced",
+      "elevated": "Sync backlog elevated",
+      "escalated": "Sync backlog critical"
+    },
+    "detail": {
+      "normal": "Off-device durability is healthy.",
+      "elevated": "Force an off-device archive at the next opportunity.",
+      "escalated": "Stop authoring until an off-device archive succeeds."
+    }
+  }
+}

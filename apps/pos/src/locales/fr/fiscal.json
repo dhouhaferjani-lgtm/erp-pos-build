@@ -1,0 +1,14 @@
+{
+  "unsyncedRisk": {
+    "label": {
+      "normal": "Tout est synchronisé",
+      "elevated": "Retard de synchronisation élevé",
+      "escalated": "Retard de synchronisation critique"
+    },
+    "detail": {
+      "normal": "La durabilité hors-appareil est saine.",
+      "elevated": "Forcez une archive hors-appareil à la prochaine occasion.",
+      "escalated": "Cessez la saisie jusqu'à la réussite d'une archive hors-appareil."
+    }
+  }
+}

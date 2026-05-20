@@ -457,6 +457,17 @@ jobs:
         #     enum columns); SQLite passes the happy path but PG is the
         #     production truth that the seed factories accept the inserted
         #     rows without a constraint violation.
+        #   - DeviceLossIncidentTest (Feature, Task 32): the §12 device-loss
+        #     incident register table goes through PG-only DDL — the
+        #     `device_loss_incidents_recovery_status_allowed` CHECK
+        #     (DeviceLossIncidentStatus whitelist), FKs to tenants /
+        #     companies / pos_terminals / users, the
+        #     `device_loss_incidents_tenant_terminal_idx` admin-browse index,
+        #     and the `device_loss_incidents_open_status_idx` partial index
+        #     scanning OPEN incidents (reported / recovering) only. SQLite
+        #     covers the column-presence + Eloquent-cast + boundary
+        #     discipline (recovery_status not in $fillable) layer; PG is the
+        #     production truth for the CHECK + FK + named-index contracts.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -466,7 +477,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
