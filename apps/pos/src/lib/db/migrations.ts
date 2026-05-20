@@ -671,15 +671,9 @@ export const migrations: Migration[] = [
   {
     // Codex review B1 (2026-04-30) — wire offline v3 fiscal hashing.
     //
-    // Adds `fiscal_schema_version` to two tables:
-    //   - terminal_state: projection of the server-side Terminal column. The
-    //     receipt-creation path branches on this value to choose v2 (legacy
-    //     `computeFiscalHash`) vs v3 (`buildCanonicalPayload` + SHA-256). The
-    //     value is refreshed every `pullTerminalState` cycle.
-    //   - offline_receipts: stamped at insert time so the sync payload can
-    //     declare the version each row was sealed against. The server's
-    //     `ReceiptSyncService` rejects any payload whose declared version
-    //     does not match the terminal's current version.
+    // Adds `fiscal_schema_version` to two tables for the historical receipt-hash
+    // cutover. Pass 2B retires the legacy receipt-sync authoring path, but the
+    // migration remains part of the upgrade sequence for existing local DBs.
     //
     // Default of 2 mirrors the pre-cutover state: terminals start as v2 and
     // are flipped to v3 by `FiscalSchemaCutoverController`. We have no
@@ -712,10 +706,9 @@ export const migrations: Migration[] = [
     // Default 0 backfills existing rows as production receipts, which is the
     // correct interpretation: every pre-T2.7 row was sealed against a
     // production-mode terminal (the `is_training_mode` flag existed on the
-    // server but the offline-first POS path did not honor it). The wire-shape
-    // builder (`receiptToPayload`) reads this column and emits a boolean
-    // `is_training` field on the sync payload; the server-side T2.7 backend
-    // (PR #103) branches on that flag in `ReceiptSyncService::syncSingleReceipt`.
+    // server but the offline-first POS path did not honor it). Pass 2B keeps
+    // the column for the local receipt mirror while fiscal-event ingestion
+    // projects the canonical training flag on the server.
     version: 29,
     name: 'add_is_training_to_offline_receipts',
     sql: '',

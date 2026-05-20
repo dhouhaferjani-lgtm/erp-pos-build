@@ -1,22 +1,16 @@
 /**
  * Shared RFC 8785 / JSON Canonicalization Scheme (JCS) structural core.
  *
- * Two callers depend on the same structural rules — sorted object keys,
- * positional array order, integer-only numbers, and a recursive encoder
- * dispatched by `typeof`:
+ * The fiscal-event canonical encoder depends on these structural rules —
+ * sorted object keys, positional array order, integer-only numbers, and a
+ * recursive encoder dispatched by `typeof`.
  *
- *   1. `lib/fiscal/v3/canonicalJson.ts` — receipt-V3 hash payloads. Has live
- *      production data; output must remain byte-identical to before the
- *      refactor. Uses an identity string normalizer (raw `JSON.stringify`).
+ * `lib/fiscal/FiscalEventCanonicalEncoder.ts` is the Phase 1 fiscal-event
+ * canonical encoder. It strips U+2028 / U+2029 and applies NFC at the
+ * producer (SoT v3 §4).
  *
- *   2. `lib/fiscal/FiscalEventCanonicalEncoder.ts` — Phase 1 fiscal-event
- *      canonical encoder. Strips U+2028 / U+2029 and applies NFC at the
- *      producer (SoT v3 §4).
- *
- * The structural logic was previously duplicated; the only divergence
- * between the two callers is the per-string normalization step. This module
- * extracts the shared structural encoder and exposes a `normalize`
- * parameter to handle that divergence cleanly.
+ * The encoder exposes a `normalize` parameter so callers can keep string
+ * normalization at the producer boundary while sharing structural JCS rules.
  *
  * Closes Task 5 deferred P2 — "extract a shared JCS core instead of
  * duplicating the canonicalization".

@@ -96,11 +96,8 @@ use RuntimeException;
  * for the fiscal-event-backed export path.
  *
  * **Logic relocation (spec v7 §14 + plan §1635).** This projector
- * consolidates the business-effect logic previously scattered across:
- *   - `ReceiptSyncService::syncSingleReceipt()` — voucher redemption +
- *     stock decrement
- *   - `ReceiptPaymentService::processReceiptPayments()` — `ReceiptPayment`
- *     row creation
+ * consolidates the business-effect logic previously scattered across the
+ * retired receipt-sync path and `ReceiptPaymentService::processReceiptPayments()`.
  */
 final class PosCoreReceiptProjection implements FiscalEventProjector
 {

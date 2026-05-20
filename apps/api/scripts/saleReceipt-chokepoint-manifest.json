@@ -73,18 +73,6 @@
       "note": "§14.2 knowingly-retained carve-out: SALE_VOID / REFUND_RECEIPT / PARTIAL_REFUND are Phase 2+ reserved event types; void/processReturn routes (and the offline Tauri POS) still depend on this path until those event types land in Phase 2."
     },
     {
-      "file": "apps/api/app/Modules/POS/Application/Services/ReceiptSyncService.php",
-      "line_anchor": "$receipt = $this->finalizationService->finalize($receipt);",
-      "calling_class": "App\\Modules\\POS\\Application\\Services\\ReceiptSyncService",
-      "calling_method": "sync",
-      "receiver_type": "App\\Modules\\POS\\Application\\Services\\ReceiptFinalizationService",
-      "chokepoint": "finalize",
-      "disposition": "b",
-      "live": true,
-      "retired_in_task": "Task 28",
-      "note": "Task 28 queued: /pos/receipts/sync retirement removes this caller. Blocked on Task 27B Pass 2."
-    },
-    {
       "file": "apps/api/app/Modules/POS/Application/Services/ReceiptPaymentService.php",
       "line_anchor": "$receipt = $this->finalizationService->finalize($receipt);",
       "calling_class": "App\\Modules\\POS\\Application\\Services\\ReceiptPaymentService",

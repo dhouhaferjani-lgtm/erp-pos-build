@@ -94,8 +94,7 @@ final class FiscalEventIngestionEndpointTest extends TestCase
 
         // CompanyContextMiddleware (in the `api` middleware group) returns
         // 403 NO_COMPANY_ACCESS unless the authenticated user is a member
-        // of at least one company. Mirrors OfflineV3CutoverSyncTest's
-        // setup pattern (apps/api/tests/Feature/POS/OfflineV3CutoverSyncTest.php:559).
+        // of at least one company before hitting fiscal-event ingestion.
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $this->company->id,

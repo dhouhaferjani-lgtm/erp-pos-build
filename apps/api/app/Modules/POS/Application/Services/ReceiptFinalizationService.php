@@ -47,8 +47,7 @@ final class ReceiptFinalizationService
      *     PARTIAL_REFUND are Phase 2+ reserved event types; void +
      *     processReturn (and the offline Tauri POS via VoidReturnModal)
      *     still depend on this path.
-     *   - `ReceiptSyncService::sync` — disposition (b) queued for Task
-     *     28 retirement.
+     *   - legacy receipt sync — retired in Task 27B Pass 2B.
      *   - `ReceiptPaymentService::processReceiptPayments` — disposition
      *     (b) route-disposed Task 29 §14.2; service body never reached
      *     via live HTTP.

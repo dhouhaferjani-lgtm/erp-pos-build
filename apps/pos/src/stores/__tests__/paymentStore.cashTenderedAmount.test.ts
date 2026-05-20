@@ -71,6 +71,8 @@ vi.mock('@/stores/syncStore', () => ({
 describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
+    __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     useAuthStore.setState({
       user: {
@@ -92,7 +94,11 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
           id: 'company-1',
           name: 'Test Co',
           legalName: 'Test SA',
+          tax_id: 'FR123456789',
           countryCode: 'FR',
+          address_street: '1 Rue Test',
+          address_city: 'Paris',
+          address_postal_code: '75001',
           currency: 'EUR',
           locale: 'fr',
           timezone: 'Europe/Paris',
@@ -118,6 +124,16 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
         hardware_identifier: null,
         location: { id: 'loc1', name: 'Main', code: 'MAIN' },
       },
+      shift: {
+        id: 'shift-1',
+        terminal_id: 'term-1',
+        shift_number: 1,
+        status: 'OPEN',
+        opening_cash: '0.00',
+        opened_at: '2026-05-20T08:00:00Z',
+        user: { id: 'user-1', name: 'Houssem' },
+      },
+      hashChainReady: true,
     } as never);
     useCartStore.setState({
       items: [makeCartItem({ line_total: '50.00', tax_amount: '0.00' })],
@@ -181,7 +197,11 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
           id: 'company-1',
           name: 'Test Co',
           legalName: 'Test SA',
+          tax_id: 'TN1234567',
           countryCode: 'TN',
+          address_street: '1 Avenue Test',
+          address_city: 'Tunis',
+          address_postal_code: '1000',
           currency: 'TND',
           locale: 'fr',
           timezone: 'Africa/Tunis',

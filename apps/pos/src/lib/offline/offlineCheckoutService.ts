@@ -4,13 +4,18 @@ import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
 import { getCurrencyDecimals } from '@/lib/currency';
 import type { CartItem } from '@/types/cart';
+import type { SaleReceiptSellerInput } from '@/lib/fiscal/payloads/SaleReceiptPayload';
 
 export interface CheckoutInput {
+  tenantId: string;
+  companyId: string;
   terminalId: string;
   operatorId: string;
   operatorName: string;
+  shiftId: string;
   cartItems: CartItem[];
   currency: string;
+  seller: SaleReceiptSellerInput;
   paymentMethodId: string;
   paymentRepositoryId: string;
   tenderedAmount: number;
@@ -96,11 +101,15 @@ export async function executeCheckout(
   const defaultPayments = [{ methodCode: 'CASH', amount: cartTotal }];
 
   const result = await createOfflineReceipt(db, {
+    tenantId: input.tenantId,
+    companyId: input.companyId,
     terminalId: input.terminalId,
     operatorId: input.operatorId,
     operatorName: input.operatorName,
+    shiftId: input.shiftId,
     cartItems: input.cartItems,
     currency: input.currency,
+    seller: input.seller,
     paymentMethodId: input.paymentMethodId,
     paymentRepositoryId: input.paymentRepositoryId,
     tenderedAmount: input.tenderedAmount,

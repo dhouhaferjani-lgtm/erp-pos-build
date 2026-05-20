@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { useTerminalStore } from '@/stores/terminalStore';
-import { makeCartItem, makeOfflineReceipt, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
+import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
 // ─── Module mocks (hoisted before imports) ────────────────────────────────────
 
@@ -41,13 +41,21 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   return {
     ...actual,
     insertOfflineReceipt: vi.fn().mockResolvedValue(undefined),
-    getPendingReceiptsForSync: vi.fn(),
     updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
-    incrementRetryCount: vi.fn().mockResolvedValue(undefined),
     cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
     cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
-    setServerReceiptId: vi.fn().mockResolvedValue(undefined),
     getLastSyncedReceiptNumber: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/db/repositories/fiscalEventRepository', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/repositories/fiscalEventRepository')>(
+    '@/lib/db/repositories/fiscalEventRepository',
+  );
+  return {
+    ...actual,
+    getPendingFiscalEventsForSync: vi.fn(),
+    updateFiscalEventSyncStatus: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -89,6 +97,19 @@ vi.mock('@/lib/fiscal/hashService', () => ({
   computeGenesisHash: vi.fn().mockResolvedValue('genesis-hash-abc123'),
 }));
 
+vi.mock('@/lib/fiscal/instance', () => ({
+  getFiscalEventEngine: vi.fn().mockResolvedValue({
+    append: vi.fn().mockResolvedValue({
+      id: 'fiscal-event-1',
+      sequence_number: 1,
+      previous_hash: 'prev-hash',
+      current_hash: 'hash-seq-1',
+      canonical_bytes: '{"event_type":"SALE_RECEIPT"}',
+    }),
+  }),
+  __resetFiscalEventEngineForTesting: vi.fn(),
+}));
+
 vi.mock('@/lib/api', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
@@ -113,11 +134,13 @@ import { pushOfflineReceipts } from '@/lib/sync/syncService';
 import { apiPost } from '@/lib/api';
 import {
   insertOfflineReceipt,
-  getPendingReceiptsForSync,
   updateReceiptStatus,
-  setServerReceiptId,
-  getLastSyncedReceiptNumber,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  getPendingFiscalEventsForSync,
+  updateFiscalEventSyncStatus,
+  type LocalFiscalEvent,
+} from '@/lib/db/repositories/fiscalEventRepository';
 import { logSyncOperation } from '@/lib/db/repositories/syncLogRepository';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 
@@ -125,6 +148,35 @@ import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository'
 
 function makeMockDb() {
   return {} as import('@tauri-apps/plugin-sql').default;
+}
+
+function makeFiscalEvent(overrides: Partial<LocalFiscalEvent> = {}): LocalFiscalEvent {
+  return {
+    id: 'fiscal-event-1',
+    tenant_id: 'tenant-1',
+    company_id: 'company-1',
+    terminal_id: 'terminal-1',
+    operator_id: 'operator-1',
+    event_type: 'SALE_RECEIPT',
+    event_version: 1,
+    signature_version: 'v1',
+    sequence_number: 1,
+    event_time_device: '2026-05-20T12:00:00Z',
+    business_date: '2026-05-20',
+    last_server_time_seen: null,
+    reference_event_id: null,
+    reference_document_id: null,
+    source_event_class: 'offline_receipts',
+    source_event_id: 'local-receipt-1',
+    canonical_bytes: '{"event_type":"SALE_RECEIPT"}',
+    previous_hash: 'prev-hash',
+    current_hash: 'hash-seq-1',
+    sync_status: 'pending',
+    sync_error: null,
+    created_at: '2026-05-20T12:00:00Z',
+    synced_at: null,
+    ...overrides,
+  };
 }
 
 function seedCommonStores() {
@@ -137,7 +189,14 @@ function seedCommonStores() {
     companyId: 'company-1',
     companies: [{
       id: 'company-1', name: 'Test Co', legalName: 'Test SA',
-      countryCode: 'FR', currency: 'EUR', locale: 'fr', timezone: 'Europe/Paris',
+      tax_id: 'FR123456789',
+      countryCode: 'FR',
+      address_street: '1 Rue Test',
+      address_city: 'Paris',
+      address_postal_code: '75001',
+      currency: 'EUR',
+      locale: 'fr',
+      timezone: 'Europe/Paris',
     }],
     token: 'tok',
     serverUrl: 'http://localhost',
@@ -164,6 +223,29 @@ function seedCommonStores() {
     paymentMethods: [makePaymentMethod({ id: 'pm-cash', code: 'CASH' })],
     paymentRepositories: [makePaymentRepository({ id: 'repo-cash', type: 'cash_register' })],
   });
+
+  useTerminalStore.setState({
+    terminal: {
+      id: 'terminal-1',
+      code: 'T001',
+      name: 'Counter 1',
+      type: 'fixed',
+      is_active: true,
+      is_training_mode: false,
+      hardware_identifier: null,
+      location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+    },
+    shift: {
+      id: 'shift-1',
+      terminal_id: 'terminal-1',
+      shift_number: 1,
+      status: 'OPEN',
+      opening_cash: '0.00',
+      opened_at: '2026-05-20T08:00:00Z',
+      user: { id: 'user-1', name: 'Houssem' },
+    },
+    hashChainReady: true,
+  } as never);
 
   useSyncStore.setState({
     isSyncing: false,
@@ -193,8 +275,10 @@ const seededTerminalState = {
 // ─── Tests ──────────────────────────────────────────────────────────────────────
 
 describe('offline-first POS lifecycle (integration)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
+    __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     seedCommonStores();
   });
@@ -253,43 +337,27 @@ describe('offline-first POS lifecycle (integration)', () => {
 
   it('sync captures server_receipt_id and updates status to synced', async () => {
     const db = makeMockDb();
-    const idempotencyKey = 'idem-integration-42';
-
-    const pendingRow = makeOfflineReceipt({
-      id: 'local-receipt-1',
-      idempotency_key: idempotencyKey,
-      status: 'pending',
-      payments_json: '[{"payment_method_id":"pm-cash","repository_id":"repo-cash","amount":"50.00"}]',
+    const pendingEvent = makeFiscalEvent({
+      id: 'fiscal-event-sync-1',
+      source_event_id: 'local-receipt-1',
     });
 
-    vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([pendingRow]);
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([pendingEvent]);
     vi.mocked(apiPost).mockResolvedValueOnce({
       results: [{
-        idempotency_key: idempotencyKey,
-        status: 'synced',
-        receipt_id: 'server-uuid-42',
-        server_fiscal_hash: 'server-hash-42',
-        error: null,
+        stored: true,
+        fiscal_event_id: 'fiscal-event-sync-1',
+        sequence_conflict: false,
+        exception_class: null,
       }],
-      total: 1,
-      synced: 1,
-      duplicates: 0,
-      failed: 0,
     });
 
     // Act
     const result = await pushOfflineReceipts(db);
 
-    // Status transitions: syncing → synced
-    expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'local-receipt-1', 'syncing');
+    expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fiscal-event-sync-1', 'syncing');
+    expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fiscal-event-sync-1', 'synced');
     expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'local-receipt-1', 'synced');
-
-    // Server receipt ID written back
-    expect(setServerReceiptId).toHaveBeenCalledWith(
-      expect.anything(),
-      idempotencyKey,
-      'server-uuid-42',
-    );
 
     // Return shape
     expect(result.pushed).toBe(1);
@@ -312,30 +380,20 @@ describe('offline-first POS lifecycle (integration)', () => {
 
   it('chain_broken sync response flips syncStore.chainBreak flag', async () => {
     const db = makeMockDb();
-    const idempotencyKey = 'idem-chain-break';
-
-    const pendingRow = makeOfflineReceipt({
-      id: 'local-receipt-cb',
-      idempotency_key: idempotencyKey,
-      receipt_number: 'MAIN-T001-2026-00000007',
-      hash_sequence: 7,
-      status: 'pending',
+    const pendingEvent = makeFiscalEvent({
+      id: 'fiscal-event-chain-break',
+      source_event_id: 'local-receipt-cb',
+      sequence_number: 7,
     });
 
-    vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([pendingRow]);
-    vi.mocked(getLastSyncedReceiptNumber).mockResolvedValue('MAIN-T001-2026-00000007');
+    vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([pendingEvent]);
     vi.mocked(apiPost).mockResolvedValueOnce({
       results: [{
-        idempotency_key: idempotencyKey,
-        status: 'chain_broken',
-        receipt_id: null,
-        server_fiscal_hash: null,
-        error: 'hash mismatch at sequence 7',
+        stored: false,
+        fiscal_event_id: 'fiscal-event-chain-break',
+        sequence_conflict: false,
+        exception_class: 'hash mismatch at sequence 7',
       }],
-      total: 1,
-      synced: 0,
-      duplicates: 0,
-      failed: 1,
     });
 
     // Act: pushOfflineReceipts detects the break

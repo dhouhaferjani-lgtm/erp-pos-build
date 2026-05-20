@@ -8,7 +8,6 @@ vi.mock('@/lib/db', () => ({
 
 import {
   upsertTerminalState,
-  advanceHashChain,
   setManagerPinThrottle,
   setManagerPinFailedAttempts,
   getTerminalState,
@@ -61,28 +60,6 @@ describe('terminalStateRepository — regression guards', () => {
     ).rejects.toBeInstanceOf(FiscalRegressionError);
 
     expect(execute).not.toHaveBeenCalled();
-  });
-
-  it('advanceHashChain refuses sequence that does not strictly increase', async () => {
-    vi.mocked(queryOne).mockResolvedValue({ ...baseState, hash_sequence: 10 });
-
-    await expect(
-      advanceHashChain(db, 'terminal-1', 'new-hash', 10),
-    ).rejects.toBeInstanceOf(FiscalRegressionError);
-
-    await expect(
-      advanceHashChain(db, 'terminal-1', 'new-hash', 9),
-    ).rejects.toBeInstanceOf(FiscalRegressionError);
-
-    expect(execute).not.toHaveBeenCalled();
-  });
-
-  it('advanceHashChain permits strictly greater sequence', async () => {
-    vi.mocked(queryOne).mockResolvedValue({ ...baseState, hash_sequence: 10 });
-
-    await advanceHashChain(db, 'terminal-1', 'new-hash', 11);
-
-    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('logs structured audit entry on every successful write', async () => {

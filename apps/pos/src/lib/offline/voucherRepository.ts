@@ -426,8 +426,7 @@ export async function markVoucherLedgerEntryFailed(
  *
  * B5-fix audit decision (Option B, 2026-05-01) — STATUS: this helper is NO
  * LONGER called by `createOfflineReceipt`. The receipt-tied redemption row
- * is now server-authored exclusively (ReceiptSyncService invokes
- * VoucherRedemptionService::redeem during sync). The helper remains for
+ * is now server-authored from projected fiscal events. The helper remains for
  * potential future offline-issued voucher operations not tied to a synced
  * receipt — e.g. goodwill issuance from a back-office screen — which is
  * what the `VoucherLedgerPushService` push contract was actually designed
@@ -478,7 +477,7 @@ export interface PendingVoucherLedgerWrite {
    * Server receipt id. For receipt-tied redemptions this is REQUIRED on the
    * server (`VoucherLedgerPushService::push` rejects null with
    * `'receipt_id_required_for_redemption'`), which is why Option B moved
-   * the redemption write entirely to the server during ReceiptSyncService.
+   * the redemption write entirely to the fiscal-event projection path.
    * For potential future non-receipt-tied flows (goodwill issuance, etc.)
    * receipt_id may be null and the server-side handler accepts that.
    */

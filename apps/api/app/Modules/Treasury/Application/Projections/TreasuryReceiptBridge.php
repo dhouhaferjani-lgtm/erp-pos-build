@@ -102,10 +102,9 @@ use RuntimeException;
  * **§14 retention disposition.** The legacy
  * `ReceiptPaymentService::processReceiptPayments()` still writes a
  * Treasury `Payment` + GL entry inline when invoked from
- * `ReceiptController::storePayments()` (`POST /pos/receipts/{id}/payments`,
- * the web-POS + Tauri-online new-sale path — `/pos/receipts/sync` goes
- * through `ReceiptSyncService`, not this service). Per spec v7
- * §14.1 (`/pos/receipts/sync` retirement, Task 28) + §14.2 (new-sale
+ * `ReceiptController::storePayments()` (`POST /pos/receipts/{id}/payments`).
+ * The retired `/pos/receipts/sync` path no longer exists. Per spec v7
+ * §14.1 (receipt sync retirement, Task 27B Pass 2B) + §14.2 (new-sale
  * authoring disposition, Task 29) + §14.3 (two-chokepoint CI grep
  * gate, Task 30) that legacy write is "knowingly retained
  * no-new-writers" through the rollout window. DO NOT physically

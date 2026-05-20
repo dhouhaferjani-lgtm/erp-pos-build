@@ -137,8 +137,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // can resolve `voucher_liability` + `pos_tender_clearing` GL
         // accounts by system purpose. Without this seed any test that
         // exercises the store_voucher tender branch dies at the GL
-        // posting layer with "Missing GL account" — pattern carried
-        // forward from `ReceiptSyncServiceVoucherRedemptionTest`.
+        // posting layer with "Missing GL account".
         $companyModel = Company::query()->findOrFail($this->companyId);
         $this->app->make(ChartOfAccountsService::class)->seedForCompany($companyModel);
     }

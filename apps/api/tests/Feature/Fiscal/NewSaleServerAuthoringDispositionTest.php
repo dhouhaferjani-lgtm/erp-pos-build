@@ -49,7 +49,7 @@ use Tests\TestCase;
  *   - GET  /pos/receipts/{id}/pdf → still 2xx (PDF stream — read-only)
  *   - POST /pos/orders            → still 2xx (order CRUD untouched)
  *   - POST /pos/orders/{id}/lines → still 2xx (order CRUD untouched)
- *   - POST /pos/receipts/sync     → route still registered (Task 28's job to retire)
+ *   - POST /pos/receipts/sync     → 405 (retired by Task 27B Pass 2B)
  *
  * D8 coexistence resolution: spec §14 disposition (b) — disabled /
  * deferred — for `ReceiptCreationService::createReceipt()` and
@@ -329,25 +329,19 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
     }
 
     // =================================================================
-    // Sync surface — still registered (Task 28's job, not ours)
+    // Sync surface — retired by Task 27B Pass 2B
     // =================================================================
 
-    public function test_pos_receipts_sync_route_is_still_registered(): void
+    public function test_pos_receipts_sync_route_is_retired(): void
     {
-        // /pos/receipts/sync is the offline POS sync surface. It is Task
-        // 28's job to retire — NOT Task 29's. Pin that round-1 leaves it
-        // registered so a regression confused about scope doesn't silently
-        // pull it into Task 29's 410 disposition.
-        //
-        // The route may return 4xx (validation rejecting the empty body) —
-        // that's fine. What we are pinning here is "the route is
-        // reachable", i.e., it does NOT return the §14.2
-        // NEW_SALE_AUTHORING_RETIRED code.
         $response = $this->postJson('/api/v1/pos/receipts/sync', [
             'receipts' => [],
         ]);
 
-        $this->assertNotSame('NEW_SALE_AUTHORING_RETIRED', $response->json('error.code'));
+        // The exact URI now falls through to /pos/receipts/{id} for GET-only
+        // lookup semantics, so POST receives 405. This still proves the
+        // retired sync POST route is absent.
+        $response->assertStatus(405);
     }
 
     // =================================================================

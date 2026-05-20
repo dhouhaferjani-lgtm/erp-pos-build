@@ -52,7 +52,7 @@ use Illuminate\Support\Str;
  *
  * The legacy online-POS endpoint that calls this service stays functional
  * through the rollout window. Per spec v7 §14:
- *   - §14.1 (`/pos/receipts/sync` retirement, Task 28) retires the
+ *   - §14.1 (receipt sync retirement, Task 27B Pass 2B) retires the
  *     batch-sync transport.
  *   - §14.2 (web POS + Tauri-online new-sale authoring disposition,
  *     Task 29) closes server-side new-sale `SALE_RECEIPT` authoring for
@@ -277,9 +277,8 @@ final class ReceiptPaymentService
                 //
                 // Spec §13 writer-inventory row 1 — `ReceiptPaymentService` (POS receipt
                 // payment lines). Origin = `pos`. `fiscal_event_id` stays NULL on this
-                // legacy code path: it's the server-recompute path retained for the
-                // legacy `/pos/receipts/sync` HTTP transport (§14.2 — knowingly-retained
-                // no-new-writers, retired by Task 28); no device-authored fiscal event
+                // legacy code path: it's the server-recompute path retained for
+                // route-disposed web POS payments; no device-authored fiscal event
                 // exists for this Payment row. The device-authored path lands the same
                 // origin via `TreasuryReceiptBridge::apply()` (Task 22) which ALSO
                 // stamps `fiscal_event_id = $event->id`.

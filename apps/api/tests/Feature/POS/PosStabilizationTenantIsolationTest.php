@@ -24,16 +24,11 @@ use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramType;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
 use App\Modules\POS\Application\DTOs\VoucherLedgerPushPayload;
-use App\Modules\POS\Application\Services\ReceiptSyncService;
 use App\Modules\POS\Application\Services\VoucherLedgerPushService;
-use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\OrderLineStatus;
 use App\Modules\POS\Domain\Enums\OrderStatus;
-use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
-use App\Modules\POS\Domain\Enums\SyncStatus;
 use App\Modules\POS\Domain\Enums\TableStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Floor;
@@ -96,8 +91,7 @@ use Tests\Traits\AssertsApiValidation;
  *     Tests can call services directly with tenant-A CompanyContext + cross-
  *     tenant id; assert ModelNotFoundException OR no-op (depending on
  *     control flow). Callsites: 020 + 021 (OrderManagementService), 022 +
- *     023 + 024 (ReceiptCreationService), 025 + 026 (ReceiptSyncService),
- *     027 (VoucherLedgerPushService).
+ *     023 + 024 (ReceiptCreationService), 027 (VoucherLedgerPushService).
  *
  *   Group 4 — LoyaltyPOSController + processing services (5 manual stubs)
  *     Tests need loyalty_programs + loyalty_members + loyalty_enrollments +
@@ -1179,8 +1173,6 @@ final class PosStabilizationTenantIsolationTest extends TestCase
     //   .022 ReceiptCreationService::create (line 508)      — Contact::find
     //   .023 ReceiptCreationService::create (line 523)      — Partner::find
     //   .024 ReceiptCreationService::decrementStock (846)   — Product::find
-    //   .025 ReceiptSyncService::syncBatch line snap (217)  — Product::find
-    //   .026 ReceiptSyncService::syncBatch payment (434)    — PaymentMethod::findOrFail
     //   .027 VoucherLedgerPushService::push (line 87)       — Voucher::find
     //
     // Service-tier tests pin behavior via `Eloquent::query()->where(tenant + company)`
@@ -1220,8 +1212,8 @@ final class PosStabilizationTenantIsolationTest extends TestCase
         // Cross-tenant injection short-circuits to null — no foreign partner data
         // leaks into the order's customer_name / customer_identifier snapshot.
         // (This pins the same scoping pattern OrderManagementService::createOrder
-        // line 97 now uses; same shape applies to addLine .021,
-        // ReceiptCreationService .022/.023/.024, ReceiptSyncService .025/.026.)
+        // line 97 now uses; same shape applies to addLine .021 and
+        // ReceiptCreationService .022/.023/.024.)
     }
 
     public function test_voucher_ledger_push_service_voucher_lookup_query_includes_tenant_predicate(): void
@@ -1373,250 +1365,6 @@ final class PosStabilizationTenantIsolationTest extends TestCase
             'Locations SELECT during web-terminal route must include company_id predicate. Queries: '.
                 $relevant->pluck('query')->implode(' || '),
         );
-    }
-
-    // =========================================================================
-    // Round-3 Codex Finding 1 — SyncReceiptsRequest cross-tenant sellable FKs
-    // =========================================================================
-    //
-    // Path: POST /api/v1/pos/receipts/sync
-    // Pre-fix: receipts.*.lines.*.product_id and ...composite_item_id are
-    // validated only as nullable UUIDs. ReceiptSyncService refuses to LOAD a
-    // foreign Product/CompositeItem snapshot, but persists the raw payload UUID
-    // into pos_receipt_lines.product_id / composite_item_id — a tenant-A
-    // receipt line ends up referencing tenant-B sellable rows.
-    // Fix: ScopedExists::tenantAndCompany on both fields + service-tier null-
-    // fallback so any FK that fails scoped resolution is persisted as NULL.
-    // =========================================================================
-
-    public function test_sync_receipts_refuses_cross_tenant_product_id_via_validator(): void
-    {
-        $response = $this->actingAsForTenant($this->userA, $this->companyA)
-            ->postJson('/api/v1/pos/receipts/sync', [
-                'receipts' => [[
-                    'idempotency_key' => 'rcpt-cross-product-'.Str::random(8),
-                    'receipt_number' => 'R-1',
-                    'terminal_id' => $this->terminalA->id,
-                    'operator_id' => $this->userA->id,
-                    'lines' => [[
-                        // Cross-tenant — must trip ScopedExists::tenantAndCompany.
-                        'product_id' => $this->productB->id,
-                        'quantity' => '1',
-                        'unit_price' => '10.00',
-                    ]],
-                    'subtotal' => '10.00',
-                    'tax_amount' => '0',
-                    'discount_amount' => '0',
-                    'total' => '10.00',
-                    'currency' => 'EUR',
-                    'offline_fiscal_hash' => str_repeat('0', 64),
-                    'previous_hash' => null,
-                    'hash_sequence' => 0,
-                    'payment_method_id' => $this->paymentMethodA->id,
-                    'payment_repository_id' => Str::uuid()->toString(),
-                    'created_at' => now()->toIso8601String(),
-                    'fiscal_schema_version' => 2,
-                    'payments' => [[
-                        'payment_method_id' => $this->paymentMethodA->id,
-                        'repository_id' => Str::uuid()->toString(),
-                        'amount' => '10.00',
-                        'method_code' => 'CASH',
-                    ]],
-                ]],
-            ]);
-        $this->assertApiValidationErrors($response, ['receipts.0.lines.0.product_id']);
-    }
-
-    public function test_sync_receipts_refuses_cross_tenant_composite_item_id_via_validator(): void
-    {
-        $compositeB = $this->seedCompositeItem($this->tenantB->id, $this->companyB->id, 'CompB-Sync');
-
-        $response = $this->actingAsForTenant($this->userA, $this->companyA)
-            ->postJson('/api/v1/pos/receipts/sync', [
-                'receipts' => [[
-                    'idempotency_key' => 'rcpt-cross-composite-'.Str::random(8),
-                    'receipt_number' => 'R-2',
-                    'terminal_id' => $this->terminalA->id,
-                    'operator_id' => $this->userA->id,
-                    'lines' => [[
-                        'composite_item_id' => $compositeB->id,
-                        'quantity' => '1',
-                        'unit_price' => '10.00',
-                    ]],
-                    'subtotal' => '10.00',
-                    'tax_amount' => '0',
-                    'discount_amount' => '0',
-                    'total' => '10.00',
-                    'currency' => 'EUR',
-                    'offline_fiscal_hash' => str_repeat('0', 64),
-                    'previous_hash' => null,
-                    'hash_sequence' => 0,
-                    'payment_method_id' => $this->paymentMethodA->id,
-                    'payment_repository_id' => Str::uuid()->toString(),
-                    'created_at' => now()->toIso8601String(),
-                    'fiscal_schema_version' => 2,
-                    'payments' => [[
-                        'payment_method_id' => $this->paymentMethodA->id,
-                        'repository_id' => Str::uuid()->toString(),
-                        'amount' => '10.00',
-                        'method_code' => 'CASH',
-                    ]],
-                ]],
-            ]);
-        $this->assertApiValidationErrors($response, ['receipts.0.lines.0.composite_item_id']);
-    }
-
-    // =========================================================================
-    // Round-3 Codex Finding 2 — idempotency_key echo-leak (fiscal data)
-    // =========================================================================
-    //
-    // Path: POST /api/v1/pos/receipts/sync (and any caller of
-    // ReceiptSyncService::syncBatch).
-    // Pre-fix: Receipt::where('idempotency_key', $payload->idempotencyKey)->first()
-    // ran BEFORE company context was applied. A tenant-A submitter with a
-    // tenant-B idempotency_key received the foreign receipt id, fiscal_hash,
-    // and terminal hash state through the duplicate-response branch — a live
-    // fiscal data leak.
-    // Fix: scope the SELECT by authenticated tenant_id + company_id from
-    // CompanyContext. Cross-tenant collisions return null → request proceeds
-    // as a fresh insert in the caller's scope (the correct contract for
-    // idempotency keys, which must be tenant-scoped).
-    // =========================================================================
-
-    public function test_receipt_sync_idempotency_key_lookup_is_scoped_by_tenant_and_company(): void
-    {
-        // Persist a tenant-B receipt under a known idempotency_key with a
-        // distinguishable fiscal_hash so the test can prove the duplicate-
-        // echo branch never reads it under a tenant-A request.
-        $collidingKey = 'CROSS-TENANT-IDEMP-'.Str::random(8);
-        $tenantBFiscalHash = str_repeat('b', 64);
-        $tenantBReceipt = Receipt::create([
-            'tenant_id' => $this->tenantB->id,
-            'company_id' => $this->companyB->id,
-            'location_id' => $this->locationB->id,
-            'terminal_id' => $this->terminalB->id,
-            'receipt_number' => 'R-B-XLEAK',
-            'receipt_type' => ReceiptType::Sale,
-            'chain_sequence' => 1,
-            'receipt_year' => (int) date('Y'),
-            'fiscal_hash' => $tenantBFiscalHash,
-            'previous_hash' => null,
-            'vat_breakdown_hash' => str_repeat('1', 64),
-            'payment_methods_hash' => str_repeat('2', 64),
-            'posted_at' => now(),
-            'cashier_id' => $this->userB->id,
-            'cashier_name' => 'B Cashier',
-            'subtotal' => '10.000',
-            'tax_amount' => '0.000',
-            'discount_amount' => '0.000',
-            'total' => '10.000',
-            'currency' => 'EUR',
-            'fiscal_status' => FiscalStatus::Fiscalized,
-            'is_voided' => false,
-            'idempotency_key' => $collidingKey,
-        ]);
-
-        // Pin the authenticated CompanyContext to tenant-A.
-        /** @var CompanyContext $context */
-        $context = app(CompanyContext::class);
-        $context->setCompanyId($this->companyA->id);
-
-        $payload = new SyncReceiptPayload(
-            idempotencyKey: $collidingKey,
-            receiptNumber: 'R-A-XLEAK',
-            terminalId: $this->terminalA->id,
-            operatorId: $this->userA->id,
-            lines: [[
-                'product_id' => $this->productA->id,
-                'quantity' => '1',
-                'unit_price' => '10.00',
-            ]],
-            subtotal: '10.00',
-            taxAmount: '0.00',
-            discountAmount: '0.00',
-            total: '10.00',
-            currency: 'EUR',
-            offlineFiscalHash: str_repeat('a', 64),
-            previousHash: null,
-            hashSequence: 0,
-            transactionDiscountAmount: null,
-            transactionDiscountReason: null,
-            tenderedAmount: null,
-            changeDue: null,
-            paymentMethodId: $this->paymentMethodA->id,
-            paymentRepositoryId: Str::uuid()->toString(),
-            createdAt: now()->toIso8601String(),
-            payments: [[
-                'payment_method_id' => $this->paymentMethodA->id,
-                'repository_id' => Str::uuid()->toString(),
-                'amount' => '10.00',
-                'method_code' => 'CASH',
-            ]],
-            consumptionMode: null,
-            tableId: null,
-            fiscalSchemaVersion: 2,
-        );
-
-        DB::enableQueryLog();
-        /** @var ReceiptSyncService $service */
-        $service = app(ReceiptSyncService::class);
-        $results = $service->syncBatch([$payload]);
-        $queries = DB::getQueryLog();
-        DB::disableQueryLog();
-
-        $this->assertCount(1, $results);
-        $result = $results[0];
-
-        // Pre-fix: status would be Duplicate with tenant-B's id + fiscal_hash
-        // echoed back. Post-fix: NEVER Duplicate for a cross-tenant key, AND
-        // the response payload MUST NOT carry tenant-B's receipt id or
-        // fiscal_hash.
-        $this->assertNotSame(
-            SyncStatus::Duplicate,
-            $result->status,
-            'Cross-tenant idempotency_key collision must not be treated as a duplicate.',
-        );
-        $this->assertNotSame(
-            $tenantBReceipt->id,
-            $result->receiptId,
-            'Sync result must not echo tenant-B receipt id under cross-tenant idempotency collision.',
-        );
-        $this->assertNotSame(
-            $tenantBFiscalHash,
-            $result->serverFiscalHash,
-            'Sync result must not echo tenant-B fiscal hash under cross-tenant idempotency collision.',
-        );
-
-        // Pin the SQL shape: idempotency_key SELECT against `receipts` MUST
-        // carry tenant_id AND company_id literals (post-fix). Pre-fix: bare
-        // where("idempotency_key" = ?) only.
-        $idempotencyLookups = collect($queries)->filter(
-            fn (array $q): bool => str_contains($q['query'], 'receipts')
-                && str_contains($q['query'], 'idempotency_key')
-                && ! str_contains($q['query'], 'count(')
-        )->values();
-
-        $this->assertNotEmpty(
-            $idempotencyLookups,
-            'Expected at least one receipts SELECT keyed on idempotency_key during syncBatch.',
-        );
-        $first = $idempotencyLookups->first();
-        $this->assertNotNull($first);
-        $sql = $first['query'];
-        $this->assertStringContainsString(
-            'tenant_id',
-            $sql,
-            'Idempotency-key SELECT must scope by tenant_id. Query: '.$sql,
-        );
-        $this->assertStringContainsString(
-            'company_id',
-            $sql,
-            'Idempotency-key SELECT must scope by company_id. Query: '.$sql,
-        );
-
-        // Tenant-B's row must remain unchanged on disk.
-        $tenantBReceipt->refresh();
-        $this->assertSame($tenantBFiscalHash, $tenantBReceipt->fiscal_hash);
     }
 
     // =========================================================================

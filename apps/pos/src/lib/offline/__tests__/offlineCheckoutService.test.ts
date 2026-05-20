@@ -47,11 +47,22 @@ function makeMockDb() {
 
 function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
+    tenantId: 'tenant-1',
+    companyId: 'company-1',
     terminalId: 'terminal-1',
     operatorId: 'op-1',
     operatorName: 'Test Operator',
+    shiftId: 'shift-1',
     cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '5.00' })],
     currency: 'EUR',
+    seller: {
+      name: 'Test SA',
+      taxNumber: 'FR123456789',
+      countryCode: 'FR',
+      street: '1 Rue Test',
+      city: 'Paris',
+      postalCode: '75001',
+    },
     paymentMethodId: 'pm-1',
     paymentRepositoryId: 'repo-1',
     tenderedAmount: 100,
