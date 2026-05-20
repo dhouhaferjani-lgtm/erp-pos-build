@@ -926,6 +926,27 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'cross-tenant product UUID must NOT bind into pos_receipt_lines.product_id — '.
             'the canonical sealed snapshot remains authoritative inside fiscal_events.payload',
         );
+
+        // R3 closure (Codex P3 / N-03+N-08). Reload the fiscal_events
+        // payload and assert the sealed snapshot still carries the
+        // foreign tenant's product UUID. The FK resolution failed (column
+        // is null, asserted above) but the canonical payload is immutable
+        // — NF525 export reads from this snapshot via CanonicalPayloadReader,
+        // so a regression that mutated the payload to null out the
+        // foreign UUID would silently corrupt the audit trail.
+        /** @var FiscalEvent $reloaded */
+        $reloaded = FiscalEvent::query()->findOrFail($event->id);
+        /** @var array<string, mixed> $reloadedPayload */
+        $reloadedPayload = $reloaded->payload;
+        /** @var list<array<string, mixed>> $reloadedLineItems */
+        $reloadedLineItems = $reloadedPayload['line_items'];
+        $this->assertSame(
+            $foreignProduct->id,
+            $reloadedLineItems[0]['product_id'],
+            'sealed canonical snapshot in fiscal_events.payload.line_items[0].product_id '.
+            'must still carry the foreign tenant UUID — the FK resolution failure must NOT '.
+            'mutate the immutable payload',
+        );
     }
 
     // =================================================================
@@ -1027,22 +1048,34 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
     public function test_buyer_block_is_sale_time_snapshot_survives_customer_deletion(): void
     {
-        // Pass 2A.PHP.2 R2 — Codex P1-1 closure. Synthesis v5 §5
-        // invariant #4: the projector reads buyer data EXCLUSIVELY from
-        // the parsed `fiscal_events.payload.buyer` snapshot. A future
-        // regression that re-introduced a runtime customer/contact/B2B
-        // lookup would silently fail when the underlying partner row is
-        // deleted between sale-time and projection-time / replay-time.
-        // The D16 grep guard (PosCoreReceiptProjectionD16Test) pins the
-        // import surface; THIS test pins the functional invariant
-        // end-to-end.
+        // Pass 2A.PHP.2 R2 — Codex P1-1 closure (R3-tightened per R2-P2).
+        // Synthesis v5 §5 invariant #4: the projector reads buyer data
+        // EXCLUSIVELY from the parsed `fiscal_events.payload.buyer`
+        // snapshot. A future regression that re-introduced a runtime
+        // customer/contact/B2B lookup would silently fail when the
+        // underlying partner row is deleted between sale-time and
+        // projection-time / replay-time. The D16 grep guard
+        // (PosCoreReceiptProjectionD16Test) pins the import surface;
+        // THIS test pins the functional invariant end-to-end.
         //
-        // Setup: seed a Partner $X in $this->tenantId. Build a
-        // SALE_RECEIPT canonical payload with
-        // `buyer.customer_id = $X->id` plus a full name / tax_number
-        // snapshot. Project the receipt: pos_receipts.partner_id MUST be
-        // $X->id and the snapshot columns (customer_name,
-        // customer_identifier) MUST come from the canonical payload, NOT
+        // **R3 closure (Codex P2 / N-05+N-08).** R2 seeded the Partner row
+        // with the SAME `name` + `vat_number` as the canonical payload's
+        // `buyer.name` + `buyer.tax_number` — so the INITIAL projection
+        // assertion `customer_name == "Sealed Customer Name"` could not
+        // distinguish payload-read from runtime-Partner-read. R3 deliberately
+        // mismatches the values: the Partner row carries "Partner Display
+        // Name" / "99999999999"; the canonical payload carries "Sealed
+        // Customer Name" / "12345678901". The projection assertion now
+        // PROVES the read comes from the payload — a regression that
+        // re-introduced a runtime Partner lookup would surface "Partner
+        // Display Name" and the assertion would fail loudly.
+        //
+        // Setup: seed a Partner $X in $this->tenantId with values that
+        // DIFFER from the canonical payload. Build a SALE_RECEIPT canonical
+        // payload with `buyer.customer_id = $X->id` plus a full name /
+        // tax_number snapshot. Project the receipt: pos_receipts.partner_id
+        // MUST be $X->id and the snapshot columns (customer_name,
+        // customer_identifier) MUST come from the canonical PAYLOAD, NOT
         // a Partner::find() lookup.
         //
         // Then simulate the deletion regression by:
@@ -1061,8 +1094,12 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $partner = Partner::factory()->customer()->create([
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
-            'name' => 'Sealed Customer Name',
-            'vat_number' => 'FR12345678901',
+            // Partner row values DIFFER from payload — a regression that
+            // re-introduced a runtime Partner lookup would surface these
+            // strings instead of the sealed payload values, failing the
+            // initial-projection assertion below.
+            'name' => 'Partner Display Name',
+            'vat_number' => 'FR99999999999',
         ]);
 
         $event = $this->storeSaleReceiptFiscalEvent(
@@ -1076,6 +1113,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
                 'codice_fiscale' => null,
                 'contact_id' => null,
                 'customer_id' => $partner->id,
+                // Payload snapshot values — DIFFER from the Partner row so
+                // the projector's payload-read can be distinguished from a
+                // (forbidden) Partner-read at INITIAL projection time.
                 'name' => 'Sealed Customer Name',
                 'tax_number' => 'FR12345678901',
             ],
@@ -1087,10 +1127,20 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $receipt = DB::table('pos_receipts')->first();
         $this->assertNotNull($receipt);
         $this->assertSame($partner->id, $receipt->partner_id);
-        // Snapshot columns are pure payload copies — projector reads
-        // ONLY from $view->buyer, never from the partners table.
-        $this->assertSame('Sealed Customer Name', $receipt->customer_name);
-        $this->assertSame('FR12345678901', $receipt->customer_identifier);
+        // R3-tightened — these assertions now PROVE the projector reads
+        // from `payload.buyer`, not from the `partners` table. A regression
+        // that re-introduced a runtime lookup would surface "Partner Display
+        // Name" / "FR99999999999" and fail loudly.
+        $this->assertSame(
+            'Sealed Customer Name',
+            $receipt->customer_name,
+            'projector MUST read customer_name from payload.buyer.name, not from partners.name',
+        );
+        $this->assertSame(
+            'FR12345678901',
+            $receipt->customer_identifier,
+            'projector MUST read customer_identifier from payload.buyer.tax_number, not from partners.vat_number',
+        );
 
         // Simulate the post-deletion shape: delete partner + cascade FK
         // to null. Under PG the `nullOnDelete` clause would handle the
@@ -1103,7 +1153,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertNotNull($refreshed);
         $this->assertNull($refreshed->partner_id, 'partner FK null after deletion + cascade');
         // Snapshot columns are sealed copies — partner deletion must NOT
-        // disturb them.
+        // disturb them. With the Partner row deleted, a runtime-lookup
+        // regression would surface as null/empty columns; the payload
+        // values must persist.
         $this->assertSame(
             'Sealed Customer Name',
             $refreshed->customer_name,
