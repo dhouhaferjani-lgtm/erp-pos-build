@@ -457,17 +457,27 @@ jobs:
         #     enum columns); SQLite passes the happy path but PG is the
         #     production truth that the seed factories accept the inserted
         #     rows without a constraint violation.
-        #   - DeviceLossIncidentTest (Feature, Task 32): the §12 device-loss
-        #     incident register table goes through PG-only DDL — the
-        #     `device_loss_incidents_recovery_status_allowed` CHECK
+        #   - DeviceLossIncidentTest (Feature, Task 32 + round-2): the §12
+        #     device-loss incident register table goes through PG-only DDL —
+        #     the `device_loss_incidents_recovery_status_allowed` CHECK
         #     (DeviceLossIncidentStatus whitelist), FKs to tenants /
-        #     companies / pos_terminals / users, the
-        #     `device_loss_incidents_tenant_terminal_idx` admin-browse index,
-        #     and the `device_loss_incidents_open_status_idx` partial index
-        #     scanning OPEN incidents (reported / recovering) only. SQLite
-        #     covers the column-presence + Eloquent-cast + boundary
-        #     discipline (recovery_status not in $fillable) layer; PG is the
-        #     production truth for the CHECK + FK + named-index contracts.
+        #     companies / users, the `device_loss_incidents_tenant_terminal_idx`
+        #     admin-browse index, and the `device_loss_incidents_open_status_idx`
+        #     partial index scanning OPEN incidents (reported / recovering)
+        #     only. Round-2 T32-P1 swaps the simple `terminal_id` FK for the
+        #     composite `device_loss_incidents_terminal_scope_fk` covering
+        #     `(terminal_id, tenant_id, company_id) → pos_terminals(id, tenant_id,
+        #     company_id)` (with the redundant UNIQUE
+        #     `pos_terminals_id_tenant_company_unique` to satisfy PG's
+        #     composite-FK referent requirement). The new PG-only test
+        #     `test_cross_tenant_terminal_id_is_rejected_by_composite_fk_on_postgres`
+        #     pins the cross-tenant rejection by SQLSTATE 23503 + constraint
+        #     name; the round-2 round-2 raw-insert tests also seed real
+        #     tenant/company/terminal/user refs so the CHECK assertions actually
+        #     reach the CHECK rather than tripping FK orphans (T32-B1). SQLite
+        #     covers the column-presence + Eloquent-cast + boundary discipline
+        #     (recovery_status not in $fillable) layer; PG is the production
+        #     truth for the CHECK + composite FK + named-index contracts.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1

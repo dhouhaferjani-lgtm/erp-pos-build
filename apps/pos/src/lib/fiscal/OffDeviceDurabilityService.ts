@@ -125,15 +125,31 @@ export type OffDeviceDurabilityPath =
  * `sqlSurface` is the structural SQLite handle (`SqlSurface` from
  * `FiscalEventEngine`) so the service does NOT depend on the Tauri Database
  * concrete type and stays testable against `SqliteTestAdapter`.
+ *
+ * Round-2 T32-P2: all three threshold knobs are OPTIONAL at the boundary —
+ * the constructor normalizes missing fields to the documented defaults
+ * (50 / 500 / 3600). Erased-type config from JSON / DB can omit any of them
+ * without weakening the control surface; the constructor also validates that
+ * supplied values are positive finite integers and that
+ * `escalatedUnsyncedThreshold >= forcedArchiveUnsyncedThreshold`. Invalid
+ * thresholds throw `InvalidDurabilityThresholdError` at construction.
  */
 export interface OffDeviceDurabilityConfig {
   paths: OffDeviceDurabilityPath[];
-  forcedArchiveUnsyncedThreshold: number;
-  escalatedUnsyncedThreshold: number;
+  forcedArchiveUnsyncedThreshold?: number;
+  escalatedUnsyncedThreshold?: number;
   /** Age (seconds) beyond which a single unsynced event escalates risk to 'elevated'. */
-  unsyncedAgeWarnThresholdSeconds: number;
+  unsyncedAgeWarnThresholdSeconds?: number;
   sqlSurface: Database | SqlSurface;
 }
+
+/**
+ * Threshold defaults documented in the plan + spec §12. Exported so callers
+ * (and tests) can reference them without duplicating the numeric values.
+ */
+export const DEFAULT_FORCED_ARCHIVE_UNSYNCED_THRESHOLD = 50;
+export const DEFAULT_ESCALATED_UNSYNCED_THRESHOLD = 500;
+export const DEFAULT_UNSYNCED_AGE_WARN_THRESHOLD_SECONDS = 3600;
 
 // -------------------------------------------------------------------
 // Errors
@@ -173,6 +189,31 @@ export class OnDeviceKeyCustodyForbiddenError extends Error {
   }
 }
 
+/**
+ * Round-2 T32-P2: thrown at construction when one of the three threshold
+ * knobs is supplied but malformed. Catches:
+ *   - non-finite values (`NaN`, `Infinity`)
+ *   - non-integer numbers (e.g. `0.5`)
+ *   - zero or negative thresholds (a zero threshold would force-archive at
+ *     the very first unsynced event, which inverts the spec semantics)
+ *   - `escalatedUnsyncedThreshold < forcedArchiveUnsyncedThreshold` (the
+ *     ordering must hold — escalation is the harder threshold)
+ *
+ * Erased-type configs from JSON / DB can land here; the typed error makes
+ * the invalid-shape signal explicit for the operational logging layer.
+ */
+export class InvalidDurabilityThresholdError extends Error {
+  constructor(reason: string) {
+    super(
+      `OffDeviceDurabilityService threshold config invalid: ${reason}. ` +
+        'Required: forcedArchiveUnsyncedThreshold + escalatedUnsyncedThreshold + ' +
+        'unsyncedAgeWarnThresholdSeconds are positive finite integers, and ' +
+        'escalatedUnsyncedThreshold >= forcedArchiveUnsyncedThreshold.',
+    );
+    this.name = 'InvalidDurabilityThresholdError';
+  }
+}
+
 // -------------------------------------------------------------------
 // Service
 // -------------------------------------------------------------------
@@ -185,8 +226,46 @@ function asSql(handle: Database | SqlSurface): SqlSurface {
   return handle as unknown as SqlSurface;
 }
 
+/**
+ * Round-2 T32-P2: validate + normalize a threshold knob. When `supplied` is
+ * `undefined` the documented default applies; otherwise the value must be a
+ * positive finite integer or `InvalidDurabilityThresholdError` is thrown.
+ */
+function normalizeThreshold(
+  supplied: number | undefined,
+  fallback: number,
+  field: string,
+): number {
+  if (supplied === undefined) {
+    return fallback;
+  }
+  if (typeof supplied !== 'number' || !Number.isFinite(supplied)) {
+    throw new InvalidDurabilityThresholdError(
+      `${field} must be a finite number; got ${String(supplied)}`,
+    );
+  }
+  if (!Number.isInteger(supplied)) {
+    throw new InvalidDurabilityThresholdError(
+      `${field} must be an integer; got ${supplied}`,
+    );
+  }
+  if (supplied <= 0) {
+    throw new InvalidDurabilityThresholdError(
+      `${field} must be > 0; got ${supplied}`,
+    );
+  }
+  return supplied;
+}
+
 export class OffDeviceDurabilityService {
   private readonly sql: SqlSurface;
+
+  /** Normalized + validated thresholds. See round-2 T32-P2. */
+  private readonly forcedArchiveUnsyncedThreshold: number;
+
+  private readonly escalatedUnsyncedThreshold: number;
+
+  private readonly unsyncedAgeWarnThresholdSeconds: number;
 
   constructor(private readonly config: OffDeviceDurabilityConfig) {
     if (config.paths.length === 0) {
@@ -202,6 +281,34 @@ export class OffDeviceDurabilityService {
         throw new OnDeviceKeyCustodyForbiddenError(path.kind);
       }
     }
+
+    // Round-2 T32-P2: normalize + validate threshold knobs. Defaults match
+    // the plan documentation (50 / 500 / 3600s). Each supplied value must be
+    // a positive finite integer, and the escalation threshold must be
+    // strictly >= the forced-archive threshold.
+    this.forcedArchiveUnsyncedThreshold = normalizeThreshold(
+      config.forcedArchiveUnsyncedThreshold,
+      DEFAULT_FORCED_ARCHIVE_UNSYNCED_THRESHOLD,
+      'forcedArchiveUnsyncedThreshold',
+    );
+    this.escalatedUnsyncedThreshold = normalizeThreshold(
+      config.escalatedUnsyncedThreshold,
+      DEFAULT_ESCALATED_UNSYNCED_THRESHOLD,
+      'escalatedUnsyncedThreshold',
+    );
+    this.unsyncedAgeWarnThresholdSeconds = normalizeThreshold(
+      config.unsyncedAgeWarnThresholdSeconds,
+      DEFAULT_UNSYNCED_AGE_WARN_THRESHOLD_SECONDS,
+      'unsyncedAgeWarnThresholdSeconds',
+    );
+
+    if (this.escalatedUnsyncedThreshold < this.forcedArchiveUnsyncedThreshold) {
+      throw new InvalidDurabilityThresholdError(
+        `escalatedUnsyncedThreshold (${this.escalatedUnsyncedThreshold}) must be >= ` +
+          `forcedArchiveUnsyncedThreshold (${this.forcedArchiveUnsyncedThreshold})`,
+      );
+    }
+
     this.sql = asSql(config.sqlSurface);
   }
 
@@ -241,14 +348,14 @@ export class OffDeviceDurabilityService {
    */
   async unsyncedRisk(): Promise<UnsyncedRiskLevel> {
     const count = await this.countUnsyncedFiscalEvents();
-    if (count >= this.config.escalatedUnsyncedThreshold) {
+    if (count >= this.escalatedUnsyncedThreshold) {
       return 'escalated';
     }
-    if (count >= this.config.forcedArchiveUnsyncedThreshold) {
+    if (count >= this.forcedArchiveUnsyncedThreshold) {
       return 'elevated';
     }
     const oldestAgeSeconds = await this.oldestUnsyncedAgeSeconds();
-    if (oldestAgeSeconds !== null && oldestAgeSeconds >= this.config.unsyncedAgeWarnThresholdSeconds) {
+    if (oldestAgeSeconds !== null && oldestAgeSeconds >= this.unsyncedAgeWarnThresholdSeconds) {
       return 'elevated';
     }
     return 'normal';
@@ -263,7 +370,7 @@ export class OffDeviceDurabilityService {
    */
   async shouldForceArchive(): Promise<boolean> {
     const count = await this.countUnsyncedFiscalEvents();
-    return count >= this.config.forcedArchiveUnsyncedThreshold;
+    return count >= this.forcedArchiveUnsyncedThreshold;
   }
 
   // -------------------------------------------------------------------

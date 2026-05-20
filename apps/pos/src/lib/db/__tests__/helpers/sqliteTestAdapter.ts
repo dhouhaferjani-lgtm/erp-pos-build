@@ -1,7 +1,7 @@
 /**
- * Test-only adapter that wraps Node's built-in `node:sqlite` (Node 22.5+) so
- * it matches the subset of `@tauri-apps/plugin-sql` Database methods our
- * repositories and migrations call:
+ * Test-only adapter that wraps `better-sqlite3` so it matches the subset of
+ * `@tauri-apps/plugin-sql` Database methods our repositories and migrations
+ * call:
  *
  *   - `execute(sql, params?) => Promise<{ rowsAffected, lastInsertId? }>`
  *   - `select<T>(sql, params?) => Promise<T>`
@@ -10,9 +10,18 @@
  * from Vitest, catching schema/precision regressions that pure-mock tests
  * can't see. Keep this file test-only — production code must stay on the
  * Tauri plugin.
+ *
+ * **Round-2 T32-P3: migrated from `node:sqlite` to `better-sqlite3`.**
+ * `node:sqlite` requires Node 22.5+; CI pins Node 20, so the previous
+ * skip-on-unavailable guard caused every SQLite-backed vitest suite to
+ * skip silently on CI. `better-sqlite3` is a long-standing npm package that
+ * runs on Node 18+ (matches the CI `NODE_VERSION: '20'`) and exposes the
+ * same synchronous prepare/run/all API surface. Migration tests are now
+ * actually merge-gated.
  */
 
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import BetterSqlite3 from 'better-sqlite3';
+import type { Database as BetterSqliteDatabase, Statement } from 'better-sqlite3';
 import type Database from '@tauri-apps/plugin-sql';
 
 interface ExecResult {
@@ -20,12 +29,19 @@ interface ExecResult {
   lastInsertId?: number;
 }
 
-/** Convert positional `$1, $2 …` params into the `{ $1: …, $2: … }` form node:sqlite binds. */
-function bindParams(params?: unknown[]): Record<string, SQLInputValue> | undefined {
+/**
+ * `better-sqlite3` supports `$name` named parameters out of the box. Our
+ * callers use Postgres-style positional `$1`, `$2` … placeholders; map them
+ * to a `{ $1: …, $2: … }` bind object so `Statement.run(bound)` /
+ * `Statement.all(bound)` binds them by name.
+ */
+function bindParams(params?: unknown[]): Record<string, unknown> | undefined {
   if (!params || params.length === 0) return undefined;
-  const out: Record<string, SQLInputValue> = {};
+  const out: Record<string, unknown> = {};
   for (let i = 0; i < params.length; i++) {
-    out[`$${i + 1}`] = params[i] as SQLInputValue;
+    // better-sqlite3 named params drop the leading `$` in the bind object
+    // key (unlike `node:sqlite` which expects the literal `$1`).
+    out[String(i + 1)] = params[i];
   }
   return out;
 }
@@ -36,7 +52,7 @@ function isSelect(sql: string): boolean {
 
 /**
  * Multi-statement SQL contains a `;` followed by more SQL (i.e. additional
- * statements after the trailing terminator). `node:sqlite`'s `prepare()`
+ * statements after the trailing terminator). `better-sqlite3`'s `prepare()`
  * only accepts single statements; multi-statement blocks must go through
  * `exec()`. Migration `m.sql` blocks are the canonical caller.
  *
@@ -50,10 +66,10 @@ function isMultiStatement(sql: string): boolean {
 }
 
 export class SqliteTestAdapter {
-  readonly inner: DatabaseSync;
+  readonly inner: BetterSqliteDatabase;
 
   constructor() {
-    this.inner = new DatabaseSync(':memory:');
+    this.inner = new BetterSqlite3(':memory:');
   }
 
   async execute(sql: string, params?: unknown[]): Promise<ExecResult> {
@@ -66,7 +82,7 @@ export class SqliteTestAdapter {
       this.inner.exec(sql);
       return { rowsAffected: 0 };
     }
-    const stmt = this.inner.prepare(sql);
+    const stmt: Statement = this.inner.prepare(sql);
     const bound = bindParams(params);
     const res = bound ? stmt.run(bound) : stmt.run();
     return {
@@ -79,12 +95,13 @@ export class SqliteTestAdapter {
     if (!isSelect(sql)) {
       throw new Error('SqliteTestAdapter.select called with non-SELECT statement: ' + sql);
     }
-    const stmt = this.inner.prepare(sql);
+    const stmt: Statement = this.inner.prepare(sql);
     const bound = bindParams(params);
     const rows = bound ? stmt.all(bound) : stmt.all();
-    // node:sqlite rows are null-prototype objects; normalize to plain objects so
-    // test equality helpers behave as expected.
-    return rows.map((r) => ({ ...(r as Record<string, unknown>) })) as unknown as T;
+    // better-sqlite3 rows are plain objects already — normalize defensively
+    // so downstream test equality helpers behave consistently with the prior
+    // `node:sqlite` adapter shape.
+    return (rows as Array<Record<string, unknown>>).map((r) => ({ ...r })) as unknown as T;
   }
 
   close(): void {

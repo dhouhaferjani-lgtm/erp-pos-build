@@ -26,22 +26,19 @@ import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter'
 
 import {
   EmptyOffDeviceDurabilityConfigError,
+  InvalidDurabilityThresholdError,
   OnDeviceKeyCustodyForbiddenError,
   OffDeviceDurabilityService,
   type OffDeviceDurabilityConfig,
   type OffDeviceDurabilityPath,
 } from '../OffDeviceDurabilityService';
 
-const nodeSqliteAvailable = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return Boolean(require('node:sqlite').DatabaseSync);
-  } catch {
-    return false;
-  }
-})();
-
-const d = nodeSqliteAvailable ? describe : describe.skip;
+// Round-2 T32-P3: the SqliteTestAdapter is backed by `better-sqlite3` now,
+// which works on Node 20 (the CI version). The previous `node:sqlite` skip
+// guard caused the entire suite to silently skip on CI — replaced by an
+// unconditional `describe`. If `better-sqlite3` is somehow missing the
+// import itself will throw at module load and the failure is loud.
+const d = describe;
 
 const TENANT_ID = 'tenant-1';
 const COMPANY_ID = 'company-1';
@@ -319,5 +316,77 @@ d('OffDeviceDurabilityService — §12 contract', () => {
     });
     await seedUnsyncedEvents(adapter, 10);
     expect(await svc.shouldForceArchive()).toBe(true);
+  });
+
+  // -------------------------------------------------------------------
+  // Round-2 T32-P2: threshold normalization + validation
+  // -------------------------------------------------------------------
+
+  it('applies the documented defaults when threshold knobs are omitted from config', async () => {
+    // Erased-type configs (JSON / DB rows) may omit some or all of the
+    // threshold fields. The service must normalize them to 50 / 500 / 3600s
+    // — the documented defaults — without weakening the control surface.
+    const svc = new OffDeviceDurabilityService({
+      paths: [lanPeerPath()],
+      sqlSurface: adapter,
+    });
+
+    // Default forced-archive threshold = 50: 49 unsynced events => normal/false;
+    // a 50th unsynced event flips to elevated/true.
+    await seedUnsyncedEvents(adapter, 49);
+    expect(await svc.shouldForceArchive()).toBe(false);
+    expect(await svc.unsyncedRisk()).toBe('normal');
+    await seedUnsyncedEvents(adapter, 1, 50);
+    expect(await svc.shouldForceArchive()).toBe(true);
+    expect(await svc.unsyncedRisk()).toBe('elevated');
+  });
+
+  it('rejects a negative threshold at construction', () => {
+    expect(
+      () =>
+        new OffDeviceDurabilityService({
+          paths: [lanPeerPath()],
+          forcedArchiveUnsyncedThreshold: -1,
+          sqlSurface: adapter,
+        }),
+    ).toThrow(InvalidDurabilityThresholdError);
+  });
+
+  it('rejects a non-finite threshold at construction', () => {
+    // Mimics an erased-type config where JSON.parse turned a malformed
+    // number into NaN. Even though TypeScript would catch this at compile
+    // time, the runtime guard is defense-in-depth.
+    expect(
+      () =>
+        new OffDeviceDurabilityService({
+          paths: [lanPeerPath()],
+          escalatedUnsyncedThreshold: Number.NaN,
+          sqlSurface: adapter,
+        }),
+    ).toThrow(InvalidDurabilityThresholdError);
+
+    expect(
+      () =>
+        new OffDeviceDurabilityService({
+          paths: [lanPeerPath()],
+          unsyncedAgeWarnThresholdSeconds: Number.POSITIVE_INFINITY,
+          sqlSurface: adapter,
+        }),
+    ).toThrow(InvalidDurabilityThresholdError);
+  });
+
+  it('rejects escalatedUnsyncedThreshold < forcedArchiveUnsyncedThreshold at construction', () => {
+    // Spec §12 ordering: the escalation threshold is the *harder* threshold
+    // and must be >= the forced-archive threshold. An inverted pair would
+    // make the discrimination ladder unreachable.
+    expect(
+      () =>
+        new OffDeviceDurabilityService({
+          paths: [lanPeerPath()],
+          forcedArchiveUnsyncedThreshold: 100,
+          escalatedUnsyncedThreshold: 50,
+          sqlSurface: adapter,
+        }),
+    ).toThrow(InvalidDurabilityThresholdError);
   });
 });

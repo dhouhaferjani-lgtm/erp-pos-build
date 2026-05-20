@@ -2,30 +2,32 @@
  * `UnsyncedRiskIndicator` — operator-visible §12 conservation surface.
  *
  * Spec v7 §12: "an operator-visible unsynced-risk indicator". This component
- * renders the level returned by `OffDeviceDurabilityService.unsyncedRisk()`
- * as a colored badge so the operator can see at a glance whether the
- * terminal's authoring is racing ahead of its off-device durability path.
+ * renders the last polled `UnsyncedRiskLevel` as a colored badge so the
+ * operator can see at a glance whether the terminal's authoring is racing
+ * ahead of its off-device durability path.
  *
- * The component takes the service as a prop so callers wire it via
- * constructor injection at the container layer (rule 13) — there is no
- * module-scope singleton here. The risk level is polled on an interval
- * the caller controls (default 30s) so the indicator stays current without
- * the component owning a clock.
+ * **Round-2 T32-B2: refactored to read from `durabilityStore`.**
+ *
+ * Round-1 took `OffDeviceDurabilityService` as a prop and polled it from
+ * inside `useEffect`. That made the component impossible to mount in the
+ * always-visible POS shell without threading the service through every
+ * surface, and Codex flagged the resulting dead-path (the component was
+ * never rendered by any caller). Round-2 splits responsibilities:
+ *
+ *   - This component reads the latest polled `riskLevel` from the
+ *     `useDurabilityStore` Zustand store (same atom-style pattern as the
+ *     sibling `ChainBreakAlert` reading from `useSyncStore`).
+ *   - The polling loop lives in `useFiscalDurabilityPolling` — a hook the
+ *     `AppShell` mounts once the company DB + service are available.
+ *
+ * That keeps `AppShell` as the single wiring site for the operator-visible
+ * conservation surface and lets this component mount unconditionally.
  */
 
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type {
-  OffDeviceDurabilityService,
-  UnsyncedRiskLevel,
-} from '@/lib/fiscal/OffDeviceDurabilityService';
-
-interface UnsyncedRiskIndicatorProps {
-  service: OffDeviceDurabilityService;
-  /** Poll interval (ms). Defaults to 30s. Pass 0 to disable polling (test). */
-  pollIntervalMs?: number;
-}
+import type { UnsyncedRiskLevel } from '@/lib/fiscal/OffDeviceDurabilityService';
+import { useDurabilityStore } from '@/stores/durabilityStore';
 
 /**
  * Tailwind class map per risk level. Matches the sibling `ChainBreakAlert`
@@ -42,45 +44,12 @@ const riskClasses: Record<UnsyncedRiskLevel, string> = {
     'bg-red-50 border-red-300 text-red-900',
 };
 
-export function UnsyncedRiskIndicator({
-  service,
-  pollIntervalMs = 30_000,
-}: UnsyncedRiskIndicatorProps) {
+export function UnsyncedRiskIndicator() {
   const { t } = useTranslation('fiscal');
-  const [level, setLevel] = useState<UnsyncedRiskLevel | null>(null);
+  const level = useDurabilityStore((s) => s.riskLevel);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const tick = async () => {
-      try {
-        const next = await service.unsyncedRisk();
-        if (!cancelled) setLevel(next);
-      } catch {
-        // The service is a read-only SQLite query surface in Pass 1; if it
-        // throws we surface nothing rather than crashing the UI. The error
-        // path belongs to the operational logging layer the caller wires up.
-        if (!cancelled) setLevel(null);
-      }
-    };
-
-    void tick();
-
-    if (pollIntervalMs > 0) {
-      const handle = setInterval(() => {
-        void tick();
-      }, pollIntervalMs);
-      return () => {
-        cancelled = true;
-        clearInterval(handle);
-      };
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [service, pollIntervalMs]);
-
+  // Pre-first-poll: render nothing. Once the polling hook pushes the first
+  // result, the indicator appears.
   if (level === null) return null;
 
   return (
@@ -88,6 +57,7 @@ export function UnsyncedRiskIndicator({
       role="status"
       aria-live="polite"
       data-risk-level={level}
+      data-testid="unsynced-risk-indicator"
       className={`border rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2 ${riskClasses[level]}`}
     >
       <span aria-hidden="true" className="inline-block w-2 h-2 rounded-full bg-current" />

@@ -1,14 +1,21 @@
-import { useEffect, useCallback, lazy, Suspense } from 'react';
+import { useEffect, useCallback, useMemo, useState, lazy, Suspense } from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
+import type Database from '@tauri-apps/plugin-sql';
 import { Header } from './Header';
 import { TrainingModeBanner } from './TrainingModeBanner';
 import { C2MigrationBanner } from './C2MigrationBanner';
+import { UnsyncedRiskIndicator } from './fiscal/UnsyncedRiskIndicator';
+import { DurabilityGateModal } from './fiscal/DurabilityGateModal';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSyncStore } from '@/stores/syncStore';
+import { useAuthStore } from '@/stores/authStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
 import { useCatalogChannel } from '@/hooks/useCatalogChannel';
+import { useFiscalDurabilityPolling } from '@/hooks/useFiscalDurabilityPolling';
+import { buildOffDeviceDurabilityService } from '@/lib/fiscal/durabilityServiceFactory';
+import { getDatabase } from '@/lib/db';
 
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
@@ -26,9 +33,33 @@ export function AppShell() {
   const resetActivityTimer = useOperatorStore((s) => s.resetActivityTimer);
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
+  const companyId = useAuthStore((s) => s.companyId);
 
   // Sync cart/checkout state to customer-facing display
   useCustomerDisplaySync();
+
+  // Round-2 T32-B2: wire the spec §12 off-device durability surface.
+  // The factory builds the service once the company DB is loaded; the
+  // polling hook pushes results into the durability store; the indicator
+  // + gate modal mount unconditionally and read from the store, so the
+  // operator-visible conservation control is reachable as soon as the
+  // POS shell is up.
+  const [durabilityDb, setDurabilityDb] = useState<Database | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) return;
+    void getDatabase(companyId).then((db) => {
+      if (!cancelled) setDurabilityDb(db);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+  const durabilityService = useMemo(
+    () => buildOffDeviceDurabilityService(durabilityDb),
+    [durabilityDb],
+  );
+  useFiscalDurabilityPolling(durabilityService);
 
   // Bug 1 — subscribe to the company-level catalog channel so admin-side
   // product / menu mutations show up in the POS within ~500ms instead of
@@ -97,6 +128,12 @@ export function AppShell() {
           the cashier sees it on every screen, not just HomePage. */}
       <TrainingModeBanner />
       <C2MigrationBanner />
+      {/* Round-2 T32-B2: spec §12 operator-visible unsynced-risk indicator.
+          Renders null pre-first-poll (no DOM, no layout impact); becomes
+          a colored badge once the polling hook reports a risk level. */}
+      <div className="px-4 pt-2">
+        <UnsyncedRiskIndicator />
+      </div>
       <main className="flex-1 overflow-hidden">
         <Suspense fallback={null}>
           <Routes>
@@ -108,6 +145,12 @@ export function AppShell() {
           </Routes>
         </Suspense>
       </main>
+      {/* Round-2 T32-B2: spec §12 forced-archive blocking gate. When the
+          durability store reports forceArchiveRequired AND no live
+          acknowledgment grace covers the moment, this modal blocks the
+          entire POS UI until the operator acknowledges. Renders null
+          otherwise. */}
+      <DurabilityGateModal />
     </div>
   );
 }

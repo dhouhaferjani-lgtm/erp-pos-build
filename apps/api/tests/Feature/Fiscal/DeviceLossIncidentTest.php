@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Domain\Enums\DeviceLossIncidentStatus;
 use App\Modules\Fiscal\Domain\Models\DeviceLossIncident;
+use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Terminal;
+use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +43,51 @@ use Tests\TestCase;
 final class DeviceLossIncidentTest extends TestCase
 {
     use RefreshDatabase;
+
+    private string $tenantId;
+
+    private string $companyId;
+
+    private string $terminalId;
+
+    private string $operatorId;
+
+    /**
+     * Seed real referenced rows so the FK constraints on `device_loss_incidents`
+     * are satisfied. Round-1 used random UUIDs and silently passed on SQLite
+     * (FKs not enforced) — on PG the raw-insert tests would FK-violate before
+     * reaching the CHECK constraint, which is exactly what the §12 register
+     * test must pin. See round-2 BLOCKER T32-B1.
+     *
+     * Seeded once per test (RefreshDatabase resets between tests). Tests that
+     * need cross-tenant terminals (round-2 T32-P1) seed additional rows
+     * locally rather than mutating the shared scope.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $tenant = Tenant::factory()->create();
+        $this->tenantId = $tenant->id;
+
+        $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $this->companyId = $company->id;
+
+        $location = Location::factory()->create(['company_id' => $this->companyId]);
+
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $location->id,
+        ]);
+        $this->terminalId = $terminal->id;
+
+        $user = User::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'name' => 'Test Operator',
+        ]);
+        $this->operatorId = $user->id;
+    }
 
     public function test_table_has_all_register_columns(): void
     {
@@ -94,10 +144,26 @@ final class DeviceLossIncidentTest extends TestCase
     {
         $this->skipUnlessPostgres();
 
-        $this->expectException(QueryException::class);
-        DB::table('device_loss_incidents')->insert(
-            $this->incidentRawRow(['recovery_status' => 'invalid_status']),
-        );
+        // Round-2 T32-B1: assert SQLSTATE 23514 (CHECK violation) + constraint
+        // name so the test proves the CHECK fired, not an unrelated FK. Round-1
+        // accepted any QueryException, which could mask FK orphans.
+        try {
+            DB::table('device_loss_incidents')->insert(
+                $this->incidentRawRow(['recovery_status' => 'invalid_status']),
+            );
+            $this->fail('Expected QueryException for CHECK violation, but insert succeeded');
+        } catch (QueryException $e) {
+            $this->assertSame(
+                '23514',
+                $e->getCode(),
+                'expected PG SQLSTATE 23514 (CHECK violation); got '.$e->getCode().' with message: '.$e->getMessage(),
+            );
+            $this->assertStringContainsString(
+                'device_loss_incidents_recovery_status_allowed',
+                $e->getMessage(),
+                'CHECK violation must name the constraint device_loss_incidents_recovery_status_allowed',
+            );
+        }
     }
 
     public function test_recovery_status_check_allows_every_enum_value_on_postgres(): void
@@ -167,10 +233,14 @@ final class DeviceLossIncidentTest extends TestCase
     {
         $this->skipUnlessPostgres();
 
+        // Round-2 T32-P1: `device_loss_incidents_terminal_id_fk` (the round-1
+        // simple FK on terminal_id alone) is dropped + replaced by the
+        // composite FK `device_loss_incidents_terminal_scope_fk` — covered in
+        // `test_composite_terminal_scope_fk_exists_on_postgres`. The other
+        // three FKs remain unchanged.
         foreach ([
             'device_loss_incidents_tenant_id_fk',
             'device_loss_incidents_company_id_fk',
-            'device_loss_incidents_terminal_id_fk',
             'device_loss_incidents_reported_by_fk',
         ] as $name) {
             $row = DB::selectOne(
@@ -179,6 +249,80 @@ final class DeviceLossIncidentTest extends TestCase
             );
             $this->assertNotNull($row, "FK {$name} missing on PostgreSQL");
         }
+    }
+
+    public function test_cross_tenant_terminal_id_is_rejected_by_composite_fk_on_postgres(): void
+    {
+        // Round-2 T32-P1: the composite FK
+        // `device_loss_incidents_terminal_scope_fk` rejects any incident whose
+        // (tenant_id, company_id) pair doesn't match the referenced terminal's
+        // (tenant_id, company_id). Round-1 had three independent FKs and would
+        // accept such a row silently.
+        $this->skipUnlessPostgres();
+
+        // Seed a second tenant+company+terminal triple. Reuse the existing
+        // company's location for the new terminal so the location FK is
+        // satisfied (location_id is not part of the cross-tenant test).
+        $otherTenant = Tenant::factory()->create();
+        $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
+        $otherLocation = Location::factory()->create(['company_id' => $otherCompany->id]);
+        $otherTerminal = Terminal::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'location_id' => $otherLocation->id,
+        ]);
+
+        // Build an incident with $this->tenantId / $this->companyId (tenant A)
+        // but use $otherTerminal->id from tenant B. PG must reject this.
+        try {
+            DB::table('device_loss_incidents')->insert(
+                $this->incidentRawRow(['terminal_id' => $otherTerminal->id]),
+            );
+            $this->fail(
+                'Expected QueryException for cross-tenant composite FK violation, but insert succeeded',
+            );
+        } catch (QueryException $e) {
+            // PG returns SQLSTATE 23503 for foreign-key violations.
+            $this->assertSame(
+                '23503',
+                $e->getCode(),
+                'expected PG SQLSTATE 23503 (FK violation); got '.$e->getCode().' with message: '.$e->getMessage(),
+            );
+            $this->assertStringContainsString(
+                'device_loss_incidents_terminal_scope_fk',
+                $e->getMessage(),
+                'FK violation must name the composite constraint device_loss_incidents_terminal_scope_fk',
+            );
+        }
+    }
+
+    public function test_composite_terminal_scope_fk_exists_on_postgres(): void
+    {
+        // Round-2 T32-P1: the composite FK exists with the expected name. The
+        // round-1 simple `device_loss_incidents_terminal_id_fk` is dropped and
+        // replaced by `device_loss_incidents_terminal_scope_fk` covering
+        // (terminal_id, tenant_id, company_id) → pos_terminals(id, tenant_id, company_id).
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            "SELECT conname FROM pg_constraint WHERE conname = ? AND contype = 'f'",
+            ['device_loss_incidents_terminal_scope_fk'],
+        );
+        $this->assertNotNull(
+            $row,
+            'Composite FK device_loss_incidents_terminal_scope_fk missing on PostgreSQL',
+        );
+
+        // The simple FK that round-1 introduced should be gone — it was
+        // superseded by the composite FK (round-2 migration drops it).
+        $supersededFk = DB::selectOne(
+            "SELECT conname FROM pg_constraint WHERE conname = ? AND contype = 'f'",
+            ['device_loss_incidents_terminal_id_fk'],
+        );
+        $this->assertNull(
+            $supersededFk,
+            'Simple FK device_loss_incidents_terminal_id_fk should be dropped (superseded by composite FK)',
+        );
     }
 
     public function test_lifecycle_status_is_not_mass_assignable(): void
@@ -199,6 +343,12 @@ final class DeviceLossIncidentTest extends TestCase
     }
 
     /**
+     * Attribute set for `DeviceLossIncident::create()`. Round-2 T32-B1: uses
+     * seeded tenant/company/terminal/user refs so the FK constraints on PG
+     * are satisfied; SQLite ignores FKs so the test is portable either way.
+     * `reported_by` defaults to the seeded operator's UUID; override with
+     * NULL when the test targets the nullable-FK code path.
+     *
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
@@ -206,11 +356,11 @@ final class DeviceLossIncidentTest extends TestCase
     {
         return array_merge([
             'id' => Str::uuid()->toString(),
-            'tenant_id' => Str::uuid()->toString(),
-            'company_id' => Str::uuid()->toString(),
-            'terminal_id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminalId,
             'reported_at' => now()->toDateTimeString(),
-            'reported_by' => Str::uuid()->toString(),
+            'reported_by' => $this->operatorId,
             'reason' => 'terminal stolen during overnight close',
             'unsynced_count_at_incident' => 14,
             'last_synced_event_at' => now()->subMinutes(45)->toDateTimeString(),
@@ -221,6 +371,10 @@ final class DeviceLossIncidentTest extends TestCase
      * Raw-row variant for DB::table()->insert() — supplies the DB-level
      * defaults the model layer otherwise injects (recovery_status, timestamps).
      *
+     * Round-2 T32-B1: identity columns now use seeded FK targets (not random
+     * UUIDs) so PG's FK constraints don't fire before the CHECK / cross-tenant
+     * tests can validate what they actually mean to validate.
+     *
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
@@ -228,11 +382,14 @@ final class DeviceLossIncidentTest extends TestCase
     {
         return array_merge([
             'id' => Str::uuid()->toString(),
-            'tenant_id' => Str::uuid()->toString(),
-            'company_id' => Str::uuid()->toString(),
-            'terminal_id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminalId,
             'reported_at' => now()->toDateTimeString(),
-            'reported_by' => Str::uuid()->toString(),
+            // `reported_by` is nullable; NULL is the safer default for the
+            // raw-row helper because most of the PG-only tests don't care
+            // about the operator identity.
+            'reported_by' => null,
             'reason' => 'terminal lost in transit',
             'unsynced_count_at_incident' => 0,
             'last_synced_event_at' => null,
