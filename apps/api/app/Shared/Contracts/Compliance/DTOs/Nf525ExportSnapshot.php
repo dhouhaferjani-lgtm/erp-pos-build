@@ -36,7 +36,17 @@ final readonly class Nf525ExportSnapshot
      *                                                         that never populate it; the XML builder emits the
      *                                                         `<EvenementsQuarantaine>` section only when non-empty.
      *                                                         Round-2 (Task 30) extension to fold spec §8 into the live
-     *                                                         NF525 JET pipeline.
+     *                                                         NF525 JET pipeline. Round-3: now UNIONs
+     *                                                         `fiscal_event_quarantine` rows (sequence_conflict, malformed)
+     *                                                         AND in-table quarantined `fiscal_events` rows
+     *                                                         (integrity_status='quarantined' OR
+     *                                                         payload_parse_status='failed') — both surfaces per spec §8.
+     * @param  list<array<string, mixed>>  $tamperedSection  Round-3 (Task 30): receipts whose
+     *                                                       fiscal_events.canonical_bytes failed the re-hash check
+     *                                                       against fiscal_events.current_hash. Excluded from the
+     *                                                       regular sales / voids / returns sections so auditors see a
+     *                                                       crisp tampered partition; emitted by the XML builder only
+     *                                                       when non-empty.
      */
     public function __construct(
         public Nf525CompanyHeaderData $company,
@@ -54,5 +64,6 @@ final readonly class Nf525ExportSnapshot
         public array $trainingCounts,
         public array $terminals,
         public array $quarantineSection = [],
+        public array $tamperedSection = [],
     ) {}
 }

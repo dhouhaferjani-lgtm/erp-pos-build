@@ -70,13 +70,24 @@ jobs:
     #
     # The job is intentionally light — no PHP toolchain required, just
     # ripgrep + jq + bash. Runs on every PR + push.
+    #
+    # Round-3 (Task 30 T30-R2-P1 fix): the receiver_type validator
+    # invocation inside the shell gate (php verify-chokepoint-manifest.php)
+    # is conditionally skipped when no `php` / vendor/autoload.php is
+    # available (controlled via SKIP_RECEIVER_TYPE_VALIDATOR=1). The
+    # full PHP validator runs in the backend-test-pgsql merge gate
+    # (which already has PHP + composer + vendor installed) as part of
+    # ChokepointCompletenessTest — defense-in-depth without bloating
+    # the lightweight feedback loop with a composer install.
     steps:
       - uses: actions/checkout@v5
 
       - name: Install ripgrep + jq
         run: sudo apt-get update && sudo apt-get install -y ripgrep jq
 
-      - name: Run §14.3 chokepoint gate
+      - name: Run §14.3 chokepoint gate (shell layer only)
+        env:
+          SKIP_RECEIVER_TYPE_VALIDATOR: '1'
         run: bash apps/api/scripts/check-saleReceipt-chokepoints.sh
 
   backend-analyse:

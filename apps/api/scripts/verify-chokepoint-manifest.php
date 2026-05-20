@@ -130,27 +130,122 @@ foreach ($decoded['entries'] as $entry) {
     /** @var class-string $callingClass */
     $refl = new ReflectionClass($callingClass);
 
-    $matched = false;
+    // ----------------------------------------------------------------
+    // (Round-3 T30-R2-P2) Parse the receiver expression from the
+    // line_anchor text and pin the validation to the SPECIFIC
+    // injected property whose type must match receiver_type.
+    //
+    // Old strategy (round-2): "does any constructor parameter have a
+    // type matching receiver_type?" — too lax. A multi-dependency
+    // class like ExchangeService (injects both ReceiptCreationService
+    // AND ReceiptFinalizationService) would pass any manifest entry
+    // claiming either type, regardless of the actual receiver on the
+    // call line.
+    //
+    // New strategy: extract the receiver variable name from the
+    // anchor (e.g. `$this->finalizationService` from
+    // `$this->finalizationService->finalize(`), reflect THAT property
+    // on the calling_class, and assert ITS declared type matches
+    // receiver_type. Falls back to the round-2 "any-constructor-
+    // parameter / any-property" check (with a WARNING) when the
+    // receiver expression isn't a simple `$this->propertyName` —
+    // method calls, locals, etc. ----------------------------------
+    $receiverVar = extractReceiverPropertyName($anchor);
 
-    // Strategy: walk the constructor parameters and look for one whose
-    // declared type IS-A the manifest's receiver_type (covers both exact
-    // class and superclass / interface). Controllers and services in
-    // this codebase inject all dependencies via the constructor with
-    // `private readonly`, per CLAUDE.md Rule 13.
-    $ctor = $refl->getConstructor();
-    if ($ctor !== null) {
-        foreach ($ctor->getParameters() as $param) {
-            $type = $param->getType();
-            if (! $type instanceof ReflectionNamedType) {
-                continue;
+    $matched = false;
+    $warning = null;
+
+    if ($receiverVar !== null) {
+        // Strict path: receiver is `$this->propertyName` — look up
+        // that property's type and pin it.
+        if (! $refl->hasProperty($receiverVar)) {
+            fwrite(STDERR, sprintf(
+                "MANIFEST_LIE: %s has no property \$%s (parsed from line_anchor %s) (file=%s)\n",
+                $callingClass,
+                $receiverVar,
+                $anchor,
+                $file,
+            ));
+            $failed = 1;
+
+            continue;
+        }
+        $prop = $refl->getProperty($receiverVar);
+        $propType = $prop->getType();
+        if (! $propType instanceof ReflectionNamedType) {
+            fwrite(STDERR, sprintf(
+                "MANIFEST_LIE: %s::\$%s has no scalar/named type (got union/intersection/untyped) — cannot validate receiver_type (file=%s anchor=%s)\n",
+                $callingClass,
+                $receiverVar,
+                $file,
+                $anchor,
+            ));
+            $failed = 1;
+
+            continue;
+        }
+        $propTypeName = $propType->getName();
+        if (
+            $propTypeName === $receiverType
+            || ((class_exists($propTypeName) || interface_exists($propTypeName))
+                && is_subclass_of($propTypeName, $receiverType))
+        ) {
+            $matched = true;
+        } else {
+            fwrite(STDERR, sprintf(
+                "MANIFEST_LIE: %s::\$%s is declared as %s but the manifest claims receiver_type=%s (file=%s anchor=%s)\n",
+                $callingClass,
+                $receiverVar,
+                $propTypeName,
+                $receiverType,
+                $file,
+                $anchor,
+            ));
+            $failed = 1;
+
+            continue;
+        }
+    } else {
+        // Defensive fallback: receiver isn't `$this->propertyName`.
+        // Walk the constructor + typed properties (round-2 strategy)
+        // and emit a WARNING flagging the entry for human review —
+        // the gate still PASSES if a matching dependency exists, but
+        // a manifest entry living on this fallback path may have
+        // hidden mismatches the strict path would catch.
+        $warning = sprintf(
+            'WARNING: receiver expression for %s (line_anchor=%s) is not a simple $this->propertyName — manifest entry needs human review',
+            $callingClass,
+            $anchor,
+        );
+
+        $ctor = $refl->getConstructor();
+        if ($ctor !== null) {
+            foreach ($ctor->getParameters() as $param) {
+                $type = $param->getType();
+                if (! $type instanceof ReflectionNamedType) {
+                    continue;
+                }
+                $paramTypeName = $type->getName();
+                if ($paramTypeName === $receiverType) {
+                    $matched = true;
+                    break;
+                }
+                if (class_exists($paramTypeName) || interface_exists($paramTypeName)) {
+                    if (is_subclass_of($paramTypeName, $receiverType) || $paramTypeName === $receiverType) {
+                        $matched = true;
+                        break;
+                    }
+                }
             }
-            $paramTypeName = $type->getName();
-            if ($paramTypeName === $receiverType) {
-                $matched = true;
-                break;
-            }
-            if (class_exists($paramTypeName) || interface_exists($paramTypeName)) {
-                if (is_subclass_of($paramTypeName, $receiverType) || $paramTypeName === $receiverType) {
+        }
+        if (! $matched) {
+            foreach ($refl->getProperties() as $prop) {
+                $type = $prop->getType();
+                if (! $type instanceof ReflectionNamedType) {
+                    continue;
+                }
+                $propTypeName = $type->getName();
+                if ($propTypeName === $receiverType) {
                     $matched = true;
                     break;
                 }
@@ -158,21 +253,8 @@ foreach ($decoded['entries'] as $entry) {
         }
     }
 
-    // Defensive fallback: if not on the constructor, walk typed properties
-    // (covers any future setter-injection callsites — unused today but
-    // cheap to support so this gate doesn't grow brittle).
-    if (! $matched) {
-        foreach ($refl->getProperties() as $prop) {
-            $type = $prop->getType();
-            if (! $type instanceof ReflectionNamedType) {
-                continue;
-            }
-            $propTypeName = $type->getName();
-            if ($propTypeName === $receiverType) {
-                $matched = true;
-                break;
-            }
-        }
+    if ($warning !== null) {
+        fwrite(STDERR, $warning."\n");
     }
 
     if (! $matched) {
@@ -185,6 +267,25 @@ foreach ($decoded['entries'] as $entry) {
         ));
         $failed = 1;
     }
+}
+
+/**
+ * Extract the receiver property name from a `$this->propertyName->method(`
+ * anchor. Returns null when the receiver isn't a simple
+ * `$this->propertyName` expression (e.g. `$receipt = $this->createService->createReceipt(`
+ * → 'createService'; `$saleDraft = $this->finalizationService->finalize($saleDraft);`
+ * → 'finalizationService'). Greedy on the FIRST `$this->propertyName->`
+ * substring so an assignment prefix like `$x = $this->foo->bar(` still
+ * resolves to 'foo'.
+ */
+function extractReceiverPropertyName(string $anchor): ?string
+{
+    // Match the first occurrence of `$this->IDENT->` in the anchor.
+    if (preg_match('/\$this->([A-Za-z_][A-Za-z0-9_]*)->/', $anchor, $m) === 1) {
+        return $m[1];
+    }
+
+    return null;
 }
 
 if ($failed === 0) {

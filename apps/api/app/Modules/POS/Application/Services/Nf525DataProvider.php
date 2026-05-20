@@ -106,8 +106,16 @@ final class Nf525DataProvider implements Nf525DataProviderContract
                 trainingCounts: [],
                 terminals: $terminalSummaries,
                 quarantineSection: $quarantineSection,
+                tamperedSection: [],
             );
         }
+
+        // Round-3 (Task 30 T30-R2-B1): tampered receipts (canonical_bytes
+        // rehash != fiscal_events.current_hash) are routed here instead of
+        // the regular sale/void/return sections. Spec §8 audit-visibility:
+        // auditors see a crisp tampered partition; the regular sections
+        // remain a clean view of verified, authoritative receipts.
+        $tamperedSection = [];
 
         // Sale receipts (non-voided, non-return, non-training, fiscalized only)
         $salesQuery = Receipt::with(['lines', 'vatDetails', 'payments', 'voucherLedgerEntries'])
@@ -121,13 +129,21 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             ->get();
         $sales = [];
         foreach ($salesQuery as $receipt) {
-            // Phase 1 §5.0 D1 (Task 30 round-2): re-hash canonical_bytes
-            // for projection rows linked to fiscal_events. Tampering is
-            // logged as a structured error; the receipt is still emitted
-            // so auditors see the row (the chain-verify pass is the
-            // primary defense — see verifyReceiptChain).
-            $this->verifyCanonicalBytesForReceipt($receipt, 'sale');
-            $sales[] = $this->mapSaleReceipt($receipt);
+            // Phase 1 §5.0 D1 (Task 30 round-3): for fiscal_event-backed
+            // receipts, source authoritative monetary fields from
+            // fiscal_events.payload (not pos_receipts mirror). Verify
+            // canonical_bytes rehash against fiscal_events.current_hash
+            // (NOT pos_receipts.fiscal_hash — closes the round-2 defect
+            // where the comparison reverted to the mirror). Tampered
+            // receipts go to $tamperedSection and are EXCLUDED from
+            // $sales: tamper detection ≠ tamper exclusion.
+            $verifyResult = $this->verifyCanonicalBytesAndLoadPayload($receipt, 'sale');
+            if ($verifyResult['tampered']) {
+                $tamperedSection[] = $this->renderTamperedEntry($receipt, $verifyResult, 'sale');
+
+                continue;
+            }
+            $sales[] = $this->mapSaleReceipt($receipt, $verifyResult['payload']);
         }
 
         // Voided receipts (any type, voided in window, non-training, fiscalized only)
@@ -141,8 +157,13 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             ->get();
         $voidedReceipts = [];
         foreach ($voidedQuery as $receipt) {
-            $this->verifyCanonicalBytesForReceipt($receipt, 'voided');
-            $voidedReceipts[] = $this->mapVoidedReceipt($receipt);
+            $verifyResult = $this->verifyCanonicalBytesAndLoadPayload($receipt, 'voided');
+            if ($verifyResult['tampered']) {
+                $tamperedSection[] = $this->renderTamperedEntry($receipt, $verifyResult, 'voided');
+
+                continue;
+            }
+            $voidedReceipts[] = $this->mapVoidedReceipt($receipt, $verifyResult['payload']);
         }
 
         // Return receipts (non-voided, non-training, fiscalized only)
@@ -157,8 +178,13 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             ->get();
         $returnReceipts = [];
         foreach ($returnsQuery as $receipt) {
-            $this->verifyCanonicalBytesForReceipt($receipt, 'return');
-            $returnReceipts[] = $this->mapReturnReceipt($receipt);
+            $verifyResult = $this->verifyCanonicalBytesAndLoadPayload($receipt, 'return');
+            if ($verifyResult['tampered']) {
+                $tamperedSection[] = $this->renderTamperedEntry($receipt, $verifyResult, 'return');
+
+                continue;
+            }
+            $returnReceipts[] = $this->mapReturnReceipt($receipt, $verifyResult['payload']);
         }
 
         // Training mode counts per terminal
@@ -264,6 +290,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             trainingCounts: $trainingCounts,
             terminals: $terminalSummaries,
             quarantineSection: $quarantineSection,
+            tamperedSection: $tamperedSection,
         );
     }
 
@@ -541,7 +568,17 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         return $out;
     }
 
-    private function mapSaleReceipt(Receipt $receipt): Nf525ReceiptData
+    /**
+     * @param  array<string, mixed>|null  $canonicalPayload  Authoritative server-parsed
+     *                                                       payload from fiscal_events.payload (round-3 T30-R2-B1). When non-null,
+     *                                                       monetary fields (subtotal / taxAmount / discountAmount / total /
+     *                                                       currency) are sourced FROM THIS DICT, not from pos_receipts mirror
+     *                                                       fields. NULL for legacy rows (fiscal_event_id IS NULL) and for
+     *                                                       fiscal_event-backed rows whose payload_parse_status != 'parsed'
+     *                                                       (e.g. SALE_RECEIPT events still pending strict parse) — those
+     *                                                       fall back to the mirror per Task 21 R2 carve-out semantics.
+     */
+    private function mapSaleReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
         $lines = [];
         if ($receipt->relationLoaded('lines')) {
@@ -566,6 +603,8 @@ final class Nf525DataProvider implements Nf525DataProviderContract
 
         $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
 
+        $monetary = $this->resolveMonetaryFields($receipt, $canonicalPayload);
+
         return new Nf525ReceiptData(
             id: (string) $receipt->id,
             receiptNumber: $receipt->receipt_number,
@@ -574,11 +613,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             chainSequence: (int) $receipt->chain_sequence,
             fiscalHash: $receipt->fiscal_hash,
             previousHash: $receipt->previous_hash,
-            subtotal: (string) $receipt->subtotal,
-            taxAmount: (string) $receipt->tax_amount,
-            discountAmount: (string) $receipt->discount_amount,
-            total: (string) $receipt->total,
-            currency: $receipt->currency,
+            subtotal: $monetary['subtotal'],
+            taxAmount: $monetary['tax_amount'],
+            discountAmount: $monetary['discount_amount'],
+            total: $monetary['total'],
+            currency: $monetary['currency'],
             cashierName: $receipt->cashier_name,
             customerName: $receipt->customer_name,
             lines: $lines,
@@ -594,8 +633,13 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         );
     }
 
-    private function mapVoidedReceipt(Receipt $receipt): Nf525ReceiptData
+    /**
+     * @param  array<string, mixed>|null  $canonicalPayload  See mapSaleReceipt.
+     */
+    private function mapVoidedReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
+        $monetary = $this->resolveMonetaryFields($receipt, $canonicalPayload);
+
         return new Nf525ReceiptData(
             id: (string) $receipt->id,
             receiptNumber: $receipt->receipt_number,
@@ -604,11 +648,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             chainSequence: (int) $receipt->chain_sequence,
             fiscalHash: $receipt->fiscal_hash,
             previousHash: $receipt->previous_hash,
-            subtotal: (string) $receipt->subtotal,
-            taxAmount: (string) $receipt->tax_amount,
-            discountAmount: (string) $receipt->discount_amount,
-            total: (string) $receipt->total,
-            currency: $receipt->currency,
+            subtotal: $monetary['subtotal'],
+            taxAmount: $monetary['tax_amount'],
+            discountAmount: $monetary['discount_amount'],
+            total: $monetary['total'],
+            currency: $monetary['currency'],
             cashierName: $receipt->cashier_name,
             customerName: $receipt->customer_name,
             lines: [],
@@ -622,9 +666,13 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         );
     }
 
-    private function mapReturnReceipt(Receipt $receipt): Nf525ReceiptData
+    /**
+     * @param  array<string, mixed>|null  $canonicalPayload  See mapSaleReceipt.
+     */
+    private function mapReturnReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
         $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
+        $monetary = $this->resolveMonetaryFields($receipt, $canonicalPayload);
 
         return new Nf525ReceiptData(
             id: (string) $receipt->id,
@@ -634,11 +682,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             chainSequence: (int) $receipt->chain_sequence,
             fiscalHash: $receipt->fiscal_hash,
             previousHash: $receipt->previous_hash,
-            subtotal: (string) $receipt->subtotal,
-            taxAmount: (string) $receipt->tax_amount,
-            discountAmount: (string) $receipt->discount_amount,
-            total: (string) $receipt->total,
-            currency: $receipt->currency,
+            subtotal: $monetary['subtotal'],
+            taxAmount: $monetary['tax_amount'],
+            discountAmount: $monetary['discount_amount'],
+            total: $monetary['total'],
+            currency: $monetary['currency'],
             cashierName: $receipt->cashier_name,
             customerName: $receipt->customer_name,
             lines: [],
@@ -655,6 +703,71 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             outOfWindow: $receipt->out_of_window,
             voucherLedgerEntries: $voucherLedgerEntries,
         );
+    }
+
+    /**
+     * Phase 1 §5.0 D1 (Task 30 round-3 T30-R2-B1): source the monetary
+     * fields from the AUTHORITATIVE server-parsed payload
+     * (`fiscal_events.payload`) when available — NOT from the
+     * `pos_receipts` projection mirror. Closes Codex's deeper ask:
+     * a tampered `pos_receipts.total = '999999.99'` would otherwise
+     * surface in the JET XML even though the chain-verify pass
+     * detected the tamper.
+     *
+     * Mapping:
+     *   payload['subtotal']        → Nf525ReceiptData::$subtotal
+     *   payload['tax_total']       → Nf525ReceiptData::$taxAmount
+     *   payload['discount_total']  → Nf525ReceiptData::$discountAmount
+     *   payload['total']           → Nf525ReceiptData::$total
+     *   payload['currency']        → Nf525ReceiptData::$currency
+     *
+     * Falls back to the projection-row mirror when the payload is
+     * missing the field (defensive) or when no canonical payload was
+     * supplied (legacy / parse-pending rows). Fields the canonical
+     * envelope does NOT carry (receipt_number, ID, terminal_id,
+     * cashier/customer names, line-level data, line-level VAT
+     * detail, etc.) ALWAYS come from the projection — the canonical
+     * SaleReceiptPayload contract (§4) doesn't include them.
+     *
+     * @param  array<string, mixed>|null  $payload
+     * @return array{subtotal: string, tax_amount: string, discount_amount: string, total: string, currency: string}
+     */
+    private function resolveMonetaryFields(Receipt $receipt, ?array $payload): array
+    {
+        // Defaults from the projection mirror.
+        $values = [
+            'subtotal' => (string) $receipt->subtotal,
+            'tax_amount' => (string) $receipt->tax_amount,
+            'discount_amount' => (string) $receipt->discount_amount,
+            'total' => (string) $receipt->total,
+            'currency' => (string) $receipt->currency,
+        ];
+
+        if ($payload === null) {
+            return $values;
+        }
+
+        // Override with authoritative payload values when present.
+        // The canonical SaleReceiptPayload uses 'tax_total' /
+        // 'discount_total'; the NF525 DTO uses 'taxAmount' /
+        // 'discountAmount'. We translate the contract here.
+        if (isset($payload['subtotal']) && is_string($payload['subtotal'])) {
+            $values['subtotal'] = $payload['subtotal'];
+        }
+        if (isset($payload['tax_total']) && is_string($payload['tax_total'])) {
+            $values['tax_amount'] = $payload['tax_total'];
+        }
+        if (isset($payload['discount_total']) && is_string($payload['discount_total'])) {
+            $values['discount_amount'] = $payload['discount_total'];
+        }
+        if (isset($payload['total']) && is_string($payload['total'])) {
+            $values['total'] = $payload['total'];
+        }
+        if (isset($payload['currency']) && is_string($payload['currency'])) {
+            $values['currency'] = $payload['currency'];
+        }
+
+        return $values;
     }
 
     private function mapLine(ReceiptLine $line): Nf525ReceiptLineData
@@ -812,69 +925,191 @@ final class Nf525DataProvider implements Nf525DataProviderContract
     }
 
     /**
-     * Phase 1 §5.0 D1 / §8 (Task 30 round-2): per-receipt
-     * canonical_bytes verification. Folded into the LIVE
-     * buildExportSnapshot path so the NF525 JET export is anchored on
-     * the verified canonical bytes of fiscal_events rather than POS
-     * Domain model fields.
+     * Phase 1 §5.0 D1 / §8 (Task 30 round-3 T30-R2-B1): per-receipt
+     * canonical_bytes verification + authoritative payload load.
+     *
+     * Returns a verification result:
+     *   - `tampered` (bool): true if the canonical_bytes re-hash does
+     *     NOT match `fiscal_events.current_hash` — the authoritative
+     *     chain truth (NOT `pos_receipts.fiscal_hash`, which is a
+     *     mirror per §5.0 D1).
+     *   - `payload` (array|null): the authoritative server-parsed
+     *     payload from `fiscal_events.payload` when (a) the receipt is
+     *     fiscal_event-backed AND (b) the linked row's
+     *     `payload_parse_status === 'parsed'`. The map functions use
+     *     this to source monetary fields from the canonical payload
+     *     rather than the projection mirror.
      *
      * Behaviour:
-     *   - Legacy rows (`fiscal_event_id IS NULL`): no-op. Their hash is
-     *     authoritative by construction (legacy chain truth lives on
-     *     pos_receipts.fiscal_hash; verifier covers them via the
-     *     legacy arm).
-     *   - Phase-1 rows (`fiscal_event_id IS NOT NULL`): load the linked
-     *     fiscal_events row, rehash canonical_bytes, compare to stored
-     *     current_hash. On mismatch (or row vanished), emit a structured
-     *     Log::error so operators see the row+context. The export is NOT
-     *     blocked — the chain-verify pass is the primary defense; the
-     *     diagnostic log is the side-channel auditors use to triage.
+     *   - Legacy rows (`fiscal_event_id IS NULL`): no-op result
+     *     `{tampered: false, payload: null}` — the legacy verifier arm
+     *     in `Nf525DataProvider::verifyReceiptChain` covers them.
+     *   - Phase-1 rows (`fiscal_event_id IS NOT NULL`): load the
+     *     linked fiscal_events row (canonical_bytes + current_hash +
+     *     payload + payload_parse_status). Rehash canonical_bytes,
+     *     compare to current_hash. On mismatch → emit a structured
+     *     Log::error('chain_verification_failed', ...) and return
+     *     `{tampered: true, payload: null}`. On match → return
+     *     `{tampered: false, payload: <parsed-payload-or-null>}`.
      *
-     * @param  'sale'|'voided'|'return'  $bucket  Just for the log payload
+     * SECURITY-DESIGN: The structured log entries below are explicit
+     * about what's loggable. canonical_bytes content and full payload
+     * dicts are NEVER logged — they contain transactional details
+     * (amounts, customer ids, payment instruments). Only IDs, hashes,
+     * and tamper diagnostics flow to Log::error.
+     *
+     * @param  'sale'|'voided'|'return'  $bucket
+     * @return array{tampered: bool, payload: array<string, mixed>|null, reason: string|null, expected_hash: string|null, actual_hash: string|null}
      */
-    private function verifyCanonicalBytesForReceipt(Receipt $receipt, string $bucket): void
+    private function verifyCanonicalBytesAndLoadPayload(Receipt $receipt, string $bucket): array
     {
         if ($receipt->fiscal_event_id === null) {
-            return;
+            return ['tampered' => false, 'payload' => null, 'reason' => null, 'expected_hash' => null, 'actual_hash' => null];
         }
 
-        $canonicalBytes = $this->db->table('fiscal_events')
+        $row = $this->db->table('fiscal_events')
             ->where('id', $receipt->fiscal_event_id)
-            ->value('canonical_bytes');
+            ->first(['canonical_bytes', 'current_hash', 'payload', 'payload_parse_status']);
 
-        if ($canonicalBytes === null) {
-            Log::error('Nf525DataProvider: fiscal_events row vanished for projected receipt; canonical_bytes verification skipped.', [
+        if ($row === null) {
+            // The fiscal_events row vanished — projection orphaned. Log
+            // diagnostic, treat as tampered (cannot prove integrity).
+            Log::error('chain_verification_failed', [
                 'bucket' => $bucket,
                 'receipt_id' => $receipt->id,
                 'fiscal_event_id' => $receipt->fiscal_event_id,
                 'terminal_id' => $receipt->terminal_id,
                 'company_id' => $receipt->company_id,
+                'failure_mode' => 'fiscal_event_missing',
             ]);
 
-            return;
+            return [
+                'tampered' => true,
+                'payload' => null,
+                'reason' => 'fiscal_event_missing',
+                'expected_hash' => null,
+                'actual_hash' => null,
+            ];
         }
 
-        $rehashed = $this->integrityProvider->computeHash($this->stringifyCanonicalBytes($canonicalBytes));
-        $stored = (string) $receipt->fiscal_hash;
-        if (! hash_equals(strtolower($rehashed), strtolower($stored))) {
-            Log::error('Nf525DataProvider: canonical_bytes rehash mismatch for projected receipt — fiscal_events row may be tampered.', [
+        $canonicalBytes = $row->canonical_bytes;
+        if ($canonicalBytes === null || $canonicalBytes === '') {
+            // Empty canonical_bytes is impossible per the migration
+            // (NOT NULL + the ingestor never writes empty), but defend
+            // explicitly so we don't silently hash sha256('').
+            Log::error('chain_verification_failed', [
+                'bucket' => $bucket,
+                'receipt_id' => $receipt->id,
+                'fiscal_event_id' => $receipt->fiscal_event_id,
+                'failure_mode' => 'canonical_bytes_empty',
+            ]);
+
+            return [
+                'tampered' => true,
+                'payload' => null,
+                'reason' => 'canonical_bytes_empty',
+                'expected_hash' => null,
+                'actual_hash' => null,
+            ];
+        }
+
+        $canonicalBytesStr = $this->stringifyCanonicalBytes($canonicalBytes);
+        $rehashed = strtolower($this->integrityProvider->computeHash($canonicalBytesStr));
+        $stored = strtolower((string) $row->current_hash);
+
+        if (! hash_equals($rehashed, $stored)) {
+            // §5.0 D1 contract: compare against fiscal_events.current_hash
+            // (the authoritative chain head), NOT pos_receipts.fiscal_hash
+            // (the projection mirror).
+            Log::error('chain_verification_failed', [
                 'bucket' => $bucket,
                 'receipt_id' => $receipt->id,
                 'fiscal_event_id' => $receipt->fiscal_event_id,
                 'terminal_id' => $receipt->terminal_id,
                 'company_id' => $receipt->company_id,
-                'expected_hash' => strtolower($stored),
-                'actual_hash' => strtolower($rehashed),
+                'expected_hash' => $stored,
+                'actual_hash' => $rehashed,
+                'failure_mode' => 'canonical_bytes_rehash_mismatch',
             ]);
+
+            return [
+                'tampered' => true,
+                'payload' => null,
+                'reason' => 'canonical_bytes_rehash_mismatch',
+                'expected_hash' => $stored,
+                'actual_hash' => $rehashed,
+            ];
         }
+
+        // Verified. Load the authoritative payload if the strict parser
+        // has run — `payload_parse_status === 'parsed'` per spec §7.6.
+        // For legacy rows or events still pending parse, return null
+        // and the map functions fall back to mirror values.
+        $parseStatus = (string) ($row->payload_parse_status ?? '');
+        $payload = null;
+        if ($parseStatus === 'parsed') {
+            $payloadRaw = $row->payload;
+            if (is_array($payloadRaw)) {
+                /** @var array<string, mixed> $payloadRaw */
+                $payload = $payloadRaw;
+            } elseif (is_string($payloadRaw) && $payloadRaw !== '') {
+                $decoded = json_decode($payloadRaw, true);
+                if (is_array($decoded)) {
+                    /** @var array<string, mixed> $decoded */
+                    $payload = $decoded;
+                }
+            }
+        }
+
+        return [
+            'tampered' => false,
+            'payload' => $payload,
+            'reason' => null,
+            'expected_hash' => $stored,
+            'actual_hash' => $rehashed,
+        ];
     }
 
     /**
-     * Phase 1 §8 (Task 30 round-2): collect non-admissible envelopes
-     * scoped to (company, period). Reader-side surface — the JET XML
-     * builder emits these in the `<EvenementsQuarantaine>` section only
-     * when non-empty (preserves byte-stability of the pre-existing JET
-     * fixture).
+     * Render a tamper diagnostic entry for the export's `tamperedSection`.
+     * Auditors see the receipt id + the failure mode + the linked
+     * fiscal_event_id — enough to triage without leaking canonical_bytes.
+     *
+     * @param  array{tampered: bool, payload: array<string, mixed>|null, reason: string|null, expected_hash: string|null, actual_hash: string|null}  $verifyResult
+     * @return array<string, mixed>
+     */
+    private function renderTamperedEntry(Receipt $receipt, array $verifyResult, string $bucket): array
+    {
+        return [
+            'receipt_id' => (string) $receipt->id,
+            'receipt_number' => (string) $receipt->receipt_number,
+            'fiscal_event_id' => (string) $receipt->fiscal_event_id,
+            'terminal_id' => (string) $receipt->terminal_id,
+            'bucket' => $bucket,
+            'failure_mode' => $verifyResult['reason'] ?? 'unknown',
+            'expected_hash' => $verifyResult['expected_hash'],
+            'actual_hash' => $verifyResult['actual_hash'],
+            'posted_at' => $receipt->posted_at->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Phase 1 §8 (Task 30 round-3 T30-R2-P3): collect non-admissible
+     * envelopes scoped to (company, period). Reader-side surface — the
+     * JET XML builder emits these in the `<EvenementsQuarantaine>`
+     * section only when non-empty.
+     *
+     * Spec §8 requires the export reconciliation to span BOTH quarantine
+     * surfaces ("never silent exclusion ... export reconciliation must
+     * span both quarantine surfaces"):
+     *   1. `fiscal_event_quarantine` table — non-admissible envelopes
+     *      (sequence_conflict, malformed_envelope). Source-tagged
+     *      `quarantine_table`.
+     *   2. `fiscal_events` rows that landed admissible but were flagged
+     *      AT INGESTION as quarantined or parse-failed
+     *      (integrity_status='quarantined' OR
+     *      payload_parse_status='failed'). Source-tagged
+     *      `fiscal_events_in_table`.
      *
      * Filter:
      *   - tenant scoping is implicit via the company FK (the company
@@ -888,6 +1123,9 @@ final class Nf525DataProvider implements Nf525DataProviderContract
      */
     private function buildQuarantineSection(string $companyId, Carbon $from, Carbon $to): array
     {
+        $section = [];
+
+        // (1) fiscal_event_quarantine — non-admissible partition.
         $quarantineRows = $this->db->table('fiscal_event_quarantine')
             ->where('company_id', $companyId)
             ->whereBetween('server_received_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
@@ -903,19 +1141,34 @@ final class Nf525DataProvider implements Nf525DataProviderContract
                 'resolved_at',
                 'previous_hash',
                 'current_hash',
+                'event_type',
+                'event_version',
+                'signature_version',
+                'business_date',
+                'payload_parse_status',
             ]);
 
-        $quarantineSection = [];
         foreach ($quarantineRows as $row) {
-            $quarantineSection[] = [
+            $section[] = [
+                'source' => 'quarantine_table',
                 'envelope_id' => (string) $row->envelope_event_id,
                 'terminal_id' => (string) $row->terminal_id,
                 'claimed_sequence_number' => (int) $row->claimed_sequence_number,
                 'integrity_exception_class' => (string) $row->integrity_exception_class,
                 'integrity_reason' => (string) $row->integrity_exception_reason,
                 'server_received_at' => $this->normalizeTimestamp($row->server_received_at),
+                'business_date' => $row->business_date === null
+                    ? null
+                    : $this->normalizeBusinessDate($row->business_date),
+                'event_type' => (string) ($row->event_type ?? ''),
+                'event_version' => (int) ($row->event_version ?? 0),
+                'signature_version' => (string) ($row->signature_version ?? ''),
                 'previous_hash' => (string) $row->previous_hash,
                 'current_hash' => (string) $row->current_hash,
+                'payload_parse_status' => $row->payload_parse_status === null
+                    ? null
+                    : (string) $row->payload_parse_status,
+                'integrity_status' => 'quarantined', // partition by construction
                 'raw_envelope' => $this->decodeRawEnvelope($row->raw_envelope),
                 'resolved_at' => $row->resolved_at === null
                     ? null
@@ -923,7 +1176,81 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             ];
         }
 
-        return $quarantineSection;
+        // (2) fiscal_events with integrity_status='quarantined' OR
+        // payload_parse_status='failed' — verified non-admissible per
+        // spec §8 ("In-table 'integrity_status=quarantined' covers
+        // admitted-but-flagged events"). These landed in the chain but
+        // cannot be projected; auditors need visibility.
+        $inTableRows = $this->db->table('fiscal_events')
+            ->where('company_id', $companyId)
+            ->whereBetween('server_received_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->where(function ($q): void {
+                $q->where('integrity_status', '<>', 'verified')
+                    ->orWhere('payload_parse_status', 'failed');
+            })
+            ->orderBy('sequence_number')
+            ->get([
+                'id',
+                'terminal_id',
+                'sequence_number',
+                'integrity_exception_class',
+                'integrity_exception_reason',
+                'integrity_status',
+                'server_received_at',
+                'business_date',
+                'event_type',
+                'event_version',
+                'signature_version',
+                'previous_hash',
+                'current_hash',
+                'payload_parse_status',
+            ]);
+
+        foreach ($inTableRows as $row) {
+            $section[] = [
+                'source' => 'fiscal_events_in_table',
+                'envelope_id' => (string) $row->id,
+                'terminal_id' => (string) $row->terminal_id,
+                'claimed_sequence_number' => (int) $row->sequence_number,
+                'integrity_exception_class' => (string) ($row->integrity_exception_class ?? ''),
+                'integrity_reason' => (string) ($row->integrity_exception_reason ?? ''),
+                'integrity_status' => (string) ($row->integrity_status ?? ''),
+                'server_received_at' => $this->normalizeTimestamp($row->server_received_at),
+                'business_date' => $row->business_date === null
+                    ? null
+                    : $this->normalizeBusinessDate($row->business_date),
+                'event_type' => (string) ($row->event_type ?? ''),
+                'event_version' => (int) ($row->event_version ?? 0),
+                'signature_version' => (string) ($row->signature_version ?? ''),
+                'previous_hash' => (string) $row->previous_hash,
+                'current_hash' => (string) $row->current_hash,
+                'payload_parse_status' => (string) ($row->payload_parse_status ?? ''),
+                // In-table rows have NO raw_envelope — canonical_bytes
+                // is the verbatim record; we don't emit it here
+                // (forensic surface is the dedicated diagnostic
+                // command). Keep null for shape consistency.
+                'raw_envelope' => null,
+                'resolved_at' => null,
+            ];
+        }
+
+        return $section;
+    }
+
+    /**
+     * `business_date` is DATE on PG/SQLite. Coerce to YYYY-MM-DD.
+     */
+    private function normalizeBusinessDate(mixed $value): string
+    {
+        if ($value instanceof Carbon) {
+            return $value->toDateString();
+        }
+        $s = (string) $value;
+        if ($s === '') {
+            return '';
+        }
+
+        return Carbon::parse($s)->toDateString();
     }
 
     /**

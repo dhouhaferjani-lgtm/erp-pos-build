@@ -164,6 +164,16 @@ done <<< "$HITS"
 # constructor-injected property. Closes the round-1 P1 (gate previously
 # only substring-matched line_anchor; receiver_type / chokepoint /
 # calling_class were never validated against the code).
+#
+# Round-3 (Task 30 T30-R2-P1 fix): the validator requires
+# `apps/api/vendor/autoload.php` (Laravel reflection) which is NOT
+# installed in the lightweight `chokepoint-gate` CI job. The validator
+# is instead exercised at the PHPUnit layer (ChokepointCompletenessTest,
+# run in the backend-test-pgsql job which has composer install). To
+# allow the shell gate to remain composer-free, the validator is
+# auto-skipped when (a) SKIP_RECEIVER_TYPE_VALIDATOR=1 is set, or (b)
+# vendor/autoload.php is missing. Local developer runs (preflight)
+# always have vendor installed and so always run the full check.
 # ---------------------------------------------------------------------
 PHP_HELPER="$REPO_ROOT/apps/api/scripts/verify-chokepoint-manifest.php"
 if [[ ! -f "$PHP_HELPER" ]]; then
@@ -171,13 +181,22 @@ if [[ ! -f "$PHP_HELPER" ]]; then
     exit 2
 fi
 
-if command -v php >/dev/null 2>&1; then
+AUTOLOAD_PATH="$REPO_ROOT/apps/api/vendor/autoload.php"
+SKIP_RECEIVER_TYPE_VALIDATOR="${SKIP_RECEIVER_TYPE_VALIDATOR:-}"
+
+if [[ "$SKIP_RECEIVER_TYPE_VALIDATOR" == "1" ]]; then
+    echo "manifest receiver_type validator: SKIP — SKIP_RECEIVER_TYPE_VALIDATOR=1 (run via PHPUnit in backend-test-pgsql instead)"
+elif [[ ! -f "$AUTOLOAD_PATH" ]]; then
+    # vendor/autoload.php missing — no composer install in this context.
+    # The PHPUnit mirror (ChokepointCompletenessTest) will catch any
+    # manifest lie in the merge gate.
+    echo "manifest receiver_type validator: SKIP — vendor/autoload.php missing (run via PHPUnit in backend-test-pgsql instead)"
+elif ! command -v php >/dev/null 2>&1; then
+    echo "manifest receiver_type validator: SKIP — php CLI not installed (run via PHPUnit in backend-test-pgsql instead)"
+else
     if ! php "$PHP_HELPER" --manifest "$MANIFEST"; then
         FAILED=1
     fi
-else
-    echo "php CLI is required to run the receiver_type validator but is not installed." >&2
-    exit 2
 fi
 
 # ---------------------------------------------------------------------

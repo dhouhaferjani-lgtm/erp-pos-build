@@ -156,58 +156,116 @@ final class ChokepointCompletenessTest extends TestCase
 
     public function test_manifest_receiver_type_matches_calling_class_constructor(): void
     {
-        // Round-2 Codex T30-P1 closure: substring-matching line_anchor
-        // is not enough — the manifest's claims about receiver_type /
-        // calling_class must be validated against the actual code via
-        // PHP reflection. A typo / lie (e.g. mislabeling a real
-        // ReceiptCreationService caller as an InventoryCountingService
-        // receiver) MUST fail the gate.
+        // Round-3 (T30-R2-P1 / T30-R2-P2) closure: this test now
+        // shells out to verify-chokepoint-manifest.php — the canonical
+        // strict validator with receiver-expression parsing. Running
+        // the CLI helper via Symfony Process is the same path the
+        // shell gate uses (when SKIP_RECEIVER_TYPE_VALIDATOR is
+        // unset), so the two layers share one source of truth.
         //
-        // Strategy: walk each non-unrelated entry; reflect the
-        // calling_class; assert at least one constructor parameter is
-        // declared with a type matching (==) the manifest's
-        // receiver_type. Mirrors the shell gate's bin helper for
-        // defense in depth at the `php artisan test` layer.
-        foreach ($this->manifestEntries() as $entry) {
-            $chokepoint = is_string($entry['chokepoint'] ?? null) ? (string) $entry['chokepoint'] : '';
-            if ($chokepoint === 'unrelated') {
-                continue;
-            }
+        // This is the PHPUnit-layer mirror that runs in
+        // backend-test-pgsql — the CI workflow's PHP+composer-equipped
+        // job. The lightweight chokepoint-gate job skips the validator
+        // and relies on THIS test to catch manifest lies in the merge
+        // gate (round-3 T30-R2-P1).
+        $repoRoot = $this->repoRoot();
+        $helper = $repoRoot.'/apps/api/scripts/verify-chokepoint-manifest.php';
+        $this->assertFileExists($helper, 'Receiver-type validator helper is missing.');
 
-            $callingClass = is_string($entry['calling_class'] ?? null) ? (string) $entry['calling_class'] : '';
-            $receiverType = is_string($entry['receiver_type'] ?? null) ? (string) $entry['receiver_type'] : '';
-            $this->assertNotSame('', $callingClass, 'Entry missing calling_class');
-            $this->assertNotSame('', $receiverType, 'Entry missing receiver_type');
+        $process = new Process(['php', $helper], $repoRoot);
+        $process->run();
 
-            $this->assertTrue(
-                class_exists($callingClass),
-                sprintf('Manifest calling_class does not exist: %s', $callingClass),
-            );
+        $this->assertSame(
+            0,
+            $process->getExitCode(),
+            sprintf(
+                "Receiver-type validator failed against the live manifest. stdout:\n%s\nstderr:\n%s",
+                $process->getOutput(),
+                $process->getErrorOutput(),
+            ),
+        );
+        $this->assertStringContainsString(
+            'manifest receiver_type validator: PASS',
+            $process->getOutput(),
+            'Validator must print PASS banner on success.',
+        );
+    }
 
-            $refl = new \ReflectionClass($callingClass);
-            $matched = false;
-            $ctor = $refl->getConstructor();
-            if ($ctor !== null) {
-                foreach ($ctor->getParameters() as $param) {
-                    $paramType = $param->getType();
-                    if (! $paramType instanceof \ReflectionNamedType) {
-                        continue;
-                    }
-                    if ($paramType->getName() === $receiverType) {
-                        $matched = true;
-                        break;
-                    }
-                }
-            }
+    public function test_negative_manifest_with_wrong_receiver_for_multi_dependency_class_is_rejected(): void
+    {
+        // Round-3 (T30-R2-P2) closure: the receiver_type validator
+        // must catch a MIS-LABELED receiver on a multi-dependency
+        // class. ExchangeService injects BOTH ReceiptCreationService
+        // AND ReceiptFinalizationService. A manifest entry that
+        // claims `receiver_type: ReceiptCreationService` for a line
+        // that is actually `$this->finalizationService->finalize(`
+        // MUST FAIL — the strengthened validator parses the receiver
+        // expression and looks up THAT specific property's type.
+        // Without this check, the round-2 validator passes because
+        // ReceiptCreationService IS a constructor parameter on
+        // ExchangeService — just not the one being called.
+        $repoRoot = $this->repoRoot();
+        $helper = $repoRoot.'/apps/api/scripts/verify-chokepoint-manifest.php';
+        $this->assertFileExists($helper);
 
-            $this->assertTrue(
-                $matched,
+        $tmpManifest = tempnam(sys_get_temp_dir(), 'manifest-multi-dep-');
+        $this->assertIsString($tmpManifest);
+
+        $bad = [
+            'schema_version' => '1.1',
+            'spec_anchor' => 'unit-test fabricated',
+            'notes' => 'negative test — multi-dependency mis-label',
+            'entries' => [
+                [
+                    'file' => 'apps/api/app/Modules/POS/Application/Services/ExchangeService.php',
+                    // The real line text. The validator must parse
+                    // `$this->finalizationService` from this anchor.
+                    'line_anchor' => '$saleDraft = $this->finalizationService->finalize($saleDraft);',
+                    'calling_class' => 'App\\Modules\\POS\\Application\\Services\\ExchangeService',
+                    'calling_method' => 'processExchange',
+                    // LIE: receiver_type claims ReceiptCreationService
+                    // but the actual receiver is finalizationService
+                    // (typed as ReceiptFinalizationService).
+                    'receiver_type' => 'App\\Modules\\POS\\Application\\Services\\ReceiptCreationService',
+                    'chokepoint' => 'finalize',
+                    'disposition' => 'b',
+                    'live' => false,
+                    'retired_in_task' => 'fake',
+                    'note' => 'fabricated multi-dep mis-label',
+                ],
+            ],
+        ];
+        file_put_contents($tmpManifest, json_encode($bad, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+
+        try {
+            $process = new Process(['php', $helper, '--manifest', $tmpManifest], $repoRoot);
+            $process->run();
+            $exit = $process->getExitCode();
+            $this->assertSame(
+                1,
+                $exit,
                 sprintf(
-                    'receiver_type %s NOT found as a constructor parameter on %s — manifest lies about the receiver',
-                    $receiverType,
-                    $callingClass,
+                    'Strict validator MUST reject a mis-labeled receiver_type on a multi-dependency class. '
+                    .'Exit=%s; stderr: %s',
+                    var_export($exit, true),
+                    $process->getErrorOutput(),
                 ),
             );
+            $this->assertStringContainsString(
+                'MANIFEST_LIE',
+                $process->getErrorOutput(),
+                'Validator must emit MANIFEST_LIE diagnostic for a mis-labeled multi-dep receiver.',
+            );
+            // The new strict path identifies the actual property in
+            // the diagnostic — `finalizationService` declared as
+            // ReceiptFinalizationService.
+            $this->assertStringContainsString(
+                'finalizationService',
+                $process->getErrorOutput(),
+                'Diagnostic must name the actual receiver property.',
+            );
+        } finally {
+            @unlink($tmpManifest);
         }
     }
 
