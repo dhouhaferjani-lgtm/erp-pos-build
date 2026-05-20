@@ -521,6 +521,30 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         self::assertSame($committedBytes, $generatedBytes, 'Committed F-15 payload.json must match generator output byte-for-byte (deterministic re-generation invariant).');
     }
 
+    /**
+     * Pass 2A.PHP.2 — close Opus P3 #2 determinism deferral.
+     *
+     * Constructing the F-15 fixture via the generator helper TWICE must
+     * produce byte-identical canonical output. Locks the property that
+     * the generator depends only on its inputs (no clock / RNG / global
+     * state) — a future regression that injected `Str::uuid()` or
+     * `microtime()` into the generator would be caught here.
+     */
+    public function test_f15_large_receipt_generator_is_deterministic_via_double_construction(): void
+    {
+        $gen1 = LargeReceiptFixtureGenerator::generate();
+        $gen2 = LargeReceiptFixtureGenerator::generate();
+
+        $bytes1 = GoldenFixtureBuilder::jcsCanonicalEncode($gen1['payload']);
+        $bytes2 = GoldenFixtureBuilder::jcsCanonicalEncode($gen2['payload']);
+
+        self::assertSame(
+            $bytes1,
+            $bytes2,
+            'F-15 generator must be deterministic: two constructions in the same process must emit byte-identical JCS canonical bytes (Opus P3 #2 closure).'
+        );
+    }
+
     // =================================================================
     // Defensive — invalid currency_scale at the boundary
     // =================================================================

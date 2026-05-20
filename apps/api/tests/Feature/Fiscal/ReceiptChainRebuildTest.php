@@ -296,24 +296,73 @@ final class ReceiptChainRebuildTest extends TestCase
 
     public function test_build_export_snapshot_hydrates_dto_from_canonical_payload_for_fiscal_event_backed_receipts(): void
     {
-        // Round-3 (T30-R2-B1) closure: for fiscal_event-backed receipts
-        // with fiscal_events.payload_parse_status='parsed', the export
-        // MUST source monetary fields (subtotal, tax_total → tax_amount,
-        // discount_total → discount_amount, total, currency) from the
-        // AUTHORITATIVE server-parsed payload, NOT from the pos_receipts
-        // mirror. A tampered pos_receipts.total no longer surfaces in
-        // the export.
+        // Pass 2A.PHP.2 — emit 27-key Candidate C-v3 payload per
+        // synthesis v5 §3. The Nf525DataProvider now reads via
+        // CanonicalPayloadReader (mapSaleReceiptFromCanonical) and sources
+        // monetary fields directly from the canonical payload — same
+        // contract (canonical authoritative, mirror is read-through),
+        // updated field names (vat_total / transaction_discount_amount /
+        // currency_code).
         $payload = [
-            'currency' => 'EUR',
+            'business_date' => Carbon::now('UTC')->toDateString(),
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'EUR',
             'currency_scale' => 2,
-            'lines' => [],
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.00',
+                'line_discount_reason' => null,
+                'line_subtotal' => '50.00',
+                'line_vat' => '10.00',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'X',
+                'tax_category_code' => '',
+                'unit_price' => '50.00',
+                'vat_rate' => '20.00',
+            ]],
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => [[
+                'amount' => '60.00',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Paris', 'country_code' => 'FR', 'postal_code' => '75001', 'street' => '1 rue de la Paix'],
+                'name' => 'Default Seller S.A.',
+                'tax_jurisdiction_country_code' => 'FR',
+                'tax_number' => '12345678901234',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => '50.00',
-            'discount_total' => '0.00',
-            'tax_total' => '10.00',
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => '60.00',
-            'vat_breakdown' => [],
-            'payment_lines' => [],
-            'voucher_redemptions' => [],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.00',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '60.00',
+                'net_amount' => '50.00',
+                'rate' => '20.00',
+                'tax_category_code' => '',
+                'vat_amount' => '10.00',
+            ]],
+            'vat_total' => '10.00',
+            'vouchers_redeemed' => [],
         ];
         $canonicalBytes = json_encode($payload, JSON_THROW_ON_ERROR);
         $currentHash = hash('sha256', $canonicalBytes);

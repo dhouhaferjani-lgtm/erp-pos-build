@@ -22,44 +22,58 @@ use PHPUnit\Framework\TestCase;
  * than runtime checks here because the failure mode they prevent is at
  * import time, not invocation time.
  *
- * **Divergence from synthesis v5 §5 — Treasury intentionally excluded.**
- * Synthesis v5 §5 lists `App\Modules\Treasury\` as forbidden, but Pass
- * 2A.PHP.1 dispatch §0 Gap A resolves the `payment_method_id` FK puzzle
- * by routing the projector to `PaymentMethod::where('tenant_id', X)->where('code', Y)->first()`
- * — a legitimate runtime read. The Treasury FK lookup is NOT a sale-time
- * snapshot violation: payment-method rows are tenant-config (not customer
- * PII), and the projector idempotency guarantees deterministic resolution
- * (FK uniqueness is enforced by `payment_methods.unique(['tenant_id', 'code'])`).
- * The dispatch's Gap A resolution overrides v5 §5's Treasury entry.
- *
- * **Pass 2A.PHP.2** un-skip path: when Pass 2A.PHP.2 migrates the
- * projector to read `method_code` from canonical payload (not from a
- * cross-module `PaymentMethod::find($payment_method_id)`), the Treasury
- * import remains for FK lookup but the model-traversal patterns the
- * test ALSO forbids (`PaymentMethod::all()`, etc.) stay rejected.
+ * **Pass 2A.PHP.2 closure (Opus P3).** PHP.2 introduces the
+ * `PaymentMethodResolver` interface in `App\Shared\Contracts\Fiscal\` so
+ * the projector never imports `App\Modules\Treasury\` directly. Treasury
+ * is therefore RE-ADDED to the forbidden-pattern set (it was excluded in
+ * PHP.1 because the projector still needed `Treasury\Domain\PaymentMethod`
+ * for the FK lookup). PHP.2 also widens the Eloquent static-call surface
+ * to cover model-traversal patterns the import-line check alone would
+ * miss (e.g. `Customer::find()` in projector code without a top-level
+ * `use App\Modules\Customer\Domain\Customer` because the use is somewhere
+ * else, or a fully-qualified call). The static-call regexes match the
+ * `::` operator on capitalized identifiers we never want to see in the
+ * projector body.
  */
 final class PosCoreReceiptProjectionD16Test extends TestCase
 {
     private const PROJECTION_FILE = __DIR__.'/../../../app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php';
 
     /**
-     * Forbidden patterns — synthesis v5 §5 minus Treasury (per dispatch
-     * Gap A). Each pattern is a regex applied to the file contents.
+     * Forbidden patterns — synthesis v5 §5 PLUS Treasury (Pass 2A.PHP.2 — the
+     * `PaymentMethodResolver` seam in `App\Shared\Contracts\Fiscal\` closes
+     * the dispatch §0 Gap A, so the projector no longer imports Treasury
+     * directly).
      *
      * @return list<array{name: string, pattern: string, rationale: string}>
      */
     private function forbiddenPatterns(): array
     {
         return [
+            // Direct module imports — synthesis v5 §5.
             ['name' => 'customer-module-direct', 'pattern' => '/\\buse\\s+App\\\\Modules\\\\Customer\\\\/', 'rationale' => 'D16: buyer snapshot in payload; no live customer lookup'],
             ['name' => 'contact-module-direct', 'pattern' => '/\\buse\\s+App\\\\Modules\\\\Contact\\\\/', 'rationale' => 'D16: buyer snapshot in payload; no live contact lookup'],
             ['name' => 'b2b-module-direct', 'pattern' => '/\\buse\\s+App\\\\Modules\\\\B2B\\\\/', 'rationale' => 'D16: B2B buyer data is sale-time snapshot'],
             ['name' => 'accounting-module-direct', 'pattern' => '/\\buse\\s+App\\\\Modules\\\\Accounting\\\\/', 'rationale' => 'D16: accounting is downstream consumer, not upstream source'],
+            // Pass 2A.PHP.2 — Treasury back in forbidden patterns. The
+            // PaymentMethodResolver seam in App\Shared\Contracts\Fiscal\
+            // is the projector's ONLY entry point to Treasury reference
+            // data; direct module imports are forbidden.
+            ['name' => 'treasury-module-direct', 'pattern' => '/\\buse\\s+App\\\\Modules\\\\Treasury\\\\/', 'rationale' => 'D16 + Pass 2A.PHP.2: Treasury seam is App\\Shared\\Contracts\\Fiscal\\PaymentMethodResolver; no direct Treasury imports'],
+            // Indirect coupling via contract.
             ['name' => 'customer-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Customer\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
             ['name' => 'contact-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Contact\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
             ['name' => 'b2b-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\B2B\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
-            ['name' => 'treasury-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Treasury\\\\/', 'rationale' => 'D16: Treasury FK lookup uses direct model (Gap A); contract is wider surface'],
             ['name' => 'accounting-contract-indirect', 'pattern' => '/\\buse\\s+App\\\\Shared\\\\Contracts\\\\Accounting\\\\/', 'rationale' => 'D16: indirect coupling via contract is still coupling'],
+            // Pass 2A.PHP.2 — Eloquent static-call surface (Opus P3 expansion).
+            // Catches model-traversal patterns that an import-only check
+            // would miss (fully-qualified static calls, or imports hidden
+            // elsewhere in the file).
+            ['name' => 'customer-static-call', 'pattern' => '/\\bCustomer::/', 'rationale' => 'D16: Customer Eloquent traversal forbidden — buyer is sealed snapshot'],
+            ['name' => 'contact-static-call', 'pattern' => '/\\bContact::/', 'rationale' => 'D16: Contact Eloquent traversal forbidden — buyer is sealed snapshot'],
+            ['name' => 'b2b-static-call', 'pattern' => '/\\bB2B::/', 'rationale' => 'D16: B2B Eloquent traversal forbidden — buyer is sealed snapshot'],
+            ['name' => 'treasury-payment-static-call', 'pattern' => '/\\bTreasuryPayment::/', 'rationale' => 'D16 + Pass 2A.PHP.2: Treasury operational model traversal forbidden'],
+            // CLAUDE.md rule 13 — constructor injection only.
             ['name' => 'app-helper-container-resolved', 'pattern' => '/\\bapp\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
             ['name' => 'app-make-container-resolved', 'pattern' => '/\\bApp::make\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],
             ['name' => 'resolve-container-resolved', 'pattern' => '/\\bresolve\\s*\\(/', 'rationale' => 'CLAUDE.md rule 13: constructor injection only'],

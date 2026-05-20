@@ -190,6 +190,14 @@ class Receipt extends Model
         // compatibility with rows that pre-date the rebuild.
         'canonical_bytes',
         'fiscal_event_id',
+        // Pass 2A.PHP.1 (synthesis v5 §3) — projector-consumed columns from
+        // the 27-key canonical SALE_RECEIPT payload. `invoice_type_code` ∈
+        // {SALE, REFUND, VOID, TRAINING}; `training_flag` is denormalized
+        // from `invoice_type_code == 'TRAINING'` and the universal report-
+        // filter path. Sealed-at-INSERT; the immutability trigger forbids
+        // subsequent UPDATEs (they sit outside the void-whitelist by design).
+        'invoice_type_code',
+        'training_flag',
     ];
 
     /**
@@ -213,6 +221,7 @@ class Receipt extends Model
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'is_training' => 'boolean',
+            'training_flag' => 'boolean',
             'voided_at' => 'datetime',
             'synced_at' => 'datetime',
             'discount_breakdown' => 'array',

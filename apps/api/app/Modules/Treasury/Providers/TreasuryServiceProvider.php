@@ -6,8 +6,10 @@ namespace App\Modules\Treasury\Providers;
 
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +24,17 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->singleton(
             PaymentToleranceCheckerContract::class,
             PaymentToleranceService::class,
+        );
+
+        // Pass 2A.PHP.2 — bind the PaymentMethodResolver seam (synthesis v5
+        // §8.B + dispatch §0 Gap A). The 27-key canonical SALE_RECEIPT
+        // payload no longer carries `payment_method_id` per-payment; the POS
+        // projector resolves the tenant-scoped FK from `(tenant_id, method_code)`
+        // via this interface so POS module never imports Treasury directly
+        // (SoT §13.6/D16 bounded-modules asymmetric seam).
+        $this->app->singleton(
+            PaymentMethodResolver::class,
+            EloquentPaymentMethodResolver::class,
         );
 
         // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector

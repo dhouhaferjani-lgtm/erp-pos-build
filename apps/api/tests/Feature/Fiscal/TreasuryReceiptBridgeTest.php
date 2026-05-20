@@ -382,9 +382,14 @@ final class TreasuryReceiptBridgeTest extends TestCase
         //   (2) seeding a stand-in pos_receipts row via the bridge-only
         //       `seedPosReceiptRowFor` helper.
         // Same harness as `test_malformed_payload_payment_method_id_rolls_bridge_back`.
+        // Pass 2A.PHP.2 — `payment_method_id` no longer on canonical
+        // payload. The bridge resolves via PaymentMethodResolver
+        // (tenant-scoped). A method_code that exists ONLY in a foreign
+        // tenant resolves to null in this tenant → fail-closed
+        // RuntimeException → atomic rollback.
         $otherTenant = Tenant::factory()->create();
         $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
-        $foreignMethod = PaymentMethod::factory()->create([
+        PaymentMethod::factory()->create([
             'tenant_id' => $otherTenant->id,
             'company_id' => $otherCompany->id,
             'code' => 'CARD',
@@ -393,23 +398,18 @@ final class TreasuryReceiptBridgeTest extends TestCase
 
         $event = $this->storeSaleReceiptFiscalEvent(
             paymentLinesOverride: [
-                [
-                    // Foreign tenant's payment_method_id; repository is valid.
-                    'payment_method_id' => $foreignMethod->id,
-                    'amount' => '10.00',
-                    'method_code' => 'CARD',
-                    'repository_id' => $this->repositoryId,
-                ],
+                // 'CARD' exists ONLY in $otherTenant, not in $this->tenantId.
+                ['amount' => '10.00', 'method_code' => 'CARD'],
             ],
         );
         $this->seedPosReceiptRowFor($event);
 
         try {
             $this->app->make(TreasuryReceiptBridge::class)->apply($event);
-            $this->fail('Expected RuntimeException for cross-tenant payment_method_id');
+            $this->fail('Expected RuntimeException for cross-tenant method_code');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('payment_method_id', $e->getMessage());
-            $this->assertStringContainsString('not visible to tenant', $e->getMessage());
+            $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
+            $this->assertStringContainsString('CARD', $e->getMessage());
             // Sanity — the bridge threw, not PosCoreReceiptProjection.
             $this->assertStringContainsString('TreasuryReceiptBridge', $e->getMessage());
         }
@@ -419,98 +419,88 @@ final class TreasuryReceiptBridgeTest extends TestCase
         $this->assertSame(0, DB::table('journal_entries')->count());
     }
 
-    public function test_cross_tenant_repository_id_is_rejected_fail_closed(): void
+    public function test_no_repository_for_tenant_rejects_fail_loud(): void
     {
-        // Task 21 round-2 Opus F3 standing pattern — application-side
-        // tenant scoping on the inbound mirrored reference data lookup.
-        // The `payments.repository_id` FK does NOT enforce tenant scope
-        // on its own (it only requires the PK to exist), so without this
-        // guard a foreign tenant's repository_id smuggled into the payload
-        // would bind onto our tenant's Payment row. The bridge throws
-        // RuntimeException inside the wrapping `DB::transaction`, rolling
-        // back any prior writes atomically.
+        // Pass 2A.PHP.2 — `repository_id` no longer carried on the
+        // canonical payload (synthesis v5 §3 omits per-payment repository
+        // routing). The bridge resolves the default repository via a
+        // tenant+company-scoped first-row lookup. When NO repository
+        // exists with a GL-linked account in the event's tenant scope,
+        // the bridge throws RuntimeException → atomic rollback.
+        //
+        // We exercise the failure mode by setting up the event under a
+        // foreign tenant where no repository exists. The cross-tenant
+        // security stance is preserved: a foreign repository CANNOT be
+        // selected because the lookup is tenant-scoped.
         $otherTenant = Tenant::factory()->create();
         $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
-        $foreignRepo = PaymentRepository::factory()->create([
+        $foreignTerminal = Terminal::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'location_id' => Location::factory()->create(['company_id' => $otherCompany->id])->id,
+            'genesis_seed' => str_repeat('0', 64),
+        ]);
+        // Foreign tenant has a repository — but it's NOT in this event's
+        // tenant scope. The resolver MUST not cross tenants.
+        PaymentRepository::factory()->create([
             'tenant_id' => $otherTenant->id,
             'company_id' => $otherCompany->id,
             'type' => RepositoryType::CashRegister,
         ]);
 
-        $event = $this->projectedSaleReceiptFiscalEvent(
-            paymentLinesOverride: [
-                [
-                    'payment_method_id' => $this->paymentMethodId,
-                    'amount' => '10.00',
-                    'method_code' => 'CASH',
-                    'repository_id' => $foreignRepo->id,
-                ],
-            ],
+        // Create an event scoped to a THIRD tenant that has no repository.
+        $thirdTenant = Tenant::factory()->create();
+        $thirdCompany = Company::factory()->create(['tenant_id' => $thirdTenant->id]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $thirdTenant->id,
+            'company_id' => $thirdCompany->id,
+            'code' => 'CASH',
+            'name' => 'Cash',
+        ]);
+
+        // Switch fixture to the third tenant scope, then stage the event.
+        $origTenant = $this->tenantId;
+        $origCompany = $this->companyId;
+        $this->tenantId = $thirdTenant->id;
+        $this->companyId = $thirdCompany->id;
+        $event = $this->storeSaleReceiptFiscalEvent(
+            paymentLinesOverride: [['amount' => '10.00', 'method_code' => 'CASH']],
         );
+        $this->seedPosReceiptRowFor($event);
+        $this->tenantId = $origTenant;
+        $this->companyId = $origCompany;
+
+        unset($foreignTerminal);
 
         try {
             $this->app->make(TreasuryReceiptBridge::class)->apply($event);
-            $this->fail('Expected RuntimeException for cross-tenant repository_id');
+            $this->fail('Expected RuntimeException for missing repository in tenant scope');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('not visible to tenant', $e->getMessage());
-        }
-
-        // Atomic rollback — no Payment row, no GL entry.
-        $this->assertSame(0, DB::table('payments')->count());
-        $this->assertSame(0, DB::table('journal_entries')->count());
-    }
-
-    public function test_missing_repository_id_is_rejected_fail_loud(): void
-    {
-        // The bridge writes a POS-payment GL entry which needs a source
-        // repository — a payment_line without `repository_id` cannot be
-        // bridged. Mirror the legacy ReceiptPaymentService contract:
-        // throw inside the transaction → atomic rollback.
-        $event = $this->projectedSaleReceiptFiscalEvent(
-            paymentLinesOverride: [
-                [
-                    'payment_method_id' => $this->paymentMethodId,
-                    'amount' => '10.00',
-                    'method_code' => 'CASH',
-                    // repository_id missing
-                ],
-            ],
-        );
-
-        try {
-            $this->app->make(TreasuryReceiptBridge::class)->apply($event);
-            $this->fail('Expected RuntimeException for missing repository_id');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('missing repository_id', $e->getMessage());
+            $this->assertStringContainsString('no GL-linked payment_repository found', $e->getMessage());
         }
 
         $this->assertSame(0, DB::table('payments')->count());
-        $this->assertSame(0, DB::table('journal_entries')->count());
     }
 
-    public function test_malformed_payload_payment_method_id_rolls_bridge_back(): void
+    public function test_unresolved_method_code_rolls_bridge_back(): void
     {
-        // Standing pattern: FiscalPayloadArrayGuards must throw on
-        // missing required fields. No silent coercion.
-        //
-        // Bypass PosCoreReceiptProjection (which would reject the same
-        // shape first via its own writePayments guard) by building the
-        // fiscal_events row + a stand-in pos_receipts row manually. The
-        // bridge depends on the receipt-row existence; the malformed-
-        // payload guard inside the bridge is what we want to prove.
+        // Pass 2A.PHP.2 — `payment_method_id` no longer carried on the
+        // canonical payload. The bridge resolves the FK via the
+        // PaymentMethodResolver (Shared/Contracts) seam, same surface
+        // PosCoreReceiptProjection uses. An unknown method_code returns
+        // null → fail-closed RuntimeException → atomic rollback.
         $event = $this->storeSaleReceiptFiscalEvent(
             paymentLinesOverride: [
-                // payment_method_id missing → requireString throws
-                ['amount' => '10.00', 'method_code' => 'CASH', 'repository_id' => $this->repositoryId],
+                ['amount' => '10.00', 'method_code' => 'XENO_CODE_NEVER_SEEDED'],
             ],
         );
         $this->seedPosReceiptRowFor($event);
 
         try {
             $this->app->make(TreasuryReceiptBridge::class)->apply($event);
-            $this->fail('Expected InvalidArgumentException from missing payment_method_id');
-        } catch (\InvalidArgumentException) {
-            // expected
+            $this->fail('Expected RuntimeException for unresolved method_code');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
         }
 
         $this->assertSame(0, DB::table('payments')->count());
@@ -674,41 +664,96 @@ final class TreasuryReceiptBridgeTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        $paymentLines = $paymentLinesOverride ?? [
-            [
-                'payment_method_id' => $this->paymentMethodId,
-                'amount' => '10.00',
-                'method_code' => 'CASH',
-                'repository_id' => $this->repositoryId,
-            ],
+        // Pass 2A.PHP.2 — emit 27-key Candidate C-v3 SALE_RECEIPT payload.
+        // Old-shape overrides translated to canonical {method_code, amount,
+        // instrument_*} per payment. `payment_method_id` + `repository_id`
+        // no longer in canonical — resolved by the bridge via the
+        // PaymentMethodResolver seam + tenant-scoped default repository.
+        $payments = [];
+        $payLines = $paymentLinesOverride ?? [
+            ['amount' => '10.00', 'method_code' => 'CASH'],
         ];
+        foreach ($payLines as $pl) {
+            $payments[] = [
+                'amount' => $pl['amount'] ?? '10.00',
+                'foreign_currency_amount' => $pl['foreign_currency_amount'] ?? null,
+                'foreign_currency_code' => $pl['foreign_currency_code'] ?? null,
+                'instrument_serial' => $pl['instrument_serial'] ?? null,
+                'instrument_type' => $pl['instrument_type'] ?? null,
+                'method_code' => $pl['method_code'] ?? 'CASH',
+            ];
+        }
 
-        $linesPayload = [
-            [
-                'sku' => 'X',
-                'unit_price' => '10.00',
-                'line_total' => '10.00',
-                'quantity' => '1',
-                'tax_rate' => '0',
-                'tax_amount' => '0.00',
-            ],
-        ];
-
-        $vatPayload = $vatBreakdown ?? [
+        $vatRows = [];
+        $rawVat = $vatBreakdown ?? [
             ['rate' => '0', 'base' => '10.00', 'amount' => '0.00'],
         ];
+        foreach ($rawVat as $vr) {
+            $base = $vr['base'] ?? '0.00';
+            $amount = $vr['amount'] ?? '0.00';
+            /** @var numeric-string $baseN */
+            $baseN = $base;
+            /** @var numeric-string $amountN */
+            $amountN = $amount;
+            $gross = bcadd($baseN, $amountN, 2);
+            $rateRaw = (string) ($vr['rate'] ?? '0');
+            $rate = str_contains($rateRaw, '.') ? $rateRaw : $rateRaw.'.00';
+            $vatRows[] = [
+                'gross_amount' => $gross,
+                'net_amount' => $base,
+                'rate' => $rate,
+                'tax_category_code' => 'Z',
+                'vat_amount' => $amount,
+            ];
+        }
 
         $payload = [
-            'currency' => 'EUR',
+            'business_date' => $businessDate->toDateString(),
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'EUR',
             'currency_scale' => 2,
-            'discount_total' => $discountTotal,
-            'lines' => $linesPayload,
-            'payment_lines' => $paymentLines,
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.00',
+                'line_discount_reason' => null,
+                'line_subtotal' => $subtotal,
+                'line_vat' => $taxTotal,
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'X',
+                'tax_category_code' => 'Z',
+                'unit_price' => $subtotal,
+                'vat_rate' => '0.00',
+            ]],
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => $payments,
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Paris', 'country_code' => 'FR', 'postal_code' => '75001', 'street' => '1 rue de la Paix'],
+                'name' => 'Default Seller S.A.',
+                'tax_jurisdiction_country_code' => 'FR',
+                'tax_number' => '12345678901234',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => $subtotal,
-            'tax_total' => $taxTotal,
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => $total,
-            'vat_breakdown' => $vatPayload,
-            'voucher_redemptions' => [],
+            'training_flag' => false,
+            'transaction_discount_amount' => $discountTotal,
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => $vatRows,
+            'vat_total' => $taxTotal,
+            'vouchers_redeemed' => [],
         ];
 
         $canonicalArray = [

@@ -92,35 +92,19 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_from_array_to_array_roundtrip(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $data = [
-            'currency' => 'TND',
-            'currency_scale' => 3,
-            'lines' => [
-                ['product_id' => 'p-1', 'quantity' => '2', 'unit_price' => '5.000', 'line_total' => '10.000', 'vat_rate' => '7'],
-            ],
-            'subtotal' => '10.000',
-            'discount_total' => '0.000',
-            'tax_total' => '0.700',
-            'total' => '10.700',
-            'vat_breakdown' => [
-                ['rate' => '7', 'base' => '10.000', 'amount' => '0.700'],
-            ],
-            'payment_lines' => [
-                ['payment_method_id' => 'pm-cash', 'amount' => '10.700', 'tendered' => '11.000', 'change' => '0.300'],
-            ],
-            'voucher_redemptions' => [],
-        ];
+        // Pass 2A.PHP.2 — 27-key Candidate C-v3 round-trip.
+        $data = $this->canonicalSaleReceiptArray();
 
         $dto = SaleReceiptPayload::fromArray($data);
 
-        $this->assertSame('TND', $dto->currency);
+        $this->assertSame('TND', $dto->currencyCode);
         $this->assertSame(3, $dto->currencyScale);
-        $this->assertSame($data, $dto->toArray());
+        // The DTO sorts on output via fixed-order toArray(); compare on the
+        // sorted form.
+        ksort($data);
+        $out = $dto->toArray();
+        ksort($out);
+        $this->assertSame($data, $out);
     }
 
     public function test_chain_break_detected_payload_from_array_to_array_roundtrip(): void
@@ -182,12 +166,11 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // message instead.
     public function test_from_array_rejects_missing_required_keys_on_every_implemented_dto(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $this->assertThrowsInvalidArg(fn () => SaleReceiptPayload::fromArray([]), 'currency');
+        // Pass 2A.PHP.2 — `currency_code` replaces `currency` in the 27-key
+        // contract; first required key (alphabetical) is `business_date`.
+        // The DTO's fromArray() validates via FiscalPayloadArrayGuards which
+        // throws "missing required key: <key>" for the first one it hits.
+        $this->assertThrowsInvalidArg(fn () => SaleReceiptPayload::fromArray([]), 'seller');
         $this->assertThrowsInvalidArg(fn () => ChainBreakDetectedPayload::fromArray([]), 'reason');
         $this->assertThrowsInvalidArg(fn () => ChainRestartPayload::fromArray([]), 'new_genesis_reference');
         $this->assertThrowsInvalidArg(fn () => TerminalRegistrySnapshotPayload::fromArray([]), 'terminals');
@@ -201,26 +184,13 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // is_string() and rejects floats outright.
     public function test_sale_receipt_payload_rejects_float_monetary_fields(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $base = [
-            'currency' => 'TND',
-            'currency_scale' => 3,
-            'lines' => [],
-            'subtotal' => '0.000',
-            'discount_total' => '0.000',
-            'tax_total' => '0.000',
-            'total' => '0.000',
-            'vat_breakdown' => [],
-            'payment_lines' => [],
-            'voucher_redemptions' => [],
-        ];
+        // Pass 2A.PHP.2 — 27-key contract; money fields renamed per
+        // synthesis v5 §3 (tax_total → vat_total, discount_total →
+        // transaction_discount_amount).
+        $base = $this->canonicalSaleReceiptArray();
 
         // Float in monetary fields — every cast-site must reject.
-        foreach (['subtotal', 'discount_total', 'tax_total', 'total'] as $key) {
+        foreach (['subtotal', 'transaction_discount_amount', 'vat_total', 'total'] as $key) {
             $data = $base;
             $data[$key] = 10.5;
             try {
@@ -235,23 +205,9 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_int_currency_scale(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $base = [
-            'currency' => 'TND',
-            'currency_scale' => '3', // string instead of int — must reject (no silent coercion)
-            'lines' => [],
-            'subtotal' => '0.000',
-            'discount_total' => '0.000',
-            'tax_total' => '0.000',
-            'total' => '0.000',
-            'vat_breakdown' => [],
-            'payment_lines' => [],
-            'voucher_redemptions' => [],
-        ];
+        // Pass 2A.PHP.2 — 27-key contract; currency_scale must be int.
+        $base = $this->canonicalSaleReceiptArray();
+        $base['currency_scale'] = '3'; // string instead of int — must reject
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/currency_scale.*int/');
@@ -260,18 +216,9 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_bool_currency_scale(): void
     {
-        $base = [
-            'currency' => 'TND',
-            'currency_scale' => true, // bool — must reject (is_int(true) === false)
-            'lines' => [],
-            'subtotal' => '0.000',
-            'discount_total' => '0.000',
-            'tax_total' => '0.000',
-            'total' => '0.000',
-            'vat_breakdown' => [],
-            'payment_lines' => [],
-            'voucher_redemptions' => [],
-        ];
+        // Pass 2A.PHP.2 — bool currency_scale must reject (is_int(true) === false).
+        $base = $this->canonicalSaleReceiptArray();
+        $base['currency_scale'] = true;
 
         $this->expectException(\InvalidArgumentException::class);
         SaleReceiptPayload::fromArray($base);
@@ -279,26 +226,12 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_array_lines(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $base = [
-            'currency' => 'TND',
-            'currency_scale' => 3,
-            'lines' => 'not an array',
-            'subtotal' => '0.000',
-            'discount_total' => '0.000',
-            'tax_total' => '0.000',
-            'total' => '0.000',
-            'vat_breakdown' => [],
-            'payment_lines' => [],
-            'voucher_redemptions' => [],
-        ];
+        // Pass 2A.PHP.2 — 27-key list container renamed to `line_items`.
+        $base = $this->canonicalSaleReceiptArray();
+        $base['line_items'] = 'not an array';
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessageMatches('/lines.*array/');
+        $this->expectExceptionMessageMatches('/line_items.*array/');
         SaleReceiptPayload::fromArray($base);
     }
 
@@ -367,5 +300,78 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString($missingKey, $e->getMessage());
         }
+    }
+
+    /**
+     * Pass 2A.PHP.2 — 27-key canonical SALE_RECEIPT array used by DTO
+     * round-trip + negative tests. Mirrors GoldenFixtureBuilder F-01 in
+     * structure but kept local to avoid coupling unit-test scope to the
+     * Helpers/Fiscal/ directory.
+     *
+     * @return array<string, mixed>
+     */
+    private function canonicalSaleReceiptArray(): array
+    {
+        return [
+            'business_date' => '2026-05-20',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '10.000',
+                'line_vat' => '0.700',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '2.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '5.000',
+                'vat_rate' => '7.00',
+            ]],
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => [[
+                'amount' => '10.700',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567A/A/A/000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'subtotal' => '10.000',
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'total' => '10.700',
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '10.700',
+                'net_amount' => '10.000',
+                'rate' => '7.00',
+                'tax_category_code' => '',
+                'vat_amount' => '0.700',
+            ]],
+            'vat_total' => '0.700',
+            'vouchers_redeemed' => [],
+        ];
     }
 }

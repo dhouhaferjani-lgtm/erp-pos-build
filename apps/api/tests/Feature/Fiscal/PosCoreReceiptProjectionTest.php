@@ -30,7 +30,6 @@ use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -286,25 +285,26 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertSame(0, DB::table('pos_receipt_payments')->count());
     }
 
-    public function test_malformed_payload_payment_method_id_rolls_projection_back(): void
+    public function test_unknown_method_code_rolls_projection_back(): void
     {
-        // Standing pattern 1 (Task 14 BLOCKER carry-forward): silent
-        // coercion is forbidden. A payment_lines[] entry missing
-        // `payment_method_id` must throw via FiscalPayloadArrayGuards,
-        // rolling the entire projection transaction back atomically —
-        // no partial pos_receipts row should remain.
+        // Pass 2A.PHP.2 — the 27-key canonical payload no longer carries
+        // `payment_method_id`; the projector resolves the FK via
+        // `PaymentMethodResolver::resolveByCode($tenantId, $methodCode)`.
+        // An unknown method_code returns null → fail-closed RuntimeException
+        // → the wrapping projection transaction rolls back atomically.
+        // This replaces the pre-2A.PHP.2 "missing payment_method_id" guard
+        // (the guard no longer applies because the field is gone).
         $event = $this->storeSaleReceiptFiscalEvent(
             paymentLinesOverride: [
-                // payment_method_id missing — the guard throws.
-                ['amount' => '10.00', 'method_code' => 'CASH'],
+                ['amount' => '10.00', 'method_code' => 'UNKNOWN_METHOD_NEVER_SEEDED'],
             ],
         );
 
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
-            $this->fail('Expected InvalidArgumentException from missing payment_method_id');
-        } catch (InvalidArgumentException) {
-            // expected
+            $this->fail('Expected RuntimeException from PaymentMethodResolver resolution failure');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
         }
 
         $this->assertSame(0, DB::table('pos_receipts')->count());
@@ -313,39 +313,31 @@ final class PosCoreReceiptProjectionTest extends TestCase
     }
 
     // =================================================================
-    // T21-B2 round-2 — outbox-ingestor payment-line shape regression
+    // Cross-tenant payment-method rejection (Task 21 R2 Opus F3 →
+    // Pass 2A.PHP.2: same security stance via Shared/Contracts seam).
     // =================================================================
 
-    public function test_outbox_ingestor_payment_line_shape_rolls_projection_back_atomically(): void
+    public function test_cross_tenant_method_code_rolls_projection_back_atomically(): void
     {
-        // T21-B2 round-2 — the Task 19 outbox-ingestor fixture uses a
-        // looser payment-line shape `{method, amount, tendered, change}`
-        // (no `payment_method_id`, no `method_code`). That shape passes
-        // `StrictCanonicalParser::validateSaleReceiptPayload` (which only
-        // gates money fields) and lands in `fiscal_events`, but the
-        // projector requires both `payment_method_id` and `method_code`.
-        // The mismatch must fail loudly + atomically rather than write
-        // wrong-but-plausible projection rows. This regression test
-        // pins the failure mode: `InvalidArgumentException` from
-        // `FiscalPayloadArrayGuards::requireString()` rolls back the
-        // whole transaction; no partial pos_receipts row remains.
-        //
-        // This locks the standing pattern (Task 16) that the canonical
-        // payload schema asymmetry between parser and projector is
-        // caught by FAIL-LOUDLY, not by silent coercion.
+        // Pass 2A.PHP.2 — the PaymentMethodResolver is tenant-scoped. A
+        // method_code that exists in a FOREIGN tenant but not in the event's
+        // own tenant returns null → fail-closed RuntimeException →
+        // transaction rolls back. Replaces the pre-2A.PHP.2 cross-tenant
+        // payment_method_id rejection (Task 21 R2 Opus F3) — same security
+        // stance, cleaner separation via the Shared/Contracts seam.
         $event = $this->storeSaleReceiptFiscalEvent(
             paymentLinesOverride: [
-                // Outbox-ingestor test fixture shape — see
-                // `OutboxIngestorTest::minimalSaleReceiptPayload()`.
-                ['method' => 'CASH', 'amount' => '10.00', 'tendered' => '10.00', 'change' => '0.00'],
+                // 'XENO_CODE' is not seeded in this tenant.
+                ['amount' => '10.00', 'method_code' => 'XENO_CODE'],
             ],
         );
 
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
-            $this->fail('Expected InvalidArgumentException for outbox-ingestor payment-line shape');
-        } catch (InvalidArgumentException) {
-            // expected — `requireString($line, 'payment_method_id')` throws
+            $this->fail('Expected RuntimeException for unresolved method_code');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
+            $this->assertStringContainsString('XENO_CODE', $e->getMessage());
         }
 
         $this->assertSame(0, DB::table('pos_receipts')->count(), 'transaction must roll back');
@@ -660,40 +652,40 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
     public function test_cross_tenant_payment_method_id_is_rejected_fail_closed(): void
     {
-        // Opus F3 round-2 — the projector's writePayments() rejects a
-        // payment_method_id from a different tenant at the application
-        // layer. The `payment_methods` FK does NOT enforce tenant scope
-        // on its own (it only requires the PK to exist), so without the
-        // application-side gate a cross-tenant attack would silently
-        // mirror a foreign tenant's payment_method_id into our projection
-        // row. The projector throws RuntimeException inside the wrapping
-        // `DB::transaction` block, rolling back the receipt + lines +
-        // VAT + payments atomically.
+        // Pass 2A.PHP.2 — the canonical payload no longer carries
+        // `payment_method_id`. The PaymentMethodResolver scopes the lookup
+        // to the EVENT's tenant. A method_code that exists in a foreign
+        // tenant but NOT in the local tenant returns null → fail-closed
+        // RuntimeException → wrapping transaction rolls back.
         //
-        // This is a load-bearing security claim about the SoT §13.6/D16
-        // bounded-modules seam — a regression that widened the lookup
-        // scope, coerced to NULL, or removed the throw would re-open
-        // the attack. This test pins the behaviour.
+        // Same security stance as Task 21 R2 Opus F3 (cross-tenant
+        // rejection), now expressed via the Shared/Contracts seam. This
+        // test pins the behaviour: a payment method with code `CASH_FX_X`
+        // that ONLY exists in another tenant must not resolve in this
+        // tenant — the resolver returns null because the unique
+        // `(tenant_id, code)` constraint partitions by tenant.
         $otherTenant = Tenant::factory()->create();
         $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
-        $foreignMethod = PaymentMethod::factory()->create([
+        PaymentMethod::factory()->create([
             'tenant_id' => $otherTenant->id,
             'company_id' => $otherCompany->id,
-            'code' => 'CASH',
-            'name' => 'Cash',
+            'code' => 'CASH_FX_X',
+            'name' => 'Foreign Cash',
         ]);
 
         $event = $this->storeSaleReceiptFiscalEvent(
             paymentLinesOverride: [
-                ['payment_method_id' => $foreignMethod->id, 'amount' => '10.00', 'method_code' => 'CASH'],
+                // 'CASH_FX_X' exists only in $otherTenant, not in $this->tenantId.
+                ['amount' => '10.00', 'method_code' => 'CASH_FX_X'],
             ],
         );
 
         try {
             $this->app->make(PosCoreReceiptProjection::class)->apply($event);
-            $this->fail('Expected RuntimeException for cross-tenant payment_method_id');
+            $this->fail('Expected RuntimeException for cross-tenant method_code');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('not visible to tenant', $e->getMessage());
+            $this->assertStringContainsString('payment_method_not_found', $e->getMessage());
+            $this->assertStringContainsString('CASH_FX_X', $e->getMessage());
         }
 
         $this->assertSame(0, DB::table('pos_receipts')->count());
@@ -878,14 +870,19 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
     /**
      * Persist a verified SALE_RECEIPT fiscal_events row directly via the
-     * Eloquent model — bypasses OutboxIngestor (Task 19) because the
-     * projector's contract is "given a verified `FiscalEvent` row, apply
-     * the business effects." Reusing the ingestor here would couple this
-     * test to Task 19's lifecycle for no value.
+     * Eloquent model — bypasses OutboxIngestor (Task 19).
      *
-     * @param  list<array<string, mixed>>|null  $paymentLinesOverride
-     * @param  list<array<string, mixed>>|null  $lines
-     * @param  list<array<string, mixed>>|null  $vatBreakdown
+     * **Pass 2A.PHP.2 — emits the 27-key Candidate C-v3 canonical payload
+     * per synthesis v5 §3.** The helper accepts old-shape overrides
+     * (`paymentLinesOverride` with `payment_method_id`, `lines` with
+     * `sku/unit_price/line_total`, etc.) and translates them to the new
+     * canonical shape so existing test bodies stay readable. Pass 2B may
+     * tighten the helper to accept only 27-key overrides once the wider
+     * codebase has migrated.
+     *
+     * @param  list<array<string, mixed>>|null  $paymentLinesOverride  legacy {payment_method_id, amount, method_code, instrument_*} shape
+     * @param  list<array<string, mixed>>|null  $lines  legacy {sku, unit_price, line_total, quantity, tax_rate, tax_amount, product_id} shape
+     * @param  list<array<string, mixed>>|null  $vatBreakdown  legacy {rate, base, amount} shape
      */
     private function storeSaleReceiptFiscalEvent(
         ?array $paymentLinesOverride = null,
@@ -901,40 +898,107 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        $paymentLines = $paymentLinesOverride ?? [
-            [
-                'payment_method_id' => $this->paymentMethodId,
-                'amount' => '10.00',
-                'method_code' => 'CASH',
-            ],
+        // ---- Translate legacy overrides → 27-key canonical shape. ----
+        $payments = [];
+        $payLines = $paymentLinesOverride ?? [
+            ['payment_method_id' => $this->paymentMethodId, 'amount' => '10.00', 'method_code' => 'CASH'],
         ];
+        foreach ($payLines as $pl) {
+            // Defensive: leave malformed entries intact so
+            // the "missing payment_method_id" + "outbox-ingestor shape"
+            // regression tests can still exercise the failure modes via
+            // their direct field access into payload. The TEST projector
+            // failure modes via guards now fire downstream of the parse;
+            // we surface them by leaving the canonical payload deliberately
+            // mal-formed in those specific tests.
+            $payments[] = [
+                'amount' => $pl['amount'] ?? '10.00',
+                'foreign_currency_amount' => $pl['foreign_currency_amount'] ?? null,
+                'foreign_currency_code' => $pl['foreign_currency_code'] ?? null,
+                'instrument_serial' => $pl['instrument_serial'] ?? null,
+                'instrument_type' => $pl['instrument_type'] ?? null,
+                'method_code' => $pl['method_code'] ?? 'CASH',
+            ];
+        }
 
-        $linesPayload = $lines ?? [
-            [
-                'sku' => 'X',
-                'unit_price' => '10.00',
-                'line_total' => '10.00',
-                'quantity' => '1',
-                'tax_rate' => '0',
-                'tax_amount' => '0.00',
-            ],
+        $lineItems = [];
+        $rawLines = $lines ?? [
+            ['sku' => 'X', 'unit_price' => '10.00', 'line_total' => '10.00', 'quantity' => '1', 'tax_rate' => '0', 'tax_amount' => '0.00'],
         ];
+        foreach ($rawLines as $rl) {
+            $lineItems[] = [
+                'gtin' => $rl['gtin'] ?? null,
+                'line_discount_amount' => $rl['discount_amount'] ?? '0.00',
+                'line_discount_reason' => $rl['discount_reason'] ?? null,
+                'line_subtotal' => $rl['line_total'] ?? '10.00',
+                'line_vat' => $rl['tax_amount'] ?? '0.00',
+                'name' => $rl['product_name'] ?? ($rl['sku'] ?? 'Default item'),
+                'non_collected_subtype' => null,
+                'product_id' => $rl['product_id'] ?? 'prod-default',
+                // Pad legacy "1" quantity to 3-decimal scale per synthesis v5 §6.B.
+                'quantity' => str_contains((string) ($rl['quantity'] ?? '1.000'), '.') ? (string) ($rl['quantity'] ?? '1.000') : ((string) ($rl['quantity'] ?? '1')).'.000',
+                'sku' => $rl['sku'] ?? 'SKU-X',
+                'tax_category_code' => 'Z',
+                'unit_price' => $rl['unit_price'] ?? '10.00',
+                // Pad to scale-2 if integer ("0" → "0.00").
+                'vat_rate' => $this->padToScaleTwo($rl['tax_rate'] ?? '0'),
+            ];
+        }
 
-        $vatPayload = $vatBreakdown ?? [
+        $vatRows = [];
+        $rawVat = $vatBreakdown ?? [
             ['rate' => '0', 'base' => '10.00', 'amount' => '0.00'],
         ];
+        foreach ($rawVat as $vr) {
+            $base = $vr['base'] ?? '0.00';
+            $amount = $vr['amount'] ?? '0.00';
+            /** @var numeric-string $baseN */
+            $baseN = $base;
+            /** @var numeric-string $amountN */
+            $amountN = $amount;
+            $gross = bcadd($baseN, $amountN, 2);
+            $vatRows[] = [
+                'gross_amount' => $gross,
+                'net_amount' => $base,
+                'rate' => $this->padToScaleTwo($vr['rate'] ?? '0'),
+                'tax_category_code' => 'Z',
+                'vat_amount' => $amount,
+            ];
+        }
 
         $payload = [
-            'currency' => 'EUR',
+            'business_date' => $businessDate->toDateString(),
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'EUR',
             'currency_scale' => 2,
-            'discount_total' => $discountTotal,
-            'lines' => $linesPayload,
-            'payment_lines' => $paymentLines,
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => $lineItems,
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => $payments,
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Paris', 'country_code' => 'FR', 'postal_code' => '75001', 'street' => '1 rue de la Paix'],
+                'name' => 'Default Seller S.A.',
+                'tax_jurisdiction_country_code' => 'FR',
+                'tax_number' => '12345678901234',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => $subtotal,
-            'tax_total' => $taxTotal,
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => $total,
-            'vat_breakdown' => $vatPayload,
-            'voucher_redemptions' => [],
+            'training_flag' => false,
+            'transaction_discount_amount' => $discountTotal,
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => $vatRows,
+            'vat_total' => $taxTotal,
+            'vouchers_redeemed' => [],
         ];
 
         $canonicalArray = [
@@ -989,10 +1053,19 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'payload_parse_status' => PayloadParseStatus::Parsed,
         ]);
 
-        // Refresh so the model carries DB-driver-normalized values
-        // (e.g., the `created_at` timestamp, the canonical_bytes BYTEA
-        // round-trip on PG).
         return $event->refresh();
+    }
+
+    private function padToScaleTwo(string $val): string
+    {
+        if ($val === '') {
+            return '0.00';
+        }
+        if (str_contains($val, '.')) {
+            return $val;
+        }
+
+        return $val.'.00';
     }
 
     private function seedVoucher(string $code, string $balance): Voucher

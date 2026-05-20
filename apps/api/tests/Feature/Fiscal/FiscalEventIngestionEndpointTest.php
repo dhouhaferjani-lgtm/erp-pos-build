@@ -118,11 +118,6 @@ final class FiscalEventIngestionEndpointTest extends TestCase
      */
     public function test_endpoint_ingests_a_valid_fiscal_event_envelope(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the SALE_RECEIPT payload helper(s) (minimalSaleReceiptPayload / correctedPayload / payload builders) '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         Sanctum::actingAs($this->user);
 
         $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
@@ -466,25 +461,75 @@ final class FiscalEventIngestionEndpointTest extends TestCase
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+     * synthesis v5 §3. Hand-balanced totals: subtotal 10.00 + vat_total
+     * 0.00 = total 10.00 + transaction_discount_amount 0.00.
+     *
+     * @return array<string, mixed>
+     */
     private function minimalSaleReceiptPayload(): array
     {
         return [
-            'currency' => 'EUR',
+            'business_date' => '2026-05-20',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'EUR',
             'currency_scale' => 2,
-            'discount_total' => '0.00',
-            'lines' => [
-                ['sku' => 'X', 'unit_price' => '10.00', 'line_total' => '10.00'],
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.00',
+                'line_discount_reason' => null,
+                'line_subtotal' => '10.00',
+                'line_vat' => '0.00',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'X',
+                'tax_category_code' => 'Z',
+                'unit_price' => '10.00',
+                'vat_rate' => '0.00',
+            ]],
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => [[
+                'amount' => '10.00',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Paris', 'country_code' => 'FR', 'postal_code' => '75001', 'street' => '1 rue de la Paix'],
+                'name' => 'Default Seller S.A.',
+                'tax_jurisdiction_country_code' => 'FR',
+                'tax_number' => '12345678901234',
             ],
-            'payment_lines' => [
-                ['method' => 'CASH', 'amount' => '10.00', 'tendered' => '10.00', 'change' => '0.00'],
-            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => '10.00',
-            'tax_total' => '0.00',
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => '10.00',
-            'vat_breakdown' => [
-                ['rate' => '0', 'base' => '10.00', 'amount' => '0.00'],
-            ],
-            'voucher_redemptions' => [],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.00',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '10.00',
+                'net_amount' => '10.00',
+                'rate' => '0.00',
+                'tax_category_code' => 'Z',
+                'vat_amount' => '0.00',
+            ]],
+            'vat_total' => '0.00',
+            'vouchers_redeemed' => [],
         ];
     }
 

@@ -6,6 +6,11 @@ namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\VatBreakdownDTO;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -72,6 +77,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         private readonly ZReportHashService $zReportHashService,
         private readonly ConnectionInterface $db,
         private readonly FiscalIntegrityProvider $integrityProvider,
+        private readonly CanonicalPayloadReader $canonicalReader,
     ) {}
 
     public function buildExportSnapshot(string $companyId, Carbon $from, Carbon $to): Nf525ExportSnapshot
@@ -580,24 +586,113 @@ final class Nf525DataProvider implements Nf525DataProviderContract
      */
     private function mapSaleReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
+        // Pass 2A.PHP.2 (synthesis v5 §8.B) — bifurcate by fiscal_event_id.
+        // Fiscal-event-backed receipts source per-line / per-payment /
+        // per-vat-row data from the canonical payload via CanonicalPayloadReader,
+        // capturing canonical-only fields (gtin, tax_category_code, etc.).
+        // Legacy (fiscal_event_id IS NULL) receipts fall through to
+        // mapSaleReceiptLegacy(), which preserves the pre-Pass-2A.PHP.2
+        // pos_receipt_lines / pos_receipt_payments / pos_receipt_vat_details
+        // Eloquent read path.
+        if ($receipt->fiscal_event_id !== null) {
+            $event = FiscalEvent::query()->find($receipt->fiscal_event_id);
+            // Defensive: a missing fiscal_events row (orphaned projection)
+            // falls back to the legacy path. The tamper-verification
+            // step upstream (verifyCanonicalBytesAndLoadPayload) already
+            // routed tampered rows to the tamperedSection, but a hard
+            // missing row defaults gracefully here.
+            if ($event !== null && $event->payload !== null) {
+                return $this->mapSaleReceiptFromCanonical($receipt, $event, $canonicalPayload);
+            }
+        }
+
+        return $this->mapSaleReceiptLegacy($receipt, $canonicalPayload);
+    }
+
+    /**
+     * Pass 2A.PHP.2 fiscal-event-backed path — synthesis v5 §8.B.
+     *
+     * @param  array<string, mixed>|null  $canonicalPayload  legacy resolveMonetaryFields fallback shape (round-3 T30-R2-B1).
+     */
+    private function mapSaleReceiptFromCanonical(Receipt $receipt, FiscalEvent $event, ?array $canonicalPayload): Nf525ReceiptData
+    {
+        $view = $this->canonicalReader->forSaleReceipt($event);
+
+        $lines = [];
+        foreach ($view->lineItems as $i => $line) {
+            $lines[] = $this->mapLineFromCanonical($line, $i + 1);
+        }
+        $payments = array_map([$this, 'mapPaymentFromCanonical'], $view->payments);
+        $vatDetails = array_map([$this, 'mapVatDetailFromCanonical'], $view->vatBreakdown);
+
+        $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
+
+        // Use the canonical payload directly for monetary fields. The
+        // legacy `resolveMonetaryFields` translates 10-key shape; the
+        // canonical view exposes the 27-key keys.
+        $payload = $view->payload;
+        $subtotal = $payload->subtotal;
+        $taxAmount = $payload->vatTotal;
+        $discountAmount = $payload->transactionDiscountAmount;
+        $total = $payload->total;
+        $currency = $payload->currencyCode;
+
+        return new Nf525ReceiptData(
+            id: (string) $receipt->id,
+            receiptNumber: $receipt->receipt_number,
+            terminalId: (string) $receipt->terminal_id,
+            postedAtIso8601: $receipt->posted_at->toIso8601String(),
+            chainSequence: (int) $receipt->chain_sequence,
+            fiscalHash: $receipt->fiscal_hash,
+            previousHash: $receipt->previous_hash,
+            subtotal: $subtotal,
+            taxAmount: $taxAmount,
+            discountAmount: $discountAmount,
+            total: $total,
+            currency: $currency,
+            cashierName: $receipt->cashier_name,
+            customerName: $receipt->customer_name,
+            lines: $lines,
+            vatDetails: $vatDetails,
+            payments: $payments,
+            voidedAtIso8601: null,
+            voidedBy: null,
+            voidReason: null,
+            originalReceiptId: $view->originalReceiptReference?->fiscalEventId,
+            returnReasonValue: $view->originalReceiptReference?->refundReason,
+            exchangeGroupId: $receipt->exchange_group_id,
+            voucherLedgerEntries: $voucherLedgerEntries,
+        );
+    }
+
+    /**
+     * Legacy `mapSaleReceipt` path — fiscal_event_id IS NULL receipts.
+     * Preserves the pre-Pass-2A.PHP.2 Eloquent traversal of POS Domain
+     * relations. Carry-forward for pre-Task-21 rows that pre-date the
+     * fiscal-event linkage.
+     *
+     * @param  array<string, mixed>|null  $canonicalPayload  See mapSaleReceipt.
+     */
+    private function mapSaleReceiptLegacy(Receipt $receipt, ?array $canonicalPayload): Nf525ReceiptData
+    {
         $lines = [];
         if ($receipt->relationLoaded('lines')) {
             foreach ($receipt->lines as $line) {
-                $lines[] = $this->mapLine($line);
+                $lines[] = $this->mapLineLegacy($line);
             }
         }
 
         $vatDetails = [];
         if ($receipt->relationLoaded('vatDetails')) {
             foreach ($receipt->vatDetails as $vat) {
-                $vatDetails[] = $this->mapVatDetail($vat);
+                $vatDetails[] = $this->mapVatDetailLegacy($vat);
             }
         }
 
         $payments = [];
         if ($receipt->relationLoaded('payments')) {
             foreach ($receipt->payments as $payment) {
-                $payments[] = $this->mapPayment($payment);
+                $payments[] = $this->mapPaymentLegacy($payment);
             }
         }
 
@@ -638,6 +733,57 @@ final class Nf525DataProvider implements Nf525DataProviderContract
      */
     private function mapVoidedReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
+        // Pass 2A.PHP.2 (synthesis v5 §8.B) — bifurcate by fiscal_event_id.
+        // Voided receipts use the same monetary-fields surface as sale
+        // receipts; the canonical payload bypass picks the authoritative
+        // 27-key values; legacy receipts fall through to the projection
+        // mirror via resolveMonetaryFields.
+        if ($receipt->fiscal_event_id !== null) {
+            $event = FiscalEvent::query()->find($receipt->fiscal_event_id);
+            if ($event !== null && $event->payload !== null) {
+                return $this->mapVoidedReceiptFromCanonical($receipt, $event);
+            }
+        }
+
+        return $this->mapVoidedReceiptLegacy($receipt, $canonicalPayload);
+    }
+
+    private function mapVoidedReceiptFromCanonical(Receipt $receipt, FiscalEvent $event): Nf525ReceiptData
+    {
+        $view = $this->canonicalReader->forSaleReceipt($event);
+        $payload = $view->payload;
+
+        return new Nf525ReceiptData(
+            id: (string) $receipt->id,
+            receiptNumber: $receipt->receipt_number,
+            terminalId: (string) $receipt->terminal_id,
+            postedAtIso8601: $receipt->posted_at->toIso8601String(),
+            chainSequence: (int) $receipt->chain_sequence,
+            fiscalHash: $receipt->fiscal_hash,
+            previousHash: $receipt->previous_hash,
+            subtotal: $payload->subtotal,
+            taxAmount: $payload->vatTotal,
+            discountAmount: $payload->transactionDiscountAmount,
+            total: $payload->total,
+            currency: $payload->currencyCode,
+            cashierName: $receipt->cashier_name,
+            customerName: $receipt->customer_name,
+            lines: [],
+            vatDetails: [],
+            payments: [],
+            voidedAtIso8601: $receipt->voided_at?->toIso8601String(),
+            voidedBy: $receipt->voided_by,
+            voidReason: $receipt->void_reason,
+            originalReceiptId: $view->originalReceiptReference?->fiscalEventId,
+            returnReasonValue: $view->originalReceiptReference?->refundReason,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $canonicalPayload  See mapSaleReceipt.
+     */
+    private function mapVoidedReceiptLegacy(Receipt $receipt, ?array $canonicalPayload): Nf525ReceiptData
+    {
         $monetary = $this->resolveMonetaryFields($receipt, $canonicalPayload);
 
         return new Nf525ReceiptData(
@@ -671,6 +817,85 @@ final class Nf525DataProvider implements Nf525DataProviderContract
      */
     private function mapReturnReceipt(Receipt $receipt, ?array $canonicalPayload = null): Nf525ReceiptData
     {
+        // Pass 2A.PHP.2 (synthesis v5 §8.B) — bifurcate by fiscal_event_id.
+        // Canonical refunds use `invoice_type_code='REFUND'` +
+        // `original_receipt_reference` for the audit-side linkage; legacy
+        // returns rely on `pos_receipts.original_receipt_id` +
+        // `return_reason` enum columns.
+        if ($receipt->fiscal_event_id !== null) {
+            $event = FiscalEvent::query()->find($receipt->fiscal_event_id);
+            if ($event !== null && $event->payload !== null) {
+                return $this->mapReturnReceiptFromCanonical($receipt, $event);
+            }
+        }
+
+        return $this->mapReturnReceiptLegacy($receipt, $canonicalPayload);
+    }
+
+    private function mapReturnReceiptFromCanonical(Receipt $receipt, FiscalEvent $event): Nf525ReceiptData
+    {
+        $view = $this->canonicalReader->forSaleReceipt($event);
+        $payload = $view->payload;
+
+        $lines = [];
+        foreach ($view->lineItems as $i => $line) {
+            $lines[] = $this->mapLineFromCanonical($line, $i + 1);
+        }
+        $payments = array_map([$this, 'mapPaymentFromCanonical'], $view->payments);
+        $vatDetails = array_map([$this, 'mapVatDetailFromCanonical'], $view->vatBreakdown);
+
+        $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
+
+        return new Nf525ReceiptData(
+            id: (string) $receipt->id,
+            receiptNumber: $receipt->receipt_number,
+            terminalId: (string) $receipt->terminal_id,
+            postedAtIso8601: $receipt->posted_at->toIso8601String(),
+            chainSequence: (int) $receipt->chain_sequence,
+            fiscalHash: $receipt->fiscal_hash,
+            previousHash: $receipt->previous_hash,
+            subtotal: $payload->subtotal,
+            taxAmount: $payload->vatTotal,
+            discountAmount: $payload->transactionDiscountAmount,
+            total: $payload->total,
+            currency: $payload->currencyCode,
+            cashierName: $receipt->cashier_name,
+            customerName: $receipt->customer_name,
+            lines: $lines,
+            vatDetails: $vatDetails,
+            payments: $payments,
+            voidedAtIso8601: null,
+            voidedBy: null,
+            voidReason: null,
+            // Canonical refunds source linkage from
+            // original_receipt_reference. The legacy column `original_receipt_id`
+            // may also be populated locally (PosCoreReceiptProjection
+            // best-effort resolution), but the canonical fiscal_event_id is
+            // authoritative for cross-terminal refunds. PHPStan narrows
+            // `$view->originalReceiptReference` to non-null on the canonical
+            // refund path because mapReturnReceiptFromCanonical is only
+            // dispatched for receipts whose canonical payload carries
+            // invoice_type_code IN {REFUND, VOID} + non-null
+            // original_receipt_reference per synthesis v5 §3.
+            originalReceiptId: $view->originalReceiptReference !== null
+                ? $view->originalReceiptReference->fiscalEventId
+                : ($receipt->original_receipt_id !== null ? (string) $receipt->original_receipt_id : null),
+            returnReasonValue: $view->originalReceiptReference !== null
+                ? $view->originalReceiptReference->refundReason
+                : ($receipt->return_reason !== null ? $receipt->return_reason->value : null),
+            exchangeGroupId: $receipt->exchange_group_id,
+            authorizedByUserId: $receipt->authorized_by_user_id,
+            overrideReason: $receipt->override_reason,
+            outOfWindow: $receipt->out_of_window,
+            voucherLedgerEntries: $voucherLedgerEntries,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $canonicalPayload  See mapSaleReceipt.
+     */
+    private function mapReturnReceiptLegacy(Receipt $receipt, ?array $canonicalPayload): Nf525ReceiptData
+    {
         $voucherLedgerEntries = $this->mapVoucherLedgerEntries($receipt);
         $monetary = $this->resolveMonetaryFields($receipt, $canonicalPayload);
 
@@ -695,7 +920,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             voidedAtIso8601: null,
             voidedBy: null,
             voidReason: null,
-            originalReceiptId: $receipt->original_receipt_id,
+            originalReceiptId: $receipt->original_receipt_id !== null ? (string) $receipt->original_receipt_id : null,
             returnReasonValue: $receipt->return_reason !== null ? $receipt->return_reason->value : null,
             exchangeGroupId: $receipt->exchange_group_id,
             authorizedByUserId: $receipt->authorized_by_user_id,
@@ -770,7 +995,66 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         return $values;
     }
 
-    private function mapLine(ReceiptLine $line): Nf525ReceiptLineData
+    // -----------------------------------------------------------------
+    // Pass 2A.PHP.2 canonical-payload helpers — synthesis v5 §8.B.
+    // Used by the fiscal-event-backed map* paths; emit canonical-only
+    // fields (gtin / tax_category_code / non_collected_subtype /
+    // foreign_currency_* ) per the v5 §3 contract.
+    // -----------------------------------------------------------------
+
+    private function mapLineFromCanonical(LineItemDTO $line, int $lineNumber): Nf525ReceiptLineData
+    {
+        // Per-line line_number is NOT on the canonical payload — it is an
+        // export-side concern. Caller threads a 1-based index for
+        // deterministic ordering.
+        return new Nf525ReceiptLineData(
+            lineNumber: $lineNumber,
+            productCode: $line->sku !== '' ? $line->sku : null,
+            productName: $line->name,
+            quantity: $line->quantity,
+            unitPrice: $line->unitPrice,
+            lineTotal: $line->lineSubtotal,
+            taxRate: $line->vatRate,
+            taxAmount: $line->lineVat,
+            discountAmount: $line->lineDiscountAmount,
+            gtin: $line->gtin,
+            taxCategoryCode: $line->taxCategoryCode !== '' ? $line->taxCategoryCode : null,
+            nonCollectedSubtype: $line->nonCollectedSubtype,
+        );
+    }
+
+    private function mapPaymentFromCanonical(PaymentDTO $payment): Nf525ReceiptPaymentData
+    {
+        return new Nf525ReceiptPaymentData(
+            // The canonical payload's `method_code` is the audit-stable axis;
+            // the legacy `payment_type` is the projection-snapshot display
+            // name. We emit the method_code here so canonical round-trip
+            // tests stay deterministic (the snapshot is opaque per-tenant).
+            paymentType: $payment->methodCode,
+            amount: $payment->amount,
+            instrumentType: $payment->instrumentType,
+            instrumentSerial: $payment->instrumentSerial,
+            foreignCurrencyAmount: $payment->foreignCurrencyAmount,
+            foreignCurrencyCode: $payment->foreignCurrencyCode,
+        );
+    }
+
+    private function mapVatDetailFromCanonical(VatBreakdownDTO $vat): Nf525ReceiptVatDetailData
+    {
+        return new Nf525ReceiptVatDetailData(
+            taxRate: $vat->rate,
+            netAmount: $vat->netAmount,
+            vatAmount: $vat->vatAmount,
+            grossAmount: $vat->grossAmount,
+            taxCategoryCode: $vat->taxCategoryCode !== '' ? $vat->taxCategoryCode : null,
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Legacy helpers — fiscal_event_id IS NULL receipts.
+    // -----------------------------------------------------------------
+
+    private function mapLineLegacy(ReceiptLine $line): Nf525ReceiptLineData
     {
         return new Nf525ReceiptLineData(
             lineNumber: (int) $line->line_number,
@@ -785,7 +1069,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         );
     }
 
-    private function mapVatDetail(ReceiptVatDetail $vat): Nf525ReceiptVatDetailData
+    private function mapVatDetailLegacy(ReceiptVatDetail $vat): Nf525ReceiptVatDetailData
     {
         return new Nf525ReceiptVatDetailData(
             taxRate: (string) $vat->tax_rate,
@@ -795,7 +1079,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         );
     }
 
-    private function mapPayment(ReceiptPayment $payment): Nf525ReceiptPaymentData
+    private function mapPaymentLegacy(ReceiptPayment $payment): Nf525ReceiptPaymentData
     {
         return new Nf525ReceiptPaymentData(
             paymentType: $payment->payment_type,

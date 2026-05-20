@@ -38,18 +38,14 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parses_valid_sale_receipt_envelope(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         $bytes = $this->validSaleReceiptEnvelope();
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
         $this->assertNotNull($result->payload);
-        $this->assertSame('TND', $result->payload['currency']);
+        // Pass 2A.PHP.2 — 27-key contract uses `currency_code` (not `currency`).
+        $this->assertSame('TND', $result->payload['currency_code']);
         $this->assertSame(3, $result->payload['currency_scale']);
         $this->assertNull($result->failureReason);
     }
@@ -314,33 +310,20 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_scalar_item_in_sub_array_lines(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[1,2,3],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
-            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        // Pass 2A.PHP.2 — `line_items` is the 27-key list container.
+        $payload = $this->canonicalSaleReceiptPayloadJson(['line_items' => [1, 2, 3]]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertFailed($result);
         $this->assertStringContainsString('sub_array_shape', $result->failureReason ?? '');
-        $this->assertStringContainsString('lines', $result->failureReason ?? '');
+        $this->assertStringContainsString('line_items', $result->failureReason ?? '');
     }
 
     public function test_rejects_empty_object_item_in_sub_array_lines(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[{}],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
-            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $payload = $this->canonicalSaleReceiptPayloadJson(['line_items' => [new \stdClass]]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -351,19 +334,24 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_integer_monetary_field_in_sub_array_line(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // unit_price is an int (1) — must be a CurrencyScale::bcformat() string per §4.
-        // Strict tokenizer doesn't catch this (1 is a valid integer); the sub-array
-        // shape validator does.
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[{"product_id":"p-1","quantity":1,"unit_price":1,'
-            .'"line_total":"5.000","vat_rate":"7"}],"payment_lines":[],'
-            .'"subtotal":"5.000","tax_total":"0.000","total":"5.000",'
-            .'"vat_breakdown":[],"voucher_redemptions":[]}';
+        // unit_price as int (1) — must be a bcformat string per §4.
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '5.000',
+                'line_vat' => '0.000',
+                'name' => 'Item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-1',
+                'quantity' => '1.000',
+                'sku' => 'SKU-X',
+                'tax_category_code' => '',
+                'unit_price' => 1, // integer — invalid per spec
+                'vat_rate' => '7.00',
+            ]],
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -375,16 +363,17 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_integer_monetary_field_in_payment_lines(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[{"payment_method_id":"pm-cash","amount":100,'
-            .'"tendered":"100.000","change":"0.000"}],"subtotal":"0.000",'
-            .'"tax_total":"0.000","total":"0.000","vat_breakdown":[],'
-            .'"voucher_redemptions":[]}';
+        // amount as int (100) — must be a bcformat string per §4.
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'payments' => [[
+                'amount' => 100, // integer — invalid per spec
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -425,15 +414,11 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_empty_voucher_redemptions(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // Empty sub-arrays-of-items are legitimate (no vouchers redeemed).
+        // Pass 2A.PHP.2 — the 27-key contract renames `voucher_redemptions`
+        // to `vouchers_redeemed`; empty array is still the canonical
+        // representation of "no vouchers redeemed".
         $bytes = $this->validSaleReceiptEnvelope();
-        // sanity: validSaleReceiptEnvelope has voucher_redemptions: []
-        $this->assertStringContainsString('"voucher_redemptions":[]', $bytes);
+        $this->assertStringContainsString('"vouchers_redeemed":[]', $bytes);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
@@ -481,11 +466,6 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_returned_payload_does_not_include_envelope_fields(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         // The parser returns only the `payload` sub-object — never the envelope.
         $bytes = $this->validSaleReceiptEnvelope();
 
@@ -605,24 +585,98 @@ final class StrictCanonicalParserTest extends TestCase
 
     private function validSaleReceiptEnvelope(): string
     {
-        return $this->envelope('SALE_RECEIPT', [
-            'currency' => 'TND',
+        // Pass 2A.PHP.2 — emit the 27-key Candidate C-v3 SALE_RECEIPT shape
+        // per synthesis v5 §3. Constant UUIDs + TND currency_scale=3 mirror
+        // the GoldenFixtureBuilder convention but stay independent so this
+        // unit test can run without the Fixture helper.
+        return $this->envelope('SALE_RECEIPT', $this->canonicalSaleReceiptPayload());
+    }
+
+    /**
+     * Build a 27-key SALE_RECEIPT payload JSON string with the given
+     * overrides applied at the top level. Used by negative tests that need
+     * to inject a malformed sub-array shape while keeping the rest of the
+     * payload valid against the 27-key contract.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function canonicalSaleReceiptPayloadJson(array $overrides = []): string
+    {
+        $payload = array_replace($this->canonicalSaleReceiptPayload(), $overrides);
+
+        return (string) json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Canonical 27-key SALE_RECEIPT payload used by the parser unit tests.
+     * TND (currency_scale=3) to preserve the pre-PHP.2 fixture's currency
+     * assertion in `test_parses_valid_sale_receipt_envelope`.
+     *
+     * @return array<string, mixed>
+     */
+    private function canonicalSaleReceiptPayload(): array
+    {
+        return [
+            'business_date' => '2026-05-20',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'consumption_mode' => null,
+            'currency_code' => 'TND',
             'currency_scale' => 3,
-            'discount_total' => '0.000',
-            'lines' => [
-                ['product_id' => 'p-1', 'quantity' => 1, 'unit_price' => '5.000', 'line_total' => '5.000', 'vat_rate' => '7'],
+            'event_time_device' => '2026-05-20T14:30:00.000Z',
+            'invoice_type_code' => 'SALE',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '5.000',
+                'line_vat' => '0.350',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '5.000',
+                'vat_rate' => '7.00',
+            ]],
+            'lottery_code' => null,
+            'notes' => null,
+            'original_receipt_reference' => null,
+            'payments' => [[
+                'amount' => '5.350',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+            'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567A/A/A/000',
             ],
-            'payment_lines' => [
-                ['payment_method_id' => 'pm-cash', 'amount' => '5.350', 'tendered' => '6.000', 'change' => '0.650'],
-            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => '5.000',
-            'tax_total' => '0.350',
+            'table_id' => null,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'total' => '5.350',
-            'vat_breakdown' => [
-                ['rate' => '7', 'base' => '5.000', 'amount' => '0.350'],
-            ],
-            'voucher_redemptions' => [],
-        ]);
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '5.350',
+                'net_amount' => '5.000',
+                'rate' => '7.00',
+                'tax_category_code' => '',
+                'vat_amount' => '0.350',
+            ]],
+            'vat_total' => '0.350',
+            'vouchers_redeemed' => [],
+        ];
     }
 
     private function validChainBreakDetectedEnvelope(): string
@@ -793,11 +847,6 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_envelope_with_null_reference_document_id(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         // The default envelope already sets reference_document_id to null —
         // this test pins that the validator accepts the canonical nullable.
         $bytes = $this->validSaleReceiptEnvelope();
@@ -810,11 +859,6 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_envelope_with_non_null_reference_document_id(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         $bytes = $this->envelopeWithRawValue('SALE_RECEIPT', 'reference_document_id', '"doc-42"');
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -837,14 +881,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_payload_extra_field_sale_receipt(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"extra_untyped":"X","lines":[],"payment_lines":[],"subtotal":"0.000",'
-            .'"tax_total":"0.000","total":"0.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $payload = $this->canonicalSaleReceiptPayloadJson(['extra_untyped' => 'X']);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -931,14 +968,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_top_level_total_not_in_bcformat(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
-            .'"total":"not-money","vat_breakdown":[],"voucher_redemptions":[]}';
+        $payload = $this->canonicalSaleReceiptPayloadJson(['total' => 'not-money']);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -950,34 +980,66 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_money_with_wrong_fraction_length(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // currency_scale=3 but money has 2 decimals.
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"5.00","tax_total":"0.000",'
-            .'"total":"5.00","vat_breakdown":[],"voucher_redemptions":[]}';
+        // currency_scale=3 but money has 2 decimals (and update arithmetic
+        // so the total-arithmetic check doesn't fire first).
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'subtotal' => '5.00', // <-- scale-2 string in a scale-3 payload
+            // Re-equilibrate so the partition rule check passes the scale
+            // gate before — the per-field scale invariant fires first.
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertFailed($result);
-        $this->assertStringContainsString('bcformat', $result->failureReason ?? '');
+        // The validator emits `payload_money_scale_mismatch` for scale drift;
+        // the parser wraps it as `sub_array_shape:payload_money_scale_mismatch:...`.
+        $this->assertStringContainsString('scale_mismatch', $result->failureReason ?? '');
     }
 
     public function test_accepts_scale_0_money(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // JPY-style 0-decimal currency: integer-string money.
-        $payload = '{"currency":"JPY","currency_scale":0,"discount_total":"0",'
-            .'"lines":[],"payment_lines":[],"subtotal":"0","tax_total":"0",'
-            .'"total":"0","vat_breakdown":[],"voucher_redemptions":[]}';
+        // JPY-style 0-decimal currency. Re-emit a fully valid scale-0 payload
+        // (we can't just override `currency_scale` because every money field
+        // must match the scale at the boundary).
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'currency_code' => 'JPY',
+            'currency_scale' => 0,
+            'subtotal' => '5',
+            'vat_total' => '0',
+            'total' => '5',
+            'transaction_discount_amount' => '0',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0',
+                'line_discount_reason' => null,
+                'line_subtotal' => '5',
+                'line_vat' => '0',
+                'name' => 'Item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-1',
+                'quantity' => '1.000',
+                'sku' => 'SKU-J',
+                'tax_category_code' => '',
+                'unit_price' => '5',
+                'vat_rate' => '0.00',
+            ]],
+            'payments' => [[
+                'amount' => '5',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+            ]],
+            'vat_breakdown' => [[
+                'gross_amount' => '5',
+                'net_amount' => '5',
+                'rate' => '0.00',
+                'tax_category_code' => '',
+                'vat_amount' => '0',
+            ]],
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -987,54 +1049,50 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_negative_money(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // Negative values (refund) are valid bcformat.
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"-5.000","tax_total":"-0.350",'
-            .'"total":"-5.350","vat_breakdown":[],"voucher_redemptions":[]}';
+        // Pass 2A.PHP.2 — synthesis v5 §6 says EVERY money field is NON-NEGATIVE.
+        // Refunds are modeled via invoice_type_code='REFUND' + non-null
+        // original_receipt_reference. Negative payload money is now REJECTED
+        // (the test contract changes: the OLD payload allowed negatives, the
+        // 27-key payload does not). Keep the test as a regression guard for
+        // the new contract — assert that a negative subtotal is rejected.
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'subtotal' => '-5.000',
+            'vat_total' => '-0.350',
+            'total' => '-5.350',
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
-        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        // Negative money is now rejected per the 27-key contract.
+        $this->assertFailed($result);
+        $this->assertStringContainsString('money', $result->failureReason ?? '');
     }
 
     public function test_rejects_money_with_leading_plus(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"+5.000","tax_total":"0.000",'
-            .'"total":"5.000","vat_breakdown":[],"voucher_redemptions":[]}';
+        $payload = $this->canonicalSaleReceiptPayloadJson(['subtotal' => '+5.000']);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
         $this->assertFailed($result);
-        $this->assertStringContainsString('bcformat', $result->failureReason ?? '');
+        // The validator's money regex doesn't allow leading + — surfaces
+        // as `payload_money_scale_mismatch` or generic shape error.
+        $this->assertStringContainsString('subtotal', $result->failureReason ?? '');
     }
 
     // ---- P1 F5: list-vs-assoc on containers (Codex round-2) ---------
 
     public function test_rejects_assoc_object_for_lines_container(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // lines must be a JSON list, not an object.
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":{"k":{"product_id":"p-1","quantity":1,"unit_price":"5.000","line_total":"5.000","vat_rate":"7"}},'
-            .'"payment_lines":[],"subtotal":"5.000","tax_total":"0.000","total":"5.000",'
-            .'"vat_breakdown":[],"voucher_redemptions":[]}';
+        // line_items must be a JSON list, not an object.
+        // We construct the payload mostly from helpers then patch line_items
+        // to be an object via direct JSON manipulation.
+        $payload = $this->canonicalSaleReceiptPayloadJson();
+        // Replace the line_items array literal with an object literal.
+        $newLines = '{"k":{"gtin":null,"line_discount_amount":"0.000","line_discount_reason":null,"line_subtotal":"5.000","line_vat":"0.350","name":"X","non_collected_subtype":null,"product_id":"p1","quantity":"1.000","sku":"X","tax_category_code":"","unit_price":"5.000","vat_rate":"7.00"}}';
+        $payload = (string) preg_replace('/"line_items":\[[^\]]*\]/', '"line_items":'.$newLines, $payload, 1);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -1167,15 +1225,10 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parses_basic_unicode_escape(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
-        // é == é. Round-trip via voucher_redemptions[0].code.
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
-            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"café","amount":"0.000"}]}';
+        // é == é. Round-trip via vouchers_redeemed[0].voucher_code per 27-key contract.
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'vouchers_redeemed' => [['redeemed_amount' => '0.000', 'voucher_code' => 'café']],
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -1186,15 +1239,10 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parses_valid_surrogate_pair_grinning_face(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         // 😀 == U+1F600 (😀).
-        $payload = '{"currency":"TND","currency_scale":3,"discount_total":"0.000",'
-            .'"lines":[],"payment_lines":[],"subtotal":"0.000","tax_total":"0.000",'
-            .'"total":"0.000","vat_breakdown":[],"voucher_redemptions":[{"code":"😀","amount":"0.000"}]}';
+        $payload = $this->canonicalSaleReceiptPayloadJson([
+            'vouchers_redeemed' => [['redeemed_amount' => '0.000', 'voucher_code' => '😀']],
+        ]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
@@ -1204,21 +1252,21 @@ final class StrictCanonicalParserTest extends TestCase
     }
 
     /**
-     * Helper to drill into payload.voucher_redemptions[$index].code with
-     * proper narrowing — PHPStan can't see through `$result->payload[...]`
-     * chained array access on `array<string, mixed>|null`.
+     * Helper to drill into payload.vouchers_redeemed[$index].voucher_code
+     * with proper narrowing — PHPStan can't see through chained array
+     * access on `array<string, mixed>|null`.
      */
     private function voucherCodeAt(ParseResult $result, int $index): mixed
     {
         $payload = $result->payload;
         $this->assertIsArray($payload);
-        $vouchers = $payload['voucher_redemptions'] ?? null;
+        $vouchers = $payload['vouchers_redeemed'] ?? null;
         $this->assertIsArray($vouchers);
         $this->assertArrayHasKey($index, $vouchers);
         $item = $vouchers[$index];
         $this->assertIsArray($item);
 
-        return $item['code'] ?? null;
+        return $item['voucher_code'] ?? null;
     }
 
     public function test_rejects_lone_high_surrogate(): void
@@ -1328,11 +1376,6 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parser_reuses_safely_across_calls(): void
     {
-        $this->markTestSkipped(
-            'Pass 2A.PHP.2 will migrate the validSaleReceiptEnvelope() / envelopeWithRawPayload() helpers '.
-            'to emit the 27-key Candidate C-v3 canonical contract per synthesis v5 §3. '.
-            'See docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md §8 + task tracker entry "Pass 2A.PHP.2 — consumer migration".'
-        );
         $parser = $this->parser();
 
         $bad = $parser->parse('{"event_type":"SALE_RECEIPT","sequence_number":1.5}', FiscalEventType::SALE_RECEIPT);

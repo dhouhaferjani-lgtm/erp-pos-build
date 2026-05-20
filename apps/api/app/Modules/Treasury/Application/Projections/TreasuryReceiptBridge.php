@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Projections;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\Fiscal\Domain\DTOs\FiscalPayloadArrayGuards;
+use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -17,6 +18,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -117,6 +119,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 {
     public function __construct(
         private readonly GeneralLedgerService $generalLedgerService,
+        private readonly CanonicalPayloadReader $canonicalReader,
+        private readonly PaymentMethodResolver $paymentMethodResolver,
     ) {}
 
     public function name(): string
@@ -229,7 +233,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             );
         }
 
-        DB::transaction(function () use ($event, $payload, $receipt): void {
+        // $payload was used by the pre-Pass-2A.PHP.2 read path (direct
+        // `FiscalPayloadArrayGuards::requireArray($payload, 'payment_lines')`);
+        // the canonical reader now resolves the same data via
+        // `forSaleReceipt($event)`. Keep the null-check on $event->payload
+        // above as defensive bail-out for quarantine rows.
+        unset($payload);
+
+        DB::transaction(function () use ($event, $receipt): void {
             // Task 22 round-2 (Codex F1 P1) — PG transaction-scoped
             // advisory lock keyed on (event_id, projector_name). The lock
             // is held until the transaction commits or rolls back, then
@@ -257,18 +268,19 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 return;
             }
 
-            $paymentLines = FiscalPayloadArrayGuards::requireArray($payload, 'payment_lines');
+            // Pass 2A.PHP.2 — read from the canonical view. The 27-key
+            // payload exposes `payments[]` with `method_code`, NOT
+            // `payment_method_id`. Resolve the FK via the Shared/Contracts
+            // PaymentMethodResolver seam (synthesis v5 §8.B + dispatch
+            // §0 Gap A). `repository_id` is NOT on the canonical payload
+            // either — the bridge resolves it via a tenant+company-scoped
+            // default-repository lookup (see resolveDefaultRepository).
+            $view = $this->canonicalReader->forSaleReceipt($event);
 
-            $totalLines = count($paymentLines);
+            $totalLines = count($view->payments);
             $index = 0;
-            foreach ($paymentLines as $line) {
-                if (! is_array($line)) {
-                    throw new RuntimeException(
-                        'TreasuryReceiptBridge: payment_lines[] entry is not an array',
-                    );
-                }
-                /** @var array<string, mixed> $line */
-                $this->projectPaymentLine($event, $receipt, $line, $index, $totalLines);
+            foreach ($view->payments as $payment) {
+                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines);
                 $index++;
             }
         });
@@ -298,53 +310,69 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * into the payload would silently bind onto this tenant's Payment row.
      * Mirror of the `repository_id` gate below.
      *
-     * @param  array<string, mixed>  $line
+     * Pass 2A.PHP.2 canonical-payload variant of the bridge's per-payment
+     * write. Resolves `payment_method_id` via the Shared/Contracts seam;
+     * `repository_id` via a tenant+company-scoped default-repository
+     * lookup (the 27-key contract doesn't carry per-payment repository
+     * selection — see resolveDefaultRepository).
      */
-    private function projectPaymentLine(
+    private function projectPaymentLineFromCanonical(
         FiscalEvent $event,
         Receipt $receipt,
-        array $line,
+        PaymentDTO $line,
         int $index,
         int $totalLines,
     ): void {
-        $paymentMethodId = FiscalPayloadArrayGuards::requireString($line, 'payment_method_id');
-        $amount = FiscalPayloadArrayGuards::requireString($line, 'amount');
-        $repositoryId = FiscalPayloadArrayGuards::optionalString($line, 'repository_id');
+        $amount = $line->amount;
+        $methodCode = $line->methodCode;
 
-        // payment_lines[] without an explicit repository_id cannot be
-        // bridged into a GL post (the POS payment GL entry requires a
-        // repository to source the bank/cash account). The legacy
-        // ReceiptPaymentService rejected this shape too — preserve the
-        // same fail-loud contract. Outside the spec's happy-path: every
-        // device-authored payment_line carries a repository_id (mirrored
-        // reference data from the POS local SQLite).
-        if ($repositoryId === null) {
+        // Resolve payment_method_id via the Shared/Contracts seam (the
+        // same surface PosCoreReceiptProjection uses). Tenant-scoped
+        // lookup; null return triggers fail-closed RuntimeException
+        // (same security stance as the prior payment_method_id gate).
+        $paymentMethodId = $this->paymentMethodResolver->resolveByCode(
+            $event->tenant_id,
+            $methodCode,
+        );
+
+        if ($paymentMethodId === null) {
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: payment_lines[%d] missing repository_id — '.
-                'cannot create GL post without a source repository for fiscal_event %s',
-                $index,
-                $event->id,
+                'TreasuryReceiptBridge: payment_method_not_found:method_code=%s:tenant_id=%s',
+                $methodCode,
+                $event->tenant_id,
             ));
         }
 
-        // Inbound tenant-scoped lookup of the repository. Matches Task 21
-        // round-2 Opus F3 fail-closed posture: cross-tenant `repository_id`
-        // throws inside the transaction → roll back.
         try {
-            $repository = PaymentRepository::query()
-                ->where('tenant_id', $event->tenant_id)
-                ->where('company_id', $event->company_id)
-                ->find($repositoryId);
+            $paymentMethod = PaymentMethod::query()->find($paymentMethodId);
         } catch (QueryException) {
-            $repository = null;
+            $paymentMethod = null;
         }
-
-        if ($repository === null) {
+        if ($paymentMethod === null) {
             throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: repository_id %s not visible to tenant %s / company %s',
-                $repositoryId,
+                'TreasuryReceiptBridge: payment_method_id %s resolved but not loadable for tenant %s / company %s',
+                $paymentMethodId,
                 $event->tenant_id,
                 $event->company_id,
+            ));
+        }
+
+        // Repository resolution — the 27-key canonical payload does not
+        // carry per-payment `repository_id` (synthesis v5 §3 deliberately
+        // excludes it: the device-side fiscal seal contract is about
+        // audit data, not Treasury operational routing). The bridge picks
+        // the first tenant+company-scoped repository with a non-null
+        // `gl_account_id`. Phase 1.5 may introduce a payment_method →
+        // default_repository mapping; until then, the first matching
+        // repository is the deterministic per-tenant default.
+        $repository = $this->resolveDefaultRepository($event);
+        if ($repository === null) {
+            throw new RuntimeException(sprintf(
+                'TreasuryReceiptBridge: no GL-linked payment_repository found for tenant %s / company %s — '.
+                'cannot create POS-payment GL post for fiscal_event %s',
+                $event->tenant_id,
+                $event->company_id,
+                $event->id,
             ));
         }
 
@@ -354,30 +382,6 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 'every POS-payment repository must be linked to a GL account ',
                 (string) $repository->name,
                 (string) $repository->code,
-            ));
-        }
-
-        // Task 22 round-2 (Opus F1 BLOCKER): mirror the repository_id gate
-        // for payment_method_id. The payments.payment_method_id FK only
-        // enforces PK existence — tenant scope is the bridge's
-        // responsibility. Same try/catch wrap as repository_id for the
-        // PG malformed-UUID defense (QueryException at the driver layer
-        // for non-UUID strings).
-        try {
-            $paymentMethod = PaymentMethod::query()
-                ->where('tenant_id', $event->tenant_id)
-                ->where('company_id', $event->company_id)
-                ->find($paymentMethodId);
-        } catch (QueryException) {
-            $paymentMethod = null;
-        }
-
-        if ($paymentMethod === null) {
-            throw new RuntimeException(sprintf(
-                'TreasuryReceiptBridge: payment_method_id %s not visible to tenant %s / company %s',
-                $paymentMethodId,
-                $event->tenant_id,
-                $event->company_id,
             ));
         }
 
@@ -471,6 +475,31 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ]);
 
             return false;
+        }
+    }
+
+    /**
+     * Pass 2A.PHP.2 — resolve the default `payment_repositories` row for
+     * the event's tenant+company. The canonical SALE_RECEIPT payload does
+     * NOT carry a per-payment `repository_id` (synthesis v5 §3 — repository
+     * selection is a Treasury-operational concern, not part of the audit
+     * seal). The bridge picks the FIRST tenant+company-scoped repository
+     * with a non-null `gl_account_id`. Deterministic when exactly one
+     * repository exists per (tenant, company) — the common single-cash-
+     * drawer case. Phase 1.5 may introduce per-method default-repository
+     * mapping.
+     */
+    private function resolveDefaultRepository(FiscalEvent $event): ?PaymentRepository
+    {
+        try {
+            return PaymentRepository::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->whereNotNull('gl_account_id')
+                ->orderBy('id')
+                ->first();
+        } catch (QueryException) {
+            return null;
         }
     }
 }
