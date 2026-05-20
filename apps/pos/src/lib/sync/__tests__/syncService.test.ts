@@ -358,6 +358,35 @@ describe('syncService', () => {
       expect(updateFiscalEventSyncStatus).not.toHaveBeenCalledWith(db, 'fe-later', 'syncing');
     });
 
+    it('fails loudly when the server returns a null fiscal_event_id without a rejection reason', async () => {
+      const event = makeFiscalEvent({ id: 'fe-null-success', source_event_id: 'receipt-null-success' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        fiscalEventBatchResponse([
+          {
+            fiscal_event_id: null,
+            stored: false,
+            sequence_conflict: false,
+            exception_class: null,
+          },
+        ]),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(1);
+      expect(result.chainBreak).toBe(false);
+      expect(result.errors[0]).toContain('null fiscal_event_id without rejection');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(
+        db,
+        'fe-null-success',
+        'failed',
+        'Sync response returned null fiscal_event_id without rejection for fiscal event fe-null-success',
+      );
+      expect(updateReceiptStatus).not.toHaveBeenCalledWith(db, 'receipt-null-success', 'synced');
+    });
+
     it('halts on hash-chain exception class without posting later events', async () => {
       const events = [
         makeFiscalEvent({ id: 'fe-hash-break', sequence_number: 9 }),

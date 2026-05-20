@@ -221,16 +221,31 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         { timeoutMs: 30_000 },
       );
 
-      const [soleResult] = response.results;
-      const resultItem = response.results.find((r) => r.fiscal_event_id === event.id)
-        ?? (response.results.length === 1 && soleResult?.fiscal_event_id === null
-          ? soleResult
-          : undefined);
+      if (response.results.length === 0) {
+        throw new Error(`Sync response missing result for fiscal event ${event.id}`);
+      }
+      if (response.results.length !== 1) {
+        throw new Error(`Sync response expected one result for fiscal event ${event.id}, got ${response.results.length}`);
+      }
+
+      const resultItem = response.results[0];
       if (!resultItem) {
         throw new Error(`Sync response missing result for fiscal event ${event.id}`);
       }
+      if (resultItem.fiscal_event_id !== event.id) {
+        if (resultItem.fiscal_event_id !== null) {
+          throw new Error(`Sync response missing result for fiscal event ${event.id}`);
+        }
+        if (!resultItem.sequence_conflict && resultItem.exception_class === null) {
+          throw new Error(`Sync response returned null fiscal_event_id without rejection for fiscal event ${event.id}`);
+        }
+      }
 
-      if (!resultItem.sequence_conflict && resultItem.exception_class === null) {
+      if (
+        resultItem.fiscal_event_id === event.id
+        && !resultItem.sequence_conflict
+        && resultItem.exception_class === null
+      ) {
         await updateFiscalEventSyncStatus(db, event.id, 'synced');
         if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
           await updateReceiptStatus(db, event.source_event_id, 'synced');
