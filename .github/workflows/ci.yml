@@ -57,6 +57,28 @@ jobs:
       - name: Run Pint
         run: ./vendor/bin/pint --test
 
+  chokepoint-gate:
+    name: §14.3 Chokepoint Completeness Gate
+    runs-on: ubuntu-latest
+    # Spec v7 §14.3 — every ->createReceipt( and ->finalize( call site
+    # under apps/api/app + apps/api/routes MUST be reconciled against
+    # apps/api/scripts/saleReceipt-chokepoint-manifest.json. The shell
+    # gate (apps/api/scripts/check-saleReceipt-chokepoints.sh) is the
+    # primary enforcement; ChokepointCompletenessTest (run in the
+    # backend-test-pgsql merge gate) mirrors it at the PHPUnit layer
+    # for defense in depth. Both must be green to merge.
+    #
+    # The job is intentionally light — no PHP toolchain required, just
+    # ripgrep + jq + bash. Runs on every PR + push.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install ripgrep + jq
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq
+
+      - name: Run §14.3 chokepoint gate
+        run: bash apps/api/scripts/check-saleReceipt-chokepoints.sh
+
   backend-analyse:
     name: Backend Static Analysis (PHPStan)
     runs-on: ubuntu-latest
@@ -433,7 +455,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

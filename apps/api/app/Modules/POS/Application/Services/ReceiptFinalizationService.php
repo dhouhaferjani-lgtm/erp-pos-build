@@ -34,6 +34,35 @@ final class ReceiptFinalizationService
      * Finalize a receipt by computing its fiscal hash and transitioning its
      * status from pending_seal to fiscalized.
      *
+     * **§14.3 chokepoint annotation (Task 30).** This method is the
+     * server-side seal + terminal-chain advance for legacy server-authored
+     * receipts. Phase 1 spec §14.2 retired the new-sale write surface
+     * (POST /pos/receipts, POST /pos/receipts/{id}/payments, POST
+     * /pos/orders/{id}/close are all 410 Gone — Task 29). Per the
+     * checked-in `apps/api/scripts/saleReceipt-chokepoint-manifest.json`
+     * the surviving callers are:
+     *
+     *   - `ReceiptReturnService::createReturn` — disposition (c)
+     *     knowingly-retained carve-out. SALE_VOID / REFUND_RECEIPT /
+     *     PARTIAL_REFUND are Phase 2+ reserved event types; void +
+     *     processReturn (and the offline Tauri POS via VoidReturnModal)
+     *     still depend on this path.
+     *   - `ReceiptSyncService::sync` — disposition (b) queued for Task
+     *     28 retirement.
+     *   - `ReceiptPaymentService::processReceiptPayments` — disposition
+     *     (b) route-disposed Task 29 §14.2; service body never reached
+     *     via live HTTP.
+     *   - `ExchangeService::processExchange` — disposition (b) and
+     *     `live: false` per §14.3 (no live route / controller caller as
+     *     of 2026-05-20).
+     *
+     * For new-sale SALE_RECEIPT authoring this method is NEVER invoked
+     * server-side post-Phase-1 — the device seals via
+     * `FiscalEventEngine.append()` per SoT v3 §1. Do NOT add new callers
+     * without an explicit manifest disposition; the §14.3 CI gate
+     * (`apps/api/scripts/check-saleReceipt-chokepoints.sh` +
+     * `ChokepointCompletenessTest`) will fail.
+     *
      * @throws \DomainException When the receipt is in an unrecoverable state (voided, etc.)
      * @throws \LogicException When the terminal's fiscal_schema_version is unsupported
      */

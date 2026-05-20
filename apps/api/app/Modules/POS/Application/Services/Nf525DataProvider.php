@@ -40,8 +40,11 @@ use App\Shared\Contracts\Compliance\DTOs\Nf525TrainingModeCount;
 use App\Shared\Contracts\Compliance\DTOs\Nf525VoucherLedgerEntryData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ZReportData;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
+use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * POS-side implementation of Nf525DataProviderContract.
@@ -67,6 +70,8 @@ final class Nf525DataProvider implements Nf525DataProviderContract
     public function __construct(
         private readonly ReceiptHashService $receiptHashService,
         private readonly ZReportHashService $zReportHashService,
+        private readonly ConnectionInterface $db,
+        private readonly FiscalIntegrityProvider $integrityProvider,
     ) {}
 
     public function buildExportSnapshot(string $companyId, Carbon $from, Carbon $to): Nf525ExportSnapshot
@@ -746,5 +751,215 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             occurredAtIso8601: $event->occurred_at->toIso8601String(),
             payload: $event->payload ?? [],
         );
+    }
+
+    /**
+     * Phase 1 §5.0 D1 / §8 / §13 / §14.3 export view (Task 30).
+     *
+     * Returns the canonical-bytes-anchored export for a (tenant, company)
+     * pair. Receipt entries are sourced from `fiscal_events` rows of type
+     * `SALE_RECEIPT` (verified arm of the spec §13 mirror contract);
+     * quarantine incidents are sourced from `fiscal_event_quarantine` rows
+     * scoped to the same tenant + company.
+     *
+     * Shape:
+     *   - `receipts`: list of receipts; each entry carries
+     *     `canonical_bytes_source = 'fiscal_events.canonical_bytes'` so
+     *     auditors can confirm the export was not reconstructed from POS
+     *     Domain models. The fiscal_hash is the re-hashed canonical bytes
+     *     so a tampered row is caught at export-time (defensive — the
+     *     immutability triggers + verifier chain are the primary
+     *     defenses).
+     *   - `quarantine_section`: list of non-admissible envelopes (spec
+     *     §8). NF525 audit trail requires these to be visible to
+     *     auditors alongside the admissible chain.
+     *
+     * The shape is intentionally `array<string, mixed>` rather than a
+     * DTO — the original `buildExportSnapshot()` strict-typed contract
+     * survives unchanged for the legacy Compliance consumer; `buildExport()`
+     * is the new Phase-1 canonical-bytes anchored reader for §14.3 and
+     * future Phase 2 audit-trail surfaces. The two methods cohabit until
+     * Compliance moves to the new shape.
+     *
+     * @return array{
+     *     receipts: list<array<string, mixed>>,
+     *     quarantine_section: list<array<string, mixed>>,
+     *     tenant_id: string,
+     *     company_id: string,
+     * }
+     */
+    public function buildExport(string $tenantId, string $companyId): array
+    {
+        $receiptRows = $this->db->table('fiscal_events')
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('event_type', 'SALE_RECEIPT')
+            ->orderBy('sequence_number')
+            ->get([
+                'id',
+                'terminal_id',
+                'sequence_number',
+                'event_time_device',
+                'business_date',
+                'server_received_at',
+                'canonical_bytes',
+                'previous_hash',
+                'current_hash',
+                'integrity_status',
+            ]);
+
+        $receipts = [];
+        foreach ($receiptRows as $row) {
+            if ($row->canonical_bytes === null) {
+                Log::error(
+                    'Nf525DataProvider: fiscal_events row missing canonical_bytes; skipping from export.',
+                    [
+                        'fiscal_event_id' => $row->id,
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'sequence_number' => $row->sequence_number,
+                    ],
+                );
+
+                continue;
+            }
+
+            $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
+            $rehashed = $this->integrityProvider->computeHash($canonicalBytes);
+            $storedHash = is_string($row->current_hash) ? $row->current_hash : '';
+            $integrityVerified = hash_equals(strtolower($rehashed), strtolower($storedHash));
+
+            $receipts[] = [
+                'fiscal_event_id' => (string) $row->id,
+                'terminal_id' => (string) $row->terminal_id,
+                'sequence_number' => (int) $row->sequence_number,
+                'event_time_device' => $this->normalizeTimestamp($row->event_time_device),
+                'business_date' => $this->normalizeDate($row->business_date),
+                'server_received_at' => $this->normalizeTimestamp($row->server_received_at),
+                'previous_hash' => (string) $row->previous_hash,
+                'current_hash' => $storedHash,
+                'integrity_status' => (string) $row->integrity_status,
+                'canonical_bytes_source' => 'fiscal_events.canonical_bytes',
+                'canonical_bytes_sha256' => $rehashed,
+                'integrity_verified_at_export' => $integrityVerified,
+            ];
+        }
+
+        $quarantineRows = $this->db->table('fiscal_event_quarantine')
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->orderBy('claimed_sequence_number')
+            ->get([
+                'envelope_event_id',
+                'terminal_id',
+                'claimed_sequence_number',
+                'integrity_exception_class',
+                'integrity_exception_reason',
+                'server_received_at',
+                'raw_envelope',
+                'resolved_at',
+                'previous_hash',
+                'current_hash',
+            ]);
+
+        $quarantineSection = [];
+        foreach ($quarantineRows as $row) {
+            $quarantineSection[] = [
+                'envelope_id' => (string) $row->envelope_event_id,
+                'terminal_id' => (string) $row->terminal_id,
+                'claimed_sequence_number' => (int) $row->claimed_sequence_number,
+                'integrity_exception_class' => (string) $row->integrity_exception_class,
+                'integrity_reason' => (string) $row->integrity_exception_reason,
+                'server_received_at' => $this->normalizeTimestamp($row->server_received_at),
+                'previous_hash' => (string) $row->previous_hash,
+                'current_hash' => (string) $row->current_hash,
+                'raw_envelope' => $this->decodeRawEnvelope($row->raw_envelope),
+                'resolved_at' => $row->resolved_at === null
+                    ? null
+                    : $this->normalizeTimestamp($row->resolved_at),
+            ];
+        }
+
+        return [
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'receipts' => $receipts,
+            'quarantine_section' => $quarantineSection,
+        ];
+    }
+
+    /**
+     * `canonical_bytes` is BYTEA on PG (driver-typed string or resource)
+     * and BLOB on SQLite (string). Coerce both shapes to a PHP string.
+     */
+    private function stringifyCanonicalBytes(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * Decode `raw_envelope` from JSON storage. The column is `jsonb` on
+     * PG (auto-decoded by some drivers, returned as a JSON string by
+     * others) and `text` on SQLite. Normalize to an array for the export
+     * shape; fall back to the raw string on parse failure so auditors
+     * still see *something*.
+     *
+     * @return array<string, mixed>|string
+     */
+    private function decodeRawEnvelope(mixed $value): array|string
+    {
+        if (is_array($value)) {
+            /** @var array<string, mixed> $value */
+            return $value;
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                /** @var array<string, mixed> $decoded */
+                return $decoded;
+            }
+
+            return $value;
+        }
+
+        return [];
+    }
+
+    /**
+     * Normalize a DB-driver timestamp value to an ISO-8601 string.
+     * Carbon::parse handles both string + Carbon inputs.
+     */
+    private function normalizeTimestamp(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if ($value instanceof Carbon) {
+            return $value->toIso8601String();
+        }
+
+        return Carbon::parse((string) $value)->toIso8601String();
+    }
+
+    private function normalizeDate(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if ($value instanceof Carbon) {
+            return $value->toDateString();
+        }
+
+        return Carbon::parse((string) $value)->toDateString();
     }
 }
