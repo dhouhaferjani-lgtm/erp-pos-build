@@ -50,6 +50,18 @@ The foundation. No customer-facing feature. Establishes the one pattern and rebu
 
 ---
 
+## Phase 1.5 — Post-Pass-2 cleanup tasks (added 2026-05-20 per synthesis v5)
+
+These tasks land **after Phase 1 Pass 2A + 2B merge to dev** and **before any Phase 2 customer-facing deployment**. They retire transitional code/columns introduced or retained by the Phase 1 receipt-chain clean rebuild so go-live ships no dead code (per owner D5).
+
+- **Phase-2 mirror-column audit + drop** — audit every SQL/code consumer of `pos_receipts.{fiscal_hash, previous_hash, chain_sequence, vat_breakdown_hash, payment_methods_hash}` (server-side mirror columns Task 21 R2 populated for read-compat through Phase 1) and `terminal_state.{last_hash, hash_sequence}` (device-side legacy chain columns retained briefly post-Pass-2B). Drop columns with no remaining consumer via a new migration. Remove projector mirror writes for any dropped column. Goal: "no dead code at go-live" per owner directive 2026-05-20.
+
+- **Per-country tax-number strict validation** — Pass 2A ships universal `seller.tax_number` validation (`^[A-Za-z0-9 \-/.]{4,40}$`) to avoid blocking sellers on a wrong country-specific regex. After accountant confirmation per country (immediate: TN matricule fiscal + FR SIRET; later: SA VAT 15-digit, DE USt-IdNr, IT P.IVA), land the per-country regex table + per-country positive/negative test fixtures + a validator branch keyed on `seller.tax_jurisdiction_country_code`. **Pre-Tunisia-launch gate.**
+
+- **ParseFailureResolution operator UX — pre-fill from best-effort parse** — Pass 2A's `ParseFailureResolutionService::resolve()` requires operators to hand-craft a full 27-key corrected payload, which is brutal UX. Build an admin tool that reads `fiscal_event_quarantine.raw_envelope`, attempts best-effort parse, pre-fills the structurally-valid 27 keys, lets the operator amend only broken fields, and submits via the existing resolve service. Phase-2-prep work.
+
+---
+
 ## Phase 2 — On-Account Payment + Customer Attach (first customer-facing slice)
 
 The first slice that delivers customer value — the para-pharmacy use case.

@@ -561,6 +561,56 @@ This carve-out is **bounded to the event types explicitly listed in §11** (and 
 
 Appendix A reflects this split.
 
+### 11.2 `SALE_RECEIPT` canonical payload-shape contract (amended 2026-05-20 per synthesis v5)
+
+The `SALE_RECEIPT` event's payload shape is the **NF525-certifiable + multi-country future-proof canonical** locked in synthesis v5 at `docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md`. Pass 2A lands the contract; Pass 2B lands the device assembler that emits it. The 10-key minimal shape that shipped with Task 14 (`currency, currency_scale, discount_total, lines, payment_lines, subtotal, tax_total, total, vat_breakdown, voucher_redemptions`) is **superseded by v1 rewrite in place** — no `event_version` bump per owner directive (no production tenants exist; existing v1 fixtures regenerated atomically).
+
+**Top-level keys (27, sorted lex):** `business_date, buyer, cashier_id, cashier_name, consumption_mode, currency_code, currency_scale, event_time_device, invoice_type_code, line_items, lottery_code, notes, original_receipt_reference, payments, receipt_uuid, seller, shift_id, subtotal, table_id, terminal_id, total, training_flag, transaction_discount_amount, transaction_discount_reason, vat_breakdown, vat_total, vouchers_redeemed`.
+
+**Per-key contracts** (full TypeScript shape + nested objects in synthesis v5 §3):
+- Identity: `terminal_id, cashier_id, shift_id, receipt_uuid, business_date (YYYY-MM-DD), event_time_device (ISO 8601 ms + tz offset), invoice_type_code ∈ {SALE, REFUND, VOID, TRAINING}, training_flag`.
+- Seller (REQUIRED): `name, tax_number, tax_jurisdiction_country_code (ISO 3166-1 alpha-2), address {street, city, postal_code, country_code}`.
+- Buyer (NULLABLE — sale-time snapshot, D16-safe): `name, tax_number, codice_fiscale, customer_id, contact_id, address`.
+- Lines: per-line `sku, product_id, name, quantity, unit_price, line_subtotal, line_vat, vat_rate, tax_category_code, line_discount_amount, line_discount_reason, gtin, non_collected_subtype`.
+- Payments: per-payment `method_code, amount, instrument_type, instrument_serial, foreign_currency_amount, foreign_currency_code`.
+- VAT breakdown: per `(vat_rate, tax_category_code)` partition row `{net_amount, vat_amount, gross_amount, rate, tax_category_code}`.
+- Monetary fields use `bcformat` strings at `currency_scale` (0|2|3). All money fields NON-NEGATIVE (refunds modeled via `invoice_type_code='REFUND'` + `original_receipt_reference`, not negative amounts).
+
+**Validator invariants enforced server-side at parse + at ParseFailureResolution:**
+1. PAYLOAD_KEYS set equality (extras-rejection per Task 16 standing pattern).
+2. **VAT partition rule** — `vat_breakdown` is the partition of `line_items` by `(vat_rate, tax_category_code)` with BCMath equality at `currency_scale`: `bccomp(sum_net, breakdown.net_amount) == 0` per group.
+3. **Scale invariant** — every bcformat field matches `moneyRegex(scale)` per the v5 §6.B field table.
+4. **Total arithmetic** — `bccomp(bcadd(subtotal, vat_total), bcadd(total, transaction_discount_amount)) == 0`.
+5. **Discount-reason consistency** — `(bccomp(transaction_discount_amount, "0", $currency_scale) == 0) ⟺ (transaction_discount_reason == null)` (literal `=="0"` is WRONG — bcformat at scale=2 emits "0.00", not "0").
+6. **D16 buyer-block invariant** — buyer is a sale-time identity snapshot; `PosCoreReceiptProjection` reads buyer data from parsed payload only, NEVER calls Customer/Contact/B2B/Treasury/Accounting modules at projection time (CI grep guard catches direct imports + Shared\Contracts imports + container resolution + Eloquent cross-module reads).
+
+EXCLUDED from payload (server-derived or envelope-level):
+- `receipt_number` (server-projected at Task 21 — business display; not the ZATCA `cbc:ID` — see §11.3).
+- `fiscal_event_id` (envelope identity; referenced only inside `original_receipt_reference`).
+- `fiscal_hash` / `previous_hash` / `sequence_number` (envelope-level, see §4).
+- VAT-breakdown / payment-methods hashes (Task 21 R2 mirror columns; derived data).
+
+`event_version` for SALE_RECEIPT stays at `1` post-amendment (per D4 — atomic v1 rewrite; registry mapping unchanged; only the SHAPE under v1 changes; all existing v1 fixtures regenerated in the same Pass 2A commit).
+
+### 11.3 Country-specific signature + export adapters (pattern)
+
+Synthesis v5 §3 + §4 + §14 locks the **adapter pattern**: the engine publishes ONE rich canonical SALE_RECEIPT event; country-specific signature + export adapters project from `(envelope + payload)` to their respective compliance formats. Pass 2A implements ONE adapter update — `Nf525DataProvider` line-level refactor reading from new canonical via `CanonicalPayloadReader` (synthesis v5 §8.B). Other adapters deferred per owner D3:
+
+| Adapter | Status (Phase 1) |
+|---|---|
+| `Nf525DataProvider` (existing — France + Tunisia) | **UPDATED in Pass 2A** — reads from 27-key canonical via `CanonicalPayloadReader`. Tunisia uses NF525 export by superset per D9. |
+| ZATCA UBL XML emitter (Saudi Arabia) | DEFERRED. Canonical IS ZATCA-ready (full XPath mapping at synthesis v5 §4). Implementation TBD per owner D8 (POS-authored vs web-B2B-aggregated). |
+| DSFinV-K CSV (Germany) | DEFERRED. Canonical IS DSFinV-K-ready via optional `gtin`, `consumption_mode`, `table_id`, foreign-currency fields. |
+| IT RT XML (Italy) | DEFERRED. Canonical IS IT-RT-ready via optional `lottery_code`, `non_collected_subtype`, `codice_fiscale`. |
+
+The adapter pattern is consistent with §5.0 + §13.6 + D16: engine publishes one canonical event; country bridges consume via the pluggable projector registry resolved per `(tenant, company)` by `ModuleActivationResolver`.
+
+### 11.4 Cross-language drift gate test-lock (amended 2026-05-20 per synthesis v5)
+
+The TS `SALE_RECEIPT_PAYLOAD_KEYS` constant MUST byte-mirror the PHP `FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT']` 27-key list. This is enforced by an existing cross-language test extended in Pass 2A. Pattern carries from Task 25 R3 (which locked it for `CHAIN_BREAK_DETECTED` + `CHAIN_RESTART`).
+
+**Pass 2A acceptance criterion:** TS-encoder golden output for each fixture in synthesis v5 §10 (F-1 through F-15 including large-receipt acceptance fixture) byte-matches the hand-authored expected canonical_bytes; PHP parser/validator accepts each fixture; negative fixtures (extras, wrong types, regex violations, partition mismatch, scale violations, discount-reason mismatch) are rejected with the expected forensic prefixes.
+
 ---
 
 ## 12. Off-device durability controls

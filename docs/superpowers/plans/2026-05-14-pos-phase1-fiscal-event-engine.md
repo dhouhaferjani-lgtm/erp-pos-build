@@ -2096,9 +2096,9 @@ git commit -m "feat(pos): receiptService becomes assembler; executeCheckout is c
 
 ## Task 27B: `receiptService.ts` → `FiscalEventEngine` assembler (Pass 2 — deferred)
 
-**Status: READY TO DISPATCH (Q1–Q6 answered 2026-05-20 — see "Q1–Q6 Owner-Approved Decisions" subsection after Q6 below; owner-directed autonomous unblock; reviewer/owner may override decisions in place before dispatch)**
+**Status: READY TO DISPATCH (Pass 2A first per synthesis v5 — see "Q1–Q6 — FINAL Owner-Approved Decisions (synthesis v5)" subsection after Q6 below).** Q1–Q6 originally answered 2026-05-20 (`7a7686817`); pre-flight audit by the parked Pass 2 implementer (agent `a58368ad0687cb326`) found 5 structural divergences against the codebase; owner directed full-spec NF525+ZATCA+DE+IT canonical with NF525+Tunisia implementation first; 5 rounds of Codex adversarial review converged on APPROVE-WITH-MINOR-EDITS at synthesis v5 (`docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md`); Task split into **Pass 2A (contract land)** + **Pass 2B (assembler refactor)** with `.PASS_2B_PENDING` marker + CI sentinel between them.
 
-**Precondition:** Task 27 Pass 1 shipped (DONE `c1c30ea86`); Q1–Q6 answered (DONE 2026-05-20 in this plan).
+**Precondition:** Task 27 Pass 1 shipped (DONE `c1c30ea86`); Q1–Q6 answered + synthesis v5 locked (DONE 2026-05-20 — synthesis trail at `e9a94790b`).
 
 `receiptService.ts` becomes a business-document assembler calling `FiscalEventEngine.append()` inside one SQLite transaction. Until this lands, `createOfflineReceipt()` keeps its current independent v3 hash/seal/chain code (the §14.3 chokepoint disposition for new-sale server-authoring callers does NOT depend on the assembler refactor — Pass 1 closed that at the receiptApi seam).
 
@@ -2141,11 +2141,79 @@ git commit -m "feat(pos): receiptService becomes assembler; executeCheckout is c
 
 ---
 
-### Q1–Q6 — Owner-Approved Decisions (2026-05-20)
+### Q1–Q6 — FINAL Owner-Approved Decisions (synthesis v5, 2026-05-20)
 
-**Status:** Owner (admin@otospex.com) directed autonomous unblock 2026-05-20. Decisions below are grounded in codebase patterns (Tasks 5/13/15 SqlSurface module-scope precedent, Task 14/24 `FiscalPayloadConstraintValidator` PHP contract, Task 19 `pos_terminals.genesis_seed` server-issued, Task 21 `PosCoreReceiptProjection`), spec v7 (§5.0 device-authority, §7.4 projector split, §13.4 chain-head, §14 disposition), and AutoERP CLAUDE.md rule 13 (constructor injection only, no `app()` helper).
+**This is the AUTHORITATIVE section.** The v3-era A1-A6 below (kept for audit trail) is SUPERSEDED — Pass 2 implementer pre-flight (agent `a58368ad0687cb326`) found 5 structural divergences against the codebase; owner directed full-spec NF525+ZATCA+DE+IT canonical with NF525+Tunisia implementation first; 5 rounds of Codex adversarial review (BLOCK → REQUEST-CHANGES ×3 → APPROVE-WITH-MINOR-EDITS) converged on synthesis v5 at `docs/superpowers/research/2026-05-20-sale-receipt-canonical-payload-synthesis-v5.md` (committed `e9a94790b`).
 
-If a reviewer (or owner) overrides a decision below before Pass 2 actually ships, update this section in place and re-run the implementer brief.
+**Owner directives (D1–D9):**
+- D1. 10-field PHP shape is incomplete. Adopt expanded canonical contract.
+- D2. **No dual chain.** Legacy v3 fiscal chain code DELETED in Pass 2B.
+- D3. Specs commit to all 4 regimes (NF525 + ZATCA + Germany + Italy); **implement NF525 + Tunisia immediately**; ZATCA + Germany + Italy DEFERRED for later (canonical carries optional/nullable fields so addition is incremental).
+- D4. **v1 rewrite in place** — no `event_version` bump; existing v1 fixtures regenerated atomically (no production tenants exist).
+- D5. Server-side mirror columns (`pos_receipts.fiscal_hash` etc.) stay through Pass 2; **new deferred task added** for post-Phase-2 audit + drop so we don't ship dead code at go-live.
+- D6. **DROP feature flag.** Pass 2A + 2B = two clean commits on dev branch.
+- D7. **B2C Simplified only via Tauri POS.** The existing web B2B flow is UNTOUCHED. Drop `invoice_subtype_code` from payload (27 keys, not 28).
+- D8. B2B / ZATCA Tax Invoice path TBD later (POS-authored vs web-B2B-aggregated).
+- D9. **Tunisia priority + immediate target.** NF525-certifiable canonical satisfies Tunisia by superset.
+
+**Amended A1 — Engine singleton (final form):** `getFiscalEventEngine(companyId: string): Promise<FiscalEventEngine>` at `apps/pos/src/lib/fiscal/instance.ts` — async, per-companyId-keyed memoised factory mirroring `getDatabase(companyId)`. 4-positional FiscalEventEngine constructor wired with SqlSurface + canonical encoder + integrity provider + payload registry. `__resetFiscalEventEngineForTesting()` test reset. See synthesis v5 §11 Amended A1.
+
+**Amended A2 — Genesis seed (final form):** `pos_terminals.genesis_seed` ALREADY in `TerminalResource:42` + reaches device. **No PHP edit needed.** Device-side: extend `upsertTerminalState` (terminalStateRepository.ts:134-191) to write-once mirror `genesis_seed` → v37 `terminal_state.fiscal_event_genesis_seed`. Never overwrite non-empty. Re-claim with mismatched seed → new `ChainGenesisSeedConflictError`. See synthesis v5 §11 Amended A2.
+
+**Amended A3 — Tenant + company source (final form):** From `useTerminalStore.activeTerminal.{tenantId, companyId}`. `OfflineReceiptInput` gains required `tenantId: string` + `companyId: string`. `paymentStore.createReceiptLocalFirst()` reads active terminal; throws new `ActiveTerminalRequiredError` if missing. No `useAuthStore` reads inside receiptService (CLAUDE.md rule 13). See synthesis v5 §11 Amended A3.
+
+**Amended A4 — Canonical SALE_RECEIPT payload shape (final form — 27 keys, sorted lex):** Candidate C-v3 at `apps/pos/src/lib/fiscal/payloads/SaleReceiptPayload.ts`. Top-level keys: `business_date, buyer, cashier_id, cashier_name, consumption_mode, currency_code, currency_scale, event_time_device, invoice_type_code, line_items, lottery_code, notes, original_receipt_reference, payments, receipt_uuid, seller, shift_id, subtotal, table_id, terminal_id, total, training_flag, transaction_discount_amount, transaction_discount_reason, vat_breakdown, vat_total, vouchers_redeemed`. Nested `seller` (name + tax_number + address + tax_jurisdiction_country_code), `buyer` (sale-time snapshot, D16-safe), `line_items[]` (with gtin + tax_category_code + non_collected_subtype), `vat_breakdown[]` (with tax_category_code), `original_receipt_reference` (refund/void linkage). EXCLUDED: receipt_number (server-derived), fiscal_event_id, fiscal_hash, previous_hash, sequence_number. See synthesis v5 §3 + §4 + §6.
+
+**Amended A5 — Transactional boundary (final form):** Single SQLite tx wraps `engine.append()` + projector writes (device-side: `fiscal_events` + `offline_receipts` mirror + voucher decrement). Server-side `pos_receipt_lines` + `pos_receipt_payments` are written by Task 21 projection AFTER device sync. Legacy chain code DELETED per synthesis v5 §9. **Concurrent-receipt rule:** per-`tenant_id:terminal_id` Promise queue in `paymentStore`; linear backoff (50ms, 100ms, 200ms); 3 retries on `ConcurrentChainAdvanceError` → `FiscalChainContentionError`. See synthesis v5 §11 Amended A5.
+
+**Amended A6 — Test migration (final form):** Hybrid — ~600-700 LOC kept as mocks (cart math, voucher dedup, currency scaling); ~300-400 LOC migrated to `SqliteTestAdapter` integration tests (engine-append + projector tx, split-payment, voucher-redemption, atomic rollback, idempotency on retry, genesis-seed-empty rejection, cross-tenant guard, refund/void, training-mode, D16 buyer snapshot, concurrent-receipt serialization); ~400-500 LOC deleted (computeReceiptHash/computeV3FiscalHash/buildCanonicalPayload internal tests). Source-level guard refined to AST-aware/scoped regex: forbid legacy hash helpers; require `.append(` invocation on FiscalEventEngine-typed value. See synthesis v5 §11 Amended A6.
+
+---
+
+### Pass 2A — contract land (single commit on dev branch)
+
+Scope per synthesis v5 §8.A:
+- PHP `FiscalPayloadConstraintValidator` PAYLOAD_KEYS expanded to 27-key list + `validateSaleReceiptPayload` expanded (nested shape, VAT partition algorithm with `bcadd`+`bccomp`, scale invariant per v5 §6.B field table, universal `seller.tax_number` regex `^[A-Za-z0-9 \-/.]{4,40}$`).
+- PHP `StrictCanonicalParser` — already shares PAYLOAD_KEYS via Task 24 R2; no duplication.
+- PHP `PosCoreReceiptProjection` mapping (canonical-only default for new fields; `invoice_type_code` + `training_flag` get new columns per query/report consumers).
+- PHP `Nf525DataProvider` line-level refactor — `mapSaleReceipt`/`mapVoidedReceipt`/`mapReturnReceipt`/`mapLineFromCanonical`/`mapPaymentFromCanonical`/`mapVatDetailFromCanonical` bifurcated by `fiscal_event_id IS NOT NULL`; reads from new `CanonicalPayloadReader` service in `apps/api/app/Modules/Fiscal/Application/Services/CanonicalPayloadReader.php`; legacy fallback preserved for `fiscal_event_id IS NULL`.
+- TS `SALE_RECEIPT_PAYLOAD_KEYS` constant byte-mirrors PHP 27-key list. Drift gate updated. `FiscalEventEngine.SaleReceiptPayloadInput` + `validateSaleReceiptPayload` expanded.
+- Task 4 golden vectors REGENERATED — old v3 fixtures DELETED, v4 fixtures per v5 §10 matrix (F-1 through F-15 including large-receipt acceptance fixture).
+- Test migration inventory (v5 §8.A): regenerate `OutboxIngestorTest::minimalSaleReceiptPayload()`, `ParseFailureResumeTest::correctedPayload()`, `PosCoreReceiptProjectionTest` seeders, `StrictCanonicalParserTest` (Unit/Fiscal/), `FiscalEventIngestionEndpointTest`; CREATE `FiscalPayloadConstraintValidatorTest`; TS engine + drift gate tests.
+- Roadmap v2 amendment: add 3 deferred tasks (mirror-column audit + per-country tax-number strict validation + ParseFailureResolution operator UX).
+- Spec v7 §11 inline-amended with the SALE_RECEIPT payload-shape contract + §11.x country-adapter pattern note (no separate v8 file — inline amendment precedent from Task 26).
+- **NEW: `apps/pos/src/lib/offline/.PASS_2B_PENDING` marker file** + **`apps/pos/scripts/check-pass-2b-pending.sh` CI sentinel** (wired into chokepoint-gate job) that fails any PR which wires `FiscalEventEngine` / `getFiscalEventEngine` / `lockTerminal` / `.append(.*event_type` into `receiptService.ts` or `paymentStore.ts` while the marker exists. Pass 2B atomically removes the marker + adds the wiring.
+
+Pre-commit gate: full Fiscal PHPUnit + full POS Vitest + PHPStan L8 + Pint + chokepoint gate + new sentinel + cross-language drift gate ALL green; grep gate scoped to `apps/api/tests/{Feature,Unit}/Fiscal/*` + `apps/pos/src/lib/fiscal/__tests__/*` returns ZERO matches of the OLD 10-key signature regex.
+
+Expected: 3-4 review rounds (Task 30 precedent).
+
+### Pass 2B — receiptService refactor (second commit, after Pass 2A merges to dev)
+
+Scope per synthesis v5 §8.D:
+- Refactor `receiptService.ts` `createOfflineReceipt()` to emit Candidate C-v3 shape via `engine.append()`.
+- Wire `FiscalEventEngine` singleton per A1.
+- Extend `upsertTerminalState` for genesis_seed mirror per A2.
+- Thread `tenantId` + `companyId` through `OfflineReceiptInput` per A3.
+- DELETE legacy chain code per v5 §9 (device + server).
+- ATOMICALLY delete `.PASS_2B_PENDING` marker.
+- Migrate device-side tests (`receiptService.test.ts` + `paymentStore*.test.ts`) per A6.
+- Absorb Task 28: `/pos/receipts/sync` route + ReceiptSyncService consumer + SyncReceiptPayload + SyncReceiptsRequest + SyncReceiptResult DELETED in same commit.
+
+Expected: 2-3 review rounds.
+
+---
+
+### Pass 2 downstream dependencies
+
+- **Task 28** — ABSORBED into Pass 2B (route retirement + DTO/Request deletion + §14.1 feature-suite migration cleanup).
+- **Task 33** (Full-flow verification + roadmap status update) — depends on Pass 2A + Pass 2B both merged.
+
+---
+
+### Q1-Q6 — Original v3-era Owner-Approved Decisions (2026-05-20 — SUPERSEDED by synthesis v5)
+
+**The text below is the original v3-era A1-A6, kept for audit trail only. Codex round-1 BLOCK + 4 subsequent rounds identified material defects (B1 DE/IT ungrounded, B2 ZATCA UBL reconstruction incomplete, B3 event versioning unaddressed, 8 P1s, multiple P2s). Synthesis v5 above is the authoritative replacement.**
 
 ---
 
