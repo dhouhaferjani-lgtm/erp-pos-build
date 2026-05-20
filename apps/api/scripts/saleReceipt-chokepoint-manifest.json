@@ -1,8 +1,7 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "spec_anchor": "docs/superpowers/specs/2026-05-14-pos-phase1-foundation-spec-v7.md §14.3",
-  "last_reconciled": "2026-05-20",
-  "notes": "Disposition manifest for every ->createReceipt( and ->finalize( call site under apps/api/app + apps/api/routes. Reconciled by apps/api/scripts/check-saleReceipt-chokepoints.sh + tests/Feature/Fiscal/ChokepointCompletenessTest.php. Disposition codes per spec §14: (a) removed, (b) disabled/deferred, (c) knowingly-retained carve-out. Entries with chokepoint='unrelated' are explicit allowlist (e.g. Inventory finalize() — same method name, unrelated receiver type). One entry per unique (file, line_anchor) — when two grep hits share the same line_anchor text (e.g. ExchangeService :286 + :289), one entry covers both per the substring-match semantics in the gate.",
+  "notes": "Disposition manifest for every ->createReceipt( and ->finalize( call site under apps/api/app + apps/api/routes. Reconciled by apps/api/scripts/check-saleReceipt-chokepoints.sh + tests/Feature/Fiscal/ChokepointCompletenessTest.php. Disposition codes per spec §14: (a) removed, (b) disabled/deferred, (c) knowingly-retained carve-out. Entries with chokepoint='unrelated' are explicit allowlist (e.g. Inventory finalize() — same method name, unrelated receiver type). One entry per unique (file, line_anchor) — when two grep hits share the same line_anchor text (e.g. ExchangeService :286 + :289), one entry covers both per the substring-match semantics in the gate. Round-2 (Task 30): (1) every (b) disposition entry now carries a retired_in_task marker pinning the Phase 1 follow-up task that will move it to (a); (2) gate validates receiver_type against the calling_class constructor via PHP reflection (bin/verify-chokepoint-manifest.php); (3) last_reconciled field removed — git log is the source of truth for the manifest's reconciliation history.",
   "entries": [
     {
       "file": "apps/api/app/Modules/POS/Presentation/Controllers/ReceiptController.php",
@@ -13,6 +12,7 @@
       "chokepoint": "createReceipt",
       "disposition": "b",
       "live": true,
+      "retired_in_task": "Task 29",
       "note": "Task 29 §14.2: POST /pos/receipts is 410 Gone; controller method retained as docblock anchor. Body never invoked."
     },
     {
@@ -24,6 +24,7 @@
       "chokepoint": "createReceipt",
       "disposition": "b",
       "live": true,
+      "retired_in_task": "Task 29",
       "note": "Task 29 §14.2: POST /pos/orders/{id}/close is 410 Gone; convertToReceipt body never invoked."
     },
     {
@@ -35,7 +36,8 @@
       "chokepoint": "createReceipt",
       "disposition": "b",
       "live": false,
-      "note": "§14.3: no live route/controller caller found 2026-05-20 (grep clean across apps/api). ExchangeService is service-level inert; cleanup queued for ExchangeService removal task."
+      "retired_in_task": "Task 30-followup (ExchangeService cleanup)",
+      "note": "§14.3: no live route/controller caller found (grep clean across apps/api). ExchangeService is service-level inert; cleanup queued for the ExchangeService removal follow-up task."
     },
     {
       "file": "apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php",
@@ -56,6 +58,7 @@
       "chokepoint": "finalize",
       "disposition": "b",
       "live": false,
+      "retired_in_task": "Task 30-followup (ExchangeService cleanup)",
       "note": "§14.3: no live route/controller caller; ExchangeService inert. Covers BOTH ExchangeService.php:286 (surplus-exchange path) and :289 (even-exchange path) — identical source text, single substring-anchor entry per the gate semantics."
     },
     {
@@ -78,6 +81,7 @@
       "chokepoint": "finalize",
       "disposition": "b",
       "live": true,
+      "retired_in_task": "Task 28",
       "note": "Task 28 queued: /pos/receipts/sync retirement removes this caller. Blocked on Task 27B Pass 2."
     },
     {
@@ -89,6 +93,7 @@
       "chokepoint": "finalize",
       "disposition": "b",
       "live": true,
+      "retired_in_task": "Task 29",
       "note": "Task 29 §14.2: POST /pos/receipts/{id}/payments is 410 Gone; service body never reached via HTTP. Still reachable from ExchangeService (which is itself inert per the §14.3 entry above)."
     }
   ]

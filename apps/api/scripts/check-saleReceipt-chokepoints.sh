@@ -159,6 +159,28 @@ while IFS= read -r LINE; do
 done <<< "$HITS"
 
 # ---------------------------------------------------------------------
+# (Codex T30-P1) Receiver-type validator — reflects calling_class via
+# PHP and asserts each entry's declared receiver_type matches a real
+# constructor-injected property. Closes the round-1 P1 (gate previously
+# only substring-matched line_anchor; receiver_type / chokepoint /
+# calling_class were never validated against the code).
+# ---------------------------------------------------------------------
+PHP_HELPER="$REPO_ROOT/apps/api/scripts/verify-chokepoint-manifest.php"
+if [[ ! -f "$PHP_HELPER" ]]; then
+    echo "Receiver-type helper not found: $PHP_HELPER" >&2
+    exit 2
+fi
+
+if command -v php >/dev/null 2>&1; then
+    if ! php "$PHP_HELPER" --manifest "$MANIFEST"; then
+        FAILED=1
+    fi
+else
+    echo "php CLI is required to run the receiver_type validator but is not installed." >&2
+    exit 2
+fi
+
+# ---------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------
 if [[ "$FAILED" -eq 0 ]]; then

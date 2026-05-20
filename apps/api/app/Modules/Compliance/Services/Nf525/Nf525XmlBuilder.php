@@ -513,6 +513,56 @@ final class Nf525XmlBuilder
     }
 
     /**
+     * Add the §8 quarantine section listing non-admissible envelopes
+     * scoped to the export window. EMITTED ONLY WHEN NON-EMPTY so the
+     * pre-Phase-1 byte-stable JET XML fixture (zero quarantine entries)
+     * does not change. Phase 1 §8 + Task 30 round-2 fix.
+     *
+     * @param  list<array<string, mixed>>  $entries
+     */
+    public function addQuarantineSection(array $entries): self
+    {
+        if (count($entries) === 0) {
+            return $this;
+        }
+
+        $section = $this->doc->createElement('EvenementsQuarantaine');
+        $section->setAttribute('count', (string) count($entries));
+
+        foreach ($entries as $entry) {
+            $envEl = $this->doc->createElement('Envelope');
+
+            $envelopeId = is_string($entry['envelope_id'] ?? null) ? (string) $entry['envelope_id'] : '';
+            $terminalId = is_string($entry['terminal_id'] ?? null) ? (string) $entry['terminal_id'] : '';
+            $claimedSeq = is_int($entry['claimed_sequence_number'] ?? null)
+                ? (int) $entry['claimed_sequence_number']
+                : 0;
+            $exceptionClass = is_string($entry['integrity_exception_class'] ?? null)
+                ? (string) $entry['integrity_exception_class']
+                : '';
+            $reason = is_string($entry['integrity_reason'] ?? null) ? (string) $entry['integrity_reason'] : '';
+            $serverReceivedAt = is_string($entry['server_received_at'] ?? null)
+                ? (string) $entry['server_received_at']
+                : '';
+            $resolvedAt = is_string($entry['resolved_at'] ?? null) ? (string) $entry['resolved_at'] : '';
+
+            $this->addElement($envEl, 'Identifiant', $envelopeId);
+            $this->addElement($envEl, 'TerminalId', $terminalId);
+            $this->addElement($envEl, 'SequenceRevendiquee', (string) $claimedSeq);
+            $this->addElement($envEl, 'ClasseException', $exceptionClass);
+            $this->addElement($envEl, 'Motif', $reason);
+            $this->addElement($envEl, 'DateReceptionServeur', $serverReceivedAt);
+            $this->addElement($envEl, 'DateResolution', $resolvedAt);
+
+            $section->appendChild($envEl);
+        }
+
+        $this->root->appendChild($section);
+
+        return $this;
+    }
+
+    /**
      * Output the XML document as a formatted string.
      */
     public function toString(): string

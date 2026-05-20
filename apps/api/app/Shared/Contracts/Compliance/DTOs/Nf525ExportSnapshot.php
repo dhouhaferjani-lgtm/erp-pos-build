@@ -30,6 +30,13 @@ final readonly class Nf525ExportSnapshot
      * @param  list<Nf525TerminalLifecycleEventData>  $terminalLifecycleEvents
      * @param  list<Nf525TrainingModeCount>  $trainingCounts
      * @param  list<Nf525TerminalData>  $terminals  Hash-chain summary per terminal
+     * @param  list<array<string, mixed>>  $quarantineSection  Phase 1 §8 non-admissible
+     *                                                         envelopes scoped to this (company, period). Defaults to an
+     *                                                         empty list to preserve byte-stability for legacy callers
+     *                                                         that never populate it; the XML builder emits the
+     *                                                         `<EvenementsQuarantaine>` section only when non-empty.
+     *                                                         Round-2 (Task 30) extension to fold spec §8 into the live
+     *                                                         NF525 JET pipeline.
      */
     public function __construct(
         public Nf525CompanyHeaderData $company,
@@ -46,5 +53,6 @@ final readonly class Nf525ExportSnapshot
         public array $terminalLifecycleEvents,
         public array $trainingCounts,
         public array $terminals,
+        public array $quarantineSection = [],
     ) {}
 }

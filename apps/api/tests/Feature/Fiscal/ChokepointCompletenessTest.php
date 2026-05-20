@@ -88,17 +88,17 @@ final class ChokepointCompletenessTest extends TestCase
         }
     }
 
-    public function test_after_phase1_only_void_return_carveout_chokepoint_callers_remain_live(): void
+    public function test_after_phase1_only_void_return_carveout_or_retiring_callers_remain_live(): void
     {
-        // Phase 1 acceptable live entries:
-        //   - disposition (b): route-disposed / deferred-retirement (Task 28,
-        //     Task 29). Live: true means the service body is still production
-        //     code but no live HTTP route can reach it.
-        //   - disposition (c): knowingly-retained carve-outs (e.g.
-        //     ReceiptReturnService — Phase 2+ SALE_VOID/REFUND_RECEIPT
-        //     event types).
-        // Any other (live: true) non-unrelated entry is an unaccounted-for
-        // chokepoint caller and must fail the gate.
+        // Round-2 Opus P2-1 closure: rename + caveat. After Phase 1
+        // settles, the spec wants ONLY (c) carve-outs (e.g.
+        // ReceiptReturnService). Today the manifest still contains (b)
+        // entries that are inert because their HTTP route is 410 Gone
+        // — the body survives until the retirement task lands. The
+        // companion test_disposition_b_entries_have_retirement_task
+        // pins that every such (b) entry carries a retired_in_task
+        // marker so this transitional state cannot drift into a
+        // permanent allowlist.
         foreach ($this->manifestEntries() as $entry) {
             $isUnrelated = ($entry['chokepoint'] ?? null) === 'unrelated';
             $isLive = ($entry['live'] ?? false) === true;
@@ -116,6 +116,158 @@ final class ChokepointCompletenessTest extends TestCase
                     $entry['line_anchor'] ?? '?',
                 ),
             );
+        }
+    }
+
+    public function test_disposition_b_entries_have_retirement_task(): void
+    {
+        // Round-2 Opus P2-1 closure: every (b) entry MUST carry a
+        // retired_in_task field so the transitional acceptance of
+        // route-disposed-but-still-live callers cannot drift into a
+        // permanent free pass. (c) entries are knowingly-retained
+        // carve-outs and need no retirement task; (a) entries are
+        // already removed; `unrelated` entries are excluded from the
+        // §14 disposition codes by definition.
+        foreach ($this->manifestEntries() as $entry) {
+            if (($entry['disposition'] ?? null) !== 'b') {
+                continue;
+            }
+
+            $retiredIn = $entry['retired_in_task'] ?? null;
+            $this->assertIsString(
+                $retiredIn,
+                sprintf(
+                    'Disposition (b) entry missing retired_in_task marker: %s:%s',
+                    $entry['file'] ?? '?',
+                    $entry['line_anchor'] ?? '?',
+                ),
+            );
+            $this->assertNotSame(
+                '',
+                $retiredIn,
+                sprintf(
+                    'Disposition (b) entry has empty retired_in_task: %s:%s',
+                    $entry['file'] ?? '?',
+                    $entry['line_anchor'] ?? '?',
+                ),
+            );
+        }
+    }
+
+    public function test_manifest_receiver_type_matches_calling_class_constructor(): void
+    {
+        // Round-2 Codex T30-P1 closure: substring-matching line_anchor
+        // is not enough — the manifest's claims about receiver_type /
+        // calling_class must be validated against the actual code via
+        // PHP reflection. A typo / lie (e.g. mislabeling a real
+        // ReceiptCreationService caller as an InventoryCountingService
+        // receiver) MUST fail the gate.
+        //
+        // Strategy: walk each non-unrelated entry; reflect the
+        // calling_class; assert at least one constructor parameter is
+        // declared with a type matching (==) the manifest's
+        // receiver_type. Mirrors the shell gate's bin helper for
+        // defense in depth at the `php artisan test` layer.
+        foreach ($this->manifestEntries() as $entry) {
+            $chokepoint = is_string($entry['chokepoint'] ?? null) ? (string) $entry['chokepoint'] : '';
+            if ($chokepoint === 'unrelated') {
+                continue;
+            }
+
+            $callingClass = is_string($entry['calling_class'] ?? null) ? (string) $entry['calling_class'] : '';
+            $receiverType = is_string($entry['receiver_type'] ?? null) ? (string) $entry['receiver_type'] : '';
+            $this->assertNotSame('', $callingClass, 'Entry missing calling_class');
+            $this->assertNotSame('', $receiverType, 'Entry missing receiver_type');
+
+            $this->assertTrue(
+                class_exists($callingClass),
+                sprintf('Manifest calling_class does not exist: %s', $callingClass),
+            );
+
+            $refl = new \ReflectionClass($callingClass);
+            $matched = false;
+            $ctor = $refl->getConstructor();
+            if ($ctor !== null) {
+                foreach ($ctor->getParameters() as $param) {
+                    $paramType = $param->getType();
+                    if (! $paramType instanceof \ReflectionNamedType) {
+                        continue;
+                    }
+                    if ($paramType->getName() === $receiverType) {
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
+
+            $this->assertTrue(
+                $matched,
+                sprintf(
+                    'receiver_type %s NOT found as a constructor parameter on %s — manifest lies about the receiver',
+                    $receiverType,
+                    $callingClass,
+                ),
+            );
+        }
+    }
+
+    public function test_negative_manifest_with_wrong_receiver_type_is_rejected_by_validator(): void
+    {
+        // Round-2 Codex T30-P1 closure (negative path): the bin/
+        // verify-chokepoint-manifest.php script MUST exit non-zero when
+        // an entry's receiver_type doesn't match any constructor
+        // parameter on the calling_class. Fabricate a temporary
+        // manifest in a tmp file and invoke the script via a Symfony
+        // Process so the gate's exit code is the contract.
+        $repoRoot = $this->repoRoot();
+        $helper = $repoRoot.'/apps/api/scripts/verify-chokepoint-manifest.php';
+        $this->assertFileExists($helper, 'Receiver-type validator helper is missing.');
+
+        $tmpManifest = tempnam(sys_get_temp_dir(), 'manifest-lie-');
+        $this->assertIsString($tmpManifest);
+
+        $bad = [
+            'schema_version' => '1.1',
+            'spec_anchor' => 'unit-test fabricated',
+            'notes' => 'negative test',
+            'entries' => [
+                [
+                    'file' => 'apps/api/app/Modules/POS/Application/Services/OrderToReceiptService.php',
+                    'line_anchor' => 'return $this->receiptCreationService->createReceipt(',
+                    'calling_class' => 'App\\Modules\\POS\\Application\\Services\\OrderToReceiptService',
+                    'calling_method' => 'convertToReceipt',
+                    'receiver_type' => 'App\\Modules\\Inventory\\Application\\Services\\InventoryCountingService',
+                    'chokepoint' => 'createReceipt',
+                    'disposition' => 'b',
+                    'live' => true,
+                    'retired_in_task' => 'fake',
+                    'note' => 'fabricated lie',
+                ],
+            ],
+        ];
+        file_put_contents($tmpManifest, json_encode($bad, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+
+        try {
+            $process = new Process(['php', $helper, '--manifest', $tmpManifest], $repoRoot);
+            $process->run();
+            $exit = $process->getExitCode();
+            $this->assertSame(
+                1,
+                $exit,
+                sprintf(
+                    'Expected validator to exit 1 (MANIFEST_LIE) but got %s (stdout: %s; stderr: %s)',
+                    var_export($exit, true),
+                    $process->getOutput(),
+                    $process->getErrorOutput(),
+                ),
+            );
+            $this->assertStringContainsString(
+                'MANIFEST_LIE',
+                $process->getErrorOutput(),
+                'Validator must print a MANIFEST_LIE diagnostic on receiver_type mismatch.',
+            );
+        } finally {
+            @unlink($tmpManifest);
         }
     }
 

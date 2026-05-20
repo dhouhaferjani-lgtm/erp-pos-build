@@ -9,6 +9,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Service for calculating and verifying POS receipt hash chains (NF525 compliance).
@@ -178,7 +179,7 @@ final class ReceiptHashService
      */
     public function verifyTerminalChain(Terminal $terminal): bool
     {
-        if (! $this->verifyFiscalEventsArm($terminal)) {
+        if (! $this->verifyTerminalChainFiscalArm($terminal)) {
             return false;
         }
 
@@ -190,8 +191,21 @@ final class ReceiptHashService
      * `canonical_bytes`, assert chain linkage. Mirrors the
      * `fiscal:verify-event-chain` walk pattern (Task 31) so both verifiers
      * detect the same incidents.
+     *
+     * **Public surface (Task 30 round-2 BLOCKER closure).** Exposed to
+     * `Nf525DataProvider::verifyReceiptChain` so the LIVE NF525
+     * verify-chains endpoint uses the rebuilt canonical-bytes verifier
+     * for fiscal_events-backed rows; the legacy DTO surface still
+     * reports per-sequence diagnostics for legacy rows separately.
+     *
+     * On failure: emits `Log::error('chain_verification_failed', ...)`
+     * with structured context (terminal_id, failed_fiscal_event_id,
+     * failed_sequence_number, expected_hash, actual_hash, failure_mode)
+     * BEFORE returning false. Closes Codex T30-P2 (P2) — bare bool
+     * return preserved (3 caller back-compat) plus structured
+     * side-channel diagnostic for auditors / operators.
      */
-    private function verifyFiscalEventsArm(Terminal $terminal): bool
+    public function verifyTerminalChainFiscalArm(Terminal $terminal): bool
     {
         $rows = $this->db->table('fiscal_events')
             ->where('terminal_id', $terminal->id)
@@ -210,6 +224,14 @@ final class ReceiptHashService
             $rehashed = $this->integrityProvider->computeHash($canonicalBytes);
             $storedCurrentHash = (string) $row->current_hash;
             if (! hash_equals(strtolower($rehashed), strtolower($storedCurrentHash))) {
+                $this->logChainFailure(
+                    terminal: $terminal,
+                    row: $row,
+                    expectedHash: strtolower($rehashed),
+                    actualHash: strtolower($storedCurrentHash),
+                    failureMode: 'hash_mismatch',
+                );
+
                 return false;
             }
 
@@ -219,11 +241,37 @@ final class ReceiptHashService
             // the terminal's genesis_seed (validated at registration to
             // be a non-empty hex string) and then chained off the prior
             // row's current_hash — both come from CHECK-constrained
-            // columns. A missing genesis_seed surfaces as a length-zero
-            // string and fails hash_equals against the row's 64-hex
-            // previous_hash, which is the failure shape we want anyway.
+            // columns.
+            //
+            // Opus P3-2 (Task 30 round-2): defensive 64-char length guard
+            // on the expected-previous string before hash_equals. A
+            // length-0 expected (missing genesis_seed) still fails
+            // hash_equals against the row's 64-hex previous_hash, but
+            // surfacing 'genesis_seed_missing' here gives operators a
+            // crisp diagnostic instead of an opaque "hash mismatch".
+            $expectedPreviousStr = (string) $expectedPrevious;
+            if (strlen($expectedPreviousStr) !== 64) {
+                $this->logChainFailure(
+                    terminal: $terminal,
+                    row: $row,
+                    expectedHash: $expectedPreviousStr,
+                    actualHash: (string) $row->previous_hash,
+                    failureMode: 'genesis_seed_or_link_length_invalid',
+                );
+
+                return false;
+            }
+
             $storedPreviousHash = (string) $row->previous_hash;
-            if (! hash_equals(strtolower((string) $expectedPrevious), strtolower($storedPreviousHash))) {
+            if (! hash_equals(strtolower($expectedPreviousStr), strtolower($storedPreviousHash))) {
+                $this->logChainFailure(
+                    terminal: $terminal,
+                    row: $row,
+                    expectedHash: strtolower($expectedPreviousStr),
+                    actualHash: strtolower($storedPreviousHash),
+                    failureMode: 'linkage_broken',
+                );
+
                 return false;
             }
 
@@ -231,6 +279,30 @@ final class ReceiptHashService
         }
 
         return true;
+    }
+
+    /**
+     * Closes Codex T30-P2 (P2). Emits a single structured Log::error
+     * carrying terminal_id + fiscal_event_id + sequence_number +
+     * expected/actual hashes + failure mode. Public bool contract is
+     * preserved (3 callers — VerifyPosChainCommand, ReportController,
+     * Nf525DataProvider — see no change in shape).
+     */
+    private function logChainFailure(
+        Terminal $terminal,
+        \stdClass $row,
+        string $expectedHash,
+        string $actualHash,
+        string $failureMode,
+    ): void {
+        Log::error('chain_verification_failed', [
+            'terminal_id' => $terminal->id,
+            'failed_fiscal_event_id' => (string) $row->id,
+            'failed_sequence_number' => (int) $row->sequence_number,
+            'expected_hash' => $expectedHash,
+            'actual_hash' => $actualHash,
+            'failure_mode' => $failureMode,
+        ]);
     }
 
     /**

@@ -61,7 +61,11 @@ final class Nf525JetExportService
             ->addTechnicalEvents($snapshot->shifts)
             ->addTerminalEvents($snapshot->terminalLifecycleEvents)
             ->addTrainingMode($snapshot->trainingCounts)
-            ->addHashChains($snapshot->terminals);
+            ->addHashChains($snapshot->terminals)
+            // Spec §8 quarantine surface — emits only when non-empty so the
+            // existing JET fixture byte-stability is preserved (Task 30
+            // round-2 BLOCKER closure).
+            ->addQuarantineSection($snapshot->quarantineSection);
 
         return $this->xmlBuilder->toString();
     }

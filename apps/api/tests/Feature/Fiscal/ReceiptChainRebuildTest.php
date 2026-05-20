@@ -13,6 +13,9 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
@@ -20,6 +23,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
@@ -157,57 +161,249 @@ final class ReceiptChainRebuildTest extends TestCase
         }
     }
 
-    public function test_nf525_data_provider_reads_verified_canonical_bytes_and_includes_quarantine_state(): void
+    public function test_build_export_snapshot_includes_quarantine_section_per_spec_8(): void
     {
+        // Round-2 BLOCKER closure: the LIVE buildExportSnapshot path (the
+        // one Nf525JetExportService consumes) MUST now carry the §8
+        // quarantine section folded directly into the DTO. Round-1's
+        // separate buildExport() is removed; the live path is the only
+        // surface.
         $this->seedValidChain(2);
         $this->seedQuarantineConflict(claimedSequence: 5);
 
         /** @var Nf525DataProvider $provider */
         $provider = $this->app->make(Nf525DataProvider::class);
 
-        $export = $provider->buildExport($this->tenantId, $this->companyId);
-
-        // Shape is array-of-arrays — assertArrayHasKey on each layer is
-        // the load-bearing contract; the assertIsArray on the top-level
-        // is redundant given PHPStan's inference from the @return tag.
-        $this->assertArrayHasKey(
-            'quarantine_section',
-            $export,
-            'Export must include quarantine_section per spec §8.',
+        $snapshot = $provider->buildExportSnapshot(
+            $this->companyId,
+            Carbon::now('UTC')->copy()->subDay(),
+            Carbon::now('UTC')->copy()->addDay(),
         );
+
         $this->assertNotEmpty(
-            $export['quarantine_section'],
-            'Seeded quarantine row must surface in the quarantine_section.',
+            $snapshot->quarantineSection,
+            'Seeded quarantine row must surface in the quarantineSection of the live snapshot DTO.',
         );
 
-        $this->assertArrayHasKey('receipts', $export);
-        $this->assertNotEmpty(
-            $export['receipts'],
-            'Export must enumerate at least one receipt — the seeded SALE_RECEIPT chain.',
-        );
-        $this->assertArrayHasKey(
-            'canonical_bytes_source',
-            $export['receipts'][0],
-            'Each receipt entry must declare canonical_bytes_source for audit-trail provenance.',
-        );
-        $this->assertSame(
-            'fiscal_events.canonical_bytes',
-            $export['receipts'][0]['canonical_bytes_source'],
-            'Receipt entries must pull from fiscal_events, not from POS Domain models.',
-        );
-
-        // Quarantine entry shape: spec §8 reader contract.
-        $q = $export['quarantine_section'][0];
-        $this->assertArrayHasKey('envelope_id', $q);
-        $this->assertArrayHasKey('claimed_sequence_number', $q);
-        $this->assertArrayHasKey('integrity_exception_class', $q);
-        $this->assertArrayHasKey('integrity_reason', $q);
-        $this->assertArrayHasKey('server_received_at', $q);
-        $this->assertArrayHasKey('raw_envelope', $q);
-        $this->assertSame(5, $q['claimed_sequence_number']);
+        $entry = $snapshot->quarantineSection[0];
+        $this->assertSame(5, $entry['claimed_sequence_number']);
         $this->assertSame(
             IntegrityExceptionClass::SequenceConflict->value,
-            $q['integrity_exception_class'],
+            $entry['integrity_exception_class'],
+        );
+        $this->assertArrayHasKey('envelope_id', $entry);
+        $this->assertArrayHasKey('integrity_reason', $entry);
+        $this->assertArrayHasKey('server_received_at', $entry);
+        $this->assertArrayHasKey('raw_envelope', $entry);
+    }
+
+    public function test_build_export_snapshot_logs_structured_error_on_canonical_bytes_tamper_for_projected_receipt(): void
+    {
+        // Round-2 BLOCKER closure: when a projection row's fiscal_event
+        // has tampered canonical_bytes, the LIVE buildExportSnapshot
+        // path emits a structured Log::error so auditors see the
+        // diagnostic. The receipt is still included in the export (the
+        // chain-verify pass is the primary defense — see
+        // verifyReceiptChain).
+        $event = $this->seedSingleFiscalEvent();
+
+        $projectedReceipt = $this->seedProjectionReceiptLinkedTo($event);
+
+        // Tamper the linked canonical_bytes (on SQLite the trigger is
+        // not enforced; on PG the same scenario is exercised by
+        // recording a hash mismatch at INSERT time, see
+        // VerifyEventChainCommandTest::seedTamperedChain — here we
+        // exercise the *export-time* rehash via SQLite-only mutation).
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Canonical-bytes UPDATE tamper requires SQLite; PG enforces immutability via trigger.');
+        }
+
+        DB::table('fiscal_events')
+            ->where('id', $event['id'])
+            ->update(['canonical_bytes' => '{"tampered":"yes"}']);
+
+        // Capture structured Log::error calls without intercepting the
+        // Log facade's behaviour (`shouldReceive` would swallow them;
+        // shape assertion via a callback is the contract).
+        $captured = [];
+        Log::shouldReceive('error')
+            ->atLeast()->once()
+            ->withArgs(static function (string $msg, array $ctx) use (&$captured): bool {
+                $captured[] = ['msg' => $msg, 'ctx' => $ctx];
+
+                return true;
+            });
+
+        /** @var Nf525DataProvider $provider */
+        $provider = $this->app->make(Nf525DataProvider::class);
+        $snapshot = $provider->buildExportSnapshot(
+            $this->companyId,
+            Carbon::now('UTC')->copy()->subDay(),
+            Carbon::now('UTC')->copy()->addDay(),
+        );
+
+        // The receipt still appears in the export.
+        $this->assertNotEmpty(
+            $snapshot->sales,
+            'Tampered fiscal_event_backed receipt must still appear in export (chain-verify is the primary defense).',
+        );
+        $this->assertSame((string) $projectedReceipt->id, $snapshot->sales[0]->id);
+
+        // The structured Log::error must have been emitted.
+        $matched = false;
+        foreach ($captured as $entry) {
+            if (
+                str_contains($entry['msg'], 'canonical_bytes rehash mismatch')
+                && ($entry['ctx']['receipt_id'] ?? null) === $projectedReceipt->id
+                && ($entry['ctx']['fiscal_event_id'] ?? null) === $event['id']
+            ) {
+                $matched = true;
+                break;
+            }
+        }
+        $this->assertTrue(
+            $matched,
+            sprintf(
+                'Expected canonical_bytes rehash mismatch log not found among %d captured Log::error calls',
+                count($captured),
+            ),
+        );
+    }
+
+    public function test_verify_receipt_chain_delegates_to_receipt_hash_service_for_fiscal_event_backed_rows(): void
+    {
+        // Round-2 BLOCKER closure: the LIVE verifyReceiptChain endpoint
+        // (Nf525ExportController::verifyChains) must use the rebuilt
+        // canonical-bytes verifier for fiscal_event-backed rows. Seeding
+        // a valid fiscal_events chain (no legacy rows) must return
+        // isValid=true; tampering with the canonical_bytes must flip it
+        // to isValid=false WITHOUT the verifier touching POS Domain
+        // model fields.
+        $this->seedValidChain(3);
+
+        /** @var Nf525DataProvider $provider */
+        $provider = $this->app->make(Nf525DataProvider::class);
+
+        $resultClean = $provider->verifyReceiptChain($this->terminalId);
+        $this->assertTrue($resultClean->isValid, 'Clean fiscal_events chain must verify via the rebuilt arm.');
+
+        // Tamper the latest row's canonical_bytes (SQLite-only mutation
+        // path — PG enforces immutability via trigger; the equivalent
+        // scenario there is a hash-mismatched INSERT).
+        $targetId = DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->orderByDesc('sequence_number')
+            ->value('id');
+        $this->assertIsString($targetId);
+
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            DB::table('fiscal_events')
+                ->where('id', $targetId)
+                ->update(['canonical_bytes' => '{"tampered":"yes"}']);
+
+            $resultTampered = $provider->verifyReceiptChain($this->terminalId);
+            $this->assertFalse(
+                $resultTampered->isValid,
+                'verifyReceiptChain must delegate to the rebuilt canonical-bytes verifier and detect tampering.',
+            );
+        }
+    }
+
+    public function test_pos_receipts_mirror_tamper_does_not_break_fiscal_events_chain(): void
+    {
+        // Round-2 Opus P2-2 closure: the §5.0 D1 mirror-tamper contract.
+        // pos_receipts is a PROJECTION mirror; the chain truth lives on
+        // fiscal_events.canonical_bytes. Mutating pos_receipts.total
+        // (off-path, e.g. from an admin SQL session) MUST NOT cause a
+        // false chain break — the verifier re-hashes canonical_bytes,
+        // not model fields.
+        $event = $this->seedSingleFiscalEvent();
+        $projectedReceipt = $this->seedProjectionReceiptLinkedTo($event);
+
+        /** @var Terminal $terminal */
+        $terminal = Terminal::findOrFail($this->terminalId);
+        /** @var ReceiptHashService $service */
+        $service = $this->app->make(ReceiptHashService::class);
+
+        // Sanity: clean chain verifies.
+        $this->assertTrue($service->verifyTerminalChain($terminal));
+
+        // Tamper the pos_receipts mirror field.
+        DB::table('pos_receipts')->where('id', $projectedReceipt->id)->update([
+            'total' => '999999.99',
+        ]);
+
+        // Chain must STILL verify — the verifier walks fiscal_events,
+        // not pos_receipts.
+        $this->assertTrue(
+            $service->verifyTerminalChain($terminal),
+            'pos_receipts mirror tamper must NOT break the fiscal_events chain — §5.0 D1 contract.',
+        );
+    }
+
+    public function test_verify_terminal_chain_logs_structured_failure_on_canonical_bytes_tamper(): void
+    {
+        // Round-2 Codex T30-P2 closure: when the rebuilt verifier
+        // detects a chain break (canonical_bytes rehash mismatch,
+        // genesis_seed missing, or linkage broken), it MUST emit a
+        // structured Log::error('chain_verification_failed', ...) with
+        // terminal_id + fiscal_event_id + sequence_number +
+        // expected_hash + actual_hash + failure_mode BEFORE returning
+        // false. Bool return type preserved (3 callers depend on it).
+        $this->seedValidChain(2);
+
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Tamper path requires SQLite; PG enforces canonical_bytes immutability via trigger.');
+        }
+
+        $targetId = DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->orderByDesc('sequence_number')
+            ->value('id');
+        $this->assertIsString($targetId);
+
+        DB::table('fiscal_events')
+            ->where('id', $targetId)
+            ->update(['canonical_bytes' => '{"tampered":"yes"}']);
+
+        $captured = [];
+        Log::shouldReceive('error')
+            ->atLeast()->once()
+            ->withArgs(static function (string $msg, array $ctx) use (&$captured): bool {
+                $captured[] = ['msg' => $msg, 'ctx' => $ctx];
+
+                return true;
+            });
+
+        /** @var Terminal $terminal */
+        $terminal = Terminal::findOrFail($this->terminalId);
+        /** @var ReceiptHashService $service */
+        $service = $this->app->make(ReceiptHashService::class);
+
+        $ok = $service->verifyTerminalChain($terminal);
+        $this->assertFalse($ok, 'Tamper must produce a false return.');
+
+        $matched = false;
+        foreach ($captured as $entry) {
+            if (
+                $entry['msg'] === 'chain_verification_failed'
+                && ($entry['ctx']['terminal_id'] ?? null) === $terminal->id
+                && ($entry['ctx']['failed_fiscal_event_id'] ?? null) === $targetId
+                && isset($entry['ctx']['failed_sequence_number'])
+                && isset($entry['ctx']['expected_hash'])
+                && isset($entry['ctx']['actual_hash'])
+                && ($entry['ctx']['failure_mode'] ?? null) === 'hash_mismatch'
+            ) {
+                $matched = true;
+                break;
+            }
+        }
+        $this->assertTrue(
+            $matched,
+            sprintf(
+                'Expected structured chain_verification_failed log not found among %d captured Log::error calls',
+                count($captured),
+            ),
         );
     }
 
@@ -277,6 +473,89 @@ final class ReceiptChainRebuildTest extends TestCase
         ];
 
         DB::table('fiscal_events')->insert($row);
+    }
+
+    /**
+     * Seed a single SALE_RECEIPT fiscal_events row (no chain — just one
+     * standalone admissible row) and return the raw row attributes the
+     * caller will need for cross-table assertions.
+     *
+     * @return array{id: string, canonical_bytes: string, current_hash: string}
+     */
+    private function seedSingleFiscalEvent(): array
+    {
+        $now = Carbon::now('UTC');
+        $canonicalBytes = json_encode(
+            ['event' => 'seq1', 'sequence_number' => 1],
+            JSON_THROW_ON_ERROR,
+        );
+        $currentHash = hash('sha256', $canonicalBytes);
+        $id = Str::uuid()->toString();
+
+        DB::table('fiscal_events')->insert([
+            'id' => $id,
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminalId,
+            'operator_id' => $this->operatorId,
+            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => 1,
+            'event_time_device' => $now,
+            'business_date' => $now->copy()->startOfDay(),
+            'last_server_time_seen' => null,
+            'server_received_at' => $now,
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => null,
+            'source_event_id' => null,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => $this->genesisSeed,
+            'current_hash' => $currentHash,
+            'signature_status' => SignatureStatus::NotRequired->value,
+            'integrity_status' => IntegrityStatus::Verified->value,
+            'integrity_exception_class' => null,
+            'integrity_exception_reason' => null,
+            'payload' => null,
+            'payload_parse_status' => PayloadParseStatus::Pending->value,
+            'created_at' => $now,
+        ]);
+
+        return [
+            'id' => $id,
+            'canonical_bytes' => $canonicalBytes,
+            'current_hash' => $currentHash,
+        ];
+    }
+
+    /**
+     * Seed a pos_receipts projection row linked to the given fiscal_events
+     * row. fiscal_status is FISCALIZED so the row is picked up by the
+     * sales bucket in buildExportSnapshot.
+     *
+     * @param  array{id: string, canonical_bytes: string, current_hash: string}  $event
+     */
+    private function seedProjectionReceiptLinkedTo(array $event): Receipt
+    {
+        return Receipt::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $this->locationId,
+            'terminal_id' => $this->terminalId,
+            'receipt_type' => ReceiptType::Sale,
+            'fiscal_status' => FiscalStatus::Fiscalized->value,
+            'is_voided' => false,
+            'is_training' => false,
+            'fiscal_event_id' => $event['id'],
+            'fiscal_hash' => $event['current_hash'],
+            'previous_hash' => $this->genesisSeed,
+            'chain_sequence' => 1,
+            'receipt_year' => (int) Carbon::now('UTC')->format('Y'),
+            'posted_at' => Carbon::now('UTC'),
+        ]);
     }
 
     private function seedQuarantineConflict(int $claimedSequence): void
