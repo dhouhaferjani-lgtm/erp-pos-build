@@ -936,6 +936,14 @@ d('FiscalEventEngine.append', () => {
     );
   });
 
+  it('Pass 2A.TS R2 — rejects missing fractional digits when currency_scale is non-zero', async () => {
+    const payload = recomputeForScale(validSaleReceiptPayload(), 2);
+    (payload as Record<string, unknown>)['subtotal'] = '10';
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_money_scale_mismatch:field=subtotal/,
+    );
+  });
+
   it('Pass 2A.TS — rejects discount-reason mismatch (amount=0.000 + reason set)', async () => {
     const payload = { ...validSaleReceiptPayload(), transaction_discount_reason: 'manager override' };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(

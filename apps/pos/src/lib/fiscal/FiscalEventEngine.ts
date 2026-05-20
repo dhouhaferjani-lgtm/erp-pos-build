@@ -945,13 +945,15 @@ const NON_COLLECTED_SUBTYPES = ['servizi', 'beni', 'omaggio', 'successiva'] as c
 /**
  * Money regex at the given scale. Non-negative (no `^-?` prefix);
  * refunds are modeled via `invoice_type_code='REFUND'` per v5 §6.A.
- * For `$scale === 0` no fractional part is allowed.
+ * Mirrors PHP `FiscalPayloadConstraintValidator::moneyRegex`: for
+ * non-zero scales the fractional part is mandatory because payload
+ * money strings are `bcformat` output.
  */
 function moneyRegex(scale: number): RegExp {
   if (scale === 0) {
     return /^(0|[1-9]\d*)$/;
   }
-  return new RegExp(`^(0|[1-9]\\d*)(\\.\\d{${scale}})?$`);
+  return new RegExp(`^(0|[1-9]\\d*)\\.\\d{${scale}}$`);
 }
 
 /**
