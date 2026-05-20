@@ -221,7 +221,11 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         { timeoutMs: 30_000 },
       );
 
-      const resultItem = response.results.find((r) => r.fiscal_event_id === event.id);
+      const [soleResult] = response.results;
+      const resultItem = response.results.find((r) => r.fiscal_event_id === event.id)
+        ?? (response.results.length === 1 && soleResult?.fiscal_event_id === null
+          ? soleResult
+          : undefined);
       if (!resultItem) {
         throw new Error(`Sync response missing result for fiscal event ${event.id}`);
       }

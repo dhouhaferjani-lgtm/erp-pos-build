@@ -338,7 +338,12 @@ describe('syncService', () => {
       vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
       vi.mocked(apiPost).mockResolvedValueOnce(
         fiscalEventBatchResponse([
-          { fiscal_event_id: 'fe-conflict', stored: false, sequence_conflict: true },
+          {
+            fiscal_event_id: null,
+            stored: false,
+            sequence_conflict: true,
+            exception_class: 'sequence_conflict',
+          },
         ]),
       );
 
