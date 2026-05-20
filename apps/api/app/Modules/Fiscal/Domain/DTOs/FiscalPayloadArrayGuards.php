@@ -111,6 +111,51 @@ final class FiscalPayloadArrayGuards
     }
 
     /**
+     * Require a boolean. is_bool is strict — rejects 0/1/"true"/"false".
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function requireBool(array $data, string $key): bool
+    {
+        self::assertKey($data, $key);
+
+        if (! is_bool($data[$key])) {
+            throw new InvalidArgumentException(sprintf(
+                'Canonical payload key "%s" must be a bool; got %s.',
+                $key,
+                get_debug_type($data[$key]),
+            ));
+        }
+
+        return $data[$key];
+    }
+
+    /**
+     * Require an array that MAY be either an associative object OR a list.
+     * The validator surface enforces the list/object discriminator; the
+     * guard's job is only to assert it's an array. Mirrors `requireArray`.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int|string, mixed>|null
+     */
+    public static function optionalArray(array $data, string $key): ?array
+    {
+        if (! array_key_exists($key, $data) || $data[$key] === null) {
+            return null;
+        }
+
+        if (! is_array($data[$key])) {
+            throw new InvalidArgumentException(sprintf(
+                'Canonical payload key "%s" must be an array or null; got %s.',
+                $key,
+                get_debug_type($data[$key]),
+            ));
+        }
+
+        return $data[$key];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     private static function assertKey(array $data, string $key): void
