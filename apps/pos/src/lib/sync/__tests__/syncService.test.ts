@@ -20,6 +20,7 @@ vi.mock('@/lib/db/repositories/fiscalEventRepository', async () => {
   return {
     ...actual,
     getPendingFiscalEventsForSync: vi.fn(),
+    recoverStrandedSyncingFiscalEvents: vi.fn().mockResolvedValue(0),
     updateFiscalEventSyncStatus: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -89,7 +90,6 @@ vi.mock('@/stores/authStore', () => ({
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
-  advanceHashChain: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
       readonly terminalId: string,
@@ -133,6 +133,7 @@ import { apiGet, apiPost } from '@/lib/api';
 import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
   getPendingFiscalEventsForSync,
+  recoverStrandedSyncingFiscalEvents,
   updateFiscalEventSyncStatus,
   type LocalFiscalEvent,
 } from '@/lib/db/repositories/fiscalEventRepository';
@@ -288,6 +289,25 @@ describe('syncService', () => {
       );
     });
 
+    it('treats server idempotent re-delivery as synced after a lost response retry', async () => {
+      const event = makeFiscalEvent({ id: 'fe-idempotent', source_event_id: 'receipt-idempotent' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        fiscalEventBatchResponse([
+          { fiscal_event_id: 'fe-idempotent', stored: false },
+        ]),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(result.chainBreak).toBe(false);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-idempotent', 'synced');
+      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'receipt-idempotent', 'synced');
+    });
+
     it('continues after a non-chain fiscal-event rejection', async () => {
       const events = [
         makeFiscalEvent({ id: 'fe-invalid', sequence_number: 1, source_event_id: 'receipt-invalid' }),
@@ -391,6 +411,20 @@ describe('syncService', () => {
       expect(result.failed).toBe(0);
       expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-non-receipt', 'synced');
       expect(updateReceiptStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runFullSync fiscal-event recovery', () => {
+    it('recovers stranded syncing fiscal events before selecting pending fiscal events', async () => {
+      vi.mocked(recoverStrandedSyncingFiscalEvents).mockResolvedValueOnce(2);
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([]);
+
+      await runFullSync(db, 'terminal-1');
+
+      expect(recoverStrandedSyncingFiscalEvents).toHaveBeenCalledWith(db);
+      expect(recoverStrandedSyncingFiscalEvents).toHaveBeenCalledBefore(
+        vi.mocked(getPendingFiscalEventsForSync),
+      );
     });
   });
 

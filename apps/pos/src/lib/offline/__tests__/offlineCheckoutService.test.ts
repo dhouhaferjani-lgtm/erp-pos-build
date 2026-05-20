@@ -24,7 +24,6 @@ vi.mock('@/lib/fiscal/hashService', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   getTerminalState: vi.fn(),
-  advanceHashChain: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({

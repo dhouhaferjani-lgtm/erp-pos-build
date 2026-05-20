@@ -42,6 +42,7 @@ import {
 import {
   fiscalEventToWireEnvelope,
   getPendingFiscalEventsForSync,
+  recoverStrandedSyncingFiscalEvents,
   updateFiscalEventSyncStatus,
   type FiscalEventSyncBatchResponse,
 } from '@/lib/db/repositories/fiscalEventRepository';
@@ -202,6 +203,8 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   errors: string[];
   chainBreak: boolean;
 }> {
+  await recoverStrandedSyncingFiscalEvents(db);
+
   const pending = await getPendingFiscalEventsForSync(db);
   let pushed = 0;
   let failed = 0;
@@ -223,12 +226,19 @@ export async function pushOfflineReceipts(db: Database): Promise<{
         throw new Error(`Sync response missing result for fiscal event ${event.id}`);
       }
 
-      if (resultItem.stored && !resultItem.sequence_conflict && resultItem.exception_class === null) {
+      if (!resultItem.sequence_conflict && resultItem.exception_class === null) {
         await updateFiscalEventSyncStatus(db, event.id, 'synced');
         if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
           await updateReceiptStatus(db, event.source_event_id, 'synced');
         }
-        await logSyncOperation(db, 'push', 'fiscal_event', event.id, 'success', 'stored');
+        await logSyncOperation(
+          db,
+          'push',
+          'fiscal_event',
+          event.id,
+          'success',
+          resultItem.stored ? 'stored' : 'idempotent',
+        );
         pushed++;
       } else if (resultItem.sequence_conflict || isChainBreakError(resultItem.exception_class)) {
         const reason = resultItem.exception_class ?? 'sequence_conflict';

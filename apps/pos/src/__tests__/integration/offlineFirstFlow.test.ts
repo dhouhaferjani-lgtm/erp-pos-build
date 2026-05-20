@@ -29,7 +29,6 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   getTerminalState: vi.fn(),
-  advanceHashChain: vi.fn().mockResolvedValue(undefined),
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
 }));

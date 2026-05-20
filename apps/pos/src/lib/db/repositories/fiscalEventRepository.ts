@@ -87,6 +87,24 @@ export async function getPendingFiscalEventsForSync(
   );
 }
 
+/**
+ * Demote fiscal events stranded at `syncing` by a crash / process kill between
+ * the local status update and the HTTP response handler.
+ *
+ * Safe re-delivery relies on the fiscal-event idempotency contract: if the
+ * server already stored the event, the retry returns the existing event id and
+ * the client advances the local row to `synced`.
+ */
+export async function recoverStrandedSyncingFiscalEvents(
+  db: Database,
+): Promise<number> {
+  const result = await execute(
+    db,
+    "UPDATE fiscal_events SET sync_status = 'pending', sync_error = NULL WHERE sync_status = 'syncing'",
+  );
+  return result.rowsAffected;
+}
+
 export async function updateFiscalEventSyncStatus(
   db: Database,
   id: string,

@@ -85,11 +85,10 @@ export interface CheckoutResult {
  * polled exclusively to decide whether to KICK an immediate sync flush
  * vs leave the SQLite-resident receipt for the next scheduler tick.
  *
- * Pass 2 (Task 27B, deferred) reworks `receiptService.createOfflineReceipt`
- * into a `FiscalEventEngine.append(SALE_RECEIPT)` assembler. Until then,
- * `createOfflineReceipt` keeps its current independent hash/seal/chain
- * implementation — the §14.3 chokepoint closure for new-sale server-
- * authoring callers does NOT depend on that internal refactor.
+ * Pass 2B reworked `receiptService.createOfflineReceipt` into a
+ * `FiscalEventEngine.append(SALE_RECEIPT)` assembler, so this wrapper now
+ * keeps the local-first checkout contract while delegating fiscal authoring to
+ * the single device fiscal-event engine.
  */
 export async function executeCheckout(
   db: Database,

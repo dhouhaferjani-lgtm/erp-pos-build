@@ -215,9 +215,9 @@ export interface FiscalEventAppendRequest {
 // shapes) so TS-strict callers get compile-time defense against
 // dropping required keys or mistyping nested fields.
 //
-// Pass 2B will refactor `receiptService.ts` to construct this shape
-// via the engine; until then the `.PASS_2B_PENDING` marker + CI sentinel
-// keep the device-side checkout path off of `FiscalEventEngine`.
+// Pass 2B wires `receiptService.ts` to construct this shape via the engine.
+// `check-pass-2b-pending.sh` now stays quiet because the sequencing marker was
+// removed atomically with that checkout wiring.
 // -------------------------------------------------------------------
 
 /** ISO 3166-1 alpha-2 country code (`"FR"`, `"TN"`, `"SA"`, `"DE"`, `"IT"`). */
