@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\BuyerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalReceiptReferenceDTO;
@@ -58,6 +59,143 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         // No throw == accepted.
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
         $this->addToAssertionCount(1);
+    }
+
+    public function test_account_payment_payload_is_accepted(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_PAYMENT, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_account_payment_pending_customer_stale_card_payload_is_accepted(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload([
+            'customer' => [
+                'address' => ['city' => 'Sfax', 'country_code' => 'TN', 'postal_code' => '3000', 'street' => '22 rue Client'],
+                'customer_category' => null,
+                'customer_id' => '66666666-6666-4666-8666-666666666666',
+                'customer_sync_status' => 'pending_create',
+                'email' => 'client@example.test',
+                'name' => 'Pending Client',
+                'phone' => null,
+                'tax_number' => '7654321B/B/B/000',
+            ],
+            'payment' => [
+                'amount' => '50.000',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => 'CARD-REF-1',
+                'instrument_type' => 'card',
+                'method_code' => 'CARD',
+                'repository_id' => '77777777-7777-4777-8777-777777777777',
+            ],
+            'staleness' => [
+                'balance_snapshot_stale' => true,
+                'customer_snapshot_stale' => true,
+                'mirror_last_synced_at' => '2026-05-20T08:00:00.000Z',
+                'staleness_reason' => 'older_than_threshold',
+            ],
+        ]);
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_PAYMENT, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_account_payment_foreign_currency_payload_is_accepted(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload([
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'credit_balance_before' => '0.00',
+                'net_balance_before' => '300.00',
+                'payment_amount' => '100.00',
+                'projected_credit_balance_after' => '0.00',
+                'projected_net_balance_after' => '200.00',
+                'projected_receivable_balance_after' => '200.00',
+                'receivable_balance_before' => '300.00',
+            ],
+            'payment' => [
+                'amount' => '100.00',
+                'foreign_currency_amount' => '330.000',
+                'foreign_currency_code' => 'TND',
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+                'repository_id' => null,
+            ],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_account_payment_rejects_missing_customer_block(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        unset($payload['customer']);
+
+        $error = $this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+
+        self::assertSame('payload_missing_required:customer', $error);
+    }
+
+    public function test_account_payment_rejects_invalid_customer_sync_status(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['customer']['customer_sync_status'] = 'server_only';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/customer_sync_status/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_account_payment_rejects_zero_amount_outside_training(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['payment']['amount'] = '0.000';
+        $payload['local_balance_snapshot']['payment_amount'] = '0.000';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payment_amount_zero/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_account_payment_rejects_stale_flag_without_reason(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['staleness']['balance_snapshot_stale'] = true;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/staleness_reason/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_account_payment_rejects_foreign_currency_amount_without_code(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['payment']['foreign_currency_amount'] = '20.00';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/foreign_currency/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_account_payment_rejects_seller_tax_number_under_universal_validator(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['seller']['tax_number'] = 'TN#BAD';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/seller\\.tax_number/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
     }
 
     public function test_payload_with_extra_28th_key_is_rejected_with_extra_field_prefix(): void
@@ -759,11 +897,28 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         self::assertSame('SALE', $view->payload->invoiceTypeCode);
         self::assertSame('Default Seller S.A.', $view->seller()->name);
         self::assertNotNull($view->buyer());
-        self::assertSame('Acme B2B SARL', $view->buyer()?->name);
+        self::assertSame('Acme B2B SARL', $view->buyer()->name);
         self::assertCount(1, $view->lineItems());
         self::assertCount(1, $view->payments());
         self::assertCount(1, $view->vatBreakdown());
         self::assertNull($view->originalReceiptReference());
+    }
+
+    public function test_canonical_payload_reader_returns_account_payment_view(): void
+    {
+        $event = new FiscalEvent;
+        $event->id = '44444444-4444-4444-8444-444444444444';
+        $event->event_type = FiscalEventType::ACCOUNT_PAYMENT;
+        $event->payload = $this->canonicalAccountPaymentPayload();
+
+        $reader = new CanonicalPayloadReader;
+        $view = $reader->forAccountPayment($event);
+
+        self::assertInstanceOf(AccountPaymentView::class, $view);
+        self::assertSame('ACCOUNT_PAYMENT', $view->payload->receiptTypeCode);
+        self::assertSame('Mariam Ben Ali', $view->customer->name);
+        self::assertSame('100.000', $view->payment->amount);
+        self::assertFalse($view->staleness->balanceSnapshotStale);
     }
 
     public function test_canonical_payload_reader_rejects_wrong_event_type(): void
@@ -814,5 +969,73 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             }
         }
         $this->addToAssertionCount(1);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountPaymentPayload(array $overrides = []): array
+    {
+        $payload = [
+            'account_payment_uuid' => '44444444-4444-4444-8444-444444444444',
+            'business_date' => '2026-05-21',
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null,
+                'customer_category' => 'retail',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'payment_amount' => '100.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '200.000',
+                'projected_receivable_balance_after' => '200.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'payment' => [
+                'amount' => '100.000',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+                'repository_id' => null,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567A/A/A/000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'training_flag' => false,
+            'treasury_allocation_policy' => 'FIFO',
+        ];
+
+        return array_replace_recursive($payload, $overrides);
     }
 }

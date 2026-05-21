@@ -79,6 +79,7 @@ const PHASE_1_IMPLEMENTED = [
   'CHAIN_BREAK_DETECTED',
   'CHAIN_RESTART',
   'TERMINAL_REGISTRY_SNAPSHOT',
+  'ACCOUNT_PAYMENT',
 ] as const satisfies readonly FiscalEventTypeValue[];
 
 type Phase1ImplementedType = (typeof PHASE_1_IMPLEMENTED)[number];

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
+use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\CompanyDayClosureManifestPayload;
@@ -24,6 +25,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(ChainBreakDetectedPayload::class, $r->dtoClassFor(FiscalEventType::CHAIN_BREAK_DETECTED));
         $this->assertSame(ChainRestartPayload::class, $r->dtoClassFor(FiscalEventType::CHAIN_RESTART));
         $this->assertSame(TerminalRegistrySnapshotPayload::class, $r->dtoClassFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
+        $this->assertSame(AccountPaymentPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_PAYMENT));
     }
 
     public function test_returns_event_version_one_for_implemented_types(): void
@@ -34,6 +36,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::CHAIN_BREAK_DETECTED));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::CHAIN_RESTART));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_PAYMENT));
     }
 
     public function test_reserved_type_company_day_closure_manifest_throws(): void
@@ -68,6 +71,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertTrue($r->isImplemented(FiscalEventType::CHAIN_BREAK_DETECTED));
         $this->assertTrue($r->isImplemented(FiscalEventType::CHAIN_RESTART));
         $this->assertTrue($r->isImplemented(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_PAYMENT));
 
         $this->assertFalse($r->isImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST));
         $this->assertFalse($r->isImplemented(FiscalEventType::SALE_VOID));
@@ -79,11 +83,11 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $r = new FiscalEventPayloadRegistry;
 
         // Walks every enum case and asserts the registry agrees with the
-        // enum's own isImplementedInPhase1() classifier. A future drift
-        // between the registry and the enum surfaces as a test failure.
+        // enum's own implemented classifier. A future drift between the
+        // registry and the enum surfaces as a test failure.
         foreach (FiscalEventType::cases() as $case) {
             $this->assertSame(
-                $case->isImplementedInPhase1(),
+                $case->isImplemented(),
                 $r->isImplemented($case),
                 "Mismatch on FiscalEventType::{$case->name}",
             );
@@ -103,6 +107,21 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         // sorted form.
         ksort($data);
         $out = $dto->toArray();
+        ksort($out);
+        $this->assertSame($data, $out);
+    }
+
+    public function test_account_payment_payload_from_array_to_array_roundtrip(): void
+    {
+        $data = $this->canonicalAccountPaymentArray();
+
+        $dto = AccountPaymentPayload::fromArray($data);
+
+        $this->assertSame('ACCOUNT_PAYMENT', $dto->receiptTypeCode);
+        $this->assertSame('FIFO', $dto->treasuryAllocationPolicy);
+        $this->assertSame('100.000', $dto->payment['amount']);
+        $out = $dto->toArray();
+        ksort($data);
         ksort($out);
         $this->assertSame($data, $out);
     }
@@ -372,6 +391,71 @@ final class FiscalEventPayloadRegistryTest extends TestCase
             ]],
             'vat_total' => '0.700',
             'vouchers_redeemed' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountPaymentArray(): array
+    {
+        return [
+            'account_payment_uuid' => '44444444-4444-4444-8444-444444444444',
+            'business_date' => '2026-05-21',
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null,
+                'customer_category' => 'retail',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'payment_amount' => '100.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '200.000',
+                'projected_receivable_balance_after' => '200.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'payment' => [
+                'amount' => '100.000',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+                'repository_id' => null,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567A/A/A/000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'training_flag' => false,
+            'treasury_allocation_policy' => 'FIFO',
         ];
     }
 }

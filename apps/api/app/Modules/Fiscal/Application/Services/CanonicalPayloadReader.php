@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentBalanceSnapshotDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentCustomerDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentPaymentDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentStalenessDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\BuyerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\OriginalReceiptReferenceDTO;
@@ -95,6 +101,34 @@ final class CanonicalPayloadReader
             vatBreakdown: $vatBreakdown,
             originalReceiptReference: $originalReceiptReference,
             vouchersRedeemed: $vouchers,
+        );
+    }
+
+    public function forAccountPayment(FiscalEvent $event): AccountPaymentView
+    {
+        if ($event->event_type !== FiscalEventType::ACCOUNT_PAYMENT) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forAccountPayment called with event_type=%s; expected ACCOUNT_PAYMENT',
+                $event->event_type->value,
+            ));
+        }
+        $payloadArray = $event->payload;
+        if ($payloadArray === null) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forAccountPayment called on fiscal_event_id=%s with NULL payload (parse_failure quarantine?)',
+                $event->id,
+            ));
+        }
+
+        $payload = AccountPaymentPayload::fromArray($payloadArray);
+
+        return new AccountPaymentView(
+            payload: $payload,
+            customer: AccountPaymentCustomerDTO::fromArray($payload->customer),
+            payment: AccountPaymentPaymentDTO::fromArray($payload->payment),
+            localBalanceSnapshot: AccountPaymentBalanceSnapshotDTO::fromArray($payload->localBalanceSnapshot),
+            staleness: AccountPaymentStalenessDTO::fromArray($payload->staleness),
+            seller: SellerDTO::fromArray($payload->seller),
         );
     }
 }

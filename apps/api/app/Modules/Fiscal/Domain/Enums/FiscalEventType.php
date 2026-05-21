@@ -35,14 +35,20 @@ enum FiscalEventType: string
     case Z_REPORT = 'Z_REPORT';
     case REPRINT_COPY = 'REPRINT_COPY';
 
-    public function isImplementedInPhase1(): bool
+    public function isImplemented(): bool
     {
         return in_array($this, [
             self::SALE_RECEIPT,
             self::CHAIN_BREAK_DETECTED,
             self::CHAIN_RESTART,
             self::TERMINAL_REGISTRY_SNAPSHOT,
+            self::ACCOUNT_PAYMENT,
         ], true);
+    }
+
+    public function isImplementedInPhase1(): bool
+    {
+        return $this->isImplemented();
     }
 
     public static function checkConstraintList(): string

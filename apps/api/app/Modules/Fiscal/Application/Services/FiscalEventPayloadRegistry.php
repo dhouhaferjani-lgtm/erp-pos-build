@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
@@ -39,6 +40,7 @@ final class FiscalEventPayloadRegistry
         FiscalEventType::CHAIN_BREAK_DETECTED->value => [ChainBreakDetectedPayload::class, 1],
         FiscalEventType::CHAIN_RESTART->value => [ChainRestartPayload::class, 1],
         FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value => [TerminalRegistrySnapshotPayload::class, 1],
+        FiscalEventType::ACCOUNT_PAYMENT->value => [AccountPaymentPayload::class, 1],
     ];
 
     /**

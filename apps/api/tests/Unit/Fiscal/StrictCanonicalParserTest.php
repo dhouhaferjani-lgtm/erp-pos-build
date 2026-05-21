@@ -79,6 +79,31 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
     }
 
+    public function test_strict_parser_accepts_account_payment_canonical_envelope(): void
+    {
+        $bytes = $this->validAccountPaymentEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame('ACCOUNT_PAYMENT', $result->payload['receipt_type_code']);
+        $this->assertSame('synced', $result->payload['customer']['customer_sync_status']);
+    }
+
+    public function test_strict_parser_rejects_account_payment_extra_payload_key(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['unexpected_extra'] = 'rogue';
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+        $this->assertStringContainsString('unexpected_extra', $result->failureReason ?? '');
+    }
+
     // -----------------------------------------------------------------
     // Strict JSON: duplicate keys at every depth
     // -----------------------------------------------------------------
@@ -579,6 +604,7 @@ final class StrictCanonicalParserTest extends TestCase
             'CHAIN_BREAK_DETECTED' => $this->validChainBreakDetectedEnvelope(),
             'CHAIN_RESTART' => $this->validChainRestartEnvelope(),
             'TERMINAL_REGISTRY_SNAPSHOT' => $this->validTerminalRegistrySnapshotEnvelope(),
+            'ACCOUNT_PAYMENT' => $this->validAccountPaymentEnvelope(),
             default => throw new \LogicException('unsupported event type for helper: '.$eventType),
         };
     }
@@ -590,6 +616,11 @@ final class StrictCanonicalParserTest extends TestCase
         // the GoldenFixtureBuilder convention but stay independent so this
         // unit test can run without the Fixture helper.
         return $this->envelope('SALE_RECEIPT', $this->canonicalSaleReceiptPayload());
+    }
+
+    private function validAccountPaymentEnvelope(): string
+    {
+        return $this->envelope('ACCOUNT_PAYMENT', $this->canonicalAccountPaymentPayload());
     }
 
     /**
@@ -676,6 +707,71 @@ final class StrictCanonicalParserTest extends TestCase
             ]],
             'vat_total' => '0.350',
             'vouchers_redeemed' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountPaymentPayload(): array
+    {
+        return [
+            'account_payment_uuid' => '44444444-4444-4444-8444-444444444444',
+            'business_date' => '2026-05-21',
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null,
+                'customer_category' => 'retail',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'payment_amount' => '100.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '200.000',
+                'projected_receivable_balance_after' => '200.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'payment' => [
+                'amount' => '100.000',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+                'repository_id' => null,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567A/A/A/000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'training_flag' => false,
+            'treasury_allocation_policy' => 'FIFO',
         ];
     }
 

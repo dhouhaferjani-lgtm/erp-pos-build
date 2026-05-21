@@ -8,11 +8,12 @@ import {
 describe('FiscalEventPayloadRegistry', () => {
   const registry = new FiscalEventPayloadRegistry();
 
-  it('marks all four Phase 1 event types as implemented', () => {
+  it('marks implemented fiscal event types as implemented', () => {
     expect(registry.isImplemented('SALE_RECEIPT')).toBe(true);
     expect(registry.isImplemented('CHAIN_BREAK_DETECTED')).toBe(true);
     expect(registry.isImplemented('CHAIN_RESTART')).toBe(true);
     expect(registry.isImplemented('TERMINAL_REGISTRY_SNAPSHOT')).toBe(true);
+    expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
   });
 
   it('marks reserved-not-implemented types as unimplemented', () => {
@@ -33,7 +34,6 @@ describe('FiscalEventPayloadRegistry', () => {
       'X_REPORT',
       'Z_REPORT',
       'REPRINT_COPY',
-      'ACCOUNT_PAYMENT',
       'ACCOUNT_CHARGE',
       'ACCOUNT_REFUND',
       'ACCOUNT_PAYMENT_RECONCILED',
@@ -53,6 +53,16 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.eventVersionFor('CHAIN_BREAK_DETECTED')).toBe(1);
     expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
     expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);
+    expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+  });
+
+  it('implements ACCOUNT_PAYMENT at version 1 without changing server-only types', () => {
+    expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
+    expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+    expect(registry.serverOnlyTypes()).toEqual([
+      'TERMINAL_REGISTRY_SNAPSHOT',
+      'COMPANY_DAY_CLOSURE_MANIFEST',
+    ]);
   });
 
   it('throws FiscalEventTypeNotImplementedError when resolving a reserved type', () => {
@@ -81,6 +91,7 @@ describe('FiscalEventPayloadRegistry', () => {
         'CHAIN_BREAK_DETECTED',
         'CHAIN_RESTART',
         'TERMINAL_REGISTRY_SNAPSHOT',
+        'ACCOUNT_PAYMENT',
       ]),
     );
   });
@@ -107,6 +118,7 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isServerOnly('SALE_RECEIPT')).toBe(false);
     expect(registry.isServerOnly('CHAIN_BREAK_DETECTED')).toBe(false);
     expect(registry.isServerOnly('CHAIN_RESTART')).toBe(false);
+    expect(registry.isServerOnly('ACCOUNT_PAYMENT')).toBe(false);
   });
 
   it('serverOnlyTypes() returns the stable §11.0 set', () => {
