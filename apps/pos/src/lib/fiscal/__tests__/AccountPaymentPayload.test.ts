@@ -40,4 +40,17 @@ describe('AccountPaymentPayload', () => {
     expect(payload.treasury_allocation_policy).toBe('FIFO');
     expect(payload.staleness.balance_snapshot_stale).toBe(false);
   });
+
+  it('allows populated references only with a null server customer alias', () => {
+    const payload: AccountPaymentPayload = {
+      ...goldenAccountPaymentPayload(),
+      references: {
+        external_reference: 'counter-payment-42',
+        related_sale_receipt_event_id: '88888888-8888-4888-8888-888888888888',
+        server_customer_alias_id: null,
+      },
+    };
+
+    expect(payload.references?.server_customer_alias_id).toBeNull();
+  });
 });

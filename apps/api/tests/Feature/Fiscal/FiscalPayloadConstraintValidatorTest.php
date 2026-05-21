@@ -137,6 +137,22 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_account_payment_populated_references_payload_is_accepted_when_alias_is_null(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload([
+            'references' => [
+                'external_reference' => 'counter-payment-42',
+                'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+                'server_customer_alias_id' => null,
+            ],
+        ]);
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_PAYMENT, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+
+        $this->addToAssertionCount(1);
+    }
+
     public function test_account_payment_rejects_missing_customer_block(): void
     {
         $payload = $this->canonicalAccountPaymentPayload();
@@ -195,6 +211,21 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/seller\\.tax_number/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_account_payment_rejects_server_customer_alias_on_original_event(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload([
+            'references' => [
+                'external_reference' => null,
+                'related_sale_receipt_event_id' => null,
+                'server_customer_alias_id' => '99999999-9999-4999-8999-999999999999',
+            ],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/server_customer_alias_id/');
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
     }
 

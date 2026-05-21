@@ -104,6 +104,38 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertStringContainsString('unexpected_extra', $result->failureReason ?? '');
     }
 
+    public function test_strict_parser_accepts_account_payment_populated_references_with_null_alias(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['references'] = [
+            'external_reference' => 'counter-payment-42',
+            'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+            'server_customer_alias_id' => null,
+        ];
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertSame('counter-payment-42', $result->payload['references']['external_reference'] ?? null);
+    }
+
+    public function test_strict_parser_rejects_account_payment_non_null_server_customer_alias(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['references'] = [
+            'external_reference' => null,
+            'related_sale_receipt_event_id' => null,
+            'server_customer_alias_id' => '99999999-9999-4999-8999-999999999999',
+        ];
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('server_customer_alias_id', $result->failureReason ?? '');
+    }
+
     // -----------------------------------------------------------------
     // Strict JSON: duplicate keys at every depth
     // -----------------------------------------------------------------

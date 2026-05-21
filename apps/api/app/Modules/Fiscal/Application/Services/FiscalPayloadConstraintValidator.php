@@ -592,7 +592,11 @@ final class FiscalPayloadConstraintValidator
         $this->assertExactObjectKeys($row, $expected, 'references');
         $this->assertOptionalNullableString($row, 'external_reference', 'references.external_reference');
         $this->assertOptionalNullableString($row, 'related_sale_receipt_event_id', 'references.related_sale_receipt_event_id');
-        $this->assertOptionalNullableString($row, 'server_customer_alias_id', 'references.server_customer_alias_id');
+        if ($row['server_customer_alias_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_payment_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for ACCOUNT_PAYMENT_RECONCILED'
+            );
+        }
     }
 
     /**

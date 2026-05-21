@@ -77,7 +77,7 @@ export interface AccountPaymentStaleness {
 export interface AccountPaymentReferences {
   external_reference: string | null;
   related_sale_receipt_event_id: string | null;
-  server_customer_alias_id: string | null;
+  server_customer_alias_id: null;
 }
 
 export interface AccountPaymentPayload {
