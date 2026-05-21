@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 
 final class PosCustomerSyncController extends Controller
 {
@@ -60,10 +61,23 @@ final class PosCustomerSyncController extends Controller
 
     private function parseUpdatedSince(Request $request): ?Carbon
     {
+        if (! $request->query->has('updated_since')) {
+            return null;
+        }
+
         $value = $request->query('updated_since');
 
         if (! is_string($value) || $value === '') {
-            return null;
+            abort(422, 'updated_since must be a non-empty ISO-8601 timestamp');
+        }
+
+        $validator = Validator::make(
+            ['updated_since' => $value],
+            ['updated_since' => ['date']],
+        );
+
+        if ($validator->fails()) {
+            abort(422, 'updated_since must be a valid ISO-8601 timestamp');
         }
 
         return Carbon::parse($value);
@@ -77,8 +91,8 @@ final class PosCustomerSyncController extends Controller
             return self::DEFAULT_LIMIT;
         }
 
-        if (! is_numeric($value)) {
-            abort(422, 'limit must be numeric');
+        if (! is_string($value) || ! ctype_digit($value)) {
+            abort(422, 'limit must be a positive integer');
         }
 
         $limit = (int) $value;

@@ -129,6 +129,36 @@ final class PosCustomerSyncControllerTest extends TestCase
         $this->assertSame($fresh->id, $rows[0]['id']);
     }
 
+    public function test_pos_customer_sync_rejects_malformed_updated_since_cursor(): void
+    {
+        $this->createCustomer(['name' => 'Should Not Matter']);
+
+        $emptyResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?updated_since=');
+
+        $arrayResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?updated_since[]=2026-05-21T00:00:00Z');
+
+        $invalidResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?updated_since=not-a-date');
+
+        $emptyResponse->assertStatus(422);
+        $arrayResponse->assertStatus(422);
+        $invalidResponse->assertStatus(422);
+    }
+
+    public function test_pos_customer_sync_rejects_non_integer_limit(): void
+    {
+        $response = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?limit=1.9');
+
+        $response->assertStatus(422);
+    }
+
     public function test_pos_customer_sync_includes_balance_snapshot_fields(): void
     {
         $balanceAt = Carbon::parse('2026-05-21T08:30:00Z');
