@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -53,6 +54,8 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
 
     private PaymentRepository $repository;
 
+    private Account $cashAccount;
+
     private RecordingPaymentAllocationService $allocationService;
 
     protected function setUp(): void
@@ -87,12 +90,20 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
             'name' => 'Cash',
         ]);
 
+        $this->cashAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '101',
+            'name' => 'POS Cash',
+            'is_active' => true,
+        ]);
+
         $this->repository = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
             'code' => 'DRAWER-1',
             'name' => 'Drawer 1',
-            'account_id' => Str::uuid()->toString(),
+            'account_id' => $this->cashAccount->id,
             'is_active' => true,
         ]);
 
@@ -177,6 +188,36 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
         $this->expectExceptionMessage('idempotency_conflict');
 
         $this->bridge()->apply($event);
+    }
+
+    public function test_bridge_fails_loud_when_existing_fiscal_event_payment_has_non_pos_origin(): void
+    {
+        $event = $this->storeAccountPaymentFiscalEvent();
+        Payment::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'partner_id' => $this->customerId,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '100.000',
+            'currency' => 'TND',
+            'payment_date' => '2026-05-21',
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::WebAdmin,
+            'fiscal_event_id' => $event->id,
+            'created_by' => $this->cashierId,
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('idempotency_conflict');
+
+        try {
+            $this->bridge()->apply($event);
+        } finally {
+            $this->assertSame(1, Payment::query()->count());
+            $this->assertSame(0, $this->allocationService->callCount());
+        }
     }
 
     public function test_bridge_resolves_pending_customer_alias_before_payment_creation(): void
@@ -303,6 +344,30 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
         $this->expectExceptionMessage('payment_repository_not_found');
 
         $this->bridge()->apply($event);
+    }
+
+    public function test_bridge_fails_loud_when_repository_account_is_cross_company(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $foreignAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $otherCompany->id,
+            'code' => '102',
+            'name' => 'Foreign Cash',
+            'is_active' => true,
+        ]);
+        $this->repository->forceFill(['account_id' => $foreignAccount->id])->save();
+        $event = $this->storeAccountPaymentFiscalEvent();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('payment_repository_account_not_found');
+
+        try {
+            $this->bridge()->apply($event);
+        } finally {
+            $this->assertSame(0, Payment::query()->count());
+            $this->assertSame(0, $this->allocationService->callCount());
+        }
     }
 
     public function test_bridge_fails_loud_when_allocation_throws(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Projections;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
@@ -216,6 +217,23 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             throw $this->invariant($event, 'payment_repository_missing_account_id:repository_id='.$repository->id);
         }
 
+        $accountExists = Account::query()
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->where('is_active', true)
+            ->whereKey($repository->account_id)
+            ->exists();
+
+        if (! $accountExists) {
+            throw $this->invariant(
+                $event,
+                'payment_repository_account_not_found:repository_id='.
+                    $repository->id.
+                    ':account_id='.
+                    $repository->account_id,
+            );
+        }
+
         return $repository;
     }
 
@@ -243,7 +261,6 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
     {
         $existing = Payment::query()
             ->where('fiscal_event_id', $event->id)
-            ->where('origin', PaymentOrigin::Pos)
             ->get();
 
         if ($existing->count() > 1) {
@@ -275,6 +292,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             'currency' => $view->payload->currencyCode,
             'payment_date' => $view->payload->businessDate,
             'status' => PaymentStatus::Completed->value,
+            'origin' => PaymentOrigin::Pos->value,
             'created_by' => $actorUserId,
         ];
 
@@ -282,6 +300,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             $actual = match ($field) {
                 'payment_date' => $existing->payment_date->toDateString(),
                 'status' => $existing->status->value,
+                'origin' => $existing->origin?->value,
                 default => $existing->{$field},
             };
 
