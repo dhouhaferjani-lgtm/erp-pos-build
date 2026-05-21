@@ -45,11 +45,16 @@ describe('AccountChargePayload', () => {
     expect(payload.receipt_type_code).toBe('ACCOUNT_CHARGE');
     expect(payload.customer.customer_category).toBe('individual');
     expect(payload.customer.customer_sync_status).toBe('synced');
+    expect(payload.customer.account_identifier).toBe('CUST-0001');
     expect(payload.print_profile).toBe('ACCOUNT_CHARGE_RECEIPT');
-    expect(payload.invoice_classification).toBe('B2C_ACCOUNT_CHARGE');
+    expect(payload.invoice_classification).toBe('b2c_charge_receipt');
     expect(payload.totals.amount_charged_to_account).toBe('119.000');
+    expect(payload.totals.grand_total_before_charge).toBe('119.000');
     expect(payload.local_balance_snapshot.projected_receivable_balance_after).toBe('419.000');
+    expect(payload.credit_decision.policy_version).toBe('phase3-default-v1');
+    expect(payload.credit_decision.credit_available_after).toBe('81.000');
     expect(payload.line_items[0]?.product_id).toBe('prod-default');
+    expect(payload.line_items[0]?.line_uuid).toBe('77777777-7777-4777-8777-777777777777');
     expect(payload.line_items[0]?.non_collected_subtype).toBeNull();
     expect(payload.buyer).toBeNull();
   });

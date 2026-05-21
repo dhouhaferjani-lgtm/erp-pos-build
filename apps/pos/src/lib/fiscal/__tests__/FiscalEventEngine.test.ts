@@ -1446,8 +1446,12 @@ d('FiscalEventEngine.append', () => {
     expect(tsKeys).toHaveLength(20);
   });
 
-  it('Phase 3.1 R2 — ACCOUNT_CHARGE payload key list remains locked at 28 keys', () => {
-    expect([...ACCOUNT_CHARGE_PAYLOAD_KEYS].sort()).toHaveLength(28);
+  it('Phase 3.1 R3 — cross-language drift gate: ACCOUNT_CHARGE_PAYLOAD_KEYS byte-mirrors PHP DTO PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpAccountChargePayloadKeys();
+    const tsKeys = [...ACCOUNT_CHARGE_PAYLOAD_KEYS].sort();
+    const sortedPhp = [...phpKeys].sort();
+    expect(tsKeys).toEqual(sortedPhp);
+    expect(tsKeys).toHaveLength(28);
   });
 });
 
@@ -1509,6 +1513,32 @@ function readPhpSaleReceiptPayloadKeys(): string[] {
 
 function readPhpAccountPaymentPayloadKeys(): string[] {
   return readPhpPayloadKeys('ACCOUNT_PAYMENT');
+}
+
+function readPhpAccountChargePayloadKeys(): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require('node:path') as typeof import('node:path');
+  const candidates = [
+    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
+    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
+  ];
+  const phpPath = candidates.find((p) => fs.existsSync(p));
+  if (!phpPath) {
+    throw new Error(`AccountChargePayload.php not found at any candidate path: ${candidates.join(', ')}`);
+  }
+  const src = fs.readFileSync(phpPath, 'utf8');
+  const match = src.match(/public const PAYLOAD_KEYS = \[([\s\S]*?)\];/);
+  if (!match) {
+    throw new Error(`Could not locate AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
+  }
+  const body = match[1] ?? '';
+  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
+  if (keys.length === 0) {
+    throw new Error(`No keys extracted from AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
+  }
+  return keys;
 }
 
 function readPhpPayloadKeys(eventType: 'SALE_RECEIPT' | 'ACCOUNT_PAYMENT'): string[] {
