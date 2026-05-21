@@ -6,6 +6,8 @@ namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -372,10 +374,22 @@ class PaymentAllocationService
             return null;
         }
 
-        return User::query()
+        $user = User::query()
             ->where('tenant_id', $command->tenantId)
             ->where('id', $command->actorUserId)
             ->first();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $hasActiveCompanyMembership = UserCompanyMembership::query()
+            ->where('user_id', $user->id)
+            ->where('company_id', $command->companyId)
+            ->where('status', MembershipStatus::Active)
+            ->exists();
+
+        return $hasActiveCompanyMembership ? $user : null;
     }
 
     /**

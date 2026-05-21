@@ -6,9 +6,13 @@ namespace Tests\Unit\Treasury;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -20,6 +24,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class PaymentAllocationServiceTest extends TestCase
@@ -343,6 +348,58 @@ class PaymentAllocationServiceTest extends TestCase
         $this->assertStringNotContainsString('Auth::user(', $source);
     }
 
+    /** @test */
+    public function it_resolves_command_actor_only_when_user_has_active_company_membership(): void
+    {
+        $actor = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $actor->id,
+            'company_id' => $otherCompany->id,
+            'role' => MembershipRole::Cashier,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $unscopedCommand = new ApplyPaymentAllocationCommand(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentId: 'payment-id',
+            allocationMethod: AllocationMethod::FIFO,
+            actorUserId: $actor->id,
+            source: 'fiscal_event:ACCOUNT_PAYMENT',
+        );
+
+        $this->assertNull($this->resolveCommandActorForTest($unscopedCommand));
+
+        UserCompanyMembership::create([
+            'user_id' => $actor->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Cashier,
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $scopedCommand = new ApplyPaymentAllocationCommand(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentId: 'payment-id',
+            allocationMethod: AllocationMethod::FIFO,
+            actorUserId: $actor->id,
+            source: 'fiscal_event:ACCOUNT_PAYMENT',
+        );
+        $resolved = $this->resolveCommandActorForTest($scopedCommand);
+
+        $this->assertInstanceOf(User::class, $resolved);
+        $this->assertSame($actor->id, $resolved->id);
+    }
+
     private function createInvoice(string $number, string $total, string $dueDate): Document
     {
         return Document::create([
@@ -359,5 +416,14 @@ class PaymentAllocationServiceTest extends TestCase
             'total' => $total,
             'currency' => 'TND',
         ]);
+    }
+
+    private function resolveCommandActorForTest(ApplyPaymentAllocationCommand $command): ?User
+    {
+        $method = new ReflectionMethod(PaymentAllocationService::class, 'resolveCommandActor');
+
+        $result = $method->invoke($this->service, $command);
+
+        return $result instanceof User ? $result : null;
     }
 }
