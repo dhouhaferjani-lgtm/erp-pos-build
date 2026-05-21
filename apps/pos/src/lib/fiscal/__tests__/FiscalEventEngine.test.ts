@@ -1240,6 +1240,69 @@ d('FiscalEventEngine.append', () => {
     );
   });
 
+  it('Phase 2.7 — accepts paired foreign currency fields on ACCOUNT_PAYMENT', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.payment = {
+      ...payload.payment,
+      foreign_currency_amount: '30.00',
+      foreign_currency_code: 'EUR',
+    };
+
+    const event = await engine.append(adapter, accountPaymentRequest({ payload }));
+
+    expect(event.event_type).toBe('ACCOUNT_PAYMENT');
+  });
+
+  it('Phase 2.7 — rejects one-sided foreign currency fields on ACCOUNT_PAYMENT', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.payment = {
+      ...payload.payment,
+      foreign_currency_amount: '30.00',
+      foreign_currency_code: null,
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_foreign_currency_pair_invalid/,
+    );
+  });
+
+  it('Phase 2.7 — rejects unknown foreign currency code on ACCOUNT_PAYMENT', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.payment = {
+      ...payload.payment,
+      foreign_currency_amount: '30.00',
+      foreign_currency_code: 'XXX',
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_foreign_currency_unknown/,
+    );
+  });
+
+  it('Phase 2.7 — accepts nullable-object regime_extensions on ACCOUNT_PAYMENT', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.regime_extensions = {
+      nf525: {
+        placeholder: true,
+      },
+    };
+
+    const event = await engine.append(adapter, accountPaymentRequest({ payload }));
+
+    expect(event.event_type).toBe('ACCOUNT_PAYMENT');
+  });
+
+  it('Phase 2.7 — rejects scalar or list regime_extensions on ACCOUNT_PAYMENT', async () => {
+    for (const regimeExtensions of ['nf525', ['nf525']]) {
+      const payload = goldenAccountPaymentPayload() as unknown as Record<string, unknown>;
+      payload['regime_extensions'] = regimeExtensions;
+
+      await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+        /payload_object_invalid:regime_extensions/,
+      );
+    }
+  });
+
   // -------------------------------------------------------------------
   // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
   // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].

@@ -333,6 +333,12 @@ export function buildEscPosAccountPaymentReceiptData(
     account_balance_after: bcformat(payload.local_balance_snapshot.projected_net_balance_after, scale),
     account_snapshot_stale:
       payload.staleness.customer_snapshot_stale || payload.staleness.balance_snapshot_stale,
+    business_date: payload.business_date,
+    terminal_id: payload.terminal_id,
+    shift_id: payload.shift_id,
+    training_flag: payload.training_flag,
+    customer_account_id: payload.customer.customer_id,
+    customer_phone: payload.customer.phone,
   };
 }
 
@@ -377,6 +383,12 @@ export function buildReceiptLabels(): ReceiptLabels {
     balance_before: t('balanceBefore'),
     balance_after: t('balanceAfter'),
     stale_balance: t('staleBalance'),
+    business_date: t('businessDate'),
+    terminal_id: t('terminalId'),
+    shift_id: t('shiftId'),
+    training: t('training'),
+    customer_account: t('customerAccount'),
+    customer_phone: t('customerPhone'),
   };
 }
 

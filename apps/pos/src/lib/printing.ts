@@ -91,6 +91,12 @@ export interface ReceiptLabels {
   balance_before?: string;
   balance_after?: string;
   stale_balance?: string;
+  business_date?: string;
+  terminal_id?: string;
+  shift_id?: string;
+  training?: string;
+  customer_account?: string;
+  customer_phone?: string;
 }
 
 /**
@@ -181,6 +187,12 @@ export interface ReceiptData {
   account_balance_before?: string | null;
   account_balance_after?: string | null;
   account_snapshot_stale?: boolean;
+  business_date?: string | null;
+  terminal_id?: string | null;
+  shift_id?: string | null;
+  training_flag?: boolean;
+  customer_account_id?: string | null;
+  customer_phone?: string | null;
 }
 
 export interface BuildZReceiptDataInput {

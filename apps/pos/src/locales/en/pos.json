@@ -670,6 +670,12 @@
     "balanceBefore": "Balance before:",
     "balanceAfter": "Balance after:",
     "staleBalance": "Balance snapshot stale",
+    "businessDate": "Business date:",
+    "terminalId": "Terminal ID:",
+    "shiftId": "Shift ID:",
+    "training": "TRAINING",
+    "customerAccount": "Account:",
+    "customerPhone": "Customer phone:",
     "voucherTicket": {
       "header": "STORE VOUCHER",
       "code": "Voucher code:",

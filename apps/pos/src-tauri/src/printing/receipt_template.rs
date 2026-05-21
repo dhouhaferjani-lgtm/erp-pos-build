@@ -94,6 +94,18 @@ pub struct ReceiptData {
     pub account_balance_after: Option<String>,
     #[serde(default)]
     pub account_snapshot_stale: bool,
+    #[serde(default)]
+    pub business_date: Option<String>,
+    #[serde(default)]
+    pub terminal_id: Option<String>,
+    #[serde(default)]
+    pub shift_id: Option<String>,
+    #[serde(default)]
+    pub training_flag: bool,
+    #[serde(default)]
+    pub customer_account_id: Option<String>,
+    #[serde(default)]
+    pub customer_phone: Option<String>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -138,6 +150,12 @@ pub struct ReceiptLabels {
     pub balance_before: Option<String>,
     pub balance_after: Option<String>,
     pub stale_balance: Option<String>,
+    pub business_date: Option<String>,
+    pub terminal_id: Option<String>,
+    pub shift_id: Option<String>,
+    pub training: Option<String>,
+    pub customer_account: Option<String>,
+    pub customer_phone: Option<String>,
 }
 
 impl ReceiptData {
@@ -319,11 +337,66 @@ pub fn format_receipt_with_settings(
         &data.label(|l| &l.operator, "Operator:"),
         &data.operator_name,
     );
+    if let Some(ref business_date) = data.business_date {
+        if let Some(value) = non_empty_trimmed(business_date) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.business_date, "Business date:"),
+                value
+            ));
+        }
+    }
+    if let Some(ref terminal_id) = data.terminal_id {
+        if let Some(value) = non_empty_trimmed(terminal_id) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.terminal_id, "Terminal ID:"),
+                value
+            ));
+        }
+    }
+    if let Some(ref shift_id) = data.shift_id {
+        if let Some(value) = non_empty_trimmed(shift_id) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.shift_id, "Shift ID:"),
+                value
+            ));
+        }
+    }
 
     if data.show_customer.unwrap_or(true) {
         if let Some(ref customer) = data.customer_name {
             b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
         }
+        if let Some(ref account_id) = data.customer_account_id {
+            if let Some(value) = non_empty_trimmed(account_id) {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.customer_account, "Account:"),
+                    value
+                ));
+            }
+        }
+        if let Some(ref phone) = data.customer_phone {
+            if let Some(value) = non_empty_trimmed(phone) {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.customer_phone, "Customer phone:"),
+                    value
+                ));
+            }
+        }
+    }
+
+    if data.training_flag {
+        b.align(Alignment::Center);
+        b.font_size(FontSize::DoubleWidthHeight);
+        b.bold(true);
+        b.text_line(&data.label(|l| &l.training, "TRAINING"));
+        b.bold(false);
+        b.font_size(FontSize::Normal);
+        b.align(Alignment::Left);
     }
 
     // ── DUPLICATA banner (reprint indicator) ──
@@ -908,6 +981,12 @@ mod tests_z_cash_counts {
             account_balance_before: None,
             account_balance_after: None,
             account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
         let bytes = format_receipt_with_settings(&data, None);
         let text = String::from_utf8_lossy(&bytes);
@@ -963,6 +1042,12 @@ mod tests_z_cash_counts {
             account_balance_before: Some("300.000".to_string()),
             account_balance_after: Some("200.000".to_string()),
             account_snapshot_stale: true,
+            business_date: Some("2026-05-21".to_string()),
+            terminal_id: Some("33333333-3333-4333-8333-333333333333".to_string()),
+            shift_id: Some("22222222-2222-4222-8222-222222222222".to_string()),
+            training_flag: true,
+            customer_account_id: Some("55555555-5555-4555-8555-555555555555".to_string()),
+            customer_phone: Some("+21611111111".to_string()),
         };
 
         let bytes = format_receipt_with_settings(&data, None);
@@ -974,6 +1059,17 @@ mod tests_z_cash_counts {
         assert!(text.contains("Balance after:"));
         assert!(text.contains("TND200.000"));
         assert!(text.contains("Balance snapshot stale"));
+        assert!(text.contains("Business date:"));
+        assert!(text.contains("2026-05-21"));
+        assert!(text.contains("Terminal ID:"));
+        assert!(text.contains("33333333-3333-4333-8333-333333333333"));
+        assert!(text.contains("Shift ID:"));
+        assert!(text.contains("22222222-2222-4222-8222-222222222222"));
+        assert!(text.contains("Account:"));
+        assert!(text.contains("55555555-5555-4555-8555-555555555555"));
+        assert!(text.contains("Customer phone:"));
+        assert!(text.contains("+21611111111"));
+        assert!(text.contains("TRAINING"));
         assert!(!text.contains("Item"));
         assert!(!text.contains("VAT %"));
     }
@@ -1028,6 +1124,12 @@ mod tests_z_cash_counts {
             account_balance_before: None,
             account_balance_after: None,
             account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
 
         let bytes = format_receipt_with_settings(&data, None);
@@ -1088,6 +1190,12 @@ mod tests_z_cash_counts {
             account_balance_before: None,
             account_balance_after: None,
             account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
 
         let bytes = format_receipt_with_settings(&data, None);

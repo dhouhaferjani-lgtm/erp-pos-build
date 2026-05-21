@@ -670,6 +670,12 @@
     "balanceBefore": "Solde avant :",
     "balanceAfter": "Solde apres :",
     "staleBalance": "Solde non actualise",
+    "businessDate": "Date fiscale :",
+    "terminalId": "ID terminal :",
+    "shiftId": "ID service :",
+    "training": "FORMATION",
+    "customerAccount": "Compte :",
+    "customerPhone": "Telephone client :",
     "voucherTicket": {
       "header": "BON D'ACHAT",
       "code": "Code du bon :",
