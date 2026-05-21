@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Providers;
 
+use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
@@ -48,7 +49,10 @@ class TreasuryServiceProvider extends ServiceProvider
         // registry is a singleton constructed off the tagged set and a
         // boot-time tag would leave the registry's $projectors array empty.
         $this->app->tag(
-            [TreasuryReceiptBridge::class],
+            [
+                TreasuryReceiptBridge::class,
+                TreasuryAccountPaymentBridge::class,
+            ],
             FiscalEventProjector::class,
         );
     }
