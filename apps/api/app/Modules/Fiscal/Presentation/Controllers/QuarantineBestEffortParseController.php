@@ -13,6 +13,7 @@ use App\Modules\Fiscal\Presentation\Resources\BestEffortParseResource;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 final class QuarantineBestEffortParseController extends Controller
 {
@@ -40,6 +41,16 @@ final class QuarantineBestEffortParseController extends Controller
         if ($quarantine instanceof FiscalEventQuarantine) {
             $eventType = FiscalEventType::from($quarantine->event_type);
             $result = $this->parser->parse($this->canonicalBytesFromQuarantine($quarantine), $eventType);
+
+            $this->logParseInvoked(
+                user: $user,
+                source: 'fiscal_event_quarantine',
+                id: $quarantine->id,
+                fiscalEventId: null,
+                eventType: $eventType->value,
+                parsedKeys: array_keys($result->parsed),
+                defects: $result->defectsToArray(),
+            );
 
             return new BestEffortParseResource([
                 'id' => $quarantine->id,
@@ -79,6 +90,16 @@ final class QuarantineBestEffortParseController extends Controller
 
         $result = $this->parser->parse($this->canonicalBytesToString($event->canonical_bytes), $event->event_type);
 
+        $this->logParseInvoked(
+            user: $user,
+            source: 'fiscal_events',
+            id: $event->id,
+            fiscalEventId: $event->id,
+            eventType: $event->event_type->value,
+            parsedKeys: array_keys($result->parsed),
+            defects: $result->defectsToArray(),
+        );
+
         return new BestEffortParseResource([
             'id' => $event->id,
             'source' => 'fiscal_events',
@@ -111,5 +132,32 @@ final class QuarantineBestEffortParseController extends Controller
         }
 
         return $this->canonicalBytesToString($quarantine->canonical_bytes);
+    }
+
+    /**
+     * @param  list<string>  $parsedKeys
+     * @param  list<array{path: string, code: string, message: string}>  $defects
+     */
+    private function logParseInvoked(
+        User $user,
+        string $source,
+        string $id,
+        ?string $fiscalEventId,
+        string $eventType,
+        array $parsedKeys,
+        array $defects,
+    ): void {
+        Log::info('fiscal.quarantine.best_effort_parse_invoked', [
+            'tenant_id' => $user->tenant_id,
+            'user_id' => $user->id,
+            'source' => $source,
+            'id' => $id,
+            'fiscal_event_id' => $fiscalEventId,
+            'event_type' => $eventType,
+            'parsed_keys' => $parsedKeys,
+            'defect_count' => count($defects),
+            'defect_codes' => array_values(array_unique(array_column($defects, 'code'))),
+            'defect_paths' => array_values(array_unique(array_column($defects, 'path'))),
+        ]);
     }
 }

@@ -1,17 +1,25 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, FileSearch, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileSearch, Loader2, Save } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api'
-import { bestEffortParseQuarantine, type BestEffortParseResponse } from '../api/quarantineResolutionApi'
+import { bestEffortParseQuarantine, resolveParseFailure, type BestEffortParseResponse } from '../api/quarantineResolutionApi'
 
 export function QuarantineResolveAssistPage() {
   const [quarantineId, setQuarantineId] = useState('')
   const [result, setResult] = useState<BestEffortParseResponse | null>(null)
+  const [defectEdits, setDefectEdits] = useState<Record<string, string>>({})
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ fiscalEventId, correctedPayload }: { fiscalEventId: string; correctedPayload: Record<string, unknown> }) =>
+      resolveParseFailure(fiscalEventId, correctedPayload),
+  })
 
   const parseMutation = useMutation({
     mutationFn: bestEffortParseQuarantine,
     onSuccess: (response) => {
       setResult(response)
+      setDefectEdits(initialDefectEdits(response))
+      resolveMutation.reset()
     },
   })
 
@@ -20,11 +28,24 @@ export function QuarantineResolveAssistPage() {
     [result?.parsed],
   )
 
+  const editableDefects = useMemo(
+    () => result?.defects.filter((defect) => defect.path.startsWith('payload.')) ?? [],
+    [result?.defects],
+  )
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmed = quarantineId.trim()
     if (trimmed.length === 0) return
     parseMutation.mutate(trimmed)
+  }
+
+  const handleResolve = () => {
+    if (!result?.fiscal_event_id || result.source !== 'fiscal_events') return
+    resolveMutation.mutate({
+      fiscalEventId: result.fiscal_event_id,
+      correctedPayload: buildCorrectedPayload(result.parsed, defectEdits),
+    })
   }
 
   return (
@@ -67,6 +88,18 @@ export function QuarantineResolveAssistPage() {
       {parseMutation.isError && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           {getErrorMessage(parseMutation.error)}
+        </div>
+      )}
+
+      {resolveMutation.isError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {getErrorMessage(resolveMutation.error)}
+        </div>
+      )}
+
+      {resolveMutation.isSuccess && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Parse failure resolved.
         </div>
       )}
 
@@ -117,9 +150,122 @@ export function QuarantineResolveAssistPage() {
                 ))}
               </ul>
             )}
+
+            <div className="mt-6 border-t border-gray-200 pt-4">
+              <h2 className="text-sm font-semibold text-gray-900">Corrections</h2>
+              {editableDefects.length === 0 ? (
+                <p className="mt-3 text-sm text-gray-600">No editable payload defects were detected.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {editableDefects.map((defect) => (
+                    <label key={`edit:${defect.path}:${defect.code}`} className="block">
+                      <span className="font-mono text-xs font-semibold text-gray-700">{defect.path}</span>
+                      <textarea
+                        value={defectEdits[defect.path] ?? ''}
+                        onChange={(event) => {
+                          setDefectEdits((current) => ({
+                            ...current,
+                            [defect.path]: event.target.value,
+                          }))
+                        }}
+                        aria-label={`Corrected value for ${defect.path}`}
+                        className="mt-1 h-24 w-full resize-y rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {result.source === 'fiscal_event_quarantine' && (
+                <p className="mt-4 text-sm text-gray-600">
+                  Quarantine-table rows can be inspected here; only in-table fiscal events can be resolved through this workflow.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleResolve}
+                disabled={
+                  resolveMutation.isPending
+                  || result.source !== 'fiscal_events'
+                  || result.fiscal_event_id === null
+                }
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {resolveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Submit correction
+              </button>
+            </div>
           </section>
         </div>
       )}
     </div>
   )
+}
+
+function stringifyEditValue(value: unknown): string {
+  if (value === undefined) return ''
+  if (typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
+}
+
+function initialDefectEdits(result: BestEffortParseResponse): Record<string, string> {
+  const initialEdits: Record<string, string> = {}
+  for (const defect of result.defects) {
+    if (!defect.path.startsWith('payload.')) continue
+    initialEdits[defect.path] = stringifyEditValue(valueAtPayloadPath(result.parsed, defect.path))
+  }
+  return initialEdits
+}
+
+function valueAtPayloadPath(payload: Record<string, unknown>, defectPath: string): unknown {
+  const segments = payloadSegments(defectPath)
+  let current: unknown = payload
+  for (const segment of segments) {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return undefined
+    current = (current as Record<string, unknown>)[segment]
+  }
+  return current
+}
+
+function buildCorrectedPayload(
+  parsed: Record<string, unknown>,
+  edits: Record<string, string>
+): Record<string, unknown> {
+  const corrected = cloneRecord(parsed)
+  for (const [path, rawValue] of Object.entries(edits)) {
+    const segments = payloadSegments(path)
+    if (segments.length === 0) continue
+    setPayloadPath(corrected, segments, parseEditValue(rawValue))
+  }
+  return corrected
+}
+
+function payloadSegments(defectPath: string): string[] {
+  if (!defectPath.startsWith('payload.')) return []
+  return defectPath.slice('payload.'.length).split('.').filter(Boolean)
+}
+
+function parseEditValue(rawValue: string): unknown {
+  try {
+    return JSON.parse(rawValue)
+  } catch {
+    return rawValue
+  }
+}
+
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function setPayloadPath(target: Record<string, unknown>, segments: string[], value: unknown): void {
+  let current: Record<string, unknown> = target
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment]
+    if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+      current[segment] = {}
+    }
+    current = current[segment] as Record<string, unknown>
+  }
+  current[segments[segments.length - 1]] = value
 }

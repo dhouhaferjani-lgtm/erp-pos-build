@@ -24,3 +24,19 @@ export async function bestEffortParseQuarantine(
   )
   return response.data.data
 }
+
+export interface ResolveParseFailureResponse {
+  id: string
+  status: 'resolved'
+}
+
+export async function resolveParseFailure(
+  fiscalEventId: string,
+  correctedPayload: Record<string, unknown>
+): Promise<ResolveParseFailureResponse> {
+  const response = await api.post<{ data: ResolveParseFailureResponse }>(
+    `/fiscal/events/${fiscalEventId}/resolve-parse-failure`,
+    { corrected_payload: correctedPayload }
+  )
+  return response.data.data
+}

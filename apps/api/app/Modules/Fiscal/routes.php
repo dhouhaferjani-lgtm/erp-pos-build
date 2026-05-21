@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Fiscal\Presentation\Controllers\FiscalEventIngestionController;
+use App\Modules\Fiscal\Presentation\Controllers\ParseFailureResolutionController;
 use App\Modules\Fiscal\Presentation\Controllers\QuarantineBestEffortParseController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
@@ -27,5 +28,7 @@ Route::prefix('api/v1')
     ->group(function (): void {
         Route::post('/pos/sync/fiscal-events', [FiscalEventIngestionController::class, 'store']);
         Route::post('/fiscal/quarantine/{id}/best-effort-parse', [QuarantineBestEffortParseController::class, 'store'])
+            ->middleware('can:fiscal.events.resolve_quarantine');
+        Route::post('/fiscal/events/{id}/resolve-parse-failure', [ParseFailureResolutionController::class, 'store'])
             ->middleware('can:fiscal.events.resolve_quarantine');
     });
