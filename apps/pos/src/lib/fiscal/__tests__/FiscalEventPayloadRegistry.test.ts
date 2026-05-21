@@ -14,6 +14,7 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isImplemented('CHAIN_RESTART')).toBe(true);
     expect(registry.isImplemented('TERMINAL_REGISTRY_SNAPSHOT')).toBe(true);
     expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
+    expect(registry.isImplemented('ACCOUNT_CHARGE')).toBe(true);
   });
 
   it('marks reserved-not-implemented types as unimplemented', () => {
@@ -34,7 +35,6 @@ describe('FiscalEventPayloadRegistry', () => {
       'X_REPORT',
       'Z_REPORT',
       'REPRINT_COPY',
-      'ACCOUNT_CHARGE',
       'ACCOUNT_REFUND',
       'ACCOUNT_PAYMENT_RECONCILED',
       'ACCOUNT_CREDIT_ISSUE',
@@ -54,11 +54,21 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
     expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);
     expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+    expect(registry.eventVersionFor('ACCOUNT_CHARGE')).toBe(1);
   });
 
   it('implements ACCOUNT_PAYMENT at version 1 without changing server-only types', () => {
     expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
     expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+    expect(registry.serverOnlyTypes()).toEqual([
+      'TERMINAL_REGISTRY_SNAPSHOT',
+      'COMPANY_DAY_CLOSURE_MANIFEST',
+    ]);
+  });
+
+  it('implements ACCOUNT_CHARGE at version 1 without changing server-only types', () => {
+    expect(registry.isImplemented('ACCOUNT_CHARGE')).toBe(true);
+    expect(registry.eventVersionFor('ACCOUNT_CHARGE')).toBe(1);
     expect(registry.serverOnlyTypes()).toEqual([
       'TERMINAL_REGISTRY_SNAPSHOT',
       'COMPANY_DAY_CLOSURE_MANIFEST',
@@ -92,6 +102,7 @@ describe('FiscalEventPayloadRegistry', () => {
         'CHAIN_RESTART',
         'TERMINAL_REGISTRY_SNAPSHOT',
         'ACCOUNT_PAYMENT',
+        'ACCOUNT_CHARGE',
       ]),
     );
   });
@@ -119,6 +130,7 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isServerOnly('CHAIN_BREAK_DETECTED')).toBe(false);
     expect(registry.isServerOnly('CHAIN_RESTART')).toBe(false);
     expect(registry.isServerOnly('ACCOUNT_PAYMENT')).toBe(false);
+    expect(registry.isServerOnly('ACCOUNT_CHARGE')).toBe(false);
   });
 
   it('serverOnlyTypes() returns the stable §11.0 set', () => {

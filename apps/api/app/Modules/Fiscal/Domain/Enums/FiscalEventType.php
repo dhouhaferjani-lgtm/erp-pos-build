@@ -43,6 +43,7 @@ enum FiscalEventType: string
             self::CHAIN_RESTART,
             self::TERMINAL_REGISTRY_SNAPSHOT,
             self::ACCOUNT_PAYMENT,
+            self::ACCOUNT_CHARGE,
         ], true);
     }
 
