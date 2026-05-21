@@ -14,6 +14,7 @@ use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
+use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
@@ -94,6 +95,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/receipts/qr-index', [VoucherSyncController::class, 'pullReceiptQrIndex']);
     Route::get('/pos/customers/sync', [PosCustomerSyncController::class, 'index'])
         ->name('pos.customers.sync');
+    Route::post('/pos/customers/pending', [PosPendingCustomerController::class, 'store'])
+        ->name('pos.customers.pending.store');
 
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
