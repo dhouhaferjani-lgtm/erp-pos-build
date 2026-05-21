@@ -1,0 +1,90 @@
+import type Database from '@tauri-apps/plugin-sql';
+import { apiGet } from '@/lib/api';
+import { upsertCustomer } from '@/lib/db/repositories/customerRepository';
+import {
+  getSyncMetadata,
+  setSyncMetadata,
+} from '@/lib/db/repositories/syncLogRepository';
+import type { CustomerMirrorRow } from './customerTypes';
+
+const CUSTOMER_CURSOR_KEY = 'customers.updated_since';
+
+interface CustomerSyncResponse {
+  customers?: CustomerMirrorRow[];
+  synced_at?: string;
+}
+
+export class CustomerSyncResponseError extends Error {
+  constructor(message: string) {
+    super(`[customer] ${message}`);
+    this.name = 'CustomerSyncResponseError';
+  }
+}
+
+export class CustomerSyncScopeError extends Error {
+  constructor(
+    readonly expectedTenantId: string,
+    readonly expectedCompanyId: string,
+    readonly row: Pick<CustomerMirrorRow, 'id' | 'tenant_id' | 'company_id'>,
+  ) {
+    super(
+      `[customer] Server returned customer ${row.id} for tenant=${row.tenant_id} company=${row.company_id}; ` +
+        `expected tenant=${expectedTenantId} company=${expectedCompanyId}.`,
+    );
+    this.name = 'CustomerSyncScopeError';
+  }
+}
+
+function assertScope(row: CustomerMirrorRow, tenantId: string, companyId: string): void {
+  if (row.tenant_id !== tenantId || row.company_id !== companyId) {
+    throw new CustomerSyncScopeError(tenantId, companyId, row);
+  }
+}
+
+function parseResponse(response: CustomerSyncResponse): Required<CustomerSyncResponse> {
+  if (!Array.isArray(response.customers)) {
+    throw new CustomerSyncResponseError('Server response is missing customers array.');
+  }
+
+  if (typeof response.synced_at !== 'string' || response.synced_at.trim() === '') {
+    throw new CustomerSyncResponseError('Server response is missing synced_at cursor.');
+  }
+
+  return {
+    customers: response.customers,
+    synced_at: response.synced_at,
+  };
+}
+
+export async function pullCustomers(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+): Promise<number> {
+  const lastSync = await getSyncMetadata(db, CUSTOMER_CURSOR_KEY);
+  const params: Record<string, string> = {};
+  if (lastSync !== null && lastSync !== '') {
+    params.updated_since = lastSync;
+  }
+
+  const response = parseResponse(
+    await apiGet<CustomerSyncResponse>('/pos/customers/sync', params),
+  );
+  const customers = response.customers;
+
+  for (const customer of customers) {
+    assertScope(customer, tenantId, companyId);
+  }
+
+  for (const customer of customers) {
+    await upsertCustomer(db, customer);
+  }
+
+  await setSyncMetadata(
+    db,
+    CUSTOMER_CURSOR_KEY,
+    response.synced_at,
+  );
+
+  return customers.length;
+}
