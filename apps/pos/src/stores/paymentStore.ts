@@ -122,6 +122,23 @@ export interface VoucherTenderRow {
 
 // ─── Payment state ────────────────────────────────────────────────────────────
 
+export type CustomerSyncStatus = 'synced' | 'pending_create';
+
+export interface AttachedCheckoutCustomer {
+  id: string;
+  tenant_id: string;
+  company_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  tax_number: string | null;
+  customer_category: string | null;
+  receivable_balance: string;
+  credit_balance: string;
+  balance_updated_at: string | null;
+  customer_sync_status: CustomerSyncStatus;
+}
+
 interface PaymentState {
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
@@ -162,6 +179,13 @@ interface PaymentState {
    * can guard against applying the same voucher twice without scanning the full row list.
    */
   appliedVoucherCodes: ReadonlySet<string>;
+
+  /**
+   * Customer attached to the current checkout/account-payment context.
+   * This is a sealed snapshot candidate only; fiscal authoring must not call
+   * server-side Customer/Treasury modules while building device events.
+   */
+  selectedCustomer: AttachedCheckoutCustomer | null;
 }
 
 export interface AdvancedPaymentLine {
@@ -251,6 +275,12 @@ interface PaymentActions {
 
   /** Clear all voucher tender rows (called by reset()). */
   clearVoucherTenders: () => void;
+
+  /** Attach a scoped customer snapshot to the current checkout. */
+  attachCustomer: (customer: AttachedCheckoutCustomer) => void;
+
+  /** Remove the customer snapshot before sealing/checkout. */
+  detachCustomer: () => void;
 }
 
 type PaymentStore = PaymentState & PaymentActions;
@@ -268,6 +298,7 @@ const initialState: PaymentState = {
   pendingIdempotencyKey: null,
   voucherTenders: [],
   appliedVoucherCodes: new Set<string>(),
+  selectedCustomer: null,
 };
 
 async function getDb(): Promise<import('@tauri-apps/plugin-sql').default> {
@@ -302,6 +333,21 @@ function formatCheckoutError(error: unknown): string {
     return `${fallback}: ${error.constructor.name}`;
   }
   return fallback;
+}
+
+function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
+  if (customer.tenant_id.trim() === '') {
+    throw new Error('[customer] tenant_id is required');
+  }
+  if (customer.company_id.trim() === '') {
+    throw new Error('[customer] company_id is required');
+  }
+  if (customer.id.trim() === '') {
+    throw new Error('[customer] id is required');
+  }
+  if (customer.name.trim() === '') {
+    throw new Error('[customer] name is required');
+  }
 }
 
 
@@ -837,7 +883,15 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     // (called by HomePage's handleNewSale). Leaving the key populated would
     // cause the new sale's first POST to be deduped server-side as a replay
     // of the previous sale.
-    set({ lastReceipt: null, pendingReceiptId: null, changeDue: 0, lastReceiptIdempotencyKey: null, lastReceiptServerId: null, pendingIdempotencyKey: null });
+    set({
+      lastReceipt: null,
+      pendingReceiptId: null,
+      changeDue: 0,
+      lastReceiptIdempotencyKey: null,
+      lastReceiptServerId: null,
+      pendingIdempotencyKey: null,
+      selectedCustomer: null,
+    });
   },
 
   discardPendingSubmission: () => {
@@ -924,6 +978,15 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
   clearVoucherTenders: () => {
     set({ voucherTenders: [], appliedVoucherCodes: new Set<string>() });
+  },
+
+  attachCustomer: (customer: AttachedCheckoutCustomer) => {
+    assertAttachedCustomerScope(customer);
+    set({ selectedCustomer: customer });
+  },
+
+  detachCustomer: () => {
+    set({ selectedCustomer: null });
   },
 
   reset: () => {

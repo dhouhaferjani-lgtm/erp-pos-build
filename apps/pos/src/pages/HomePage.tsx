@@ -21,6 +21,7 @@ import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
+import { CustomerAttachPanel } from '@/components/customers/CustomerAttachPanel';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { resolveDiscountAccess } from '@/lib/discountPermissions';
@@ -146,6 +147,8 @@ export function HomePage() {
   // companyId is known and reused across modal opens (getDatabase is
   // idempotent for the same companyId — it returns the cached handle).
   const companyIdForVoucherDb = useAuthStore((s) => s.companyId);
+  const activeCompanyId = useAuthStore((s) => s.companyId);
+  const activeTenantId = useAuthStore((s) => s.user?.tenantId ?? null);
   const [voucherDb, setVoucherDb] = useState<import('@tauri-apps/plugin-sql').default | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -1061,34 +1064,40 @@ export function HomePage() {
       )}
 
       {/* Cart - left panel (first in DOM) */}
-      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
-        <TransactionCart
-          items={cartItems}
-          subtotal={subtotal()}
-          taxAmount={taxAmount()}
-          discountAmount={discountAmount()}
-          total={total()}
-          itemCount={itemCount()}
-          hasDiscount={!!transactionDiscount}
-          onUpdateQuantity={updateQuantity}
-          onRemoveItem={removeItem}
-          onClearCart={clearCart}
-          onPayCash={handlePayCash}
-          onAdvancedPayments={handleAdvancedPayments}
-          onQuantityTap={handleQuantityTap}
-          onDiscount={() => setShowDiscountModal(true)}
-          onHold={() => void handleHold()}
-          onRecall={() => setShowHeldModal(true)}
-          onReturns={() => setShowReceiptLocator(true)}
-          onLineDiscount={handleLineDiscount}
-          onRemoveLineDiscount={handleRemoveLineDiscount}
-          onEditModifiers={handleEditModifiers}
-          onRemoveDiscount={handleRemoveDiscount}
-          paymentMethods={paymentMethods}
-          paymentRepositories={paymentRepositories}
-          checkoutDisabled={!hashChainReady || isProcessing}
-          netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
+      <div className="flex min-w-[340px] flex-[4] flex-col border-r border-gray-200">
+        <CustomerAttachPanel
+          tenantId={activeTenantId}
+          companyId={activeCompanyId}
         />
+        <div className="min-h-0 flex-1">
+          <TransactionCart
+            items={cartItems}
+            subtotal={subtotal()}
+            taxAmount={taxAmount()}
+            discountAmount={discountAmount()}
+            total={total()}
+            itemCount={itemCount()}
+            hasDiscount={!!transactionDiscount}
+            onUpdateQuantity={updateQuantity}
+            onRemoveItem={removeItem}
+            onClearCart={clearCart}
+            onPayCash={handlePayCash}
+            onAdvancedPayments={handleAdvancedPayments}
+            onQuantityTap={handleQuantityTap}
+            onDiscount={() => setShowDiscountModal(true)}
+            onHold={() => void handleHold()}
+            onRecall={() => setShowHeldModal(true)}
+            onReturns={() => setShowReceiptLocator(true)}
+            onLineDiscount={handleLineDiscount}
+            onRemoveLineDiscount={handleRemoveLineDiscount}
+            onEditModifiers={handleEditModifiers}
+            onRemoveDiscount={handleRemoveDiscount}
+            paymentMethods={paymentMethods}
+            paymentRepositories={paymentRepositories}
+            checkoutDisabled={!hashChainReady || isProcessing}
+            netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
+          />
+        </div>
       </div>
 
       {/* Product grid - right panel (second in DOM) */}
