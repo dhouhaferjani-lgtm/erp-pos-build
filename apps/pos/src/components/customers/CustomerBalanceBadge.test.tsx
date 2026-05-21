@@ -9,7 +9,7 @@ vi.mock('@/lib/currency', () => ({
 }));
 
 describe('CustomerBalanceBadge', () => {
-  it('shows receivable and credit balances', () => {
+  it('shows receivable, credit, net due, and visible update time', () => {
     render(
       <CustomerBalanceBadge
         receivableBalance="42.500"
@@ -21,6 +21,9 @@ describe('CustomerBalanceBadge', () => {
 
     expect(screen.getByText('Due TND 42.500')).toBeInTheDocument();
     expect(screen.getByText('Credit TND 3.250')).toBeInTheDocument();
+    expect(screen.getByText('Net due TND 39.250')).toBeInTheDocument();
+    expect(screen.getByText(/Balance updated/)).toBeInTheDocument();
+    expect(screen.getByText(/2026/)).toBeInTheDocument();
     expect(screen.getByText('Fresh')).toBeInTheDocument();
   });
 
@@ -36,5 +39,19 @@ describe('CustomerBalanceBadge', () => {
 
     expect(screen.getByText('Stale')).toBeInTheDocument();
     expect(screen.getByLabelText('Customer balance is stale')).toBeInTheDocument();
+  });
+
+  it('does not show a negative net due when customer credit exceeds receivables', () => {
+    render(
+      <CustomerBalanceBadge
+        receivableBalance="10.000"
+        creditBalance="12.500"
+        balanceUpdatedAt={null}
+        stale={false}
+      />,
+    );
+
+    expect(screen.getByText('Net due TND 0.000')).toBeInTheDocument();
+    expect(screen.getByText('Balance updated Never synced')).toBeInTheDocument();
   });
 });
