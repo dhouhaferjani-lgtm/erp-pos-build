@@ -99,6 +99,11 @@ function maxZero(value: string, scale: number): string {
 
 function buildSeller(input: SaleReceiptSellerInput): AccountPaymentPayload['seller'] {
   const countryCode = requireText(input.countryCode, 'seller.address.country_code').toUpperCase();
+  const taxNumber = normalizeSellerTaxNumber(
+    requireText(input.taxNumber, 'seller.tax_number'),
+    countryCode,
+  );
+
   return {
     address: {
       city: requireText(input.city, 'seller.address.city'),
@@ -108,8 +113,16 @@ function buildSeller(input: SaleReceiptSellerInput): AccountPaymentPayload['sell
     },
     name: requireText(input.name, 'seller.name'),
     tax_jurisdiction_country_code: countryCode,
-    tax_number: requireText(input.taxNumber, 'seller.tax_number'),
+    tax_number: taxNumber,
   };
+}
+
+function normalizeSellerTaxNumber(taxNumber: string, countryCode: string): string {
+  if (countryCode === 'TN') {
+    return taxNumber.replace(/\//g, '');
+  }
+
+  return taxNumber;
 }
 
 function buildCustomer(input: AttachedCheckoutCustomer): AccountPaymentPayload['customer'] {

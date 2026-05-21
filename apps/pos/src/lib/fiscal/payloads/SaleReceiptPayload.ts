@@ -121,8 +121,11 @@ export function buildSaleReceiptPayload(
 
 function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {
   const name = requireText(input.name, 'seller.name');
-  const taxNumber = requireText(input.taxNumber, 'seller.tax_number');
   const countryCode = requireText(input.countryCode, 'seller.address.country_code').toUpperCase();
+  const taxNumber = normalizeSellerTaxNumber(
+    requireText(input.taxNumber, 'seller.tax_number'),
+    countryCode,
+  );
   const address: AddressInput = {
     city: requireText(input.city, 'seller.address.city'),
     country_code: countryCode,
@@ -136,6 +139,14 @@ function buildSellerBlock(input: SaleReceiptSellerInput): SellerBlockInput {
     tax_jurisdiction_country_code: countryCode,
     tax_number: taxNumber,
   };
+}
+
+function normalizeSellerTaxNumber(taxNumber: string, countryCode: string): string {
+  if (countryCode === 'TN') {
+    return taxNumber.replace(/\//g, '');
+  }
+
+  return taxNumber;
 }
 
 function buildLineItems(cartItems: CartItem[], scale: number): LineItemInput[] {

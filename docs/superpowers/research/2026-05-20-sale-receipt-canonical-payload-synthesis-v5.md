@@ -154,9 +154,28 @@ TS-side validator (`FiscalEventEngine.validateRequestPayload`) validates STRUCTU
 
 ---
 
-## 7. Per-country tax-number patterns — universal validation only
+## 7. Per-country tax-number patterns — LANDED in Phase 1.5.2
 
-`See v4 §7.` Unchanged in v5.
+Pass 2A originally used a universal tax-number baseline
+`^[A-Za-z0-9 \-/.]{4,40}$` so an incorrect country regex would not block
+the receipt-chain rebuild. Phase 1.5.2 replaces that placeholder with the
+country-keyed table below while retaining the universal baseline for unknown
+countries.
+
+Seller / customer `tax_number` patterns:
+
+| Country | Pattern | Notes |
+| --- | --- | --- |
+| FR | `^([0-9]{9}|[0-9]{14})$` | SIREN or SIRET for seller/customer tax number. Buyer TVA intracommunautaire also accepts `^FR[0-9]{11}$`. |
+| TN | `^[0-9]{7,8}[A-Z]{2}[0-9]{3}$` | Slash input such as `1234567/A/M/000` normalizes to compact `1234567AM000`; canonical producers emit compact. |
+| SA | `^3[0-9]{12}03$` | Saudi VAT number shape retained for future ZATCA axis. |
+| DE | `^DE[0-9]{9}$` | USt-IdNr shape retained for future DSFinV-K / TSE axis. |
+| IT | `^[0-9]{11}$` | Partita IVA. Individual codice fiscale belongs in `buyer.codice_fiscale`, validated separately as `^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$`. |
+
+Forensic mismatch prefixes:
+
+- `payload_tax_number_format_mismatch:field=<path>:country=<country>:value=<actual>`
+- `payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value=<actual>`
 
 ---
 

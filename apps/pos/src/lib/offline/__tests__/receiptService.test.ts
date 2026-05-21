@@ -56,7 +56,7 @@ const terminalState = {
 
 const seller = {
   name: 'AutoERP Demo SARL',
-  taxNumber: 'TN 1234567A',
+  taxNumber: '1234567/A/M/000',
   countryCode: 'TN',
   street: '1 Avenue Habib Bourguiba',
   city: 'Tunis',
@@ -122,6 +122,13 @@ describe('receiptService — fiscal-event engine wiring', () => {
         tenant_id: '11111111-1111-4111-8111-111111111111',
         company_id: '22222222-2222-4222-8222-222222222222',
         terminal_id: terminalState.terminal_id,
+      }),
+    );
+    expect(vi.mocked(engine.append).mock.calls[0]![1].payload).toEqual(
+      expect.objectContaining({
+        seller: expect.objectContaining({
+          tax_number: '1234567AM000',
+        }),
       }),
     );
 

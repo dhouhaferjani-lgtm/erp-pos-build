@@ -82,7 +82,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'email' => 'client@example.test',
                 'name' => 'Pending Client',
                 'phone' => null,
-                'tax_number' => '7654321B/B/B/000',
+                'tax_number' => '7654321BM000',
             ],
             'payment' => [
                 'amount' => '50.000',
@@ -212,6 +212,105 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/seller\\.tax_number/');
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
+    }
+
+    public function test_phase_1_5_2_accepts_per_country_seller_tax_numbers(): void
+    {
+        $fixtures = [
+            'FR' => '12345678901234',
+            'TN' => '1234567/A/M/000',
+            'SA' => '312345678901203',
+            'DE' => 'DE123456789',
+            'IT' => '12345678901',
+        ];
+
+        foreach ($fixtures as $country => $taxNumber) {
+            $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+            $payload['seller']['tax_jurisdiction_country_code'] = $country;
+            $payload['seller']['address']['country_code'] = $country;
+            $payload['seller']['tax_number'] = $taxNumber;
+
+            try {
+                $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+            } catch (RuntimeException $e) {
+                self::fail("{$country} seller tax number should pass Phase 1.5.2 validation: {$e->getMessage()}");
+            }
+        }
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_phase_1_5_2_rejects_country_specific_seller_tax_number_mismatches(): void
+    {
+        $fixtures = [
+            'FR' => 'FR12345678901',
+            'TN' => '1234567ABC000',
+            'SA' => '212345678901203',
+            'DE' => '123456789',
+            'IT' => 'IT123456789',
+        ];
+
+        foreach ($fixtures as $country => $taxNumber) {
+            $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+            $payload['seller']['tax_jurisdiction_country_code'] = $country;
+            $payload['seller']['address']['country_code'] = $country;
+            $payload['seller']['tax_number'] = $taxNumber;
+
+            try {
+                $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+                self::fail("{$country} seller tax number {$taxNumber} should fail Phase 1.5.2 validation.");
+            } catch (RuntimeException $e) {
+                self::assertSame(
+                    "payload_tax_number_format_mismatch:field=seller.tax_number:country={$country}:value={$taxNumber}",
+                    $e->getMessage()
+                );
+            }
+        }
+    }
+
+    public function test_phase_1_5_2_unknown_country_falls_back_to_universal_tax_number_pattern(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $payload['seller']['tax_jurisdiction_country_code'] = 'XX';
+        $payload['seller']['address']['country_code'] = 'XX';
+        $payload['seller']['tax_number'] = 'AB-1234/XY';
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_phase_1_5_2_accepts_fr_buyer_tva_intracommunautaire(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['tax_number'] = 'FR12345678901';
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_phase_1_5_2_rejects_invalid_it_buyer_codice_fiscale(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['address']['country_code'] = 'IT';
+        $payload['buyer']['tax_number'] = null;
+        $payload['buyer']['codice_fiscale'] = 'RSSMRA80A01H50';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value=RSSMRA80A01H50'
+        );
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+    }
+
+    public function test_phase_1_5_2_accepts_it_buyer_codice_fiscale_with_tax_number_preferred(): void
+    {
+        $payload = GoldenFixtureBuilder::all()['F-07-b2b-buyer-eur'];
+        $payload['buyer']['address']['country_code'] = 'IT';
+        $payload['buyer']['tax_number'] = '12345678901';
+        $payload['buyer']['codice_fiscale'] = 'RSSMRA80A01H501U';
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
+        $this->addToAssertionCount(1);
     }
 
     public function test_account_payment_rejects_server_customer_alias_on_original_event(): void
@@ -1053,7 +1152,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
                 'name' => 'Default Seller',
                 'tax_jurisdiction_country_code' => 'TN',
-                'tax_number' => '1234567A/A/A/000',
+                'tax_number' => '1234567AM000',
             ],
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'staleness' => [

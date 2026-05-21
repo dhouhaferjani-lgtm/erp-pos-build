@@ -157,7 +157,7 @@ function validSaleReceiptPayload(): Record<string, unknown> {
       },
       name: 'Cafe Tunis',
       tax_jurisdiction_country_code: 'TN',
-      tax_number: '1234567A/B/C/000',
+      tax_number: '1234567AM000',
     },
     shift_id: SR_SHIFT_UUID,
     subtotal: '10.000',

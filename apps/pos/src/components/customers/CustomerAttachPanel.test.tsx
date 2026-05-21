@@ -77,7 +77,7 @@ vi.mock('@/stores/authStore', () => ({
         id: 'company-1',
         currency: 'TND',
         name: 'AutoERP Demo SARL',
-        tax_id: '1234567A/A/A/000',
+        tax_id: '1234567AM000',
         country_code: 'TN',
         address_street: '1 Avenue Habib Bourguiba',
         address_city: 'Tunis',
