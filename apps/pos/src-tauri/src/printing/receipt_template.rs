@@ -88,6 +88,24 @@ pub struct ReceiptData {
     /// for further partial refunds.
     #[serde(default)]
     pub original_receipt_qr_token: Option<String>,
+    #[serde(default)]
+    pub account_balance_before: Option<String>,
+    #[serde(default)]
+    pub account_balance_after: Option<String>,
+    #[serde(default)]
+    pub account_snapshot_stale: bool,
+    #[serde(default)]
+    pub business_date: Option<String>,
+    #[serde(default)]
+    pub terminal_id: Option<String>,
+    #[serde(default)]
+    pub shift_id: Option<String>,
+    #[serde(default)]
+    pub training_flag: bool,
+    #[serde(default)]
+    pub customer_account_id: Option<String>,
+    #[serde(default)]
+    pub customer_phone: Option<String>,
 }
 
 /// Localized receipt labels. All fields optional with English defaults.
@@ -128,6 +146,16 @@ pub struct ReceiptLabels {
     pub original_ticket: Option<String>,
     /// "Scan original ticket:" label above the original-receipt QR re-print.
     pub original_qr_label: Option<String>,
+    pub account_payment_header: Option<String>,
+    pub balance_before: Option<String>,
+    pub balance_after: Option<String>,
+    pub stale_balance: Option<String>,
+    pub business_date: Option<String>,
+    pub terminal_id: Option<String>,
+    pub shift_id: Option<String>,
+    pub training: Option<String>,
+    pub customer_account: Option<String>,
+    pub customer_phone: Option<String>,
 }
 
 impl ReceiptData {
@@ -309,11 +337,66 @@ pub fn format_receipt_with_settings(
         &data.label(|l| &l.operator, "Operator:"),
         &data.operator_name,
     );
+    if let Some(ref business_date) = data.business_date {
+        if let Some(value) = non_empty_trimmed(business_date) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.business_date, "Business date:"),
+                value
+            ));
+        }
+    }
+    if let Some(ref terminal_id) = data.terminal_id {
+        if let Some(value) = non_empty_trimmed(terminal_id) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.terminal_id, "Terminal ID:"),
+                value
+            ));
+        }
+    }
+    if let Some(ref shift_id) = data.shift_id {
+        if let Some(value) = non_empty_trimmed(shift_id) {
+            b.text_line(&format!(
+                "{} {}",
+                data.label(|l| &l.shift_id, "Shift ID:"),
+                value
+            ));
+        }
+    }
 
     if data.show_customer.unwrap_or(true) {
         if let Some(ref customer) = data.customer_name {
             b.two_column(&data.label(|l| &l.customer, "Customer:"), customer);
         }
+        if let Some(ref account_id) = data.customer_account_id {
+            if let Some(value) = non_empty_trimmed(account_id) {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.customer_account, "Account:"),
+                    value
+                ));
+            }
+        }
+        if let Some(ref phone) = data.customer_phone {
+            if let Some(value) = non_empty_trimmed(phone) {
+                b.text_line(&format!(
+                    "{} {}",
+                    data.label(|l| &l.customer_phone, "Customer phone:"),
+                    value
+                ));
+            }
+        }
+    }
+
+    if data.training_flag {
+        b.align(Alignment::Center);
+        b.font_size(FontSize::DoubleWidthHeight);
+        b.bold(true);
+        b.text_line(&data.label(|l| &l.training, "TRAINING"));
+        b.bold(false);
+        b.font_size(FontSize::Normal);
+        b.align(Alignment::Left);
     }
 
     // ── DUPLICATA banner (reprint indicator) ──
@@ -333,6 +416,11 @@ pub fn format_receipt_with_settings(
         .receipt_kind
         .as_deref()
         .map(|k| k.eq_ignore_ascii_case("refund"))
+        .unwrap_or(false);
+    let is_account_payment = data
+        .receipt_kind
+        .as_deref()
+        .map(|k| k.eq_ignore_ascii_case("account_payment"))
         .unwrap_or(false);
 
     if is_refund {
@@ -366,139 +454,183 @@ pub fn format_receipt_with_settings(
 
     b.separator('=');
 
-    // ── Line Items ──
-    // Header
-    b.bold(true);
-    b.three_column(
-        &data.label(|l| &l.item, "Item"),
-        &data.label(|l| &l.qty, "Qty"),
-        &data.label(|l| &l.amount, "Amount"),
-    );
-    b.bold(false);
-    b.separator('-');
+    if is_account_payment {
+        b.align(Alignment::Center);
+        b.font_size(FontSize::DoubleHeight);
+        b.bold(true);
+        b.text_line(&data.label(|l| &l.account_payment_header, "ACCOUNT PAYMENT RECEIPT"));
+        b.bold(false);
+        b.font_size(FontSize::Normal);
+        b.align(Alignment::Left);
+        b.separator('-');
 
-    for line in &data.lines {
-        // Product name on its own line if long
-        let qty_price = format!("{} x {}", line.quantity, line.unit_price);
-        let total_str = format!("{}{}", data.currency_symbol, line.line_total);
-
-        if line.name.len() > 20 {
-            // Long name: print name on first line, details on second
-            b.text_line(&line.name);
-            b.two_column(&format!("  {}", qty_price), &total_str);
-        } else {
-            b.text_line(&line.name);
-            b.two_column(&format!("  {}", qty_price), &total_str);
+        if let Some(ref before) = data.account_balance_before {
+            b.two_column(
+                &data.label(|l| &l.balance_before, "Balance before:"),
+                &format!("{}{}", data.currency_symbol, before),
+            );
+        }
+        b.two_column(
+            &data.label(|l| &l.amount, "Amount"),
+            &format!("{}{}", data.currency_symbol, data.total),
+        );
+        if let Some(ref after) = data.account_balance_after {
+            b.two_column(
+                &data.label(|l| &l.balance_after, "Balance after:"),
+                &format!("{}{}", data.currency_symbol, after),
+            );
+        }
+        if data.account_snapshot_stale {
+            b.text_line(&data.label(|l| &l.stale_balance, "Balance snapshot stale"));
         }
 
-        // Modifiers
-        if let Some(ref modifiers) = line.modifiers {
-            for modifier in modifiers {
-                let mod_price = if modifier.price == "0.00" || modifier.price == "0" {
-                    String::new()
-                } else {
-                    format!("+{}{}", data.currency_symbol, modifier.price)
-                };
-                b.two_column(&format!("  + {}", modifier.name), &mod_price);
+        if data.show_payment_details.unwrap_or(true) {
+            b.separator('-');
+            b.bold(true);
+            b.text_line(&data.label(|l| &l.payments, "Payments:"));
+            b.bold(false);
+            for payment in &data.payments {
+                b.two_column(
+                    &format!("  {}", payment.method),
+                    &format!("{}{}", data.currency_symbol, payment.amount),
+                );
+            }
+        }
+    } else {
+        // ── Line Items ──
+        // Header
+        b.bold(true);
+        b.three_column(
+            &data.label(|l| &l.item, "Item"),
+            &data.label(|l| &l.qty, "Qty"),
+            &data.label(|l| &l.amount, "Amount"),
+        );
+        b.bold(false);
+        b.separator('-');
+
+        for line in &data.lines {
+            // Product name on its own line if long
+            let qty_price = format!("{} x {}", line.quantity, line.unit_price);
+            let total_str = format!("{}{}", data.currency_symbol, line.line_total);
+
+            if line.name.len() > 20 {
+                // Long name: print name on first line, details on second
+                b.text_line(&line.name);
+                b.two_column(&format!("  {}", qty_price), &total_str);
+            } else {
+                b.text_line(&line.name);
+                b.two_column(&format!("  {}", qty_price), &total_str);
+            }
+
+            // Modifiers
+            if let Some(ref modifiers) = line.modifiers {
+                for modifier in modifiers {
+                    let mod_price = if modifier.price == "0.00" || modifier.price == "0" {
+                        String::new()
+                    } else {
+                        format!("+{}{}", data.currency_symbol, modifier.price)
+                    };
+                    b.two_column(&format!("  + {}", modifier.name), &mod_price);
+                }
+            }
+
+            // Line discount
+            if let Some(ref discount) = line.discount {
+                b.two_column(
+                    &format!("  {}", data.label(|l| &l.discount, "Discount")),
+                    &format!("-{}{}", data.currency_symbol, discount),
+                );
             }
         }
 
-        // Line discount
-        if let Some(ref discount) = line.discount {
-            b.two_column(
-                &format!("  {}", data.label(|l| &l.discount, "Discount")),
-                &format!("-{}{}", data.currency_symbol, discount),
-            );
-        }
-    }
+        b.separator('=');
 
-    b.separator('=');
-
-    // ── Totals ──
-    b.two_column(
-        &data.label(|l| &l.subtotal, "Subtotal:"),
-        &format!("{}{}", data.currency_symbol, data.subtotal),
-    );
-
-    if data.discount_amount != "0.00" && data.discount_amount != "0" {
+        // ── Totals ──
         b.two_column(
-            &format!(
-                "{}:",
-                data.label(|l| &l.discount, "Discount")
-                    .trim_end_matches(':')
-            ),
-            &format!("-{}{}", data.currency_symbol, data.discount_amount),
+            &data.label(|l| &l.subtotal, "Subtotal:"),
+            &format!("{}{}", data.currency_symbol, data.subtotal),
         );
-    }
 
-    b.two_column(
-        &data.label(|l| &l.tax, "Tax:"),
-        &format!("{}{}", data.currency_symbol, data.tax_amount),
-    );
-
-    b.bold(true);
-    b.font_size(FontSize::DoubleHeight);
-    b.two_column(
-        &data.label(|l| &l.total, "TOTAL:"),
-        &format!("{}{}", data.currency_symbol, data.total),
-    );
-    b.font_size(FontSize::Normal);
-    b.bold(false);
-
-    // ── VAT Breakdown ──
-    if data.show_vat_breakdown.unwrap_or(true) && !data.vat_breakdown.is_empty() {
-        b.separator('-');
-        b.bold(true);
-        b.three_column(
-            &data.label(|l| &l.vat_rate, "VAT %"),
-            &data.label(|l| &l.taxable, "Taxable"),
-            &data.label(|l| &l.tax_col, "Tax"),
-        );
-        b.bold(false);
-
-        for vat in &data.vat_breakdown {
-            b.three_column(
-                &format!("{}%", vat.rate),
-                &format!("{}{}", data.currency_symbol, vat.taxable),
-                &format!("{}{}", data.currency_symbol, vat.tax),
-            );
-        }
-    }
-
-    // ── Payments ──
-    if data.show_payment_details.unwrap_or(true) {
-        b.separator('-');
-        b.bold(true);
-        b.text_line(&data.label(|l| &l.payments, "Payments:"));
-        b.bold(false);
-
-        for payment in &data.payments {
+        if data.discount_amount != "0.00" && data.discount_amount != "0" {
             b.two_column(
-                &format!("  {}", payment.method),
-                &format!("{}{}", data.currency_symbol, payment.amount),
+                &format!(
+                    "{}:",
+                    data.label(|l| &l.discount, "Discount")
+                        .trim_end_matches(':')
+                ),
+                &format!("-{}{}", data.currency_symbol, data.discount_amount),
             );
         }
 
-        if data.change_due != "0.00" && data.change_due != "0" {
+        b.two_column(
+            &data.label(|l| &l.tax, "Tax:"),
+            &format!("{}{}", data.currency_symbol, data.tax_amount),
+        );
+
+        b.bold(true);
+        b.font_size(FontSize::DoubleHeight);
+        b.two_column(
+            &data.label(|l| &l.total, "TOTAL:"),
+            &format!("{}{}", data.currency_symbol, data.total),
+        );
+        b.font_size(FontSize::Normal);
+        b.bold(false);
+
+        // ── VAT Breakdown ──
+        if data.show_vat_breakdown.unwrap_or(true) && !data.vat_breakdown.is_empty() {
+            b.separator('-');
             b.bold(true);
-            b.two_column(
-                &data.label(|l| &l.change_due, "Change Due:"),
-                &format!("{}{}", data.currency_symbol, data.change_due),
+            b.three_column(
+                &data.label(|l| &l.vat_rate, "VAT %"),
+                &data.label(|l| &l.taxable, "Taxable"),
+                &data.label(|l| &l.tax_col, "Tax"),
             );
             b.bold(false);
+
+            for vat in &data.vat_breakdown {
+                b.three_column(
+                    &format!("{}%", vat.rate),
+                    &format!("{}{}", data.currency_symbol, vat.taxable),
+                    &format!("{}{}", data.currency_symbol, vat.tax),
+                );
+            }
         }
 
-        // ── Tolerance write-off (Rounding line) ──
-        // Printed only when a non-zero tolerance write-off is present on the receipt.
-        // The TS layer (buildReceiptData) precomputes `has_tolerance` from the
-        // monetary string using arbitrary-precision decimal — Rust does not parse
-        // the monetary value here.
-        if data.has_tolerance {
-            if let Some(ref tolerance) = data.tolerance_writeoff {
+        // ── Payments ──
+        if data.show_payment_details.unwrap_or(true) {
+            b.separator('-');
+            b.bold(true);
+            b.text_line(&data.label(|l| &l.payments, "Payments:"));
+            b.bold(false);
+
+            for payment in &data.payments {
                 b.two_column(
-                    &data.label(|l| &l.rounding, "Rounding"),
-                    &format!("-{}{}", data.currency_symbol, tolerance),
+                    &format!("  {}", payment.method),
+                    &format!("{}{}", data.currency_symbol, payment.amount),
                 );
+            }
+
+            if data.change_due != "0.00" && data.change_due != "0" {
+                b.bold(true);
+                b.two_column(
+                    &data.label(|l| &l.change_due, "Change Due:"),
+                    &format!("{}{}", data.currency_symbol, data.change_due),
+                );
+                b.bold(false);
+            }
+
+            // ── Tolerance write-off (Rounding line) ──
+            // Printed only when a non-zero tolerance write-off is present on the receipt.
+            // The TS layer (buildReceiptData) precomputes `has_tolerance` from the
+            // monetary string using arbitrary-precision decimal — Rust does not parse
+            // the monetary value here.
+            if data.has_tolerance {
+                if let Some(ref tolerance) = data.tolerance_writeoff {
+                    b.two_column(
+                        &data.label(|l| &l.rounding, "Rounding"),
+                        &format!("-{}{}", data.currency_symbol, tolerance),
+                    );
+                }
             }
         }
     }
@@ -846,6 +978,15 @@ mod tests_z_cash_counts {
             receipt_kind: None,
             original_receipt_number: None,
             original_receipt_qr_token: None,
+            account_balance_before: None,
+            account_balance_after: None,
+            account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
         let bytes = format_receipt_with_settings(&data, None);
         let text = String::from_utf8_lossy(&bytes);
@@ -855,6 +996,82 @@ mod tests_z_cash_counts {
             text.contains("till miscount"),
             "should contain variance reason"
         );
+    }
+
+    #[test]
+    fn account_payment_receipt_uses_account_layout_without_sale_lines_or_vat() {
+        let data = ReceiptData {
+            company: make_company(),
+            receipt_number: "AP-0001".to_string(),
+            date_time: "2026-05-21T10:15:30.000Z".to_string(),
+            terminal_name: "T1".to_string(),
+            operator_name: "Alice".to_string(),
+            lines: vec![],
+            subtotal: "0.00".to_string(),
+            discount_amount: "0.00".to_string(),
+            tax_amount: "0.00".to_string(),
+            total: "100.000".to_string(),
+            currency_symbol: "TND".to_string(),
+            vat_breakdown: vec![],
+            payments: vec![PaymentLine {
+                method: "CASH".to_string(),
+                amount: "100.000".to_string(),
+            }],
+            change_due: "0.000".to_string(),
+            tolerance_writeoff: None,
+            has_tolerance: false,
+            fiscal_hash: Some("b".repeat(64)),
+            fiscal_signature: Some("event-1".to_string()),
+            customer_name: Some("Mariam Ben Ali".to_string()),
+            notes: None,
+            labels: None,
+            show_vat_breakdown: Some(false),
+            show_fiscal_info: Some(false),
+            show_payment_details: Some(true),
+            show_customer: Some(true),
+            is_reprint: Some(false),
+            cash_counts: None,
+            manager_name: None,
+            variance_reason: None,
+            variance_severity: None,
+            aggregate_variance: None,
+            qr_token: None,
+            receipt_kind: Some("account_payment".to_string()),
+            original_receipt_number: None,
+            original_receipt_qr_token: None,
+            account_balance_before: Some("300.000".to_string()),
+            account_balance_after: Some("200.000".to_string()),
+            account_snapshot_stale: true,
+            business_date: Some("2026-05-21".to_string()),
+            terminal_id: Some("33333333-3333-4333-8333-333333333333".to_string()),
+            shift_id: Some("22222222-2222-4222-8222-222222222222".to_string()),
+            training_flag: true,
+            customer_account_id: Some("55555555-5555-4555-8555-555555555555".to_string()),
+            customer_phone: Some("+21611111111".to_string()),
+        };
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains("ACCOUNT PAYMENT RECEIPT"));
+        assert!(text.contains("Balance before:"));
+        assert!(text.contains("TND300.000"));
+        assert!(text.contains("Balance after:"));
+        assert!(text.contains("TND200.000"));
+        assert!(text.contains("Balance snapshot stale"));
+        assert!(text.contains("Business date:"));
+        assert!(text.contains("2026-05-21"));
+        assert!(text.contains("Terminal ID:"));
+        assert!(text.contains("33333333-3333-4333-8333-333333333333"));
+        assert!(text.contains("Shift ID:"));
+        assert!(text.contains("22222222-2222-4222-8222-222222222222"));
+        assert!(text.contains("Account:"));
+        assert!(text.contains("55555555-5555-4555-8555-555555555555"));
+        assert!(text.contains("Customer phone:"));
+        assert!(text.contains("+21611111111"));
+        assert!(text.contains("TRAINING"));
+        assert!(!text.contains("Item"));
+        assert!(!text.contains("VAT %"));
     }
 
     #[test]
@@ -904,6 +1121,15 @@ mod tests_z_cash_counts {
             receipt_kind: None,
             original_receipt_number: None,
             original_receipt_qr_token: None,
+            account_balance_before: None,
+            account_balance_after: None,
+            account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
 
         let bytes = format_receipt_with_settings(&data, None);
@@ -961,6 +1187,15 @@ mod tests_z_cash_counts {
             receipt_kind: None,
             original_receipt_number: None,
             original_receipt_qr_token: None,
+            account_balance_before: None,
+            account_balance_after: None,
+            account_snapshot_stale: false,
+            business_date: None,
+            terminal_id: None,
+            shift_id: None,
+            training_flag: false,
+            customer_account_id: None,
+            customer_phone: None,
         };
 
         let bytes = format_receipt_with_settings(&data, None);

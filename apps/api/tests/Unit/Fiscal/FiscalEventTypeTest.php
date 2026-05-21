@@ -9,20 +9,27 @@ use PHPUnit\Framework\TestCase;
 
 final class FiscalEventTypeTest extends TestCase
 {
-    public function test_phase1_implemented_types(): void
+    public function test_implemented_types(): void
     {
-        $this->assertTrue(FiscalEventType::SALE_RECEIPT->isImplementedInPhase1());
-        $this->assertTrue(FiscalEventType::CHAIN_BREAK_DETECTED->isImplementedInPhase1());
-        $this->assertTrue(FiscalEventType::CHAIN_RESTART->isImplementedInPhase1());
-        $this->assertTrue(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->isImplementedInPhase1());
+        $this->assertTrue(FiscalEventType::SALE_RECEIPT->isImplemented());
+        $this->assertTrue(FiscalEventType::CHAIN_BREAK_DETECTED->isImplemented());
+        $this->assertTrue(FiscalEventType::CHAIN_RESTART->isImplemented());
+        $this->assertTrue(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->isImplemented());
+        $this->assertTrue(FiscalEventType::ACCOUNT_PAYMENT->isImplemented());
     }
 
     public function test_reserved_types_are_not_implemented(): void
     {
-        $this->assertFalse(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST->isImplementedInPhase1());
-        $this->assertFalse(FiscalEventType::ACCOUNT_PAYMENT->isImplementedInPhase1());
-        $this->assertFalse(FiscalEventType::SALE_VOID->isImplementedInPhase1());
-        $this->assertFalse(FiscalEventType::REFUND_RECEIPT->isImplementedInPhase1());
+        $this->assertFalse(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST->isImplemented());
+        $this->assertFalse(FiscalEventType::SALE_VOID->isImplemented());
+        $this->assertFalse(FiscalEventType::REFUND_RECEIPT->isImplemented());
+    }
+
+    public function test_legacy_phase1_helper_aliases_current_implemented_set(): void
+    {
+        foreach (FiscalEventType::cases() as $case) {
+            $this->assertSame($case->isImplemented(), $case->isImplementedInPhase1());
+        }
     }
 
     public function test_check_constraint_list_matches_appendix_a(): void

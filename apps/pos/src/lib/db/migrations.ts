@@ -1114,4 +1114,74 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Customer Accounts Phase 2 (Task 2) — local POS customer mirror.
+    //
+    // This is inbound reference data for cashier search/attach and account
+    // balance display. It is intentionally scoped by tenant_id + company_id
+    // on every key and lookup; account-payment fiscal authoring must never
+    // resolve a customer from another company when the same customer UUID is
+    // present in a different local tenant/company cache.
+    version: 39,
+    name: 'create_customers_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        tax_number TEXT,
+        customer_category TEXT,
+        receivable_balance TEXT NOT NULL DEFAULT '0.0000',
+        credit_balance TEXT NOT NULL DEFAULT '0.0000',
+        balance_updated_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sync_version TEXT,
+        updated_at TEXT,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(tenant_id, company_id, name);
+      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(tenant_id, company_id, phone);
+      CREATE INDEX IF NOT EXISTS idx_customers_tax_number ON customers(tenant_id, company_id, tax_number);
+    `,
+  },
+  {
+    // Customer Accounts Phase 2 (Task 5) — local pending customer create
+    // outbox plus client→server alias mirror. Both tables are scoped by
+    // tenant_id + company_id so fiscal authoring cannot resolve a local
+    // pending UUID through another company's server Partner alias.
+    version: 40,
+    name: 'create_pending_customer_alias_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS pending_customer_outbox (
+        client_customer_uuid TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'failed')),
+        sync_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_customer_outbox_status
+        ON pending_customer_outbox(tenant_id, company_id, status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS customer_aliases (
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        client_customer_uuid TEXT NOT NULL,
+        server_partner_id TEXT NOT NULL,
+        resolved_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_aliases_server_partner
+        ON customer_aliases(tenant_id, company_id, server_partner_id);
+    `,
+  },
 ];

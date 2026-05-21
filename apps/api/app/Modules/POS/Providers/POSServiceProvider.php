@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Providers;
 
+use App\Modules\POS\Application\Projections\AccountPaymentReceiptProjection;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
@@ -42,7 +43,10 @@ final class POSServiceProvider extends ServiceProvider
         // the tagged set — late-binding from boot() would leave the
         // registry's $projectors array empty.
         $this->app->tag(
-            [PosCoreReceiptProjection::class],
+            [
+                PosCoreReceiptProjection::class,
+                AccountPaymentReceiptProjection::class,
+            ],
             FiscalEventProjector::class,
         );
     }

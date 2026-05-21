@@ -271,6 +271,7 @@ final class FiscalEventProjectionRegistryTest extends TestCase
         );
 
         $this->assertContains('pos_core_receipt', $names);
+        $this->assertContains('pos_core_account_payment_receipt', $names);
         $this->assertContains('treasury_receipt_bridge', $names);
     }
 

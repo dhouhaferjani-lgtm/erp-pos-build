@@ -1,7 +1,7 @@
 # POS Customer Accounts + Fiscal Event Engine — Phased Plan (Roadmap v2)
 
 **Created:** 2026-05-14
-**Status:** Active. Phase 1 foundation implementation is complete through Task 33 full-flow verification (2026-05-20); Phase 1.5 cleanup remains before any Phase 2 customer-facing deployment. Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
+**Status:** Active. Phase 1 foundation implementation is complete through Task 33 full-flow verification (2026-05-20). Phase 2 implementation is complete through Task 11 full-flow verification (2026-05-21), but NOT customer-facing deployment-ready until Phase 1.5 per-country tax-number validation is implemented, reviewed, and pushed. Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
 **Grounding (all locked / done):**
 - Source-of-truth v3 — `2026-05-14-offline-first-fiscal-source-of-truth-v3.md` (Codex: SOUND-WITH-CORRECTIONS, corrections applied, LOCKED)
 - Codebase reality audit — `2026-05-14-pos-fiscal-codebase-reality.md`
@@ -67,6 +67,8 @@ These tasks land **after Phase 1 Pass 2A + 2B merge to dev** and **before any Ph
 ## Phase 2 — On-Account Payment + Customer Attach (first customer-facing slice)
 
 The first slice that delivers customer value — the para-pharmacy use case.
+
+**Implementation status (2026-05-21):** Complete through Task 11. Phase 2 shipped the ACCOUNT_PAYMENT canonical contract, POS customer mirror/search/create/attach flow, device-side account-payment authoring, POS-core printable projection, Treasury-gated Payment + FIFO allocation bridge, and closure verification for both Treasury-active and POS-only deployments. Phase 2 implementation complete, but NOT customer-facing deployment-ready until Phase 1.5 per-country tax-number validation is implemented, reviewed, and pushed.
 
 **Scope:**
 - **POS customer mirror** — a local SQLite customer table (the codebase audit confirmed the POS has **no** customer mirror today). Synced from the server `Partner` model. The mirror **must include the balance projection the `ACCOUNT_PAYMENT_RECEIPT` requires**: `receivable_balance`, `credit_balance` (or an equivalent account-balance snapshot), `balance_updated_at`, plus local receipt fields for previous / projected-remaining balance at seal time and a staleness marker. Open-document detail is not mirrored — FIFO allocation happens server-side after sync, and the printed remaining balance is the local snapshot, later reconciled (`server_reconciles`).
