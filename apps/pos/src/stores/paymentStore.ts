@@ -8,6 +8,7 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
+import { createAccountPayment, type AccountPaymentResult } from '@/lib/offline/accountPaymentService';
 import { lockTerminal } from '@/lib/offline/terminalMutex';
 import { ConcurrentChainAdvanceError } from '@/lib/fiscal/FiscalEventEngine';
 import { useSyncStore } from '@/stores/syncStore';
@@ -15,6 +16,7 @@ import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
+import type { ReceiptData } from '@/lib/printing';
 
 export class ActiveTerminalRequiredError extends Error {
   constructor() {
@@ -151,6 +153,8 @@ interface PaymentState {
   lastReceiptIdempotencyKey: string | null;
   /** Server-assigned receipt UUID, populated when sync completes. Null while pending. */
   lastReceiptServerId: string | null;
+  /** Pre-built local printable for non-pos_receipts documents such as ACCOUNT_PAYMENT. */
+  lastReceiptPrintData: ReceiptData | null;
 
   /**
    * T0.2: Idempotency key for the current cart submission attempt.
@@ -230,6 +234,14 @@ interface PaymentActions {
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
+  processAccountPayment: (
+    terminalId: string,
+    amount: string,
+    options?: {
+      balanceSnapshotStale?: boolean;
+      customerSnapshotStale?: boolean;
+    },
+  ) => Promise<AccountPaymentResult | null>;
   reset: () => void;
   clearLastReceipt: () => void;
   /**
@@ -295,6 +307,7 @@ const initialState: PaymentState = {
   error: null,
   lastReceiptIdempotencyKey: null,
   lastReceiptServerId: null,
+  lastReceiptPrintData: null,
   pendingIdempotencyKey: null,
   voucherTenders: [],
   appliedVoucherCodes: new Set<string>(),
@@ -528,6 +541,81 @@ async function createReceiptLocalFirst(
   });
 
   return result;
+}
+
+async function createAccountPaymentLocalFirst(
+  terminalId: string,
+  amount: string,
+  selectedCustomer: AttachedCheckoutCustomer,
+  cashMethod: PaymentMethod,
+  cashRegister: PaymentRepository,
+  options?: {
+    balanceSnapshotStale?: boolean;
+    customerSnapshotStale?: boolean;
+  },
+): Promise<AccountPaymentResult> {
+  const authState = useAuthStore.getState();
+  const operatorState = useOperatorStore.getState();
+
+  const companyId = authState.companyId;
+  if (!companyId) {
+    throw new Error(i18n.t('errors.noCompanySelected', { ns: 'pos' }));
+  }
+  const company = authState.companies.find((c) => c.id === companyId);
+  const currency = company?.currency ?? 'EUR';
+  const tenantId = authState.user?.tenantId;
+  if (!tenantId) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+  if (selectedCustomer.tenant_id !== tenantId || selectedCustomer.company_id !== companyId) {
+    throw new Error('Customer belongs to a different tenant or company.');
+  }
+
+  const operator = operatorState.operator;
+  const operatorId = operator?.id ?? authState.user?.id;
+  const operatorName = operator?.name ?? authState.user?.name;
+  if (!operatorId || !operatorName) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
+
+  const terminalState = useTerminalStore.getState();
+  const terminal = terminalState.terminal;
+  const shift = terminalState.shift;
+  if (!terminal || terminal.id !== terminalId || !shift) {
+    throw new ActiveTerminalRequiredError();
+  }
+
+  const db = await getDatabase(companyId);
+
+  return lockTerminal(tenantId, terminalId, () =>
+    createAccountPayment(db, {
+      tenantId,
+      companyId,
+      terminalId,
+      terminalName: terminal.name,
+      operatorId,
+      operatorName,
+      shiftId: shift.id,
+      currency,
+      seller: {
+        name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
+        taxNumber: companyField(company, 'taxId', 'tax_id'),
+        countryCode: companyField(company, 'countryCode', 'country_code'),
+        street: companyField(company, 'addressStreet', 'address_street'),
+        city: companyField(company, 'addressCity', 'address_city'),
+        postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+      },
+      customer: selectedCustomer,
+      payment: {
+        amount,
+        methodCode: cashMethod.code,
+        repositoryId: cashRegister.id,
+      },
+      isTraining: terminal.is_training_mode === true,
+      balanceSnapshotStale: options?.balanceSnapshotStale,
+      customerSnapshotStale: options?.customerSnapshotStale,
+    }),
+  );
 }
 
 export const usePaymentStore = create<PaymentStore>()((set, get) => ({
@@ -877,6 +965,89 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     }
   },
 
+  processAccountPayment: async (terminalId, amount, options) => {
+    const { paymentMethods, paymentRepositories, selectedCustomer } = get();
+    if (!selectedCustomer) {
+      const msg = 'Customer is required for account payment.';
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
+    const cashMethod = paymentMethods.find(
+      (m) => m.is_physical && !m.has_maturity && m.is_active,
+    );
+    if (!cashMethod) {
+      const msg = i18n.t('errors.noCashMethod', { ns: 'pos' });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
+    const cashRegister = paymentRepositories.find(
+      (r) => r.type === 'cash_register' && r.is_active,
+    );
+    if (!cashRegister) {
+      const msg = i18n.t('errors.noCashRegister', { ns: 'pos' });
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
+    let alreadyInFlight = false;
+    set((state) => {
+      if (state.isProcessing) {
+        alreadyInFlight = true;
+        return state;
+      }
+      return { isProcessing: true, error: null };
+    });
+    if (alreadyInFlight) return null;
+
+    try {
+      const result = await createAccountPaymentLocalFirst(
+        terminalId,
+        amount,
+        selectedCustomer,
+        cashMethod,
+        cashRegister,
+        options,
+      );
+      const snapshot = result.payload.local_balance_snapshot;
+      set({
+        isProcessing: false,
+        changeDue: 0,
+        lastReceipt: {
+          id: result.fiscalEventId,
+          receipt_number: result.receiptNumber,
+          total: result.total,
+          subtotal: '0',
+          tax_amount: '0',
+          discount_amount: '0',
+          currency: result.currency,
+        } satisfies CreateReceiptResponse,
+        lastReceiptIdempotencyKey: null,
+        lastReceiptServerId: null,
+        lastReceiptPrintData: result.printableData,
+        selectedCustomer: {
+          ...selectedCustomer,
+          receivable_balance: snapshot.projected_receivable_balance_after,
+          credit_balance: snapshot.projected_credit_balance_after,
+          balance_updated_at: result.payload.event_time_device,
+        },
+      });
+      return result;
+    } catch (error) {
+      console.error('[POS][account-payment] failed', {
+        ...serializeErrorForLog(error),
+        terminalId,
+        customerId: selectedCustomer.id,
+      });
+      set({
+        isProcessing: false,
+        error: formatCheckoutError(error),
+      });
+      throw error;
+    }
+  },
+
   clearLastReceipt: () => {
     // T0.2: also clear pendingIdempotencyKey so the next sale gets a fresh
     // key. This is the canonical post-success / new-sale lifecycle hook
@@ -889,6 +1060,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       changeDue: 0,
       lastReceiptIdempotencyKey: null,
       lastReceiptServerId: null,
+      lastReceiptPrintData: null,
       pendingIdempotencyKey: null,
       selectedCustomer: null,
     });

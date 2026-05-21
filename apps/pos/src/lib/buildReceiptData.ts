@@ -10,6 +10,7 @@ import type { CartItem } from '@/types/cart';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
 import { bcadd, bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
+import type { AccountPaymentPayload } from '@/lib/fiscal/payloads/AccountPaymentPayload';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -273,6 +274,68 @@ export function buildEscPosFromOfflineReceipt(
   };
 }
 
+export interface BuildAccountPaymentReceiptDataInput {
+  payload: AccountPaymentPayload;
+  fiscalEventId: string;
+  fiscalHash: string;
+  terminalName: string;
+}
+
+export function buildEscPosAccountPaymentReceiptData(
+  input: BuildAccountPaymentReceiptDataInput,
+): ReceiptData {
+  const { payload } = input;
+  const currencySymbol = getCurrencySymbol(payload.currency_code);
+  const scale = payload.currency_scale;
+
+  return {
+    company: {
+      name: payload.seller.name,
+      address_line1: payload.seller.address.street,
+      address_line2: null,
+      city: payload.seller.address.city,
+      postal_code: payload.seller.address.postal_code,
+      country: payload.seller.address.country_code,
+      tax_id: payload.seller.tax_number,
+      phone: null,
+    },
+    receipt_number: payload.account_payment_uuid,
+    date_time: payload.event_time_device,
+    terminal_name: input.terminalName,
+    operator_name: payload.cashier_name,
+    lines: [],
+    subtotal: bcformat('0', scale),
+    discount_amount: bcformat('0', scale),
+    tax_amount: bcformat('0', scale),
+    total: bcformat(payload.payment.amount, scale),
+    currency_symbol: currencySymbol,
+    vat_breakdown: [],
+    payments: [{
+      method: payload.payment.method_code,
+      amount: bcformat(payload.payment.amount, scale),
+    }],
+    change_due: bcformat('0', scale),
+    tolerance_writeoff: null,
+    has_tolerance: false,
+    fiscal_hash: input.fiscalHash,
+    fiscal_signature: input.fiscalEventId,
+    customer_name: payload.customer.name,
+    notes: payload.notes,
+    labels: buildReceiptLabels(),
+    show_vat_breakdown: false,
+    show_fiscal_info: true,
+    show_payment_details: true,
+    show_customer: true,
+    receipt_kind: 'account_payment',
+    original_receipt_number: null,
+    original_receipt_qr_token: null,
+    account_balance_before: bcformat(payload.local_balance_snapshot.net_balance_before, scale),
+    account_balance_after: bcformat(payload.local_balance_snapshot.projected_net_balance_after, scale),
+    account_snapshot_stale:
+      payload.staleness.customer_snapshot_stale || payload.staleness.balance_snapshot_stale,
+  };
+}
+
 /** Build localized receipt labels from i18n. */
 export function buildReceiptLabels(): ReceiptLabels {
   const t = (key: string) => i18next.t(`pos:receiptLabel.${key}`);
@@ -310,6 +373,10 @@ export function buildReceiptLabels(): ReceiptLabels {
     refund_header: t('refundHeader'),
     original_ticket: t('originalTicket'),
     original_qr_label: t('originalQrLabel'),
+    account_payment_header: t('accountPaymentHeader'),
+    balance_before: t('balanceBefore'),
+    balance_after: t('balanceAfter'),
+    stale_balance: t('staleBalance'),
   };
 }
 

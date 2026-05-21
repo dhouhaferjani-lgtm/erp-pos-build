@@ -131,6 +131,7 @@ export function HomePage() {
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
   const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
   const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
+  const lastReceiptPrintData = usePaymentStore((s) => s.lastReceiptPrintData);
   const paymentError = usePaymentStore((s) => s.error);
 
   // Hold store
@@ -396,7 +397,7 @@ export function HomePage() {
         }
       })();
     },
-    [terminal?.id, handleProductBarcode, setPendingScanResult, t],
+    [handleProductBarcode, setPendingScanResult, t],
   );
 
   useBarcodeScanner({
@@ -601,6 +602,14 @@ export function HomePage() {
       try {
         const companyId = useAuthStore.getState().companyId;
 
+        if (lastReceiptPrintData) {
+          if (!cancelled) {
+            setEscPosData(lastReceiptPrintData);
+            setEscPosSource('local');
+          }
+          return;
+        }
+
         if (lastReceiptServerId) {
           const fullReceipt = await fetchReceipt(lastReceiptServerId);
           const qrToken = await lookupQrToken(fullReceipt.receipt_number, companyId);
@@ -635,7 +644,7 @@ export function HomePage() {
     void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, lastReceiptPrintData, escPosSource, receiptVisibility]);
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {
@@ -1068,6 +1077,8 @@ export function HomePage() {
         <CustomerAttachPanel
           tenantId={activeTenantId}
           companyId={activeCompanyId}
+          terminalId={terminal?.id ?? null}
+          onAccountPaymentComplete={() => setShowSuccessModal(true)}
         />
         <div className="min-h-0 flex-1">
           <TransactionCart

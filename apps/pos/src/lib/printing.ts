@@ -87,6 +87,10 @@ export interface ReceiptLabels {
   original_ticket?: string;
   /** "Scan original ticket:" label printed above the original-receipt QR re-print. */
   original_qr_label?: string;
+  account_payment_header?: string;
+  balance_before?: string;
+  balance_after?: string;
+  stale_balance?: string;
 }
 
 /**
@@ -169,11 +173,14 @@ export interface ReceiptData {
    * REMBOURSEMENT/REFUND header and the original-ticket reference block.
    * Defaults to `'sale'` semantics when omitted (backward-compatible).
    */
-  receipt_kind?: 'sale' | 'refund';
+  receipt_kind?: 'sale' | 'refund' | 'account_payment';
   /** On refund receipts: the original sale receipt's number (e.g. R-T1-2026-00000123). */
   original_receipt_number?: string | null;
   /** On refund receipts: the original sale receipt's QR token, re-printed for further partial refunds. */
   original_receipt_qr_token?: string | null;
+  account_balance_before?: string | null;
+  account_balance_after?: string | null;
+  account_snapshot_stale?: boolean;
 }
 
 export interface BuildZReceiptDataInput {

@@ -32,6 +32,10 @@ import {
   FiscalEventTypeNotImplementedError,
 } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
+import {
+  ACCOUNT_PAYMENT_PAYLOAD_KEYS,
+  goldenAccountPaymentPayload,
+} from '../payloads/AccountPaymentPayload';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 
 const nodeSqliteAvailable = (() => {
@@ -190,6 +194,24 @@ function saleReceiptRequest(
     event_time_device: '2026-05-16T10:00:00Z',
     business_date: '2026-05-16',
     payload: validSaleReceiptPayload(),
+    ...overrides,
+  };
+}
+
+function accountPaymentRequest(
+  overrides: Partial<FiscalEventAppendRequest> = {},
+): FiscalEventAppendRequest {
+  return {
+    event_type: 'ACCOUNT_PAYMENT',
+    tenant_id: TENANT_ID,
+    company_id: COMPANY_ID,
+    terminal_id: TERMINAL_ID,
+    operator_id: OPERATOR_ID,
+    event_time_device: '2026-05-21T10:15:30Z',
+    business_date: '2026-05-21',
+    payload: goldenAccountPaymentPayload(),
+    source_event_class: 'account_payments',
+    source_event_id: '44444444-4444-4444-8444-444444444444',
     ...overrides,
   };
 }
@@ -1127,6 +1149,98 @@ d('FiscalEventEngine.append', () => {
   });
 
   // -------------------------------------------------------------------
+  // Phase 2 Task 7 — ACCOUNT_PAYMENT device-authoring contract.
+  //
+  // Mirrors PHP `FiscalPayloadConstraintValidator::validateAccountPaymentPayload`
+  // for structural conformance before canonical sealing. Arithmetic and
+  // Treasury allocation semantics remain server-side; the device validator
+  // rejects shape drift, stale-marker contradictions, forbidden aliases, and
+  // zero non-training account payments at append time.
+  // -------------------------------------------------------------------
+
+  it('Phase 2.7 — happy path: ACCOUNT_PAYMENT payload validates and seals on the device chain', async () => {
+    const event = await engine.append(adapter, accountPaymentRequest());
+
+    expect(event.event_type).toBe('ACCOUNT_PAYMENT');
+    expect(event.sequence_number).toBe(1);
+    expect(event.source_event_class).toBe('account_payments');
+    expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('Phase 2.7 — rejects ACCOUNT_PAYMENT with an extra top-level key', async () => {
+    const payload = { ...goldenAccountPaymentPayload(), dual_chain_shadow: true };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:dual_chain_shadow/,
+    );
+  });
+
+  it('Phase 2.7 — rejects non-training ACCOUNT_PAYMENT with zero amount', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.payment = { ...payload.payment, amount: '0.000' };
+    payload.local_balance_snapshot = {
+      ...payload.local_balance_snapshot,
+      payment_amount: '0.000',
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_amount_zero/,
+    );
+  });
+
+  it('Phase 2.7 — accepts training ACCOUNT_PAYMENT with zero amount', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.training_flag = true;
+    payload.payment = { ...payload.payment, amount: '0.000' };
+    payload.local_balance_snapshot = {
+      ...payload.local_balance_snapshot,
+      payment_amount: '0.000',
+    };
+
+    const event = await engine.append(adapter, accountPaymentRequest({ payload }));
+
+    expect(event.event_type).toBe('ACCOUNT_PAYMENT');
+  });
+
+  it('Phase 2.7 — rejects stale ACCOUNT_PAYMENT snapshot without a staleness reason', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.staleness = {
+      ...payload.staleness,
+      balance_snapshot_stale: true,
+      staleness_reason: null,
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_staleness_reason_required/,
+    );
+  });
+
+  it('Phase 2.7 — rejects fresh ACCOUNT_PAYMENT snapshot with a staleness reason', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.staleness = {
+      ...payload.staleness,
+      staleness_reason: 'older_than_threshold',
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_staleness_reason_mismatch/,
+    );
+  });
+
+  it('Phase 2.7 — rejects reserved server_customer_alias_id on ACCOUNT_PAYMENT references', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.references = {
+      external_reference: 'counter-payment-42',
+      related_sale_receipt_event_id: null,
+      server_customer_alias_id: '77777777-7777-4777-8777-777777777777' as never,
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_account_payment_server_customer_alias_forbidden/,
+    );
+  });
+
+  // -------------------------------------------------------------------
   // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
   // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].
   //
@@ -1144,6 +1258,14 @@ d('FiscalEventEngine.append', () => {
     const sortedPhp = [...phpKeys].sort();
     expect(tsKeys).toEqual(sortedPhp);
     expect(tsKeys).toHaveLength(27);
+  });
+
+  it('Phase 2.7 — cross-language drift gate: ACCOUNT_PAYMENT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpAccountPaymentPayloadKeys();
+    const tsKeys = [...ACCOUNT_PAYMENT_PAYLOAD_KEYS].sort();
+    const sortedPhp = [...phpKeys].sort();
+    expect(tsKeys).toEqual(sortedPhp);
+    expect(tsKeys).toHaveLength(20);
   });
 });
 
@@ -1200,6 +1322,14 @@ function recomputeForScale(payload: Record<string, unknown>, scale: number): Rec
  * is exactly the drift signal we want).
  */
 function readPhpSaleReceiptPayloadKeys(): string[] {
+  return readPhpPayloadKeys('SALE_RECEIPT');
+}
+
+function readPhpAccountPaymentPayloadKeys(): string[] {
+  return readPhpPayloadKeys('ACCOUNT_PAYMENT');
+}
+
+function readPhpPayloadKeys(eventType: 'SALE_RECEIPT' | 'ACCOUNT_PAYMENT'): string[] {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require('node:fs') as typeof import('node:fs');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1217,16 +1347,16 @@ function readPhpSaleReceiptPayloadKeys(): string[] {
     );
   }
   const src = fs.readFileSync(phpPath, 'utf8');
-  // Match the 'SALE_RECEIPT' => [ ... ] array literal up to its closing ],
+  // Match the event-type array literal up to its closing ],
   // tolerating whitespace + per-line comments + trailing commas.
-  const match = src.match(/'SALE_RECEIPT'\s*=>\s*\[([\s\S]*?)\]/);
+  const match = src.match(new RegExp(`'${eventType}'\\s*=>\\s*\\[([\\s\\S]*?)\\]`));
   if (!match) {
-    throw new Error(`Could not locate 'SALE_RECEIPT' => [...] in ${phpPath}`);
+    throw new Error(`Could not locate '${eventType}' => [...] in ${phpPath}`);
   }
   const body = match[1] ?? '';
   const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
   if (keys.length === 0) {
-    throw new Error(`No keys extracted from 'SALE_RECEIPT' array body in ${phpPath}`);
+    throw new Error(`No keys extracted from '${eventType}' array body in ${phpPath}`);
   }
   return keys;
 }

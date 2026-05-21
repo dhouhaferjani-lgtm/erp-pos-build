@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, UserPlus, X } from 'lucide-react';
+import { User, UserPlus, Wallet, X } from 'lucide-react';
 import { getDatabase } from '@/lib/db';
 import { enqueuePendingCustomer } from '@/lib/db/repositories/pendingCustomerRepository';
 import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
@@ -12,8 +12,10 @@ import { CUSTOMER_ATTACH_SCOPE_ERROR, deterministicPendingCustomerUuid } from '.
 export interface CustomerAttachPanelProps {
   tenantId: string | null | undefined;
   companyId: string | null | undefined;
+  terminalId?: string | null | undefined;
   staleThresholdMinutes?: number;
   now?: () => Date;
+  onAccountPaymentComplete?: () => void;
 }
 
 function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
@@ -36,15 +38,20 @@ function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
 export function CustomerAttachPanel({
   tenantId,
   companyId,
+  terminalId,
   staleThresholdMinutes = 30,
   now = () => new Date(),
+  onAccountPaymentComplete,
 }: CustomerAttachPanelProps) {
   const selectedCustomer = usePaymentStore((state) => state.selectedCustomer);
   const attachCustomer = usePaymentStore((state) => state.attachCustomer);
   const detachCustomer = usePaymentStore((state) => state.detachCustomer);
+  const processAccountPayment = usePaymentStore((state) => state.processAccountPayment);
+  const isProcessing = usePaymentStore((state) => state.isProcessing);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [accountPaymentAmount, setAccountPaymentAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -138,6 +145,31 @@ export function CustomerAttachPanel({
     )
     : false;
 
+  const handleAccountPayment = async () => {
+    const amount = accountPaymentAmount.trim();
+    if (!terminalId) {
+      setError('Active terminal is required to record an account payment.');
+      return;
+    }
+    if (amount === '') {
+      setError('Payment amount is required.');
+      return;
+    }
+
+    setError(null);
+    try {
+      const result = await processAccountPayment(terminalId, amount, {
+        balanceSnapshotStale: stale,
+      });
+      if (result !== null) {
+        setAccountPaymentAmount('');
+        onAccountPaymentComplete?.();
+      }
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : 'Account payment failed.');
+    }
+  };
+
   return (
     <section className="border-b border-gray-200 bg-white px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -176,6 +208,25 @@ export function CustomerAttachPanel({
             balanceUpdatedAt={selectedCustomer.balance_updated_at}
             stale={stale}
           />
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input
+              aria-label="Account payment amount"
+              value={accountPaymentAmount}
+              onChange={(event) => setAccountPaymentAmount(event.target.value)}
+              inputMode="decimal"
+              placeholder="Amount"
+              className="min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAccountPayment()}
+              disabled={isProcessing}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Wallet className="h-4 w-4" aria-hidden="true" />
+              Record
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-2">
