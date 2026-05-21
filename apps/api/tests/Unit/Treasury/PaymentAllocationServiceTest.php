@@ -12,11 +12,13 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +46,6 @@ class PaymentAllocationServiceTest extends TestCase
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',
             'slug' => 'test-tenant',
-            'domain' => 'test',
         ]);
 
         // Create country and settings
@@ -252,8 +253,94 @@ class PaymentAllocationServiceTest extends TestCase
         // Verify allocation was created in database
         $payment->refresh();
         $this->assertCount(1, $payment->allocations);
-        $this->assertEquals('100.0000', $payment->allocations[0]->amount);
-        $this->assertEquals($invoice->id, $payment->allocations[0]->document_id);
+        $allocation = $payment->allocations()->firstOrFail();
+        $this->assertEquals('100.0000', $allocation->amount);
+        $this->assertEquals($invoice->id, $allocation->document_id);
+    }
+
+    /** @test */
+    public function it_applies_allocation_from_command_uses_explicit_tenant_company_actor(): void
+    {
+        $invoice = $this->createInvoice('INV-001', '100.0000', '2025-01-01');
+
+        $payment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => '100.0000',
+            'currency' => 'TND',
+            'payment_date' => '2025-01-15',
+            'status' => 'completed',
+            'payment_type' => 'document_payment',
+        ]);
+
+        $result = $this->service->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentId: $payment->id,
+            allocationMethod: AllocationMethod::FIFO,
+            actorUserId: null,
+            source: 'fiscal_event:ACCOUNT_PAYMENT',
+        ));
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(1, $result['allocations']);
+        $this->assertEquals($invoice->id, $result['allocations'][0]['document_id']);
+        $this->assertEquals('100.0000', $result['allocations'][0]['amount']);
+    }
+
+    /** @test */
+    public function it_apply_allocation_from_command_rejects_cross_company_payment(): void
+    {
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant',
+        ]);
+        $otherCompany = Company::create([
+            'tenant_id' => $otherTenant->id,
+            'name' => 'Other Company',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+        ]);
+        $otherPartner = Partner::create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Other Partner',
+            'type' => PartnerType::Customer,
+        ]);
+        $otherPayment = Payment::create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+            'partner_id' => $otherPartner->id,
+            'amount' => '100.0000',
+            'currency' => 'TND',
+            'payment_date' => '2025-01-15',
+            'status' => 'completed',
+            'payment_type' => 'document_payment',
+        ]);
+
+        $this->expectException(ModelNotFoundException::class);
+
+        $this->service->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentId: $otherPayment->id,
+            allocationMethod: AllocationMethod::FIFO,
+            actorUserId: null,
+            source: 'fiscal_event:ACCOUNT_PAYMENT',
+        ));
+    }
+
+    /** @test */
+    public function it_does_not_use_auth_user_in_payment_allocation_service(): void
+    {
+        $source = file_get_contents(app_path('Modules/Treasury/Application/Services/PaymentAllocationService.php'));
+
+        $this->assertNotFalse($source);
+        $this->assertStringNotContainsString('Auth::user(', $source);
     }
 
     private function createInvoice(string $number, string $total, string $dueDate): Document

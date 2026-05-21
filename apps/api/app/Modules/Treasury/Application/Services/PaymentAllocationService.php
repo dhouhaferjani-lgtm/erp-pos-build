@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentAllocated;
@@ -33,9 +34,9 @@ class PaymentAllocationService
         private readonly CompanyContext $companyContext,
     ) {}
 
-    private function scale(): int
+    private function scale(?string $currencyCode = null): int
     {
-        return $this->scaleResolver->getScale();
+        return $this->scaleResolver->getScale($currencyCode);
     }
 
     /**
@@ -56,22 +57,48 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
-        // Opus round-4 Finding 15 — resolve tenantId from CompanyContext for
-        // defense-in-depth scoping inside the private getOpenInvoices() helper.
-        // The controller-tier ScopedExists::tenantAndCompany() already guards
-        // partner_id; this re-scoping enforces the cluster invariant (BOTH
-        // tenant_id AND company_id on every read whose anchor came from a
-        // route param) at the service layer too.
-        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $tenantId = $this->companyContext->requireTenantId();
 
-        // Get open invoices for partner
+        return $this->previewAllocationForContext(
+            tenantId: $tenantId,
+            companyId: $companyId,
+            partnerId: $partnerId,
+            paymentAmount: $paymentAmount,
+            allocationMethod: $allocationMethod,
+            manualAllocations: $manualAllocations,
+        );
+    }
+
+    /**
+     * Preview how a payment will be allocated using an explicit tenant/company context.
+     *
+     * @param  array<int, array{document_id: string, amount: string}>|null  $manualAllocations
+     * @return array{
+     *     allocations: array<int, array{document_id: string, document_number: string, amount: string, tolerance_writeoff: string|null}>,
+     *     total_to_invoices: string,
+     *     excess_amount: string,
+     *     excess_handling: string|null
+     * }
+     */
+    private function previewAllocationForContext(
+        string $tenantId,
+        string $companyId,
+        string $partnerId,
+        string $paymentAmount,
+        AllocationMethod $allocationMethod,
+        ?array $manualAllocations = null,
+    ): array {
+        // Opus round-4 Finding 15 — keep BOTH tenant_id and company_id
+        // predicates on every document read. Fiscal replay cannot rely on
+        // request-scoped CompanyContext, so the command path passes the
+        // context explicitly through this helper.
         $openInvoices = $this->getOpenInvoices($tenantId, $companyId, $partnerId, $allocationMethod);
 
         if ($allocationMethod === AllocationMethod::MANUAL && $manualAllocations !== null) {
-            return $this->previewManualAllocation($paymentAmount, $manualAllocations, $companyId);
+            return $this->previewManualAllocation($paymentAmount, $manualAllocations, $tenantId, $companyId);
         }
 
-        return $this->previewAutoAllocation($paymentAmount, $openInvoices, $companyId);
+        return $this->previewAutoAllocation($paymentAmount, $openInvoices, $tenantId, $companyId);
     }
 
     /**
@@ -85,26 +112,47 @@ class PaymentAllocationService
         AllocationMethod $allocationMethod,
         ?array $manualAllocations = null
     ): array {
-        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $tenantId = $this->companyContext->requireTenantId();
         $companyId = $this->companyContext->requireCompanyId();
 
-        $payment = Payment::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->with(['company', 'partner', 'repository'])
-            ->findOrFail($paymentId);
+        $actorUserId = Auth::id();
 
-        // Get preview
-        $preview = $this->previewAllocation(
-            companyId: $payment->company_id,
+        return $this->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            tenantId: $tenantId,
+            companyId: $companyId,
+            paymentId: $paymentId,
+            allocationMethod: $allocationMethod,
+            actorUserId: is_string($actorUserId) ? $actorUserId : null,
+            source: 'web:smart_payment',
+            manualAllocations: $manualAllocations,
+        ));
+    }
+
+    /**
+     * Apply allocation for a payment using an explicit replay-safe context.
+     *
+     * @return array{success: bool, allocations: array<int, array{document_id: string, amount: string}>, journal_entry_id: string|null, advance_journal_entry_id: string|null, excess_amount: string, total_allocated: string, fully_paid_documents: array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}>}
+     */
+    public function applyAllocationFromCommand(ApplyPaymentAllocationCommand $command): array
+    {
+        $payment = Payment::query()
+            ->where('tenant_id', $command->tenantId)
+            ->where('company_id', $command->companyId)
+            ->with(['company', 'partner', 'repository'])
+            ->findOrFail($command->paymentId);
+
+        $preview = $this->previewAllocationForContext(
+            tenantId: $command->tenantId,
+            companyId: $command->companyId,
             partnerId: $payment->partner_id,
             paymentAmount: $payment->amount,
-            allocationMethod: $allocationMethod,
-            manualAllocations: $manualAllocations
+            allocationMethod: $command->allocationMethod,
+            manualAllocations: $command->manualAllocations,
         );
+        $actor = $this->resolveCommandActor($command);
 
         // Use DB transaction with pessimistic locking for financial operations
-        $result = DB::transaction(function () use ($payment, $preview, $tenantId, $companyId) {
+        $result = DB::transaction(function () use ($payment, $preview, $command, $actor) {
             $createdAllocations = [];
             $totalAllocated = '0.0000';
             /** @var array<int, array{documentId: string, tenantId: string, companyId: string, documentNumber: string, documentType: string, partnerId: string, totalPaid: string, paidAt: string}> $fullyPaidDocuments */
@@ -114,8 +162,8 @@ class PaymentAllocationService
                 // Lock the document for update to prevent concurrent modifications
                 /** @var Document $document */
                 $document = Document::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
+                    ->where('tenant_id', $command->tenantId)
+                    ->where('company_id', $command->companyId)
                     ->lockForUpdate()
                     ->findOrFail($allocation['document_id']);
 
@@ -167,7 +215,7 @@ class PaymentAllocationService
                 // (balance_due was just updated by trigger)
                 /** @var numeric-string $balanceDue */
                 $balanceDue = $document->balance_due ?? '0.00';
-                if (bccomp($balanceDue, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
+                if (bccomp($balanceDue, '0.00', $this->scale($payment->currency)) === 0 && $document->type->canTransitionToPaid()) {
                     $document->status = DocumentStatus::Paid;
                     $fullyPaidDocuments[] = [
                         'documentId' => $document->id,
@@ -196,20 +244,20 @@ class PaymentAllocationService
                 foreach ($preview['allocations'] as $allocation) {
                     /** @var Document $doc */
                     $doc = Document::query()
-                        ->where('tenant_id', $tenantId)
-                        ->where('company_id', $companyId)
+                        ->where('tenant_id', $command->tenantId)
+                        ->where('company_id', $command->companyId)
                         ->find($allocation['document_id']);
                     /** @var numeric-string $allocAmount */
                     $allocAmount = $allocation['amount'];
                     if ($doc->type === DocumentType::SalesOrder) {
-                        $allocatedToOrders = bcadd($allocatedToOrders, $allocAmount, $this->scale());
+                        $allocatedToOrders = bcadd($allocatedToOrders, $allocAmount, $this->scale($payment->currency));
                     } else {
-                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocAmount, $this->scale());
+                        $allocatedToInvoices = bcadd($allocatedToInvoices, $allocAmount, $this->scale($payment->currency));
                     }
                 }
 
                 // Create regular payment entry for invoice allocations
-                if (bccomp($allocatedToInvoices, '0', $this->scale()) > 0) {
+                if (bccomp($allocatedToInvoices, '0', $this->scale($payment->currency)) > 0) {
                     $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
@@ -228,9 +276,7 @@ class PaymentAllocationService
                 }
 
                 // Create advance entry for sales order allocations (prepayments)
-                /** @var User|null $user */
-                $user = Auth::user();
-                if (bccomp($allocatedToOrders, '0', $this->scale()) > 0 && $user instanceof User) {
+                if (bccomp($allocatedToOrders, '0', $this->scale($payment->currency)) > 0 && $actor instanceof User) {
                     $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
@@ -238,7 +284,7 @@ class PaymentAllocationService
                         amount: $allocatedToOrders,
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
-                        user: $user,
+                        user: $actor,
                         description: "Prepayment on order - {$payment->reference}"
                     );
 
@@ -257,19 +303,16 @@ class PaymentAllocationService
             $advanceJournalEntryId = null;
 
             if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $payment->repository->account_id) {
-                /** @var User|null $user */
-                $user = Auth::user();
-
-                if ($user instanceof User) {
+                if ($actor instanceof User) {
                     // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
                     $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
                         advanceId: $payment->id,
-                        amount: bcsub($excessAmount, '0', $this->scale()), // Format to currency scale
+                        amount: bcsub($excessAmount, '0', $this->scale($payment->currency)), // Format to currency scale
                         paymentMethodAccountId: $payment->repository->account_id,
                         date: $payment->payment_date,
-                        user: $user,
+                        user: $actor,
                         description: "Customer advance from payment {$payment->reference}"
                     );
 
@@ -299,7 +342,7 @@ class PaymentAllocationService
             paymentId: $payment->id,
             tenantId: $payment->tenant_id,
             companyId: $payment->company_id,
-            allocationMethod: $allocationMethod->value,
+            allocationMethod: $command->allocationMethod->value,
             allocations: $result['allocations'],
             totalAllocated: $result['total_allocated'],
             excessAmount: $result['excess_amount'],
@@ -321,6 +364,18 @@ class PaymentAllocationService
         }
 
         return $result;
+    }
+
+    private function resolveCommandActor(ApplyPaymentAllocationCommand $command): ?User
+    {
+        if ($command->actorUserId === null) {
+            return null;
+        }
+
+        return User::query()
+            ->where('tenant_id', $command->tenantId)
+            ->where('id', $command->actorUserId)
+            ->first();
     }
 
     /**
@@ -378,7 +433,7 @@ class PaymentAllocationService
      *     excess_handling: string|null
      * }
      */
-    private function previewAutoAllocation(string $paymentAmount, Collection $openInvoices, string $companyId): array
+    private function previewAutoAllocation(string $paymentAmount, Collection $openInvoices, string $tenantId, string $companyId): array
     {
         $remainingAmount = $paymentAmount;
         $allocations = [];
@@ -389,7 +444,9 @@ class PaymentAllocationService
         // multi-currency tenants). strict=false rides the inclusive A1 / SmartPayment
         // semantics — a difference exactly at the threshold qualifies for write-off.
         /** @var Company $company */
-        $company = Company::query()->findOrFail($companyId);
+        $company = Company::query()
+            ->where('tenant_id', $tenantId)
+            ->findOrFail($companyId);
         $countryCode = (string) $company->country_code;
 
         foreach ($openInvoices as $invoice) {
@@ -491,10 +548,8 @@ class PaymentAllocationService
      *     excess_handling: string|null
      * }
      */
-    private function previewManualAllocation(string $paymentAmount, array $manualAllocations, string $companyId): array
+    private function previewManualAllocation(string $paymentAmount, array $manualAllocations, string $tenantId, string $companyId): array
     {
-        $tenantId = $this->companyContext->requireCompany()->tenant_id;
-
         $allocations = [];
         $totalAllocated = '0.0000';
 
