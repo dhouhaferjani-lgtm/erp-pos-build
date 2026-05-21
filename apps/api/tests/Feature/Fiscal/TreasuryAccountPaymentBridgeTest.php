@@ -237,6 +237,33 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
         $this->assertSame(0, Payment::query()->count());
     }
 
+    public function test_bridge_rejects_pending_customer_alias_from_another_company(): void
+    {
+        $clientCustomerUuid = '77777777-7777-4777-8777-777777777777';
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);
+        $foreignCustomer = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $otherCompany->id,
+        ]);
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $otherCompany->id,
+            'client_customer_uuid' => $clientCustomerUuid,
+            'server_partner_id' => $foreignCustomer->id,
+        ]);
+        $event = $this->storeAccountPaymentFiscalEvent($this->accountPaymentPayload([
+            'customer' => [
+                'customer_id' => $clientCustomerUuid,
+                'customer_sync_status' => 'pending_create',
+            ],
+        ]));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('customer_alias_cross_company');
+
+        $this->bridge()->apply($event);
+    }
+
     public function test_bridge_rejects_cross_company_partner(): void
     {
         $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);

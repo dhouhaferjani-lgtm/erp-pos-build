@@ -138,6 +138,21 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                 ->first();
 
             if (! $alias instanceof PosCustomerAlias) {
+                $foreignCompanyAlias = PosCustomerAlias::query()
+                    ->where('tenant_id', $event->tenant_id)
+                    ->where('client_customer_uuid', $customerId)
+                    ->first();
+
+                if ($foreignCompanyAlias instanceof PosCustomerAlias) {
+                    throw $this->invariant(
+                        $event,
+                        'customer_alias_cross_company:client_customer_uuid='.
+                            $customerId.
+                            ':alias_company_id='.
+                            $foreignCompanyAlias->company_id,
+                    );
+                }
+
                 throw new ProjectionDependencyMissingException(
                     projectorName: $this->name(),
                     fiscalEventId: $event->id,
