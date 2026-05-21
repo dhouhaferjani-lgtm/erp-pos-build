@@ -94,6 +94,21 @@ if ! "$REPO_ROOT/apps/pos/scripts/check-fiscal-fixture-parity.sh"; then
 fi
 echo -e "${GREEN}✓ Fiscal v3 fixture parity OK${NC}"
 
+# §14.3 chokepoint completeness gate (Task 30).
+# Walks every ->createReceipt( and ->finalize( call site under
+# apps/api/app + apps/api/routes and reconciles each hit against the
+# disposition manifest. Any unreconciled site or missing disposition
+# fails the build. The PHPUnit suite
+# (tests/Feature/Fiscal/ChokepointCompletenessTest) mirrors this gate.
+echo -e "\n${YELLOW}🔒 §14.3 Chokepoint Completeness${NC}"
+echo "=================================="
+echo -e "\n${YELLOW}Running §14.3 chokepoint completeness gate...${NC}"
+if ! bash "$REPO_ROOT/apps/api/scripts/check-saleReceipt-chokepoints.sh"; then
+    echo -e "${RED}✗ §14.3 chokepoint completeness gate failed (see output above)${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ §14.3 chokepoint gate OK${NC}"
+
 # Summary
 echo ""
 echo "=================================="

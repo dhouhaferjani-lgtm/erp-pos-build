@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use Database\Factories\PaymentFactory;
@@ -37,6 +38,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon $payment_date
  * @property PaymentStatus $status
  * @property PaymentType $payment_type
+ * @property PaymentOrigin|null $origin Phase 1 §13 — which surface authored this payment (pos / web_admin / mobile / api / unknown_legacy)
+ * @property string|null $fiscal_event_id Phase 1 §7.5 — UUID FK → fiscal_events.id when this Payment was projected from a SALE_RECEIPT fiscal event by TreasuryReceiptBridge (Task 22); NULL for legacy / non-fiscal payments
  * @property string|null $original_payment_id UUID of the original Payment this refund was split from (Task 19)
  * @property string|null $refund_request_id Idempotency key for refundReceiptPayments() calls (Task 19)
  * @property string|null $authorized_by_user_id Manager/admin who authorised the override (Task 19 / spec §3.6)
@@ -91,6 +94,14 @@ class Payment extends Model
         'refund_request_id',
         'authorized_by_user_id',
         'policy_trigger',
+        // Phase 1 §13 — fiscal-engine integration columns. `origin` tags
+        // which surface authored the payment; `fiscal_event_id` is the
+        // back-link to the authoritative `fiscal_events` row when this
+        // Payment was projected by TreasuryReceiptBridge (Task 22). The
+        // FK direction is payments → fiscal_events (module depends on
+        // the engine; the engine has zero dependency on Treasury).
+        'origin',
+        'fiscal_event_id',
     ];
 
     /**
@@ -103,6 +114,7 @@ class Payment extends Model
             'payment_date' => 'date',
             'status' => PaymentStatus::class,
             'payment_type' => PaymentType::class,
+            'origin' => PaymentOrigin::class,
             'is_reconciled' => 'boolean',
             'reconciled_at' => 'datetime',
         ];

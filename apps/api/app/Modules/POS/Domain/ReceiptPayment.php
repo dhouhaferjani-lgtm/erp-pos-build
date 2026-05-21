@@ -89,7 +89,7 @@ class ReceiptPayment extends Model
     /**
      * Defensive auto-snapshot for `payment_method_code`.
      *
-     * Most application call sites (ReceiptPaymentService, ReceiptSyncService) now
+     * Most application call sites (ReceiptPaymentService, POS receipt projections) now
      * snapshot `payment_methods.code` explicitly when creating a row. This boot hook
      * exists to keep older test fixtures and any future caller honest: if the row is
      * being inserted with a `payment_method_id` but no `payment_method_code`, fetch

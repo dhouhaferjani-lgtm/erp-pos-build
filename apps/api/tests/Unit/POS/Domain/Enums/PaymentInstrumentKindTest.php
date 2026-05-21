@@ -10,9 +10,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Codex review B4 (2026-04-30) — single source of truth for whether a given
  * `payment_methods.code` value requires the `instrument_type` /
- * `instrument_serial` pair. Tests the static predicate that the validators
- * (StoreReceiptPaymentsRequest, SyncReceiptsRequest) and writers
- * (ReceiptPaymentService, ReceiptSyncService) consume to enforce the rule.
+ * `instrument_serial` pair. Tests the static predicate that validators and
+ * receipt-payment writers consume to enforce the rule.
  *
  * The set of instrument-bearing codes is derived from the enum cases — adding
  * a new instrument kind to the enum automatically extends enforcement.

@@ -28,13 +28,9 @@ use Tests\TestCase;
  * 2026_05_01_000001_prepare_pos_receipts_for_pending_seal, is
  *   chain_sequence IS NULL OR chain_sequence > 0
  * so chain_sequence=0 violates it in production. Training receipts are
- * excluded from the fiscal chain entirely; NULL is the correct sentinel,
- * matching the offline-sync path closed by PR #103
- * (ReceiptSyncService::syncSingleReceipt sets chain_sequence=null for
- * training payloads).
+ * excluded from the fiscal chain entirely; NULL is the correct sentinel.
  *
- * Companion to ReceiptSyncServiceTrainingModeTest (offline path) and
- * ReceiptCreationServicePendingSealTest (online production path).
+ * Companion to ReceiptCreationServicePendingSealTest (online production path).
  */
 final class ReceiptCreationServiceTrainingModeTest extends TestCase
 {

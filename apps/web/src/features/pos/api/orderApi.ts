@@ -195,12 +195,12 @@ export async function sendToKitchen(orderId: string): Promise<OrderData> {
   return apiPost<OrderData>(`/pos/orders/${orderId}/send-to-kitchen`)
 }
 
-/**
- * Close an order and convert to receipt.
- */
-export async function closeOrder(orderId: string): Promise<OrderData> {
-  return apiPost<OrderData>(`/pos/orders/${orderId}/close`)
-}
+// §14.2 — `closeOrder` was deleted as part of the new-sale server-authoring
+// disposition. The order-close → SALE_RECEIPT path is one of three §14.2
+// server-authoring paths; the backend route `POST /api/v1/pos/orders/{id}/close`
+// returns HTTP 410 Gone with `NEW_SALE_AUTHORING_RETIRED`. Order CRUD/lines/
+// kitchen/cancel routes above are untouched; cancel is the path to a
+// non-receipt order termination.
 
 /**
  * Cancel an order.

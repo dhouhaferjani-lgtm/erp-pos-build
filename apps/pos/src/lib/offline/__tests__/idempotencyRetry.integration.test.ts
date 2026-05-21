@@ -34,6 +34,26 @@ vi.mock('@/lib/fiscal/hashService', () => ({
   computeFiscalHash: vi.fn().mockResolvedValue('integration-test-fiscal-hash-' + '0'.repeat(40)),
 }));
 
+const TEST_TENANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const TEST_COMPANY_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const TEST_TERMINAL_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const TEST_OPERATOR_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TEST_SHIFT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+const fiscalReceiptContext = {
+  tenantId: TEST_TENANT_ID,
+  companyId: TEST_COMPANY_ID,
+  shiftId: TEST_SHIFT_ID,
+  seller: {
+    name: 'Integration Seller SA',
+    taxNumber: 'FR123456789',
+    countryCode: 'FR',
+    street: '1 Rue Integration',
+    city: 'Paris',
+    postalCode: '75001',
+  },
+} as const;
+
 const nodeSqliteAvailable = (() => {
   try {
     return Boolean(require('node:sqlite').DatabaseSync);
@@ -59,9 +79,19 @@ async function seedTerminalState(adapter: SqliteTestAdapter): Promise<void> {
     `INSERT INTO terminal_state (
        terminal_id, terminal_code, location_code, genesis_seed,
        last_hash, hash_sequence, manager_pin_throttle_until,
-       manager_pin_failed_attempts, fiscal_schema_version
-     ) VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7)`,
-    ['terminal-t02-int-1', 'T-T02-01', 'T02-LOC', 'genesis-seed', 'previous-hash', 0, 2],
+       manager_pin_failed_attempts, fiscal_schema_version,
+       fiscal_event_genesis_seed, fiscal_event_last_hash, fiscal_event_sequence
+     ) VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8, $8, 0)`,
+    [
+      TEST_TERMINAL_ID,
+      'T-T02-01',
+      'T02-LOC',
+      'genesis-seed',
+      'previous-hash',
+      0,
+      2,
+      '1'.repeat(64),
+    ],
   );
 }
 
@@ -70,6 +100,8 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetFiscalEventEngineForTesting } = await import('@/lib/fiscal/instance');
+    __resetFiscalEventEngineForTesting();
     adapter = new SqliteTestAdapter();
     await runAllMigrations(adapter);
     await seedTerminalState(adapter);
@@ -84,8 +116,9 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
 
     // First attempt: writes row R1.
     const first = await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-t02-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Integration Cashier',
       cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',
@@ -111,8 +144,9 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
     // the key is bound to 'this submission attempt', not 'this cart state'"),
     // this MUST NOT throw and MUST return R1's data verbatim.
     const second = await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-t02-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Integration Cashier',
       // Different cart — but the contract says the FIRST attempt's data is canonical.
       cartItems: [makeCartItem({ line_total: '99.00', tax_amount: '0.00', tax_rate: '0' })],
@@ -149,8 +183,8 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
 
     // (d) Fiscal hash chain advanced exactly once (sequence = 1, not 2).
     const terminalRows = await adapter.select<Array<{ hash_sequence: number; last_hash: string }>>(
-      'SELECT hash_sequence, last_hash FROM terminal_state WHERE terminal_id = $1',
-      ['terminal-t02-int-1'],
+      'SELECT fiscal_event_sequence AS hash_sequence, fiscal_event_last_hash AS last_hash FROM terminal_state WHERE terminal_id = $1',
+      [TEST_TERMINAL_ID],
     );
     expect(terminalRows[0]!.hash_sequence).toBe(1);
   });
@@ -160,8 +194,9 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
     // cart contents or some other attribute. Two genuinely different sales
     // (different keys) must each land their own row and advance the chain.
     const first = await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-t02-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Integration Cashier',
       cartItems: [makeCartItem({ line_total: '10.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',
@@ -175,8 +210,9 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
     });
 
     const second = await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-t02-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Integration Cashier',
       cartItems: [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',
@@ -198,8 +234,8 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
     expect(rows).toHaveLength(2);
 
     const terminalRows = await adapter.select<Array<{ hash_sequence: number }>>(
-      'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
-      ['terminal-t02-int-1'],
+      'SELECT fiscal_event_sequence AS hash_sequence FROM terminal_state WHERE terminal_id = $1',
+      [TEST_TERMINAL_ID],
     );
     expect(terminalRows[0]!.hash_sequence).toBe(2);
   });

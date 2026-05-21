@@ -8,11 +8,30 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
 import { getAllPaymentMethods, getAllPaymentRepositories } from '@/lib/db/repositories/paymentRepository';
 import { createOfflineReceipt, type OfflineReceiptResult } from '@/lib/offline/receiptService';
+import { lockTerminal } from '@/lib/offline/terminalMutex';
+import { ConcurrentChainAdvanceError } from '@/lib/fiscal/FiscalEventEngine';
 import { useSyncStore } from '@/stores/syncStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
+
+export class ActiveTerminalRequiredError extends Error {
+  constructor() {
+    super('Active terminal and open shift are required to create a fiscal receipt.');
+    this.name = 'ActiveTerminalRequiredError';
+  }
+}
+
+export class FiscalChainContentionError extends Error {
+  readonly chainCause: unknown;
+
+  constructor(readonly terminalId: string, cause: unknown) {
+    super(`Fiscal chain contention on terminal ${terminalId}; retry limit exhausted.`);
+    this.name = 'FiscalChainContentionError';
+    this.chainCause = cause;
+  }
+}
 
 // ─── T1.2 — refreshFromSQLite skip-set equality helpers ─────────────────────
 
@@ -295,8 +314,8 @@ interface LocalFirstPaymentLine {
   transactionReference?: string;
   /**
    * Codex review B3 (2026-04-30): voucher / instrument discriminator. Bound
-   * into the v3 fiscal hash by `buildCanonicalPayload`. Pass for store-voucher,
-   * restaurant-voucher, gift-card tenders; omit for cash / card.
+   * into the fiscal-event SALE_RECEIPT canonical payload. Pass for
+   * store-voucher, restaurant-voucher, gift-card tenders; omit for cash / card.
    */
   instrumentType?: 'store_voucher' | 'restaurant_voucher' | 'gift_card';
   /**
@@ -304,6 +323,37 @@ interface LocalFirstPaymentLine {
    * tendered this row. Required when instrumentType is set.
    */
   instrumentSerial?: string;
+}
+
+function companyField(company: unknown, camel: string, snake: string): string | null {
+  if (typeof company !== 'object' || company === null) return null;
+  const record = company as Record<string, unknown>;
+  const value = record[camel] ?? record[snake];
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+async function createOfflineReceiptWithChainRetry(
+  terminalId: string,
+  operation: () => Promise<OfflineReceiptResult>,
+): Promise<OfflineReceiptResult> {
+  const delays = [50, 100, 200];
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!(error instanceof ConcurrentChainAdvanceError)) {
+        throw error;
+      }
+      lastError = error;
+      const delay = delays[attempt];
+      if (delay === undefined) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new FiscalChainContentionError(terminalId, lastError);
 }
 
 async function createReceiptLocalFirst(
@@ -332,6 +382,10 @@ async function createReceiptLocalFirst(
   }
   const company = authState.companies.find((c) => c.id === companyId);
   const currency = company?.currency ?? 'EUR';
+  const tenantId = authState.user?.tenantId;
+  if (!tenantId) {
+    throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+  }
 
   // Prefer PIN-verified operator; fall back to logged-in user for pre-PIN terminals
   const operator = operatorState.operator;
@@ -355,37 +409,57 @@ async function createReceiptLocalFirst(
   // current at submission time. A null/undefined terminal defaults to
   // production (the safer fallback — a missing flag should never silently
   // turn a real sale into a training receipt).
-  const terminal = useTerminalStore.getState().terminal;
+  const terminalState = useTerminalStore.getState();
+  const terminal = terminalState.terminal;
+  const shift = terminalState.shift;
+  if (!terminal || terminal.id !== terminalId || !shift) {
+    throw new ActiveTerminalRequiredError();
+  }
   const isTraining = terminal?.is_training_mode === true;
 
-  const result = await createOfflineReceipt(db, {
-    terminalId,
-    operatorId,
-    operatorName,
-    cartItems,
-    currency,
-    paymentMethodId: primary.paymentMethodId,
-    paymentRepositoryId: primary.repositoryId,
-    tenderedAmount,
-    idempotencyKey,
-    transactionDiscount,
-    payments: payments.map((p) => ({
-      methodCode: p.methodCode,
-      amount: p.amount,
-      paymentMethodId: p.paymentMethodId,
-      repositoryId: p.repositoryId,
-      cardLastFour: p.cardLastFour,
-      transactionReference: p.transactionReference,
-      // Codex review B3 (2026-04-30): forward instrument fields end-to-end
-      // so a voucher tender's serial enters createOfflineReceipt's v3 hash
-      // input AND its payments_json. Cash / card tenders omit these.
-      instrumentType: p.instrumentType,
-      instrumentSerial: p.instrumentSerial,
-    })),
-    consumptionMode,
-    tableId: tableId ?? undefined,
-    isTraining,
-  });
+  const result = await lockTerminal(tenantId, terminalId, () =>
+    createOfflineReceiptWithChainRetry(terminalId, () =>
+      createOfflineReceipt(db, {
+        tenantId,
+        companyId,
+        terminalId,
+        operatorId,
+        operatorName,
+        shiftId: shift.id,
+        cartItems,
+        currency,
+        seller: {
+          name: companyField(company, 'legalName', 'legal_name') ?? company?.name ?? null,
+          taxNumber: companyField(company, 'taxId', 'tax_id'),
+          countryCode: companyField(company, 'countryCode', 'country_code'),
+          street: companyField(company, 'addressStreet', 'address_street'),
+          city: companyField(company, 'addressCity', 'address_city'),
+          postalCode: companyField(company, 'addressPostalCode', 'address_postal_code'),
+        },
+        paymentMethodId: primary.paymentMethodId,
+        paymentRepositoryId: primary.repositoryId,
+        tenderedAmount,
+        idempotencyKey,
+        transactionDiscount,
+        payments: payments.map((p) => ({
+          methodCode: p.methodCode,
+          amount: p.amount,
+          paymentMethodId: p.paymentMethodId,
+          repositoryId: p.repositoryId,
+          cardLastFour: p.cardLastFour,
+          transactionReference: p.transactionReference,
+          // Codex review B3 (2026-04-30): forward instrument fields end-to-end
+          // so a voucher tender's serial enters createOfflineReceipt's v3 hash
+          // input AND its payments_json. Cash / card tenders omit these.
+          instrumentType: p.instrumentType,
+          instrumentSerial: p.instrumentSerial,
+        })),
+        consumptionMode,
+        tableId: tableId ?? undefined,
+        isTraining,
+      }),
+    ),
+  );
 
   // Fire-and-forget background sync; triggerSync() guards against concurrent calls via isSyncing.
   useSyncStore.getState().triggerSync();

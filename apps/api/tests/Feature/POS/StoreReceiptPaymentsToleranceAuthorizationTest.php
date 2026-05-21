@@ -55,6 +55,23 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     private PaymentRepository $cashRepo;
 
+    /**
+     * Per-method route-skip rationale (round-2 Codex T29-F2 P2):
+     *
+     * Round-1 used a class-level skip that ALSO disabled
+     * test_seeder_grants_apply_tolerance_to_cashier_role, a non-route
+     * seeder-permission assertion that has no dependency on the retired
+     * §14.2 HTTP endpoint. Round-2 narrows the skip to the four
+     * route-dependent methods only; the seeder-permission test stays live.
+     */
+    private const ROUTE_SKIP_REASON =
+        'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+        'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+        'Short-pay tolerance authorization moves to device-authority — the device gates the '.
+        'short-pay branch locally before authoring the SALE_RECEIPT envelope; the server '.
+        'never sees the under-tendered HTTP path again. '.
+        'Pinned by NewSaleServerAuthoringDispositionTest.';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -137,6 +154,8 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     public function test_short_pay_denied_when_user_lacks_apply_tolerance_permission(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $cashier = $this->makeCashier(withApplyTolerance: false);
         $receipt = $this->seedReceipt('10.00', $cashier);
 
@@ -155,6 +174,8 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     public function test_short_pay_authorized_when_user_has_apply_tolerance_permission(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $cashier = $this->makeCashier(withApplyTolerance: true);
         $receipt = $this->seedReceipt('10.00', $cashier);
 
@@ -176,6 +197,8 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     public function test_exact_tender_does_not_require_apply_tolerance_permission(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         $cashier = $this->makeCashier(withApplyTolerance: false);
         $receipt = $this->seedReceipt('10.00', $cashier);
 
@@ -194,6 +217,8 @@ final class StoreReceiptPaymentsToleranceAuthorizationTest extends TestCase
 
     public function test_short_pay_returns_409_when_no_open_shift_on_terminal(): void
     {
+        $this->markTestSkipped(self::ROUTE_SKIP_REASON);
+
         // Operational gap: a cashier tries to short-pay a receipt while the
         // terminal has no open shift. Without the ShiftNotOpenException guard
         // this previously surfaced an opaque 5xx via ModelNotFoundException.

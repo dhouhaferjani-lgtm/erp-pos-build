@@ -14,8 +14,8 @@ use DomainException;
  * persisted without both `instrument_type` and `instrument_serial`.
  *
  * Codex review B4 (2026-04-30): defense-in-depth guard. The request
- * validators (StoreReceiptPaymentsRequest, SyncReceiptsRequest) reject
- * the same shape with 422, but service-layer callers (programmatic,
+ * validators (StoreReceiptPaymentsRequest) reject the same shape with 422,
+ * but service-layer callers (programmatic,
  * test-only, future internal flows) bypass validation. Throwing this
  * domain exception preserves the fiscal-hash invariant: a v3 receipt
  * sealed with `method_code = store_voucher` and `instrument_serial = null`

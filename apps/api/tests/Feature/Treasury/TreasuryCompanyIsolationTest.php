@@ -88,6 +88,12 @@ final class TreasuryCompanyIsolationTest extends TestCase
 
     private Payment $paymentB;
 
+    private Partner $partnerA;
+
+    private Partner $partnerB;
+
+    private Document $purchaseOrderA;
+
     private Document $purchaseOrderB;
 
     protected function setUp(): void
@@ -136,8 +142,10 @@ final class TreasuryCompanyIsolationTest extends TestCase
             'role' => 'admin',
         ]);
 
-        [, $this->methodA, $this->repositoryA, , $this->paymentA] = $this->seedCompanyResources($this->companyA);
-        [, $this->methodB, $this->repositoryB, $this->purchaseOrderB, $this->paymentB] = $this->seedCompanyResources($this->companyB);
+        [$this->partnerA, $this->methodA, $this->repositoryA, $this->purchaseOrderA, $this->paymentA]
+            = $this->seedCompanyResources($this->companyA);
+        [$this->partnerB, $this->methodB, $this->repositoryB, $this->purchaseOrderB, $this->paymentB]
+            = $this->seedCompanyResources($this->companyB);
     }
 
     // ---------------------------------------------------------------------
@@ -164,7 +172,7 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->assertNotFound();
 
         // Sanity: company B's repository name is unchanged.
-        $this->assertSame('Repo B', $this->repositoryB->refresh()->name);
+        $this->assertSame('Repo B', $this->repositoryB->fresh()->name);
     }
 
     public function test_payment_repository_balance_refuses_cross_company_id(): void
@@ -203,7 +211,7 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->patchJson('/api/v1/payment-methods/'.$this->methodB->id, ['name' => 'Renamed By A'])
             ->assertNotFound();
 
-        $this->assertSame('Cash B', $this->methodB->refresh()->name);
+        $this->assertSame('Cash B', $this->methodB->fresh()->name);
     }
 
     // ---------------------------------------------------------------------
@@ -231,7 +239,7 @@ final class TreasuryCompanyIsolationTest extends TestCase
             ->assertNotFound();
 
         // Sanity: company B's payment is not in a refund state.
-        $this->assertSame(PaymentStatus::Completed, $this->paymentB->refresh()->status);
+        $this->assertSame(PaymentStatus::Completed, $this->paymentB->fresh()->status);
     }
 
     // ---------------------------------------------------------------------

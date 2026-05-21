@@ -1,10 +1,12 @@
 import { useTranslation } from 'react-i18next'
-import { useSendToKitchen, useCloseOrder, useCancelOrder, useRemoveOrderLine } from '../../hooks/useOrders'
+// §14.2 — `useCloseOrder` + `CloseOrderButton` imports removed: the
+// order-close → SALE_RECEIPT path is retired. Order cancellation is the
+// remaining termination path.
+import { useSendToKitchen, useCancelOrder, useRemoveOrderLine } from '../../hooks/useOrders'
 import { useMarkOrderServed } from '../../hooks/useKitchenOrders'
 import { OrderLineItem } from '../../molecules/OrderLineItem'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
 import { SendToKitchenButton } from '../../components/SendToKitchenButton'
-import { CloseOrderButton } from '../../components/CloseOrderButton'
 import type { OrderData } from '../../api/orderApi'
 
 export interface OrderPanelProps {
@@ -24,16 +26,14 @@ export function OrderPanel({
   const { t } = useTranslation('pos')
 
   const sendToKitchen = useSendToKitchen()
-  const closeOrder = useCloseOrder()
+  // §14.2 — `useCloseOrder()` removed; the order-close → SALE_RECEIPT
+  // path is retired.
   const cancelOrder = useCancelOrder()
   const removeLine = useRemoveOrderLine()
   const markServed = useMarkOrderServed()
 
   const isOpen = order.status === 'open'
   const canSendToKitchen = isOpen && order.lines.length > 0
-  const canClose =
-    ['open', 'sent_to_kitchen', 'ready'].includes(order.status) &&
-    order.lines.length > 0
   const canCancel = ['open', 'sent_to_kitchen', 'ready'].includes(
     order.status
   )
@@ -41,12 +41,6 @@ export function OrderPanel({
 
   const handleSendToKitchen = () => {
     sendToKitchen.mutate(order.id, {
-      onSuccess: () => onOrderUpdated?.(),
-    })
-  }
-
-  const handleClose = () => {
-    closeOrder.mutate(order.id, {
       onSuccess: () => onOrderUpdated?.(),
     })
   }
@@ -208,12 +202,9 @@ export function OrderPanel({
               {t('orders.actions.markServed')}
             </button>
           )}
-          {canClose && (
-            <CloseOrderButton
-              onConfirm={handleClose}
-              loading={closeOrder.isPending}
-            />
-          )}
+          {/* §14.2 — close-order affordance removed; the order-close →
+              SALE_RECEIPT path is retired. Cancel remains for non-receipt
+              order termination. */}
           {canCancel && (
             <button
               type="button"

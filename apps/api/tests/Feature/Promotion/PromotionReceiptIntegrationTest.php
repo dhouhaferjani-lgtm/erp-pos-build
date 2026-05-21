@@ -51,8 +51,16 @@ final class PromotionReceiptIntegrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->setupTestData();
-        Sanctum::actingAs($this->cashier);
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/receipts retired. '.
+            'Promotion application moves to device-authority (see Task 29 + §18 web-POS parity open item). '.
+            'Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
+
+        // Unreachable after the class-level skip — kept as documentation
+        // for the device-authority rebuild.
+        // $this->setupTestData();
+        // Sanctum::actingAs($this->cashier);
     }
 
     public function test_buy_x_get_y_promotion_reduces_receipt_total(): void

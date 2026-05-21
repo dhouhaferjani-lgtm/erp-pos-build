@@ -1,15 +1,14 @@
 # v3 receipt-hash golden fixtures
 
 Each fixture is a `{input, expected_canonical, expected_hash}` triple driving
-`CanonicalPayloadBuilderTest`. The TypeScript counterpart at
-`apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/` MUST stay
-byte-identical to these files; a CI lint enforces parity.
+`CanonicalPayloadBuilderTest`. Pass 2B retired the TypeScript receipt-v3
+authoring path; these PHP fixtures now cover only the server's historical v3
+receipt-hash compatibility tests.
 
 ## Rule: goldens are immutable.
 
 If a test fails, do not "fix" the fixture. Investigate the encoder change,
-then either back out the change or update the goldens deliberately and
-update both PHP and TS fixtures in the same PR.
+then either back out the change or update the goldens deliberately.
 
 The goldens lock the v3 canonical hash format. Any drift is a fiscal-chain
 bug that breaks NF525 verify-chain across PHP and TS.
@@ -28,9 +27,7 @@ When intentionally changing the canonicalization algorithm:
 5. Update each fixture's `expected_canonical` and `expected_hash` with the
    printed values.
 6. Restore the assertions; tests should now pass.
-7. Update the TS fixtures at `apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/`
-   with the same values.
-8. Commit both sides in the same change with a descriptive message.
+7. Commit the fixture updates with a descriptive message.
 
 ## Fixtures
 

@@ -513,6 +513,142 @@ final class Nf525XmlBuilder
     }
 
     /**
+     * Add the §8 quarantine section listing non-admissible envelopes
+     * scoped to the export window. EMITTED ONLY WHEN NON-EMPTY so the
+     * pre-Phase-1 byte-stable JET XML fixture (zero quarantine entries)
+     * does not change. Phase 1 §8 + Task 30 round-3 fix.
+     *
+     * Round-3 (T30-R2-P3): emits every spec §8 envelope field so
+     * auditors can reconcile both partitions:
+     *   - `fiscal_event_quarantine` table rows (source='quarantine_table')
+     *   - `fiscal_events` rows with integrity_status='quarantined' or
+     *     payload_parse_status='failed' (source='fiscal_events_in_table')
+     *
+     * @param  list<array<string, mixed>>  $entries
+     */
+    public function addQuarantineSection(array $entries): self
+    {
+        if (count($entries) === 0) {
+            return $this;
+        }
+
+        $section = $this->doc->createElement('EvenementsQuarantaine');
+        $section->setAttribute('count', (string) count($entries));
+
+        foreach ($entries as $entry) {
+            $envEl = $this->doc->createElement('Envelope');
+
+            $envelopeId = is_string($entry['envelope_id'] ?? null) ? (string) $entry['envelope_id'] : '';
+            $terminalId = is_string($entry['terminal_id'] ?? null) ? (string) $entry['terminal_id'] : '';
+            $claimedSeq = is_int($entry['claimed_sequence_number'] ?? null)
+                ? (int) $entry['claimed_sequence_number']
+                : 0;
+            $exceptionClass = is_string($entry['integrity_exception_class'] ?? null)
+                ? (string) $entry['integrity_exception_class']
+                : '';
+            $reason = is_string($entry['integrity_reason'] ?? null) ? (string) $entry['integrity_reason'] : '';
+            $integrityStatus = is_string($entry['integrity_status'] ?? null)
+                ? (string) $entry['integrity_status']
+                : '';
+            $serverReceivedAt = is_string($entry['server_received_at'] ?? null)
+                ? (string) $entry['server_received_at']
+                : '';
+            $businessDate = is_string($entry['business_date'] ?? null)
+                ? (string) $entry['business_date']
+                : '';
+            $eventType = is_string($entry['event_type'] ?? null) ? (string) $entry['event_type'] : '';
+            $eventVersion = is_int($entry['event_version'] ?? null) ? (int) $entry['event_version'] : 0;
+            $signatureVersion = is_string($entry['signature_version'] ?? null)
+                ? (string) $entry['signature_version']
+                : '';
+            $previousHash = is_string($entry['previous_hash'] ?? null)
+                ? (string) $entry['previous_hash']
+                : '';
+            $currentHash = is_string($entry['current_hash'] ?? null) ? (string) $entry['current_hash'] : '';
+            $parseStatus = is_string($entry['payload_parse_status'] ?? null)
+                ? (string) $entry['payload_parse_status']
+                : '';
+            $source = is_string($entry['source'] ?? null) ? (string) $entry['source'] : '';
+            $resolvedAt = is_string($entry['resolved_at'] ?? null) ? (string) $entry['resolved_at'] : '';
+
+            $this->addElement($envEl, 'Source', $source);
+            $this->addElement($envEl, 'Identifiant', $envelopeId);
+            $this->addElement($envEl, 'TerminalId', $terminalId);
+            $this->addElement($envEl, 'SequenceRevendiquee', (string) $claimedSeq);
+            $this->addElement($envEl, 'TypeEvenement', $eventType);
+            $this->addElement($envEl, 'VersionEvenement', (string) $eventVersion);
+            $this->addElement($envEl, 'VersionSignature', $signatureVersion);
+            $this->addElement($envEl, 'DateMetier', $businessDate);
+            $this->addElement($envEl, 'StatutIntegrite', $integrityStatus);
+            $this->addElement($envEl, 'ClasseException', $exceptionClass);
+            $this->addElement($envEl, 'Motif', $reason);
+            $this->addElement($envEl, 'StatutAnalysePayload', $parseStatus);
+            $this->addElement($envEl, 'HashPrecedent', $previousHash);
+            $this->addElement($envEl, 'HashCourant', $currentHash);
+            $this->addElement($envEl, 'DateReceptionServeur', $serverReceivedAt);
+            $this->addElement($envEl, 'DateResolution', $resolvedAt);
+
+            $section->appendChild($envEl);
+        }
+
+        $this->root->appendChild($section);
+
+        return $this;
+    }
+
+    /**
+     * Add the §8 tampered section listing receipts whose
+     * canonical_bytes failed the re-hash check against
+     * fiscal_events.current_hash. EMITTED ONLY WHEN NON-EMPTY so the
+     * pre-existing byte-stable JET fixture is preserved.
+     *
+     * Spec §5.0 D1 + §8 audit-visibility: tamper detection ≠ tamper
+     * exclusion. The receipts are excluded from the regular
+     * sales/voids/returns sections; auditors see them here.
+     *
+     * @param  list<array<string, mixed>>  $entries
+     */
+    public function addTamperedSection(array $entries): self
+    {
+        if (count($entries) === 0) {
+            return $this;
+        }
+
+        $section = $this->doc->createElement('TicketsAlteres');
+        $section->setAttribute('count', (string) count($entries));
+
+        foreach ($entries as $entry) {
+            $envEl = $this->doc->createElement('Ticket');
+
+            $receiptId = is_string($entry['receipt_id'] ?? null) ? (string) $entry['receipt_id'] : '';
+            $receiptNumber = is_string($entry['receipt_number'] ?? null) ? (string) $entry['receipt_number'] : '';
+            $fiscalEventId = is_string($entry['fiscal_event_id'] ?? null) ? (string) $entry['fiscal_event_id'] : '';
+            $terminalId = is_string($entry['terminal_id'] ?? null) ? (string) $entry['terminal_id'] : '';
+            $bucket = is_string($entry['bucket'] ?? null) ? (string) $entry['bucket'] : '';
+            $failureMode = is_string($entry['failure_mode'] ?? null) ? (string) $entry['failure_mode'] : '';
+            $expectedHash = is_string($entry['expected_hash'] ?? null) ? (string) $entry['expected_hash'] : '';
+            $actualHash = is_string($entry['actual_hash'] ?? null) ? (string) $entry['actual_hash'] : '';
+            $postedAt = is_string($entry['posted_at'] ?? null) ? (string) $entry['posted_at'] : '';
+
+            $this->addElement($envEl, 'IdentifiantTicket', $receiptId);
+            $this->addElement($envEl, 'NumeroTicket', $receiptNumber);
+            $this->addElement($envEl, 'IdentifiantFiscalEvent', $fiscalEventId);
+            $this->addElement($envEl, 'TerminalId', $terminalId);
+            $this->addElement($envEl, 'Categorie', $bucket);
+            $this->addElement($envEl, 'ModeEchec', $failureMode);
+            $this->addElement($envEl, 'HashAttendu', $expectedHash);
+            $this->addElement($envEl, 'HashConstate', $actualHash);
+            $this->addElement($envEl, 'DatePostage', $postedAt);
+
+            $section->appendChild($envEl);
+        }
+
+        $this->root->appendChild($section);
+
+        return $this;
+    }
+
+    /**
      * Output the XML document as a formatted string.
      */
     public function toString(): string

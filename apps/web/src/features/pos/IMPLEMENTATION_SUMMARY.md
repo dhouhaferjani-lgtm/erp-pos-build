@@ -346,7 +346,7 @@ function POSRoute() {
 1. ✅ POS component library complete
 2. ⏳ Connect to API endpoints:
    - `GET /api/v1/products` - Fetch products
-   - `POST /api/v1/pos/receipts` - Create receipt
+   - `POST /api/v1/pos/receipts` - Create receipt [RETIRED §14.2 (Task 29) — 410 NEW_SALE_AUTHORING_RETIRED; device-authored via FiscalEventEngine.append()]
    - `POST /api/v1/pos/shifts/open` - Open shift
    - `POST /api/v1/pos/shifts/{id}/close` - Close shift
    - `POST /api/v1/pos/reports/x` - Generate X report

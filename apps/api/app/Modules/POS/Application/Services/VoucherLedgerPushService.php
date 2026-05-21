@@ -30,8 +30,8 @@ use App\Shared\Domain\CurrencyScale;
  *
  * B5-fix audit (Option B, 2026-05-01) — STATUS: receipt-tied redemptions
  * (the offline POS cashier path) NO LONGER flow through this push handler.
- * They are now ingested server-side directly by `ReceiptSyncService` during
- * `syncBatch()`, which invokes `VoucherRedemptionService::redeem` inside
+ * They are now ingested server-side by the fiscal-event projection path, where
+ * `PosCoreReceiptProjection` invokes `VoucherRedemptionService::redeem` inside
  * the same DB::transaction as the receipt write — atomic, no partial state.
  * That sidesteps the `receipt_id_required_for_redemption` rejection below
  * because the canonical receipt exists by the time redemption fires.

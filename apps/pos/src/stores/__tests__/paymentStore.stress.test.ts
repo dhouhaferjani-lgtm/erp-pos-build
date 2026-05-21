@@ -3,11 +3,13 @@ import { usePaymentStore } from '@/stores/paymentStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
+// Phase 1 Task 27 Pass 1: `createReceipt` / `processReceiptPayments` removed
+// from `@/api/receiptApi`. Local-first checkout never calls them anyway —
+// stub only the remaining read methods.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(),
-  processReceiptPayments: vi.fn(),
   fetchReceipt: vi.fn(),
 }));
 
@@ -59,19 +61,55 @@ vi.mock('@/stores/syncStore', () => ({
 }));
 
 describe('paymentStore stress / throughput (offline-first)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
+    __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     useAuthStore.setState({
       user: { id: 'u1', name: 'U', email: 'u@x', tenantId: 't', phone: null, status: 'active', locale: null, timezone: null, roles: [], permissions: [], emailVerified: true },
       companyId: 'c1',
-      companies: [{ id: 'c1', name: 'X', legalName: 'X', countryCode: 'FR', currency: 'EUR', locale: 'fr', timezone: 'Europe/Paris' }],
+      companies: [{
+        id: 'c1',
+        name: 'X',
+        legalName: 'X',
+        tax_id: 'FR123456789',
+        countryCode: 'FR',
+        address_street: '1 Rue Test',
+        address_city: 'Paris',
+        address_postal_code: '75001',
+        currency: 'EUR',
+        locale: 'fr',
+        timezone: 'Europe/Paris',
+      }],
       token: 't', serverUrl: 'http://', isAuthenticated: true, isLoading: false, isInitialized: true,
     });
     useOperatorStore.setState({
       operator: { id: 'op1', name: 'O', email: 'o@x', roles: [], permissions: [], can_discount: false, max_discount_percent: null },
       isLocked: false, lastActivity: Date.now(), hasPins: true,
     });
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: false,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+      shift: {
+        id: 'shift-1',
+        terminal_id: 'term-1',
+        shift_number: 1,
+        status: 'OPEN',
+        opening_cash: '0.00',
+        opened_at: '2026-05-20T08:00:00Z',
+        user: { id: 'u1', name: 'U' },
+      },
+      hashChainReady: true,
+    } as never);
     useCartStore.setState({ items: [makeCartItem({ line_total: '10.00', tax_amount: '0.00' })] });
     usePaymentStore.setState({
       paymentMethods: [makePaymentMethod({ id: 'pm-cash', code: 'CASH' })],

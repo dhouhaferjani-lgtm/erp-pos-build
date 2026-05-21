@@ -8,9 +8,11 @@ vi.mock('@/api/paymentApi', () => ({
   fetchPaymentRepositories: vi.fn(),
 }));
 
+// Phase 1 Task 27 Pass 1: `createReceipt` / `processReceiptPayments` removed
+// from `@/api/receiptApi`. paymentStore's fallback path never called them
+// anyway — stub only the remaining read methods.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(),
-  processReceiptPayments: vi.fn(),
+  fetchReceipt: vi.fn(),
 }));
 
 // Mock DB modules

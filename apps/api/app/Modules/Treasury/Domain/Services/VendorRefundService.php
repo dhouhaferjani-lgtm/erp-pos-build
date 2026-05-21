@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
@@ -96,6 +97,11 @@ final class VendorRefundService
                 ->findOrFail($repositoryId);
 
             // Create refund payment record
+            //
+            // Spec §13 writer-inventory row 10 — `VendorRefundService::refundPrepayment()`
+            // → `web_admin`. Supplier-advance refunds are authored from the web admin
+            // (the procurement / finance side); they are NOT a refund of a customer-
+            // facing payment, so the "inherit origin" rule does NOT apply here.
             $payment = Payment::create([
                 'tenant_id' => $lockedPo->tenant_id,
                 'company_id' => $lockedPo->company_id,
@@ -107,6 +113,7 @@ final class VendorRefundService
                 'payment_date' => now(),
                 'status' => PaymentStatus::Completed,
                 'payment_type' => PaymentType::Refund,
+                'origin' => PaymentOrigin::WebAdmin,
                 'reference' => "Refund for {$lockedPo->document_number}",
                 'notes' => $reason,
                 'created_by' => $userId,

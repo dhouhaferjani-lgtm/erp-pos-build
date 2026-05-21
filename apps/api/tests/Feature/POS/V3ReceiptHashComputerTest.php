@@ -272,8 +272,7 @@ final class V3ReceiptHashComputerTest extends TestCase
      * The model's `creating` hook auto-snapshots `payment_method_code` from the
      * linked PaymentMethod when the caller does not provide it. This keeps
      * older test fixtures honest without requiring every callsite to be
-     * updated. Production callers (ReceiptPaymentService, ReceiptSyncService)
-     * pass the snapshot explicitly.
+     * updated. Production callers pass the snapshot explicitly.
      */
     public function test_creating_a_receipt_payment_auto_snapshots_payment_method_code_from_linked_method(): void
     {

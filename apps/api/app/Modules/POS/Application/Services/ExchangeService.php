@@ -54,6 +54,19 @@ use Illuminate\Support\Str;
  *
  * 6. Stock: return half writes +1 (stock in), sale half writes -1 (stock out).
  *    Same-SKU return+sale produces TWO movements, not one net, preserving the audit trail.
+ *
+ * **Section 14.3 chokepoint annotation (Task 30).** This service holds
+ * three SALE_RECEIPT chokepoint call sites (one createReceipt invocation
+ * near line 220 and two finalize invocations near lines 286 / 289) — all
+ * dispositioned in `apps/api/scripts/saleReceipt-chokepoint-manifest.json`
+ * as `disposition: b` and `live: false`. Per the §14.3 grep+manifest
+ * reconciliation completed 2026-05-20, no live controller / route reaches
+ * `ExchangeService::processExchange` anywhere under `apps/api/`. The
+ * service is therefore service-level inert in Phase 1; cleanup is queued
+ * as a follow-up task. Do NOT wire a new controller into this service
+ * without updating the manifest first — the §14.3 CI gate
+ * (`apps/api/scripts/check-saleReceipt-chokepoints.sh` +
+ * `ChokepointCompletenessTest`) will fail.
  */
 final class ExchangeService
 {

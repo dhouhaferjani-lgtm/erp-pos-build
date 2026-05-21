@@ -1,0 +1,20 @@
+{
+  "unsyncedRisk": {
+    "label": {
+      "normal": "Tout est synchronisé",
+      "elevated": "Retard de synchronisation élevé",
+      "escalated": "Retard de synchronisation critique"
+    },
+    "detail": {
+      "normal": "La durabilité hors-appareil est saine.",
+      "elevated": "Forcez une archive hors-appareil à la prochaine occasion.",
+      "escalated": "Cessez la saisie jusqu'à la réussite d'une archive hors-appareil."
+    }
+  },
+  "durabilityGate": {
+    "title": "Archive hors-appareil requise",
+    "description": "Trop d'événements fiscaux n'ont pas encore été transférés hors de cet appareil. La spec §12 exige une archive hors-appareil avant toute nouvelle vente. Confirmez la procédure pour journaliser cette action et continuer pendant une heure.",
+    "acknowledgeButton": "Confirmer et continuer",
+    "phase2Note": "La phase 2 câblera le transfert d'archive ici. Pour l'instant, la confirmation journalise une action opérateur et débloque une période de grâce d'une heure."
+  }
+}

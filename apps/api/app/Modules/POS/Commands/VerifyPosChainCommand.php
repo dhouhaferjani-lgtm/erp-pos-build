@@ -168,7 +168,16 @@ final class VerifyPosChainCommand extends Command
      */
     private function verifyReceiptChain(Terminal $terminal): array
     {
+        // Phase 1 fiscal-event projection carve-out (Task 21 F1 round-2) —
+        // projection rows (fiscal_event_id IS NOT NULL) have their
+        // authoritative integrity verified by `fiscal:verify-event-chain`
+        // (Task 31). They are excluded from the legacy verifier because
+        // their `fiscal_hash` is the canonical-bytes SHA-256 from the
+        // fiscal event, not the legacy pipe-string SHA-256 this command
+        // recomputes. See `ReceiptHashService::verifyTerminalChain()`
+        // docblock for the full rationale.
         $count = Receipt::where('terminal_id', $terminal->id)
+            ->whereNull('fiscal_event_id')
             ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
@@ -201,7 +210,11 @@ final class VerifyPosChainCommand extends Command
      */
     private function findReceiptChainBreak(Terminal $terminal): string
     {
+        // Phase 1 fiscal-event projection carve-out (Task 21 F1 round-2).
+        // See `verifyReceiptChain()` and `ReceiptHashService::verifyTerminalChain()`
+        // docblocks for the full rationale.
         $receipts = Receipt::where('terminal_id', $terminal->id)
+            ->whereNull('fiscal_event_id')
             ->where('fiscal_status', FiscalStatus::Fiscalized->value)
             ->where('is_voided', false)
             ->where('is_training', false)
