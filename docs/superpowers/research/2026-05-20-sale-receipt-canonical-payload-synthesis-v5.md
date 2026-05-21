@@ -361,7 +361,7 @@ After Pass 2B merges: `check-pass-2b-pending.sh` passes (marker file deleted; `r
 `See v4 §11.` All amendments carry to v5 with these v5 refinements:
 
 **Amended A4 — Canonical SALE_RECEIPT payload shape:**
-- `seller.tax_number` / `buyer.tax_number`: universal pattern per v4 §7 (no v5 change).
+- `seller.tax_number` / `buyer.tax_number`: universal baseline plus Phase 1.5.2 per-country table per §7.
 - VAT partition + total arithmetic: per v5 §6 algorithm (replaces v4 §6).
 - Scale invariant: per v5 §6.B explicit field table.
 - Discount fields: `transaction_discount_amount` non-negative; `transaction_discount_reason` null-iff-zero invariant.
