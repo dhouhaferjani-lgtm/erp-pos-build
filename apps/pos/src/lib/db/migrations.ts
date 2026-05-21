@@ -1114,4 +1114,38 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Customer Accounts Phase 2 (Task 2) — local POS customer mirror.
+    //
+    // This is inbound reference data for cashier search/attach and account
+    // balance display. It is intentionally scoped by tenant_id + company_id
+    // on every key and lookup; account-payment fiscal authoring must never
+    // resolve a customer from another company when the same customer UUID is
+    // present in a different local tenant/company cache.
+    version: 39,
+    name: 'create_customers_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        tax_number TEXT,
+        customer_category TEXT,
+        receivable_balance TEXT NOT NULL DEFAULT '0.0000',
+        credit_balance TEXT NOT NULL DEFAULT '0.0000',
+        balance_updated_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sync_version TEXT,
+        updated_at TEXT,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(tenant_id, company_id, name);
+      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(tenant_id, company_id, phone);
+      CREATE INDEX IF NOT EXISTS idx_customers_tax_number ON customers(tenant_id, company_id, tax_number);
+    `,
+  },
 ];
