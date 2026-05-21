@@ -283,9 +283,10 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
         string $previousHash,
         string $accountPaymentUuid,
     ): array {
-        $eventTimeDevice = '2026-05-21T10:15:30Z';
-        $businessDate = '2026-05-21';
-        $payload = $this->accountPaymentPayload($accountPaymentUuid);
+        $eventTime = now('UTC')->subSeconds(30);
+        $payloadEventTime = $eventTime->format('Y-m-d\TH:i:s.000\Z');
+        $businessDate = $eventTime->toDateString();
+        $payload = $this->accountPaymentPayload($accountPaymentUuid, $payloadEventTime, $businessDate);
         $base = [
             'id' => $eventId,
             'tenant_id' => $this->tenant->id,
@@ -296,7 +297,7 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequence,
-            'event_time_device' => $eventTimeDevice,
+            'event_time_device' => $eventTime->format('Y-m-d\TH:i:s\Z'),
             'business_date' => $businessDate,
             'last_server_time_seen' => null,
             'reference_event_id' => null,
@@ -339,11 +340,11 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function accountPaymentPayload(string $accountPaymentUuid): array
+    private function accountPaymentPayload(string $accountPaymentUuid, string $eventTimeDevice, string $businessDate): array
     {
         return [
             'account_payment_uuid' => $accountPaymentUuid,
-            'business_date' => '2026-05-21',
+            'business_date' => $businessDate,
             'cashier_id' => $this->cashier->id,
             'cashier_name' => $this->cashier->name,
             'currency_code' => 'TND',
@@ -358,7 +359,7 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
                 'phone' => '+21611111111',
                 'tax_number' => null,
             ],
-            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'event_time_device' => $eventTimeDevice,
             'local_balance_snapshot' => [
                 'balance_updated_at' => '2026-05-21T10:10:00.000Z',
                 'credit_balance_before' => '0.000',
