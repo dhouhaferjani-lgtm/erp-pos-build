@@ -49,6 +49,7 @@ import type {
   FiscalEventPayloadRegistry,
   FiscalEventTypeValue,
 } from './FiscalEventPayloadRegistry';
+import { ACCOUNT_CHARGE_PAYLOAD_KEYS } from './payloads/AccountChargePayload';
 import { ACCOUNT_PAYMENT_PAYLOAD_KEYS } from './payloads/AccountPaymentPayload';
 
 /** 64-char lowercase hex — the seed / hash invariant from spec §3.1 + v37. */
@@ -753,6 +754,9 @@ export class FiscalEventEngine {
       case 'ACCOUNT_PAYMENT':
         validateAccountPaymentPayload(request.payload);
         return;
+      case 'ACCOUNT_CHARGE':
+        validateAccountChargePayload(request.payload);
+        return;
       case 'CHAIN_BREAK_DETECTED':
         validateChainBreakDetectedPayload(request.payload);
         return;
@@ -1179,6 +1183,17 @@ function validateAccountPaymentPayload(payload: unknown): void {
   validateAccountPaymentStaleness(p['staleness']);
   validateAccountPaymentReferences(p['references']);
   validateNullableAssoc(p['regime_extensions'], 'regime_extensions');
+}
+
+function validateAccountChargePayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_invalid:ACCOUNT_CHARGE payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  assertExactKeySet(p, ACCOUNT_CHARGE_PAYLOAD_KEYS, 'ACCOUNT_CHARGE');
 }
 
 // -------------------------------------------------------------------

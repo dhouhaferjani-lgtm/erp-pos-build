@@ -36,6 +36,10 @@ import {
   ACCOUNT_PAYMENT_PAYLOAD_KEYS,
   goldenAccountPaymentPayload,
 } from '../payloads/AccountPaymentPayload';
+import {
+  ACCOUNT_CHARGE_PAYLOAD_KEYS,
+  goldenAccountChargePayload,
+} from '../payloads/AccountChargePayload';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 
 const nodeSqliteAvailable = (() => {
@@ -212,6 +216,24 @@ function accountPaymentRequest(
     payload: goldenAccountPaymentPayload(),
     source_event_class: 'account_payments',
     source_event_id: '44444444-4444-4444-8444-444444444444',
+    ...overrides,
+  };
+}
+
+function accountChargeRequest(
+  overrides: Partial<FiscalEventAppendRequest> = {},
+): FiscalEventAppendRequest {
+  return {
+    event_type: 'ACCOUNT_CHARGE',
+    tenant_id: TENANT_ID,
+    company_id: COMPANY_ID,
+    terminal_id: TERMINAL_ID,
+    operator_id: OPERATOR_ID,
+    event_time_device: '2026-05-21T10:15:30Z',
+    business_date: '2026-05-21',
+    payload: goldenAccountChargePayload(),
+    source_event_class: 'account_charges',
+    source_event_id: '66666666-6666-4666-8666-666666666666',
     ...overrides,
   };
 }
@@ -1371,6 +1393,32 @@ d('FiscalEventEngine.append', () => {
   });
 
   // -------------------------------------------------------------------
+  // Phase 3 Task 1 R2 — ACCOUNT_CHARGE registry must not create an
+  // unvalidated append path. Full nested/accounting invariants are added
+  // in later tasks; Task 1 owns object shape + exact top-level key drift.
+  // -------------------------------------------------------------------
+
+  it('Phase 3.1 R2 — happy path: ACCOUNT_CHARGE payload validates top-level keys and seals on the device chain', async () => {
+    const event = await engine.append(adapter, accountChargeRequest());
+
+    expect(event.event_type).toBe('ACCOUNT_CHARGE');
+    expect(event.sequence_number).toBe(1);
+    expect(event.source_event_class).toBe('account_charges');
+    expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('Phase 3.1 R2 — rejects ACCOUNT_CHARGE with an extra top-level key before mutation', async () => {
+    const payload = { ...goldenAccountChargePayload(), dual_chain_shadow: true };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:dual_chain_shadow/,
+    );
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------
   // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
   // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].
   //
@@ -1396,6 +1444,10 @@ d('FiscalEventEngine.append', () => {
     const sortedPhp = [...phpKeys].sort();
     expect(tsKeys).toEqual(sortedPhp);
     expect(tsKeys).toHaveLength(20);
+  });
+
+  it('Phase 3.1 R2 — ACCOUNT_CHARGE payload key list remains locked at 28 keys', () => {
+    expect([...ACCOUNT_CHARGE_PAYLOAD_KEYS].sort()).toHaveLength(28);
   });
 });
 
