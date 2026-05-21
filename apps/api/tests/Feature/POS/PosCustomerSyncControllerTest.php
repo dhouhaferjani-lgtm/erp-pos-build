@@ -129,6 +129,60 @@ final class PosCustomerSyncControllerTest extends TestCase
         $this->assertSame($fresh->id, $rows[0]['id']);
     }
 
+    public function test_pos_customer_sync_returns_composite_continuation_cursor_for_full_pages(): void
+    {
+        $timestamp = Carbon::parse('2026-05-21T10:00:00Z');
+        $first = $this->createCustomer([
+            'id' => '00000000-0000-4000-8000-000000000001',
+            'name' => 'Page Customer 1',
+        ]);
+        $second = $this->createCustomer([
+            'id' => '00000000-0000-4000-8000-000000000002',
+            'name' => 'Page Customer 2',
+        ]);
+        $third = $this->createCustomer([
+            'id' => '00000000-0000-4000-8000-000000000003',
+            'name' => 'Page Customer 3',
+        ]);
+
+        Partner::query()
+            ->whereKey([$first->id, $second->id, $third->id])
+            ->update([
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ]);
+
+        $firstResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?limit=2');
+
+        $firstResponse->assertOk();
+        $firstRows = $firstResponse->json('data.customers');
+        $nextUpdatedSince = $firstResponse->json('data.next_updated_since');
+        $nextUpdatedSinceId = $firstResponse->json('data.next_updated_since_id');
+
+        $this->assertCount(2, $firstRows);
+        $this->assertSame([$first->id, $second->id], array_column($firstRows, 'id'));
+        $this->assertTrue($firstResponse->json('data.has_more'));
+        $this->assertSame($firstRows[1]['updated_at'], $nextUpdatedSince);
+        $this->assertSame($second->id, $nextUpdatedSinceId);
+
+        $cursor = urlencode((string) $nextUpdatedSince);
+        $cursorId = urlencode((string) $nextUpdatedSinceId);
+        $secondResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/pos/customers/sync?updated_since={$cursor}&updated_since_id={$cursorId}&limit=2");
+
+        $secondResponse->assertOk();
+        $secondRows = $secondResponse->json('data.customers');
+
+        $this->assertCount(1, $secondRows);
+        $this->assertSame($third->id, $secondRows[0]['id']);
+        $this->assertFalse($secondResponse->json('data.has_more'));
+        $this->assertNull($secondResponse->json('data.next_updated_since'));
+        $this->assertNull($secondResponse->json('data.next_updated_since_id'));
+    }
+
     public function test_pos_customer_sync_rejects_malformed_updated_since_cursor(): void
     {
         $this->createCustomer(['name' => 'Should Not Matter']);
@@ -146,6 +200,27 @@ final class PosCustomerSyncControllerTest extends TestCase
             ->getJson('/api/v1/pos/customers/sync?updated_since=not-a-date');
 
         $emptyResponse->assertStatus(422);
+        $arrayResponse->assertStatus(422);
+        $invalidResponse->assertStatus(422);
+    }
+
+    public function test_pos_customer_sync_rejects_malformed_updated_since_id_cursor(): void
+    {
+        $timestamp = urlencode(Carbon::now()->subHour()->toIso8601String());
+
+        $withoutTimestampResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync?updated_since_id=00000000-0000-4000-8000-000000000001');
+
+        $arrayResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/pos/customers/sync?updated_since={$timestamp}&updated_since_id[]=00000000-0000-4000-8000-000000000001");
+
+        $invalidResponse = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/pos/customers/sync?updated_since={$timestamp}&updated_since_id=not-a-uuid");
+
+        $withoutTimestampResponse->assertStatus(422);
         $arrayResponse->assertStatus(422);
         $invalidResponse->assertStatus(422);
     }

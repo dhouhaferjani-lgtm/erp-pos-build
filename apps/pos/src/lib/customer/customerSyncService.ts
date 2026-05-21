@@ -8,11 +8,31 @@ import {
 import type { CustomerMirrorRow } from './customerTypes';
 
 const CUSTOMER_CURSOR_KEY = 'customers.updated_since';
+const CUSTOMER_PAGE_LIMIT = 100;
 
 interface CustomerSyncResponse {
   customers?: CustomerMirrorRow[];
+  has_more?: boolean;
+  next_updated_since?: string | null;
+  next_updated_since_id?: string | null;
   synced_at?: string;
 }
+
+type ParsedCustomerSyncResponse =
+  | {
+      customers: CustomerMirrorRow[];
+      has_more: false;
+      next_updated_since: null;
+      next_updated_since_id: null;
+      synced_at: string;
+    }
+  | {
+      customers: CustomerMirrorRow[];
+      has_more: true;
+      next_updated_since: string;
+      next_updated_since_id: string;
+      synced_at: string;
+    };
 
 export class CustomerSyncResponseError extends Error {
   constructor(message: string) {
@@ -41,9 +61,44 @@ function assertScope(row: CustomerMirrorRow, tenantId: string, companyId: string
   }
 }
 
-function parseResponse(response: CustomerSyncResponse): Required<CustomerSyncResponse> {
+function parseResponse(response: CustomerSyncResponse): ParsedCustomerSyncResponse {
   if (!Array.isArray(response.customers)) {
     throw new CustomerSyncResponseError('Server response is missing customers array.');
+  }
+
+  if (typeof response.has_more !== 'boolean') {
+    throw new CustomerSyncResponseError('Server response is missing has_more flag.');
+  }
+
+  if (response.has_more) {
+    const nextUpdatedSince = response.next_updated_since;
+    const nextUpdatedSinceId = response.next_updated_since_id;
+
+    if (
+      typeof nextUpdatedSince !== 'string' ||
+      nextUpdatedSince.trim() === ''
+    ) {
+      throw new CustomerSyncResponseError('Server response is missing next_updated_since cursor.');
+    }
+
+    if (
+      typeof nextUpdatedSinceId !== 'string' ||
+      nextUpdatedSinceId.trim() === ''
+    ) {
+      throw new CustomerSyncResponseError('Server response is missing next_updated_since_id cursor.');
+    }
+
+    if (typeof response.synced_at !== 'string' || response.synced_at.trim() === '') {
+      throw new CustomerSyncResponseError('Server response is missing synced_at cursor.');
+    }
+
+    return {
+      customers: response.customers,
+      has_more: true,
+      next_updated_since: nextUpdatedSince,
+      next_updated_since_id: nextUpdatedSinceId,
+      synced_at: response.synced_at,
+    };
   }
 
   if (typeof response.synced_at !== 'string' || response.synced_at.trim() === '') {
@@ -52,6 +107,9 @@ function parseResponse(response: CustomerSyncResponse): Required<CustomerSyncRes
 
   return {
     customers: response.customers,
+    has_more: false,
+    next_updated_since: null,
+    next_updated_since_id: null,
     synced_at: response.synced_at,
   };
 }
@@ -67,24 +125,36 @@ export async function pullCustomers(
     params.updated_since = lastSync;
   }
 
-  const response = parseResponse(
-    await apiGet<CustomerSyncResponse>('/pos/customers/sync', params),
-  );
-  const customers = response.customers;
+  params.limit = String(CUSTOMER_PAGE_LIMIT);
+  let total = 0;
 
-  for (const customer of customers) {
-    assertScope(customer, tenantId, companyId);
+  while (true) {
+    const response = parseResponse(
+      await apiGet<CustomerSyncResponse>('/pos/customers/sync', { ...params }),
+    );
+    const customers = response.customers;
+
+    for (const customer of customers) {
+      assertScope(customer, tenantId, companyId);
+    }
+
+    for (const customer of customers) {
+      await upsertCustomer(db, customer);
+    }
+
+    total += customers.length;
+
+    if (!response.has_more) {
+      await setSyncMetadata(
+        db,
+        CUSTOMER_CURSOR_KEY,
+        response.synced_at,
+      );
+
+      return total;
+    }
+
+    params.updated_since = response.next_updated_since;
+    params.updated_since_id = response.next_updated_since_id;
   }
-
-  for (const customer of customers) {
-    await upsertCustomer(db, customer);
-  }
-
-  await setSyncMetadata(
-    db,
-    CUSTOMER_CURSOR_KEY,
-    response.synced_at,
-  );
-
-  return customers.length;
 }

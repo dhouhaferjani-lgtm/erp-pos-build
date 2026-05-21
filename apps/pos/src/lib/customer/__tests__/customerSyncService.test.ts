@@ -64,6 +64,9 @@ describe('pullCustomers', () => {
     const row = customer();
     vi.mocked(apiGet).mockResolvedValueOnce({
       customers: [row],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
       synced_at: SERVER_SYNCED_AT,
     });
 
@@ -71,6 +74,7 @@ describe('pullCustomers', () => {
 
     expect(count).toBe(1);
     expect(apiGet).toHaveBeenCalledWith('/pos/customers/sync', {
+      limit: '100',
       updated_since: '2026-05-21T10:00:00.000Z',
     });
     expect(upsertCustomer).toHaveBeenCalledWith(db, row);
@@ -84,13 +88,18 @@ describe('pullCustomers', () => {
   it('omits updated_since on the first pull and still stores the server cursor', async () => {
     vi.mocked(apiGet).mockResolvedValueOnce({
       customers: [],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
       synced_at: SERVER_SYNCED_AT,
     });
 
     const count = await pullCustomers(db, TENANT_ID, COMPANY_ID);
 
     expect(count).toBe(0);
-    expect(apiGet).toHaveBeenCalledWith('/pos/customers/sync', {});
+    expect(apiGet).toHaveBeenCalledWith('/pos/customers/sync', {
+      limit: '100',
+    });
     expect(upsertCustomer).not.toHaveBeenCalled();
     expect(setSyncMetadata).toHaveBeenCalledWith(
       db,
@@ -102,6 +111,9 @@ describe('pullCustomers', () => {
   it('fails loudly when the server returns a row for another tenant or company', async () => {
     vi.mocked(apiGet).mockResolvedValueOnce({
       customers: [customer({ company_id: 'company-2' })],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
       synced_at: SERVER_SYNCED_AT,
     });
 
@@ -113,8 +125,82 @@ describe('pullCustomers', () => {
     expect(setSyncMetadata).not.toHaveBeenCalled();
   });
 
+  it('validates the full page before writing any row', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      customers: [
+        customer({ id: 'customer-1' }),
+        customer({ id: 'customer-2', tenant_id: 'tenant-2' }),
+      ],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
+      synced_at: SERVER_SYNCED_AT,
+    });
+
+    await expect(pullCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toBeInstanceOf(
+      CustomerSyncScopeError,
+    );
+
+    expect(upsertCustomer).not.toHaveBeenCalled();
+    expect(setSyncMetadata).not.toHaveBeenCalled();
+  });
+
+  it('pulls every page before advancing the stored cursor', async () => {
+    vi.mocked(getSyncMetadata).mockResolvedValueOnce('2026-05-21T09:00:00.000Z');
+    const firstPageRow = customer({
+      id: 'customer-1',
+      updated_at: '2026-05-21T10:00:00.000Z',
+      sync_version: '2026-05-21T10:00:00.000Z',
+    });
+    const secondPageRow = customer({
+      id: 'customer-2',
+      updated_at: '2026-05-21T10:00:00.000Z',
+      sync_version: '2026-05-21T10:00:00.000Z',
+    });
+
+    vi.mocked(apiGet)
+      .mockResolvedValueOnce({
+        customers: [firstPageRow],
+        has_more: true,
+        next_updated_since: '2026-05-21T10:00:00.000Z',
+        next_updated_since_id: 'customer-1',
+        synced_at: '2026-05-21T11:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        customers: [secondPageRow],
+        has_more: false,
+        next_updated_since: null,
+        next_updated_since_id: null,
+        synced_at: '2026-05-21T11:00:01.000Z',
+      });
+
+    const count = await pullCustomers(db, TENANT_ID, COMPANY_ID);
+
+    expect(count).toBe(2);
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/pos/customers/sync', {
+      limit: '100',
+      updated_since: '2026-05-21T09:00:00.000Z',
+    });
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/pos/customers/sync', {
+      limit: '100',
+      updated_since: '2026-05-21T10:00:00.000Z',
+      updated_since_id: 'customer-1',
+    });
+    expect(upsertCustomer).toHaveBeenNthCalledWith(1, db, firstPageRow);
+    expect(upsertCustomer).toHaveBeenNthCalledWith(2, db, secondPageRow);
+    expect(setSyncMetadata).toHaveBeenCalledTimes(1);
+    expect(setSyncMetadata).toHaveBeenCalledWith(
+      db,
+      'customers.updated_since',
+      '2026-05-21T11:00:01.000Z',
+    );
+  });
+
   it('fails loudly when the server omits the customers array', async () => {
     vi.mocked(apiGet).mockResolvedValueOnce({
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
       synced_at: SERVER_SYNCED_AT,
     });
 
@@ -129,6 +215,26 @@ describe('pullCustomers', () => {
   it('fails loudly when the server omits the synced_at cursor', async () => {
     vi.mocked(apiGet).mockResolvedValueOnce({
       customers: [customer()],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
+    });
+
+    await expect(pullCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toBeInstanceOf(
+      CustomerSyncResponseError,
+    );
+
+    expect(upsertCustomer).not.toHaveBeenCalled();
+    expect(setSyncMetadata).not.toHaveBeenCalled();
+  });
+
+  it('fails loudly when a partial page omits the continuation cursor', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      customers: [customer()],
+      has_more: true,
+      next_updated_since: null,
+      next_updated_since_id: 'customer-1',
+      synced_at: SERVER_SYNCED_AT,
     });
 
     await expect(pullCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toBeInstanceOf(
