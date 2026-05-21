@@ -99,7 +99,7 @@ function maxZero(value: string, scale: number): string {
 
 function buildSeller(input: SaleReceiptSellerInput): AccountPaymentPayload['seller'] {
   const countryCode = requireText(input.countryCode, 'seller.address.country_code').toUpperCase();
-  const taxNumber = normalizeSellerTaxNumber(
+  const taxNumber = normalizeTaxNumberForCountry(
     requireText(input.taxNumber, 'seller.tax_number'),
     countryCode,
   );
@@ -117,7 +117,7 @@ function buildSeller(input: SaleReceiptSellerInput): AccountPaymentPayload['sell
   };
 }
 
-function normalizeSellerTaxNumber(taxNumber: string, countryCode: string): string {
+function normalizeTaxNumberForCountry(taxNumber: string, countryCode: string): string {
   if (countryCode === 'TN') {
     return taxNumber.replace(/\//g, '');
   }
@@ -125,12 +125,19 @@ function normalizeSellerTaxNumber(taxNumber: string, countryCode: string): strin
   return taxNumber;
 }
 
-function buildCustomer(input: AttachedCheckoutCustomer): AccountPaymentPayload['customer'] {
+function buildCustomer(
+  input: AttachedCheckoutCustomer,
+  fallbackCountryCode: string,
+): AccountPaymentPayload['customer'] {
   if (input.customer_sync_status !== 'synced' && input.customer_sync_status !== 'pending_create') {
     throw new AccountPaymentInputError(
       `customer.customer_sync_status must be synced or pending_create; got ${String(input.customer_sync_status)}.`,
     );
   }
+
+  const taxNumber = input.tax_number === null
+    ? null
+    : normalizeTaxNumberForCountry(input.tax_number, fallbackCountryCode);
 
   return {
     address: null as AccountPaymentAddress | null,
@@ -140,7 +147,7 @@ function buildCustomer(input: AttachedCheckoutCustomer): AccountPaymentPayload['
     email: input.email,
     name: requireText(input.name, 'customer.name'),
     phone: input.phone,
-    tax_number: input.tax_number,
+    tax_number: taxNumber,
   };
 }
 
@@ -215,6 +222,7 @@ export function buildAccountPaymentPayload(
   const eventTimeIso = input.eventTimeDevice.toISOString();
   const businessDate = input.businessDate ?? eventTimeIso.slice(0, 10);
   const balanceUpdatedAt = input.customer.balance_updated_at ?? eventTimeIso;
+  const seller = buildSeller(input.seller);
 
   return {
     account_payment_uuid: input.accountPaymentUuid,
@@ -223,7 +231,7 @@ export function buildAccountPaymentPayload(
     cashier_name: requireText(input.operatorName, 'cashier_name'),
     currency_code: input.currency,
     currency_scale: scale,
-    customer: buildCustomer(input.customer),
+    customer: buildCustomer(input.customer, seller.tax_jurisdiction_country_code),
     event_time_device: eventTimeIso,
     local_balance_snapshot: computeBalanceSnapshot(input.customer, amount, balanceUpdatedAt, scale),
     notes: input.notes?.trim() ? input.notes.trim() : null,
@@ -245,7 +253,7 @@ export function buildAccountPaymentPayload(
       }
       : null,
     regime_extensions: null,
-    seller: buildSeller(input.seller),
+    seller,
     shift_id: requireText(input.shiftId, 'shift_id'),
     staleness: resolveStaleness(input),
     terminal_id: requireText(input.terminalId, 'terminal_id'),

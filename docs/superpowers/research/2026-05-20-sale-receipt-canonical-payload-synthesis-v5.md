@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-20
 **Author:** Controller
-**Status:** DRAFT — pending Codex round-5 → owner final sign-off → plan amendment.
+**Status:** LOCKED. Phase 1.5.2 amended §7 with the landed per-country tax-number table.
 **Supersedes:** v1, v2, v3, v4. All prior versions in `docs/superpowers/research/`.
 
 ---
@@ -390,7 +390,7 @@ All other Amended A1/A2/A3/A6 unchanged.
 ## 16. Status
 
 - v1, v2, v3, v4: superseded.
-- v5 (this doc): pending Codex round-5 → owner sign-off → plan amendment.
+- v5 (this doc): locked as the Phase 1 SALE_RECEIPT canonical contract; §7 amended by Phase 1.5.2 to replace the universal-only placeholder with the landed per-country tax-number table.
 
 ---
 
