@@ -20,8 +20,8 @@ return new class extends Migration
             $table->timestampsTz();
 
             $table->unique(['tenant_id', 'company_id', 'client_customer_uuid'], 'pos_customer_aliases_client_unique');
+            $table->unique(['tenant_id', 'client_customer_uuid'], 'pos_customer_aliases_tenant_client_unique');
             $table->index(['tenant_id', 'company_id', 'server_partner_id'], 'pos_customer_aliases_partner_idx');
-            $table->index(['tenant_id', 'client_customer_uuid'], 'pos_customer_aliases_tenant_client_idx');
         });
 
         if (DB::connection()->getDriverName() === 'pgsql') {

@@ -11,6 +11,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\PosCustomerAlias;
 use App\Modules\POS\Presentation\Resources\PosCustomerAliasResource;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -70,32 +71,84 @@ final class PosPendingCustomerController extends Controller
             ]);
         }
 
-        $alias = DB::transaction(function () use ($tenantId, $companyId, $clientCustomerUuid, $payload): PosCustomerAlias {
-            $partner = Partner::query()->create([
-                'tenant_id' => $tenantId,
-                'company_id' => $companyId,
-                'type' => PartnerType::Customer,
-                'name' => $payload['name'],
-                'phone' => $payload['phone'] ?? null,
-                'email' => $payload['email'] ?? null,
-                'tax_status' => PartnerTaxStatus::NON_REGISTERED,
-                'receivable_balance' => '0.0000',
-                'credit_balance' => '0.0000',
-                'payable_balance' => '0.0000',
-                'is_active' => true,
-            ]);
+        try {
+            $alias = DB::transaction(function () use ($tenantId, $companyId, $clientCustomerUuid, $payload): PosCustomerAlias {
+                $partner = Partner::query()->create([
+                    'tenant_id' => $tenantId,
+                    'company_id' => $companyId,
+                    'type' => PartnerType::Customer,
+                    'name' => $payload['name'],
+                    'phone' => $payload['phone'] ?? null,
+                    'email' => $payload['email'] ?? null,
+                    'tax_status' => PartnerTaxStatus::NON_REGISTERED,
+                    'receivable_balance' => '0.0000',
+                    'credit_balance' => '0.0000',
+                    'payable_balance' => '0.0000',
+                    'is_active' => true,
+                ]);
 
-            return PosCustomerAlias::query()->create([
-                'tenant_id' => $tenantId,
-                'company_id' => $companyId,
-                'client_customer_uuid' => $clientCustomerUuid,
-                'server_partner_id' => $partner->id,
-            ]);
-        });
+                return PosCustomerAlias::query()->create([
+                    'tenant_id' => $tenantId,
+                    'company_id' => $companyId,
+                    'client_customer_uuid' => $clientCustomerUuid,
+                    'server_partner_id' => $partner->id,
+                ]);
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isAliasUniqueViolation($exception)) {
+                throw $exception;
+            }
+
+            return $this->respondToExistingAlias($request, $tenantId, $companyId, $clientCustomerUuid);
+        }
 
         return response()->json([
             'data' => (new PosCustomerAliasResource($alias))->toArray($request),
         ], 201);
+    }
+
+    private function respondToExistingAlias(
+        Request $request,
+        string $tenantId,
+        string $companyId,
+        string $clientCustomerUuid,
+    ): JsonResponse {
+        $alias = PosCustomerAlias::query()
+            ->where('tenant_id', $tenantId)
+            ->where('client_customer_uuid', $clientCustomerUuid)
+            ->first();
+
+        if (! $alias instanceof PosCustomerAlias) {
+            return response()->json([
+                'error' => [
+                    'code' => 'POS_CUSTOMER_ALIAS_CONFLICT_UNRESOLVED',
+                    'message' => 'The pending customer alias conflict could not be resolved.',
+                ],
+            ], 409);
+        }
+
+        if ($alias->company_id !== $companyId) {
+            return response()->json([
+                'error' => [
+                    'code' => 'POS_CUSTOMER_ALIAS_COMPANY_CONFLICT',
+                    'message' => 'The pending customer UUID is already resolved for another company.',
+                ],
+            ], 409);
+        }
+
+        $partner = $this->findScopedPartner($tenantId, $companyId, $alias->server_partner_id);
+        if (! $partner instanceof Partner) {
+            return response()->json([
+                'error' => [
+                    'code' => 'POS_CUSTOMER_ALIAS_STALE',
+                    'message' => 'The pending customer alias no longer points to a customer in this company.',
+                ],
+            ], 409);
+        }
+
+        return response()->json([
+            'data' => (new PosCustomerAliasResource($alias))->toArray($request),
+        ]);
     }
 
     /**
@@ -122,9 +175,21 @@ final class PosPendingCustomerController extends Controller
         $partner = Partner::query()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
+            ->whereIn('type', [PartnerType::Customer, PartnerType::Both])
             ->whereKey($partnerId)
             ->first();
 
         return $partner;
+    }
+
+    private function isAliasUniqueViolation(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+
+        if (! in_array($sqlState, ['23000', '23505'], true)) {
+            return false;
+        }
+
+        return str_contains($exception->getMessage(), 'pos_customer_aliases');
     }
 }

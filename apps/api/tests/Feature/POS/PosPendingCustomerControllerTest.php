@@ -11,6 +11,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\PosCustomerAlias;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\Sanctum;
@@ -141,6 +142,40 @@ final class PosPendingCustomerControllerTest extends TestCase
         $response->assertJsonPath('error.code', 'POS_CUSTOMER_ALIAS_COMPANY_CONFLICT');
     }
 
+    public function test_pending_customer_alias_is_database_unique_per_tenant_client_uuid(): void
+    {
+        $clientUuid = '00000000-0000-4000-8000-000000000106';
+        $otherCompany = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+        ]);
+        $firstPartner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => PartnerType::Customer,
+        ]);
+        $secondPartner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'type' => PartnerType::Customer,
+        ]);
+
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'client_customer_uuid' => $clientUuid,
+            'server_partner_id' => $firstPartner->id,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'client_customer_uuid' => $clientUuid,
+            'server_partner_id' => $secondPartner->id,
+        ]);
+    }
+
     public function test_treasury_alias_lookup_can_resolve_server_partner_id_after_replay(): void
     {
         $clientUuid = '00000000-0000-4000-8000-000000000104';
@@ -163,6 +198,61 @@ final class PosPendingCustomerControllerTest extends TestCase
         $this->assertNull(
             PosCustomerAlias::resolveServerPartnerId($this->tenant->id, '00000000-0000-4000-8000-000000000999', $clientUuid),
         );
+    }
+
+    public function test_treasury_alias_lookup_rejects_stale_or_cross_company_partner_targets(): void
+    {
+        $crossCompanyClientUuid = '00000000-0000-4000-8000-000000000107';
+        $staleClientUuid = '00000000-0000-4000-8000-000000000108';
+        $supplierClientUuid = '00000000-0000-4000-8000-000000000109';
+        $otherCompany = Company::factory()->create([
+            'tenant_id' => $this->tenant->id,
+        ]);
+        $crossCompanyPartner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'type' => PartnerType::Customer,
+        ]);
+        $supplier = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => PartnerType::Supplier,
+        ]);
+
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'client_customer_uuid' => $crossCompanyClientUuid,
+            'server_partner_id' => $crossCompanyPartner->id,
+        ]);
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'client_customer_uuid' => $staleClientUuid,
+            'server_partner_id' => '00000000-0000-4000-8000-999999999999',
+        ]);
+        PosCustomerAlias::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'client_customer_uuid' => $supplierClientUuid,
+            'server_partner_id' => $supplier->id,
+        ]);
+
+        $this->assertNull(PosCustomerAlias::resolveServerPartnerId(
+            $this->tenant->id,
+            $this->company->id,
+            $crossCompanyClientUuid,
+        ));
+        $this->assertNull(PosCustomerAlias::resolveServerPartnerId(
+            $this->tenant->id,
+            $this->company->id,
+            $staleClientUuid,
+        ));
+        $this->assertNull(PosCustomerAlias::resolveServerPartnerId(
+            $this->tenant->id,
+            $this->company->id,
+            $supplierClientUuid,
+        ));
     }
 
     public function test_pending_customer_create_requires_a_contact_key(): void

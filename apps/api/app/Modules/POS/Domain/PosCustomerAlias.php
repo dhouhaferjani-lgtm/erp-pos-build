@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -70,6 +71,21 @@ final class PosCustomerAlias extends Model
             ->where('client_customer_uuid', $clientCustomerUuid)
             ->first();
 
-        return $alias?->server_partner_id;
+        if (! $alias instanceof self) {
+            return null;
+        }
+
+        $partnerExists = Partner::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereIn('type', [PartnerType::Customer, PartnerType::Both])
+            ->whereKey($alias->server_partner_id)
+            ->exists();
+
+        if (! $partnerExists) {
+            return null;
+        }
+
+        return $alias->server_partner_id;
     }
 }
