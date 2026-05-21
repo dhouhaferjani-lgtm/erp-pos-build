@@ -95,6 +95,45 @@ describe('QuarantineResolveAssistPage', () => {
     expect(await screen.findByText(/Parse failure resolved/i)).toBeInTheDocument()
   })
 
+  it('does not reintroduce omitted extra payload fields on submit', async () => {
+    mockBestEffortParseQuarantine.mockResolvedValue({
+      id: 'event-1',
+      source: 'fiscal_events',
+      fiscal_event_id: 'event-1',
+      event_type: 'SALE_RECEIPT',
+      parsed: {
+        total: '5.350',
+        seller: { tax_number: '1234567AM000' },
+      },
+      defects: [
+        {
+          path: 'payload.legacy_hash',
+          code: 'payload_extra_field',
+          message: 'Payload field is not part of the canonical contract.',
+        },
+      ],
+    })
+    mockResolveParseFailure.mockResolvedValue({ id: 'event-1', status: 'resolved' })
+
+    const user = userEvent.setup()
+    renderWithProviders(<QuarantineResolveAssistPage />)
+
+    await user.type(screen.getByLabelText(/Quarantine or fiscal event id/i), 'event-1')
+    await user.click(screen.getByRole('button', { name: /Parse/i }))
+
+    expect(await screen.findByText('payload.legacy_hash')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Corrected value for payload.legacy_hash/i)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Submit correction/i }))
+
+    await waitFor(() => {
+      expect(mockResolveParseFailure).toHaveBeenCalled()
+    })
+    expect(mockResolveParseFailure.mock.calls[0]?.[1]).toEqual({
+      total: '5.350',
+      seller: { tax_number: '1234567AM000' },
+    })
+  })
+
   it('shows an error message when parsing fails', async () => {
     mockBestEffortParseQuarantine.mockRejectedValue(new Error('not found'))
 

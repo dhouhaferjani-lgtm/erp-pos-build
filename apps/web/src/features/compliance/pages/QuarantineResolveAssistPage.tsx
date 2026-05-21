@@ -29,7 +29,7 @@ export function QuarantineResolveAssistPage() {
   )
 
   const editableDefects = useMemo(
-    () => result?.defects.filter((defect) => defect.path.startsWith('payload.')) ?? [],
+    () => result?.defects.filter(isEditablePayloadDefect) ?? [],
     [result?.defects],
   )
 
@@ -212,10 +212,14 @@ function stringifyEditValue(value: unknown): string {
 function initialDefectEdits(result: BestEffortParseResponse): Record<string, string> {
   const initialEdits: Record<string, string> = {}
   for (const defect of result.defects) {
-    if (!defect.path.startsWith('payload.')) continue
+    if (!isEditablePayloadDefect(defect)) continue
     initialEdits[defect.path] = stringifyEditValue(valueAtPayloadPath(result.parsed, defect.path))
   }
   return initialEdits
+}
+
+function isEditablePayloadDefect(defect: { path: string; code: string }): boolean {
+  return defect.path.startsWith('payload.') && defect.code !== 'payload_extra_field'
 }
 
 function valueAtPayloadPath(payload: Record<string, unknown>, defectPath: string): unknown {
