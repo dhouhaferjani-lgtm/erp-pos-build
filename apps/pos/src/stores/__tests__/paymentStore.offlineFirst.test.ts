@@ -72,7 +72,7 @@ describe('paymentStore offline-first cash checkout', () => {
         id: 'company-1',
         name: 'Test Co',
         legalName: 'Test SA',
-        tax_id: 'FR123456789',
+        tax_id: '123456789',
         countryCode: 'FR',
         address_street: '1 Rue Test',
         address_city: 'Paris',

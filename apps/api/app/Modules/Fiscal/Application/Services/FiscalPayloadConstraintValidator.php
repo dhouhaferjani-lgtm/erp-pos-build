@@ -53,8 +53,9 @@ use RuntimeException;
  *       - N-03: TRAINING-flag coupling invariant —
  *         `(invoice_type_code === 'TRAINING') ⟺ training_flag`
  *         (`payload_training_flag_mismatch`).
- *     * Tax-number universal pattern: `^[A-Za-z0-9 \-/.]{4,40}$` + non-empty
- *       + no control chars + trimmed. Per-country strict regex DEFERRED.
+ *     * Tax-number validation: universal baseline
+ *       `^[A-Za-z0-9 \-/.]{4,40}$` + country-specific strict regex
+ *       for FR / TN / SA / DE / IT (Phase 1.5.2).
  *     * tax_jurisdiction_country_code: ISO 3166-1 alpha-2 (`^[A-Z]{2}$`).
  *   - CHAIN_BREAK_DETECTED — unchanged from v1.
  *   - CHAIN_RESTART — unchanged from v1.
@@ -115,13 +116,36 @@ final class FiscalPayloadConstraintValidator
     private const ISO_4217 = '/^[A-Z]{3}$/D';
 
     /**
-     * Universal tax-number regex (synthesis v5 §7 — per-country strict
-     * regex deferred to Phase 1.5).
+     * Universal tax-number baseline (synthesis v5 §7).
      *
      * Length 4-40, characters [A-Za-z0-9 \-/.]. The validator additionally
-     * rejects empty / control-char / untrimmed values.
+     * rejects empty / control-char / untrimmed values before applying the
+     * country-specific Phase 1.5.2 regex table below.
      */
     private const TAX_NUMBER_UNIVERSAL = '/^[A-Za-z0-9 \-\/.]{4,40}$/D';
+
+    /**
+     * Phase 1.5.2 seller/customer tax-number regex table.
+     *
+     * TN accepts slash-separated input after compact normalization
+     * (`1234567/A/M/000` -> `1234567AM000`) but the canonical producer
+     * emits the compact form.
+     *
+     * @var array<string, string>
+     */
+    private const TAX_NUMBER_PATTERNS = [
+        'FR' => '/^([0-9]{9}|[0-9]{14})$/D',
+        'TN' => '/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/D',
+        'SA' => '/^3[0-9]{12}03$/D',
+        'DE' => '/^DE[0-9]{9}$/D',
+        'IT' => '/^[0-9]{11}$/D',
+    ];
+
+    /** FR buyer TVA intracommunautaire extension. */
+    private const FR_BUYER_TVA_INTRACOM = '/^FR[0-9]{11}$/D';
+
+    /** IT codice fiscale belongs in `buyer.codice_fiscale`, not `tax_number`. */
+    private const IT_BUYER_CODICE_FISCALE = '/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/D';
 
     /** Phase-1 fixed quantity scale per synthesis v5 §6.B. */
     private const QUANTITY_SCALE = 3;
@@ -476,8 +500,8 @@ final class FiscalPayloadConstraintValidator
         $this->assertBool($payload, 'training_flag');
         $this->assertEnum($payload, 'treasury_allocation_policy', self::ACCOUNT_PAYMENT_ALLOCATION_POLICIES);
 
-        $this->validateSeller($payload);
-        $this->validateAccountPaymentCustomer($payload['customer'] ?? null);
+        $sellerCountryCode = $this->validateSeller($payload);
+        $this->validateAccountPaymentCustomer($payload['customer'] ?? null, $sellerCountryCode);
         $this->validateAccountPaymentPayment($payload['payment'] ?? null, $moneyRegex, $scale, (bool) $payload['training_flag']);
         $this->validateAccountPaymentBalanceSnapshot($payload['local_balance_snapshot'] ?? null, $moneyRegex, $scale);
         $this->validateAccountPaymentStaleness($payload['staleness'] ?? null);
@@ -485,7 +509,7 @@ final class FiscalPayloadConstraintValidator
         $this->validateNullableAssoc($payload['regime_extensions'] ?? null, 'regime_extensions');
     }
 
-    private function validateAccountPaymentCustomer(mixed $customer): void
+    private function validateAccountPaymentCustomer(mixed $customer, string $sellerCountryCode): void
     {
         $row = $this->requireAssocObject($customer, 'customer');
         $expected = ['address', 'customer_category', 'customer_id', 'customer_sync_status', 'email', 'name', 'phone', 'tax_number'];
@@ -496,10 +520,15 @@ final class FiscalPayloadConstraintValidator
         $this->assertOptionalNullableString($row, 'phone', 'customer.phone');
         $this->assertOptionalNullableString($row, 'email', 'customer.email');
         $this->assertOptionalNullableString($row, 'customer_category', 'customer.customer_category');
-        if (($row['tax_number'] ?? null) !== null) {
-            $this->assertTaxNumber($row['tax_number'], 'customer.tax_number');
-        }
         $this->validateAddress($row['address'] ?? null, 'customer.address', required: false);
+        if (($row['tax_number'] ?? null) !== null) {
+            $this->assertTaxNumberForCountry(
+                $row['tax_number'],
+                $this->countryCodeFromAddress($row['address'] ?? null) ?? $sellerCountryCode,
+                'customer.tax_number',
+                buyer: true,
+            );
+        }
     }
 
     private function validateAccountPaymentPayment(mixed $payment, string $moneyRegex, int $scale, bool $training): void
@@ -602,7 +631,7 @@ final class FiscalPayloadConstraintValidator
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function validateSeller(array $payload): void
+    private function validateSeller(array $payload): string
     {
         $seller = $payload['seller'] ?? null;
         if (! is_array($seller) || (count($seller) > 0 && array_is_list($seller))) {
@@ -628,9 +657,11 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_seller_tax_jurisdiction_invalid:must be ISO 3166-1 alpha-2; got '.var_export($jurisdiction, true));
         }
 
-        $this->assertTaxNumber($seller['tax_number'] ?? null, 'seller.tax_number');
+        $this->assertTaxNumberForCountry($seller['tax_number'] ?? null, $jurisdiction, 'seller.tax_number');
 
         $this->validateAddress($seller['address'] ?? null, 'seller.address', required: true);
+
+        return $jurisdiction;
     }
 
     /**
@@ -665,11 +696,17 @@ final class FiscalPayloadConstraintValidator
             }
         }
 
-        if (($buyer['tax_number'] ?? null) !== null) {
-            $this->assertTaxNumber($buyer['tax_number'], 'buyer.tax_number');
+        $this->validateAddress($buyer['address'] ?? null, 'buyer.address', required: false);
+        $buyerCountryCode = $this->countryCodeFromAddress($buyer['address'] ?? null)
+            ?? $this->sellerCountryCodeFromPayload($payload);
+
+        if (($buyer['codice_fiscale'] ?? null) !== null) {
+            $this->assertBuyerCodiceFiscale($buyer['codice_fiscale']);
         }
 
-        $this->validateAddress($buyer['address'] ?? null, 'buyer.address', required: false);
+        if (($buyer['tax_number'] ?? null) !== null) {
+            $this->assertTaxNumberForCountry($buyer['tax_number'], $buyerCountryCode, 'buyer.tax_number', buyer: true);
+        }
     }
 
     /**
@@ -1360,11 +1397,87 @@ final class FiscalPayloadConstraintValidator
         }
     }
 
+    private function assertTaxNumberForCountry(mixed $value, string $countryCode, string $path, bool $buyer = false): void
+    {
+        $taxNumber = $this->assertTaxNumberBaseline($value, $path);
+        $normalized = $this->normalizeTaxNumberForCountry($taxNumber, $countryCode);
+
+        $patterns = [];
+        $countryPattern = self::TAX_NUMBER_PATTERNS[$countryCode] ?? null;
+        if ($countryPattern !== null) {
+            $patterns[] = $countryPattern;
+        }
+        if ($buyer && $countryCode === 'FR') {
+            $patterns[] = self::FR_BUYER_TVA_INTRACOM;
+        }
+
+        if ($patterns === []) {
+            return;
+        }
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $normalized) === 1) {
+                return;
+            }
+        }
+
+        throw new RuntimeException(sprintf(
+            'payload_tax_number_format_mismatch:field=%s:country=%s:value=%s',
+            $path,
+            $countryCode,
+            $taxNumber,
+        ));
+    }
+
+    private function assertBuyerCodiceFiscale(mixed $value): void
+    {
+        if (! is_string($value) || $value === '') {
+            throw new RuntimeException('payload_buyer_codice_fiscale_invalid:must be non-empty string or null; got '.var_export($value, true));
+        }
+        if (preg_match(self::IT_BUYER_CODICE_FISCALE, $value) !== 1) {
+            throw new RuntimeException(
+                'payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value='.$value
+            );
+        }
+    }
+
+    private function normalizeTaxNumberForCountry(string $value, string $countryCode): string
+    {
+        if ($countryCode === 'TN') {
+            return str_replace('/', '', $value);
+        }
+
+        return $value;
+    }
+
     /**
-     * Universal tax_number validator (synthesis v5 §7) — per-country
-     * strict regex DEFERRED to Phase 1.5.
+     * @param  array<string, mixed>  $payload
      */
-    private function assertTaxNumber(mixed $value, string $path): void
+    private function sellerCountryCodeFromPayload(array $payload): string
+    {
+        $seller = $payload['seller'] ?? null;
+        if (is_array($seller) && is_string($seller['tax_jurisdiction_country_code'] ?? null)) {
+            return $seller['tax_jurisdiction_country_code'];
+        }
+
+        return '';
+    }
+
+    private function countryCodeFromAddress(mixed $address): ?string
+    {
+        if (is_array($address) && is_string($address['country_code'] ?? null)) {
+            return $address['country_code'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Universal tax_number baseline validator (synthesis v5 §7).
+     *
+     * @return non-empty-string
+     */
+    private function assertTaxNumberBaseline(mixed $value, string $path): string
     {
         if (! is_string($value)) {
             throw new RuntimeException(sprintf(
@@ -1406,6 +1519,8 @@ final class FiscalPayloadConstraintValidator
                 var_export($value, true),
             ));
         }
+
+        return $value;
     }
 
     /**

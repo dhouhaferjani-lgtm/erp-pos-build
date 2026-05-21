@@ -158,7 +158,7 @@ function validSaleReceiptPayload(): Record<string, unknown> {
       },
       name: 'Cafe Tunis',
       tax_jurisdiction_country_code: 'TN',
-      tax_number: '1234567A/B/C/000',
+      tax_number: '1234567AM000',
     },
     shift_id: SR_SHIFT_UUID,
     subtotal: '10.000',
@@ -1145,6 +1145,73 @@ d('FiscalEventEngine.append', () => {
     };
     await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
       /payload_tax_number_invalid/,
+    );
+  });
+
+  it('Phase 1.5.2 — rejects FR seller tax numbers that only match the old universal pattern', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['seller'] = {
+      ...(payload['seller'] as Record<string, unknown>),
+      tax_jurisdiction_country_code: 'FR',
+      tax_number: 'FR12345678901',
+      address: {
+        ...((payload['seller'] as Record<string, unknown>)['address'] as Record<string, unknown>),
+        country_code: 'FR',
+      },
+    };
+
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_tax_number_format_mismatch:field=seller\.tax_number:country=FR:value=FR12345678901/,
+    );
+  });
+
+  it('Phase 1.5.2 — accepts slash-separated TN seller tax numbers at the device boundary', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['seller'] = {
+      ...(payload['seller'] as Record<string, unknown>),
+      tax_number: '1234567/A/M/000',
+    };
+
+    const event = await engine.append(adapter, saleReceiptRequest({ payload }));
+
+    expect(event.event_type).toBe('SALE_RECEIPT');
+  });
+
+  it('Phase 1.5.2 — rejects invalid IT buyer codice fiscale', async () => {
+    const payload = validSaleReceiptPayload();
+    payload['buyer'] = {
+      address: {
+        city: 'Rome',
+        country_code: 'IT',
+        postal_code: '00100',
+        street: 'Via Roma 1',
+      },
+      codice_fiscale: 'RSSMRA80A01H50',
+      contact_id: null,
+      customer_id: null,
+      name: 'Mario Rossi',
+      tax_number: null,
+    };
+
+    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
+      /payload_buyer_codice_fiscale_format_mismatch:field=buyer\.codice_fiscale:value=RSSMRA80A01H50/,
+    );
+  });
+
+  it('Phase 1.5.2 — rejects ACCOUNT_PAYMENT seller tax numbers by country', async () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.seller = {
+      ...payload.seller,
+      tax_jurisdiction_country_code: 'SA',
+      tax_number: '212345678901203',
+      address: {
+        ...payload.seller.address,
+        country_code: 'SA',
+      },
+    };
+
+    await expect(engine.append(adapter, accountPaymentRequest({ payload }))).rejects.toThrow(
+      /payload_tax_number_format_mismatch:field=seller\.tax_number:country=SA:value=212345678901203/,
     );
   });
 

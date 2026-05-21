@@ -56,7 +56,7 @@ function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
     currency: 'EUR',
     seller: {
       name: 'Test SA',
-      taxNumber: 'FR123456789',
+      taxNumber: '123456789',
       countryCode: 'FR',
       street: '1 Rue Test',
       city: 'Paris',

@@ -239,7 +239,7 @@ export interface BuyerBlockInput {
   /** POS-local mirror reference; non-authoritative once the receipt is sealed. */
   readonly customer_id: string | null;
   readonly name: string | null;
-  /** Optional B2C tax number — universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  /** Optional B2C tax number — universal baseline plus Phase 1.5.2 country regex table. */
   readonly tax_number: string | null;
 }
 
@@ -249,7 +249,7 @@ export interface SellerBlockInput {
   readonly name: string;
   /** ISO 3166-1 alpha-2. */
   readonly tax_jurisdiction_country_code: string;
-  /** Universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  /** Universal baseline plus Phase 1.5.2 country regex table. */
   readonly tax_number: string;
 }
 
@@ -899,12 +899,23 @@ const ISO_4217 = /^[A-Z]{3}$/;
 const ISO_3166_ALPHA_2 = /^[A-Z]{2}$/;
 
 /**
- * Universal tax-number regex per synthesis v5 §7 — per-country strict
- * regex deferred to Phase 1.5. Length 4-40 over `[A-Za-z0-9 \-/.]`.
- * Additionally rejected at the validator: empty, control chars,
- * leading/trailing whitespace.
+ * Universal tax-number baseline per synthesis v5 §7. Length 4-40 over
+ * `[A-Za-z0-9 \-/.]`. Country-specific Phase 1.5.2 regexes run after
+ * this baseline.
  */
 const TAX_NUMBER_UNIVERSAL = /^[A-Za-z0-9 \-/.]{4,40}$/;
+
+const TAX_NUMBER_PATTERNS: Readonly<Record<string, RegExp>> = {
+  FR: /^([0-9]{9}|[0-9]{14})$/,
+  TN: /^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/,
+  SA: /^3[0-9]{12}03$/,
+  DE: /^DE[0-9]{9}$/,
+  IT: /^[0-9]{11}$/,
+};
+
+const FR_BUYER_TVA_INTRACOM = /^FR[0-9]{11}$/;
+
+const IT_BUYER_CODICE_FISCALE = /^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/;
 
 /**
  * ISO 8601 with millisecond precision + tz (`Z` or `±HH:MM`).
@@ -1161,8 +1172,8 @@ function validateAccountPaymentPayload(payload: unknown): void {
   const trainingFlag = assertBool(p, 'training_flag');
   assertEnum(p, 'treasury_allocation_policy', ACCOUNT_PAYMENT_ALLOCATION_POLICIES);
 
-  validateSeller(p);
-  validateAccountPaymentCustomer(p['customer']);
+  const sellerCountryCode = validateSeller(p);
+  validateAccountPaymentCustomer(p['customer'], sellerCountryCode);
   validateAccountPaymentPayment(p['payment'], money, scale, trainingFlag);
   validateAccountPaymentBalanceSnapshot(p['local_balance_snapshot'], money, scale);
   validateAccountPaymentStaleness(p['staleness']);
@@ -1232,7 +1243,7 @@ const ACCOUNT_PAYMENT_REFERENCES_KEYS = [
   'server_customer_alias_id',
 ] as const;
 
-function validateSeller(p: Record<string, unknown>): void {
+function validateSeller(p: Record<string, unknown>): string {
   const seller = p['seller'];
   if (!isPlainObject(seller)) {
     throw new FiscalEventPayloadValidationError(
@@ -1250,8 +1261,10 @@ function validateSeller(p: Record<string, unknown>): void {
     );
   }
 
-  assertTaxNumber(seller['tax_number'], 'seller.tax_number');
+  assertTaxNumberForCountry(seller['tax_number'], jurisdiction, 'seller.tax_number');
   validateAddress(seller['address'], 'seller.address', /* required */ true);
+
+  return jurisdiction;
 }
 
 function validateBuyer(p: Record<string, unknown>): void {
@@ -1275,11 +1288,17 @@ function validateBuyer(p: Record<string, unknown>): void {
     }
   }
 
-  if (buyer['tax_number'] !== null && buyer['tax_number'] !== undefined) {
-    assertTaxNumber(buyer['tax_number'], 'buyer.tax_number');
+  validateAddress(buyer['address'], 'buyer.address', /* required */ false);
+  const buyerCountryCode =
+    countryCodeFromAddress(buyer['address']) ?? sellerCountryCodeFromPayload(p);
+
+  if (buyer['codice_fiscale'] !== null && buyer['codice_fiscale'] !== undefined) {
+    assertBuyerCodiceFiscale(buyer['codice_fiscale']);
   }
 
-  validateAddress(buyer['address'], 'buyer.address', /* required */ false);
+  if (buyer['tax_number'] !== null && buyer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(buyer['tax_number'], buyerCountryCode, 'buyer.tax_number', true);
+  }
 }
 
 function validateAddress(address: unknown, path: string, required: boolean): void {
@@ -1308,7 +1327,7 @@ function validateAddress(address: unknown, path: string, required: boolean): voi
   }
 }
 
-function validateAccountPaymentCustomer(customer: unknown): void {
+function validateAccountPaymentCustomer(customer: unknown, sellerCountryCode: string): void {
   if (!isPlainObject(customer)) {
     throw new FiscalEventPayloadValidationError(
       `payload_object_invalid:customer must be object; got ${typeofTag(customer)}`,
@@ -1325,10 +1344,15 @@ function validateAccountPaymentCustomer(customer: unknown): void {
   assertOptionalNonEmptyStringAt(customer, 'phone', 'customer.phone');
   assertOptionalNonEmptyStringAt(customer, 'email', 'customer.email');
   assertOptionalNonEmptyStringAt(customer, 'customer_category', 'customer.customer_category');
-  if (customer['tax_number'] !== null && customer['tax_number'] !== undefined) {
-    assertTaxNumber(customer['tax_number'], 'customer.tax_number');
-  }
   validateAddress(customer['address'], 'customer.address', /* required */ false);
+  if (customer['tax_number'] !== null && customer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(
+      customer['tax_number'],
+      countryCodeFromAddress(customer['address']) ?? sellerCountryCode,
+      'customer.tax_number',
+      true,
+    );
+  }
 }
 
 function validateAccountPaymentPayment(
@@ -1925,7 +1949,62 @@ function assertMoneyStringAt(
   }
 }
 
-function assertTaxNumber(value: unknown, path: string): void {
+function assertTaxNumberForCountry(
+  value: unknown,
+  countryCode: string,
+  path: string,
+  buyer = false,
+): void {
+  const taxNumber = assertTaxNumberBaseline(value, path);
+  const normalized = normalizeTaxNumberForCountry(taxNumber, countryCode);
+  const patterns: RegExp[] = [];
+  const countryPattern = TAX_NUMBER_PATTERNS[countryCode];
+  if (countryPattern) patterns.push(countryPattern);
+  if (buyer && countryCode === 'FR') patterns.push(FR_BUYER_TVA_INTRACOM);
+
+  if (patterns.length === 0) return;
+
+  if (patterns.some((pattern) => pattern.test(normalized))) return;
+
+  throw new FiscalEventPayloadValidationError(
+    `payload_tax_number_format_mismatch:field=${path}:country=${countryCode}:value=${taxNumber}`,
+  );
+}
+
+function assertBuyerCodiceFiscale(value: unknown): void {
+  if (typeof value !== 'string' || value === '') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_codice_fiscale_invalid:must be non-empty string or null; got ${jsonOrType(value)}`,
+    );
+  }
+  if (!IT_BUYER_CODICE_FISCALE.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value=${value}`,
+    );
+  }
+}
+
+function normalizeTaxNumberForCountry(value: string, countryCode: string): string {
+  if (countryCode === 'TN') return value.replace(/\//g, '');
+  return value;
+}
+
+function sellerCountryCodeFromPayload(payload: Record<string, unknown>): string {
+  const seller = payload['seller'];
+  if (isPlainObject(seller) && typeof seller['tax_jurisdiction_country_code'] === 'string') {
+    return seller['tax_jurisdiction_country_code'];
+  }
+  return '';
+}
+
+function countryCodeFromAddress(address: unknown): string | null {
+  if (isPlainObject(address) && typeof address['country_code'] === 'string') {
+    return address['country_code'];
+  }
+  return null;
+}
+
+function assertTaxNumberBaseline(value: unknown, path: string): string {
   if (typeof value !== 'string') {
     throw new FiscalEventPayloadValidationError(
       `payload_tax_number_invalid:${path} must be string; got ${typeofTag(value)}`,
@@ -1956,6 +2035,8 @@ function assertTaxNumber(value: unknown, path: string): void {
       `payload_tax_number_invalid:${path} must match ^[A-Za-z0-9 \\-/.]{4,40}$; got ${jsonOrType(value)}`,
     );
   }
+
+  return value;
 }
 
 function validateNullableAssoc(value: unknown, path: string): void {

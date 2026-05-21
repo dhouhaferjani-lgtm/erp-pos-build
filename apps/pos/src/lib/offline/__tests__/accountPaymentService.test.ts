@@ -75,7 +75,7 @@ const baseInput: CreateAccountPaymentInput = {
   currency: 'TND',
   seller: {
     name: 'AutoERP Demo SARL',
-    taxNumber: '1234567A/A/A/000',
+    taxNumber: '1234567AM000',
     countryCode: 'TN',
     street: '1 Avenue Habib Bourguiba',
     city: 'Tunis',
@@ -191,6 +191,34 @@ describe('accountPaymentService', () => {
       mirror_last_synced_at: '2026-05-21T10:10:00.000Z',
       staleness_reason: 'older_than_threshold',
     });
+  });
+
+  it('normalizes TN seller tax numbers to compact canonical form', () => {
+    const payload = buildAccountPaymentPayload({
+      ...baseInput,
+      accountPaymentUuid: '55555555-5555-4555-8555-555555555555',
+      eventTimeDevice: new Date('2026-05-21T10:15:30.000Z'),
+      seller: {
+        ...baseInput.seller,
+        taxNumber: '1234567/A/M/000',
+      },
+    });
+
+    expect(payload.seller.tax_number).toBe('1234567AM000');
+  });
+
+  it('normalizes TN customer tax numbers to compact canonical form', () => {
+    const payload = buildAccountPaymentPayload({
+      ...baseInput,
+      accountPaymentUuid: '55555555-5555-4555-8555-555555555555',
+      eventTimeDevice: new Date('2026-05-21T10:15:30.000Z'),
+      customer: {
+        ...baseInput.customer,
+        tax_number: '7654321/B/M/000',
+      },
+    });
+
+    expect(payload.customer.tax_number).toBe('7654321BM000');
   });
 
   it('rejects a customer row from another company', () => {

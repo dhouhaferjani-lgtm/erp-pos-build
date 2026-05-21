@@ -720,7 +720,7 @@ final class StrictCanonicalParserTest extends TestCase
                 'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
                 'name' => 'Default Seller',
                 'tax_jurisdiction_country_code' => 'TN',
-                'tax_number' => '1234567A/A/A/000',
+                'tax_number' => '1234567AM000',
             ],
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => '5.000',
@@ -792,7 +792,7 @@ final class StrictCanonicalParserTest extends TestCase
                 'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
                 'name' => 'Default Seller',
                 'tax_jurisdiction_country_code' => 'TN',
-                'tax_number' => '1234567A/A/A/000',
+                'tax_number' => '1234567AM000',
             ],
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'staleness' => [
