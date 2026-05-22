@@ -339,6 +339,30 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid/', $payload);
     }
 
+    public function test_account_charge_accepts_production_credit_limit_override_evidence(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'credit_available_after' => '0.000',
+                'decision' => 'approved_with_override',
+                'limit_exceeded' => true,
+                'override_evidence' => [
+                    'approval_event_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                    'approval_scope' => 'credit_limit_override',
+                    'override_event_id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                    'policy_version' => 'phase3-default-v1',
+                    'target_account_status' => 'active',
+                    'target_amount' => '119.000',
+                    'target_customer_id' => '55555555-5555-4555-8555-555555555555',
+                ],
+            ],
+        ]);
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
+        $this->addToAssertionCount(1);
+    }
+
     public function test_account_charge_rejects_amount_balance_mismatch(): void
     {
         $payload = $this->canonicalAccountChargePayload();
@@ -1513,6 +1537,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'decision' => 'approved',
                 'limit_exceeded' => false,
                 'mirror_stale_at_authoring' => false,
+                'override_evidence' => null,
                 'policy_version' => 'phase3-default-v1',
                 'stale_policy_action' => 'allow',
                 'warnings' => [],

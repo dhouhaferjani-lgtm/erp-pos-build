@@ -100,13 +100,24 @@ export interface AccountChargeBalanceSnapshot {
   receivable_balance_before: string;
 }
 
+export interface AccountChargeOverrideEvidence {
+  approval_event_id: string;
+  approval_scope: 'credit_limit_override' | 'account_status_override';
+  override_event_id: string;
+  policy_version: string;
+  target_account_status: 'active' | 'suspended' | 'closed' | 'disputed';
+  target_amount: string;
+  target_customer_id: string;
+}
+
 export interface AccountChargeCreditDecision {
   credit_available_after: string | null;
   credit_available_before: string | null;
   credit_limit: string | null;
-  decision: 'approved';
+  decision: 'approved' | 'approved_with_override';
   limit_exceeded: boolean;
   mirror_stale_at_authoring: boolean;
+  override_evidence: AccountChargeOverrideEvidence | null;
   policy_version: string;
   stale_policy_action: 'allow' | 'warn' | 'block';
   warnings: string[];
@@ -189,6 +200,7 @@ export function goldenAccountChargePayload(): AccountChargePayload {
       decision: 'approved',
       limit_exceeded: false,
       mirror_stale_at_authoring: false,
+      override_evidence: null,
       policy_version: 'phase3-default-v1',
       stale_policy_action: 'allow',
       warnings: [],

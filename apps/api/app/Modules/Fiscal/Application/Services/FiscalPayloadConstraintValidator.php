@@ -817,16 +817,19 @@ final class FiscalPayloadConstraintValidator
             'decision',
             'limit_exceeded',
             'mirror_stale_at_authoring',
+            'override_evidence',
             'policy_version',
             'stale_policy_action',
             'warnings',
         ];
         $this->assertExactObjectKeys($row, $expected, 'credit_decision');
-        $this->assertEnum($row, 'decision', ['approved'], 'credit_decision.decision');
+        $this->assertEnum($row, 'decision', ['approved', 'approved_with_override'], 'credit_decision.decision');
+        $decision = $row['decision'];
         $this->assertBool($row, 'limit_exceeded', 'credit_decision.limit_exceeded');
         $this->assertBool($row, 'mirror_stale_at_authoring', 'credit_decision.mirror_stale_at_authoring');
         $this->assertNonEmptyString($row, 'policy_version', 'credit_decision.policy_version');
         $this->assertEnum($row, 'stale_policy_action', self::ACCOUNT_CHARGE_STALE_POLICY_ACTIONS, 'credit_decision.stale_policy_action');
+        $this->validateAccountChargeOverrideEvidence($row['override_evidence'], $decision, $moneyRegex, $scale);
         foreach (['credit_available_after', 'credit_available_before', 'credit_limit'] as $field) {
             if ($row[$field] !== null) {
                 $this->assertMoneyString($row, $field, $moneyRegex, $scale, 'credit_decision.'.$field);
@@ -849,9 +852,39 @@ final class FiscalPayloadConstraintValidator
         if ($warnings !== $sortedWarnings) {
             throw new RuntimeException('payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes');
         }
-        if (! $training && $row['limit_exceeded'] === true) {
+        if (! $training && $row['limit_exceeded'] === true && $decision !== 'approved_with_override') {
             throw new RuntimeException('payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true');
         }
+    }
+
+    private function validateAccountChargeOverrideEvidence(mixed $evidence, string $decision, string $moneyRegex, int $scale): void
+    {
+        if ($decision === 'approved') {
+            if ($evidence !== null) {
+                throw new RuntimeException('payload_account_charge_credit_decision_invalid:override_evidence must be null for approved decisions');
+            }
+
+            return;
+        }
+
+        $row = $this->requireAssocObject($evidence, 'credit_decision.override_evidence');
+        $expected = [
+            'approval_event_id',
+            'approval_scope',
+            'override_event_id',
+            'policy_version',
+            'target_account_status',
+            'target_amount',
+            'target_customer_id',
+        ];
+        $this->assertExactObjectKeys($row, $expected, 'credit_decision.override_evidence');
+        $this->assertUuid($row, 'approval_event_id', 'credit_decision.override_evidence.approval_event_id');
+        $this->assertEnum($row, 'approval_scope', ['credit_limit_override', 'account_status_override'], 'credit_decision.override_evidence.approval_scope');
+        $this->assertUuid($row, 'override_event_id', 'credit_decision.override_evidence.override_event_id');
+        $this->assertNonEmptyString($row, 'policy_version', 'credit_decision.override_evidence.policy_version');
+        $this->assertEnum($row, 'target_account_status', ['active', 'suspended', 'closed', 'disputed'], 'credit_decision.override_evidence.target_account_status');
+        $this->assertMoneyString($row, 'target_amount', $moneyRegex, $scale, 'credit_decision.override_evidence.target_amount');
+        $this->assertUuid($row, 'target_customer_id', 'credit_decision.override_evidence.target_customer_id');
     }
 
     private function validateAccountChargeTotals(mixed $totals, string $moneyRegex, int $scale): void

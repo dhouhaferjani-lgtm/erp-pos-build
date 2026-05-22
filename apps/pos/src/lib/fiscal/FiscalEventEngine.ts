@@ -1359,9 +1359,19 @@ const ACCOUNT_CHARGE_CREDIT_DECISION_KEYS = [
   'decision',
   'limit_exceeded',
   'mirror_stale_at_authoring',
+  'override_evidence',
   'policy_version',
   'stale_policy_action',
   'warnings',
+] as const;
+const ACCOUNT_CHARGE_OVERRIDE_EVIDENCE_KEYS = [
+  'approval_event_id',
+  'approval_scope',
+  'override_event_id',
+  'policy_version',
+  'target_account_status',
+  'target_amount',
+  'target_customer_id',
 ] as const;
 const ACCOUNT_CHARGE_TERMS_KEYS = [
   'due_date',
@@ -1446,7 +1456,7 @@ function validateAccountChargeCreditDecision(
       assertMoneyStringAt(decision, field, money, scale, `credit_decision.${field}`);
     }
   }
-  assertEnum(decision, 'decision', ['approved'] as const);
+  const decisionValue = assertEnum(decision, 'decision', ['approved', 'approved_with_override'] as const);
   const limitExceeded = assertBoolAt(decision, 'limit_exceeded', 'credit_decision.limit_exceeded');
   assertBoolAt(
     decision,
@@ -1455,6 +1465,7 @@ function validateAccountChargeCreditDecision(
   );
   assertNonEmptyStringAt(decision, 'policy_version', 'credit_decision.policy_version');
   assertEnum(decision, 'stale_policy_action', ['allow', 'warn', 'block'] as const);
+  validateAccountChargeOverrideEvidence(decision['override_evidence'], decisionValue, money, scale);
   const warnings = decision['warnings'];
   if (!Array.isArray(warnings)) {
     throw new FiscalEventPayloadValidationError(
@@ -1479,11 +1490,53 @@ function validateAccountChargeCreditDecision(
       'payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes',
     );
   }
-  if (!training && limitExceeded) {
+  if (!training && limitExceeded && decisionValue !== 'approved_with_override') {
     throw new FiscalEventPayloadValidationError(
       'payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true',
     );
   }
+}
+
+function validateAccountChargeOverrideEvidence(
+  evidence: unknown,
+  decision: 'approved' | 'approved_with_override',
+  money: RegExp,
+  scale: number,
+): void {
+  if (decision === 'approved') {
+    if (evidence !== null) {
+      throw new FiscalEventPayloadValidationError(
+        'payload_account_charge_credit_decision_invalid:override_evidence must be null for approved decisions',
+      );
+    }
+    return;
+  }
+
+  if (!isPlainObject(evidence)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:credit_decision.override_evidence must be object; got ${typeofTag(evidence)}`,
+    );
+  }
+  assertExactKeySetWithPath(
+    evidence,
+    ACCOUNT_CHARGE_OVERRIDE_EVIDENCE_KEYS,
+    'credit_decision.override_evidence',
+  );
+  assertUuidAt(evidence, 'approval_event_id', 'credit_decision.override_evidence.approval_event_id');
+  assertEnum(
+    evidence,
+    'approval_scope',
+    ['credit_limit_override', 'account_status_override'] as const,
+  );
+  assertUuidAt(evidence, 'override_event_id', 'credit_decision.override_evidence.override_event_id');
+  assertNonEmptyStringAt(evidence, 'policy_version', 'credit_decision.override_evidence.policy_version');
+  assertEnum(
+    evidence,
+    'target_account_status',
+    ['active', 'suspended', 'closed', 'disputed'] as const,
+  );
+  assertMoneyStringAt(evidence, 'target_amount', money, scale, 'credit_decision.override_evidence.target_amount');
+  assertUuidAt(evidence, 'target_customer_id', 'credit_decision.override_evidence.target_customer_id');
 }
 
 function validateAccountChargeLineItems(

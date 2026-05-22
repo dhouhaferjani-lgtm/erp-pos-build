@@ -16,6 +16,8 @@ vi.mock('@/stores/syncStore', () => ({
 }));
 
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
+import type { FiscalEventTypeValue } from '@/lib/fiscal/FiscalEventPayloadRegistry';
 import {
   AccountChargeInputError,
   authorAccountCharge,
@@ -54,6 +56,21 @@ const appendResult = {
   signature_status: 'not_required',
   created_at: '2026-05-21T10:15:30Z',
 } as const;
+
+function makeAppendResult(
+  eventType: FiscalEventTypeValue,
+  id: string,
+  sequenceNumber: number,
+): FiscalEventAppendResult {
+  return {
+    ...appendResult,
+    id,
+    event_type: eventType,
+    sequence_number: sequenceNumber,
+    canonical_bytes: `{"event_type":"${eventType}"}`,
+    current_hash: String(sequenceNumber).repeat(64).slice(0, 64),
+  };
+}
 
 function makeAttachedCustomer(): NonNullable<AuthorAccountChargeInput['customer']> {
   return {
@@ -172,6 +189,140 @@ describe('accountChargeService', () => {
     expect(db.execute).toHaveBeenNthCalledWith(2, 'COMMIT');
     expect(incrementPendingCountSpy).toHaveBeenCalledOnce();
     expect(triggerSyncSpy).toHaveBeenCalledOnce();
+  });
+
+  it('authors approval, override, and account charge events atomically for a credit-limit override', async () => {
+    const db = makeMockDb();
+    const approvalEvent = makeAppendResult(
+      'OPERATOR_APPROVAL_GRANTED',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      7,
+    );
+    const overrideEvent = makeAppendResult(
+      'OVERRIDE_CREDIT_LIMIT',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      8,
+    );
+    const accountChargeEvent = makeAppendResult(
+      'ACCOUNT_CHARGE',
+      '99999999-9999-4999-8999-999999999999',
+      9,
+    );
+    const append = vi.fn()
+      .mockResolvedValueOnce(approvalEvent)
+      .mockResolvedValueOnce(overrideEvent)
+      .mockResolvedValueOnce(accountChargeEvent);
+    vi.mocked(getFiscalEventEngine).mockResolvedValue({ append } as never);
+
+    const result = await authorAccountCharge(db, makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        receivable_balance: '450.000',
+      },
+      overrideApproval: {
+        approvalId: 'approval-1',
+        approvalScope: 'credit_limit_override',
+        cashierUserId: '44444444-4444-4444-8444-444444444444',
+        reasonCode: 'customer_exception',
+        reasonText: 'Known account in good standing',
+        requestedAtDevice: new Date('2026-05-21T10:14:00.000Z'),
+        resolvedAtDevice: new Date('2026-05-21T10:14:30.000Z'),
+        supervisorUserId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        supervisorUserSnapshot: {
+          display_name: 'Supervisor',
+          role_names: ['Store Manager'],
+        },
+      },
+    }));
+
+    expect(db.execute).toHaveBeenNthCalledWith(1, 'BEGIN TRANSACTION');
+    expect(db.execute).toHaveBeenNthCalledWith(2, 'COMMIT');
+    expect(append).toHaveBeenCalledTimes(3);
+    expect(append.mock.calls.map(([, request]) => request.event_type)).toEqual([
+      'OPERATOR_APPROVAL_GRANTED',
+      'OVERRIDE_CREDIT_LIMIT',
+      'ACCOUNT_CHARGE',
+    ]);
+    expect(append.mock.calls[0]![1]).toMatchObject({
+      operator_id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+      source_event_class: 'operator_approval',
+      source_event_id: 'approval-1',
+    });
+    expect(append.mock.calls[1]![1]).toMatchObject({
+      operator_id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+      reference_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      source_event_class: 'account_charge_override',
+      source_event_id: 'approval-1:credit_limit_override',
+    });
+    expect(result.payload.credit_decision).toMatchObject({
+      decision: 'approved_with_override',
+      limit_exceeded: true,
+      override_evidence: {
+        approval_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        approval_scope: 'credit_limit_override',
+        override_event_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        policy_version: 'phase3-default-v1',
+        target_account_status: 'active',
+        target_amount: '119.000',
+        target_customer_id: '77777777-7777-4777-8777-777777777777',
+      },
+    });
+  });
+
+  it('authors account-status overrides for suspended customers', async () => {
+    const db = makeMockDb();
+    const append = vi.fn()
+      .mockResolvedValueOnce(makeAppendResult(
+        'OPERATOR_APPROVAL_GRANTED',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        7,
+      ))
+      .mockResolvedValueOnce(makeAppendResult(
+        'OVERRIDE_ACCOUNT_STATUS',
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        8,
+      ))
+      .mockResolvedValueOnce(makeAppendResult(
+        'ACCOUNT_CHARGE',
+        '99999999-9999-4999-8999-999999999999',
+        9,
+      ));
+    vi.mocked(getFiscalEventEngine).mockResolvedValue({ append } as never);
+
+    const result = await authorAccountCharge(db, makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        account_status: 'suspended',
+      },
+      overrideApproval: {
+        approvalId: 'approval-2',
+        approvalScope: 'account_status_override',
+        cashierUserId: '44444444-4444-4444-8444-444444444444',
+        reasonCode: 'temporary_hold_exception',
+        reasonText: 'Approved by manager',
+        requestedAtDevice: new Date('2026-05-21T10:14:00.000Z'),
+        resolvedAtDevice: new Date('2026-05-21T10:14:30.000Z'),
+        supervisorUserId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        supervisorUserSnapshot: {
+          display_name: 'Supervisor',
+          role_names: ['Store Manager'],
+        },
+      },
+    }));
+
+    expect(append.mock.calls.map(([, request]) => request.event_type)).toEqual([
+      'OPERATOR_APPROVAL_GRANTED',
+      'OVERRIDE_ACCOUNT_STATUS',
+      'ACCOUNT_CHARGE',
+    ]);
+    expect(result.payload.credit_decision).toMatchObject({
+      decision: 'approved_with_override',
+      limit_exceeded: false,
+      override_evidence: {
+        approval_scope: 'account_status_override',
+        target_account_status: 'suspended',
+      },
+    });
   });
 
   it('rejects any payment line before append', async () => {

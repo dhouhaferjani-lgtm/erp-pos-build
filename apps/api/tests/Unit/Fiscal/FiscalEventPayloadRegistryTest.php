@@ -540,6 +540,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
                 'decision' => 'approved',
                 'limit_exceeded' => false,
                 'mirror_stale_at_authoring' => false,
+                'override_evidence' => null,
                 'policy_version' => 'phase3-default-v1',
                 'stale_policy_action' => 'allow',
                 'warnings' => [],

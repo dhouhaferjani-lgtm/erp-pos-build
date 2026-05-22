@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateAccountChargeCreditDecision, type AccountChargeCreditDecisionInput } from '../creditRulesEngine';
+import {
+  evaluateAccountChargeCreditDecision,
+  type AccountChargeCreditDecisionInput,
+  type AccountChargeOverrideEvidence,
+} from '../creditRulesEngine';
 
 const NOW = new Date('2026-05-21T12:00:00.000Z');
 
@@ -24,6 +28,21 @@ function makeInput(overrides: Partial<AccountChargeCreditDecisionInput> = {}): A
     balance_updated_at: '2026-05-21T10:10:00.000Z',
     now: NOW,
     hard_stale_after_minutes: 240,
+    ...overrides,
+  };
+}
+
+function makeOverrideEvidence(
+  overrides: Partial<AccountChargeOverrideEvidence> = {},
+): AccountChargeOverrideEvidence {
+  return {
+    approval_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    approval_scope: 'credit_limit_override',
+    override_event_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    policy_version: 'phase3-default-v1',
+    target_account_status: 'active',
+    target_amount: '119.000',
+    target_customer_id: 'customer-1',
     ...overrides,
   };
 }
@@ -79,6 +98,7 @@ describe('evaluateAccountChargeCreditDecision', () => {
         credit_limit: '500.000',
         limit_exceeded: false,
         mirror_stale_at_authoring: false,
+        override_evidence: null,
         policy_version: 'phase3-default-v1',
         stale_policy_action: 'allow',
         warnings: [],
@@ -101,6 +121,98 @@ describe('evaluateAccountChargeCreditDecision', () => {
         credit_available_after: '0.000',
         limit_exceeded: false,
       },
+    });
+  });
+
+  it('approves credit-limit overrides only when evidence exactly matches the customer, amount, status, and policy', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      credit_limit: '500.000',
+      receivable_balance: '450.000',
+      credit_balance: '0.000',
+      override_evidence: makeOverrideEvidence(),
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      decision: {
+        decision: 'approved_with_override',
+        limit_exceeded: true,
+        override_evidence: makeOverrideEvidence(),
+      },
+    });
+  });
+
+  it.each([
+    ['amount', { target_amount: '118.999' }],
+    ['customer', { target_customer_id: 'other-customer' }],
+    ['status', { target_account_status: 'suspended' }],
+    ['policy', { policy_version: 'other-policy' }],
+    ['scope', { approval_scope: 'account_status_override' }],
+  ] satisfies Array<[string, Partial<AccountChargeOverrideEvidence>]>)(
+    'rejects credit-limit override evidence with mismatched %s',
+    (_, evidenceOverrides) => {
+      const result = evaluateAccountChargeCreditDecision(makeInput({
+        credit_limit: '500.000',
+        receivable_balance: '450.000',
+        credit_balance: '0.000',
+        override_evidence: makeOverrideEvidence(evidenceOverrides),
+      }));
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: 'override_evidence_mismatch' },
+      });
+    },
+  );
+
+  it.each(['suspended', 'disputed'] satisfies Array<'suspended' | 'disputed'>)(
+    'approves %s account-status overrides with matching evidence',
+    (accountStatus) => {
+      const result = evaluateAccountChargeCreditDecision(makeInput({
+        account_status: accountStatus,
+        override_evidence: makeOverrideEvidence({
+          approval_scope: 'account_status_override',
+          target_account_status: accountStatus,
+        }),
+      }));
+
+      expect(result).toMatchObject({
+        ok: true,
+        decision: {
+          decision: 'approved_with_override',
+          limit_exceeded: false,
+          override_evidence: makeOverrideEvidence({
+            approval_scope: 'account_status_override',
+            target_account_status: accountStatus,
+          }),
+        },
+      });
+    },
+  );
+
+  it('keeps closed accounts non-overridable', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      account_status: 'closed',
+      override_evidence: makeOverrideEvidence({
+        approval_scope: 'account_status_override',
+        target_account_status: 'closed',
+      }),
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'account_closed' },
+    });
+  });
+
+  it('rejects override evidence when no override condition exists', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      override_evidence: makeOverrideEvidence(),
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'override_evidence_mismatch' },
     });
   });
 

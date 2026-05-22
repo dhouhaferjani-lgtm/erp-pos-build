@@ -1,5 +1,10 @@
-import type { AccountChargeCreditDecision } from '@/lib/fiscal/payloads/AccountChargePayload';
+import type {
+  AccountChargeCreditDecision,
+  AccountChargeOverrideEvidence,
+} from '@/lib/fiscal/payloads/AccountChargePayload';
 import type { CustomerAccountStatus } from '@/lib/customer/customerTypes';
+
+export type { AccountChargeOverrideEvidence } from '@/lib/fiscal/payloads/AccountChargePayload';
 
 export type AccountChargeRejectionCode =
   | 'customer_tenant_mismatch'
@@ -15,7 +20,8 @@ export type AccountChargeRejectionCode =
   | 'balance_snapshot_hard_stale'
   | 'customer_alias_ambiguous'
   | 'money_scale_invalid'
-  | 'credit_limit_exceeded';
+  | 'credit_limit_exceeded'
+  | 'override_evidence_mismatch';
 
 export interface AccountChargeCreditDecisionInput {
   tenant_id: string;
@@ -37,6 +43,7 @@ export interface AccountChargeCreditDecisionInput {
   balance_updated_at: string | null;
   now: Date;
   hard_stale_after_minutes: number;
+  override_evidence?: AccountChargeOverrideEvidence | null;
 }
 
 export type AccountChargeCreditDecisionResult =
@@ -77,6 +84,48 @@ function minutesBetween(a: Date, b: Date): number {
   return Math.floor((a.getTime() - b.getTime()) / 60_000);
 }
 
+function matchesOverrideEvidence(
+  input: AccountChargeCreditDecisionInput,
+  scope: AccountChargeOverrideEvidence['approval_scope'],
+): boolean {
+  const evidence = input.override_evidence ?? null;
+  return evidence !== null &&
+    evidence.approval_event_id.trim() !== '' &&
+    evidence.override_event_id.trim() !== '' &&
+    evidence.approval_scope === scope &&
+    evidence.target_customer_id === input.customer_id &&
+    evidence.target_amount === input.charge_amount &&
+    evidence.target_account_status === input.account_status &&
+    evidence.policy_version === input.charge_policy_version;
+}
+
+function buildApprovedDecision(input: {
+  creditAvailableAfter: bigint;
+  creditAvailableBefore: bigint;
+  creditLimit: bigint;
+  limitExceeded: boolean;
+  overrideEvidence: AccountChargeOverrideEvidence | null;
+  policyVersion: string;
+  scale: number;
+}): AccountChargeCreditDecision {
+  const zero = 0n;
+  const creditAvailableAfter = input.creditAvailableAfter < zero ? zero : input.creditAvailableAfter;
+  const creditAvailableBefore = input.creditAvailableBefore < zero ? zero : input.creditAvailableBefore;
+
+  return {
+    credit_available_after: formatMinorUnits(creditAvailableAfter, input.scale),
+    credit_available_before: formatMinorUnits(creditAvailableBefore, input.scale),
+    credit_limit: formatMinorUnits(input.creditLimit, input.scale),
+    decision: input.overrideEvidence === null ? 'approved' : 'approved_with_override',
+    limit_exceeded: input.limitExceeded,
+    mirror_stale_at_authoring: false,
+    override_evidence: input.overrideEvidence,
+    policy_version: input.policyVersion,
+    stale_policy_action: 'allow',
+    warnings: [],
+  };
+}
+
 export function evaluateAccountChargeCreditDecision(
   input: AccountChargeCreditDecisionInput,
 ): AccountChargeCreditDecisionResult {
@@ -96,16 +145,30 @@ export function evaluateAccountChargeCreditDecision(
     return reject('customer_inactive', 'is_active');
   }
 
+  let appliedOverrideEvidence: AccountChargeOverrideEvidence | null = null;
+
   if (input.account_status === 'closed') {
     return reject('account_closed', 'account_status');
   }
 
   if (input.account_status === 'suspended') {
-    return reject('account_suspended', 'account_status');
+    if (matchesOverrideEvidence(input, 'account_status_override')) {
+      appliedOverrideEvidence = input.override_evidence ?? null;
+    } else if (input.override_evidence !== null && input.override_evidence !== undefined) {
+      return reject('override_evidence_mismatch', 'override_evidence');
+    } else {
+      return reject('account_suspended', 'account_status');
+    }
   }
 
   if (input.account_status === 'disputed') {
-    return reject('account_disputed', 'account_status');
+    if (matchesOverrideEvidence(input, 'account_status_override')) {
+      appliedOverrideEvidence = input.override_evidence ?? null;
+    } else if (input.override_evidence !== null && input.override_evidence !== undefined) {
+      return reject('override_evidence_mismatch', 'override_evidence');
+    } else {
+      return reject('account_disputed', 'account_status');
+    }
   }
 
   if (!isEnabled(input.charge_account_enabled)) {
@@ -162,21 +225,32 @@ export function evaluateAccountChargeCreditDecision(
   const creditAvailableAfter = creditLimit - projectedNetAfter;
 
   if (creditAvailableAfter < zero) {
-    return reject('credit_limit_exceeded', 'credit_limit');
+    if (!matchesOverrideEvidence(input, 'credit_limit_override')) {
+      if (input.override_evidence !== null && input.override_evidence !== undefined) {
+        return reject('override_evidence_mismatch', 'override_evidence');
+      }
+
+      return reject('credit_limit_exceeded', 'credit_limit');
+    }
+    appliedOverrideEvidence = input.override_evidence ?? null;
+  } else if (
+    appliedOverrideEvidence === null &&
+    input.override_evidence !== null &&
+    input.override_evidence !== undefined
+  ) {
+    return reject('override_evidence_mismatch', 'override_evidence');
   }
 
   return {
     ok: true,
-    decision: {
-      credit_available_after: formatMinorUnits(creditAvailableAfter, scale),
-      credit_available_before: formatMinorUnits(creditAvailableBefore, scale),
-      credit_limit: formatMinorUnits(creditLimit, scale),
-      decision: 'approved',
-      limit_exceeded: false,
-      mirror_stale_at_authoring: false,
-      policy_version: input.charge_policy_version,
-      stale_policy_action: 'allow',
-      warnings: [],
-    },
+    decision: buildApprovedDecision({
+      creditAvailableAfter,
+      creditAvailableBefore,
+      creditLimit,
+      limitExceeded: creditAvailableAfter < zero,
+      overrideEvidence: appliedOverrideEvidence,
+      policyVersion: input.charge_policy_version,
+      scale,
+    }),
   };
 }
