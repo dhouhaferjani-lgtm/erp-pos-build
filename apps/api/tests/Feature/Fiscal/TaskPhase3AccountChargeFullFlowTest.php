@@ -37,6 +37,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
@@ -256,6 +257,8 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
         $this->assertSame($eventId, $document->payload['fiscal_event_id'] ?? null);
         $this->assertSame($accountChargeUuid, $document->payload['account_charge_uuid'] ?? null);
         $this->assertCount(1, $document->lines);
+        $this->assertSame(1, FiscalEvent::query()->where('event_type', FiscalEventType::ACCOUNT_CHARGE)->count());
+        $this->assertSame(1, FiscalEvent::query()->count());
 
         $this->assertDatabaseHas('fiscal_event_projections', [
             'fiscal_event_id' => $eventId,
@@ -314,6 +317,7 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
         $this->assertSame(0, AccountChargeReceipt::query()->count());
         $this->assertSame(0, JournalEntry::query()->count());
         $this->assertSame(0, Document::query()->count());
+        $this->assertSame(0, DB::table('fiscal_event_projections')->where('fiscal_event_id', $eventId)->count());
     }
 
     public function test_hard_stale_block_envelope_is_quarantined_and_does_not_project_if_device_bug_syncs_it(): void
@@ -354,6 +358,7 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
         $this->assertSame(0, AccountChargeReceipt::query()->count());
         $this->assertSame(0, JournalEntry::query()->count());
         $this->assertSame(0, Document::query()->count());
+        $this->assertSame(0, DB::table('fiscal_event_projections')->where('fiscal_event_id', $eventId)->count());
     }
 
     private function bindModuleActivation(bool $active): void

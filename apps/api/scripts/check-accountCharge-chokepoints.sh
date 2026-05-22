@@ -63,12 +63,12 @@ forbid_pattern \
     "apps/api/routes"
 
 forbid_pattern \
-    "api(Post|Fetch|Request)[^\\n]*['\"]/pos/receipts/sync" \
+    "\\b(fetch|api(Post|Fetch|Request))[^\\n]*['\"]/pos/receipts/sync" \
     "retired /pos/receipts/sync client transport resurfaced" \
     "apps/pos/src"
 
 forbid_pattern \
-    "/pos/receipts" \
+    "\\b(fetch|api(Post|Fetch|Request))[^\\n]*['\"]/pos/receipts" \
     "device account-charge path must not call legacy receipt endpoints" \
     "apps/pos/src/lib/accountCharge"
 
