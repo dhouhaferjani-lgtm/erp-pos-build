@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Providers;
 
+use App\Modules\Document\Application\Projections\DocumentAccountChargeFactureBridge;
 use App\Modules\Document\Domain\Contracts\DocumentVehicleContextWriterInterface;
 use App\Modules\Document\Domain\Services\Conversion\Converters\DeliveryNoteToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\InvoiceToCreditNoteConverter;
@@ -14,6 +15,7 @@ use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoi
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
+use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\ServiceProvider;
 
 class DocumentServiceProvider extends ServiceProvider
@@ -40,6 +42,13 @@ class DocumentServiceProvider extends ServiceProvider
 
             return $registry;
         });
+
+        $this->app->tag(
+            [
+                DocumentAccountChargeFactureBridge::class,
+            ],
+            FiscalEventProjector::class,
+        );
     }
 
     public function boot(): void

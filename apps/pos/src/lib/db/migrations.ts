@@ -1184,4 +1184,32 @@ export const migrations: Migration[] = [
         ON customer_aliases(tenant_id, company_id, server_partner_id);
     `,
   },
+  {
+    // Phase 3 Task 3 — charge-to-account credit controls for offline
+    // account-charge authoring. These remain inbound mirror fields only:
+    // tenant_id + company_id scoping is still enforced by the customers
+    // composite primary key and repository lookups.
+    version: 41,
+    name: 'add_account_charge_credit_controls_to_customers',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE customers ADD COLUMN credit_limit TEXT',
+        'ALTER TABLE customers ADD COLUMN payment_terms_days INTEGER',
+        'ALTER TABLE customers ADD COLUMN charge_account_enabled INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE customers ADD COLUMN charge_policy_version TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

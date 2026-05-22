@@ -1,7 +1,7 @@
 # POS Fiscal Event Engine — Session Handoff / Continuation Anchor
 
 **Created:** 2026-05-14
-**Last refreshed:** 2026-05-21 — Phase 2 implementation complete through Task 11 on branch `feat/pos-customer-accounts-phase2`. Latest pushed HEAD before this handoff-refresh commit: `9832a6315` (`Phase 2.11.3: Record account payment closure reviews`). Phase 2 tasks 1–11 are shipped with Codex self-review + Opus-style adversarial review. Phase 2 is **not customer-facing deployment-ready** until Phase 1.5 per-country tax-number validation is implemented, reviewed, and pushed.
+**Last refreshed:** 2026-05-22 — Phase 3 implementation complete through Task 11 on branch `feat/fiscal-phase-3-charge-to-account`. Latest pushed HEAD before this handoff-refresh commit: `309662df8` (`Phase 3.10.3: Record account charge integration reviews`). Phase 1.5.2 and Phase 1.5.3 are merged to `dev`; Phase 3 tasks 1–10 are shipped with Codex self-review + Opus-style adversarial review. Task 11 closes the branch, refreshes this handoff + project memory, and prepares the PR to `dev`.
 **Why this exists:** the originating session hit the context window; subsequent sessions refresh this in place. This is the durable anchor — read this first, then the artifacts it indexes.
 
 ---
@@ -65,13 +65,13 @@ This guardrail was in roadmap v1, lost in the architecture pivot, **re-locked + 
 
 ## 4. Current open work
 
-**Current status (2026-05-21): Phase 2 implementation is complete on `feat/pos-customer-accounts-phase2`.** The ACCOUNT_PAYMENT customer-account slice shipped through Task 11: POS customer mirror, offline customer attach/search/create flow, ACCOUNT_PAYMENT canonical authoring, sync/ingest/parser/reader support, POS-core ACCOUNT_PAYMENT_RECEIPT projection, Treasury bridge FIFO allocation, POS-only deployment regression, and endpoint-driven full-flow closure tests. Latest pushed HEAD before this refresh is `9832a6315`.
+**Current status (2026-05-22): Phase 3 implementation is complete on `feat/fiscal-phase-3-charge-to-account`, pending PR merge to `dev`.** The ACCOUNT_CHARGE charge-to-account slice shipped through Task 10 plus closure refresh: ACCOUNT_CHARGE canonical contract, PHP parser/validator/canonical reader, POS customer mirror credit fields, device credit rules, device authoring + printable, POS-core ACCOUNT_CHARGE receipt projection, AR GL command + GeneralLedgerService entry path, Treasury-gated AR bridge, Document/Sales-gated B2B Facture draft bridge, and endpoint-driven full-flow verification for POS-only, Treasury-active, and B2B-active deployments. Latest pushed HEAD before this refresh is `309662df8`.
 
-**Phase 2 review status:** every completed Phase 2 step used the continuation workflow: Codex implementation, Codex self-adversarial review, Opus-style second-pass adversarial review, and follow-up fixes where reviews found defects. Task 10 required R2/R3 hardening for cross-company customer aliases and Treasury-bridge idempotency before Opus-style R3 APPROVE. Task 11 required R2 stabilization of timestamp-dependent closure tests before Opus-style R2 APPROVE.
+**Phase 3 review status:** every completed Phase 3 step used the continuation workflow: Codex implementation, Codex self-adversarial review, Opus-style second-pass adversarial review, and follow-up fixes where reviews found defects. Task 9 required R2/R3 hardening for draft facture idempotency and jsonb key-order replay. Task 10 required R2 minor hardening for quarantine projection-row assertions, no-extra-fiscal-authoring assertions, and narrower legacy endpoint sentinel regex before Opus-style R2 APPROVE.
 
-**Open gate:** Phase 2 is implementation-complete but **not customer-facing deployment-ready** until Phase 1.5 per-country tax-number strict validation is implemented, reviewed, and pushed. Roadmap v2 now carries the same warning at the top and in the Phase 2 status section.
+**Open gate:** Phase 3 is implementation-complete but not merged. Task 11 must finish the closure docs/memory, final verification, review audit, PR creation, and `gh pr merge --auto --merge` once CI is green.
 
-**Phase 1 historical status follows for architectural context.**
+**Phase 1 / Phase 2 historical status follows for architectural context.**
 
 Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The spec passed through v1→v7 (Codex BLOCK ×4, Opus APPROVE-WITH-MINOR-EDITS ×1) and the §14.3 two-chokepoint completeness rule closed the recurring "missed server-authoring caller" class. **The Phase 1 spec gate is passed.**
 
@@ -79,7 +79,9 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 
 **Phase 1 implementation is complete on branch `feat/pos-fiscal-event-engine-phase1` (PR #124).** Latest pushed HEAD before this handoff-refresh commit: `e070a6fed` after Task 33 review artifacts. Owner sign-off on the schema-destructive preflight gate is recorded at `apps/api/docs/sessions/2026-05-14-fiscal-preflight-signoff.md` (attested 2026-05-15).
 
-**Phase 1 progress: 33 of 33 task slots shipped or absorbed.** Task 27B Pass 2B (`b4faf11e6`) refactored POS receipts through the fiscal event engine, removed the legacy sync/chain path, deleted the `.PASS_2B_PENDING` marker atomically with engine wiring, and absorbed Task 28's `/pos/receipts/sync` retirement. Task 33 (`b713063d1` + review audit `e070a6fed`) added endpoint-driven full-flow verification and updated roadmap v2 status. Remaining work is Phase 1.5 cleanup and merge/PR disposition.
+**Phase 1 progress: 33 of 33 task slots shipped or absorbed.** Task 27B Pass 2B (`b4faf11e6`) refactored POS receipts through the fiscal event engine, removed the legacy sync/chain path, deleted the `.PASS_2B_PENDING` marker atomically with engine wiring, and absorbed Task 28's `/pos/receipts/sync` retirement. Task 33 (`b713063d1` + review audit `e070a6fed`) added endpoint-driven full-flow verification and updated roadmap v2 status. The later Phase 1.5.2 and Phase 1.5.3 gates are now merged to `dev`.
+
+**Phase 2 implementation is complete and merged historically.** The ACCOUNT_PAYMENT customer-account slice shipped through Task 11: POS customer mirror, offline customer attach/search/create flow, ACCOUNT_PAYMENT canonical authoring, sync/ingest/parser/reader support, POS-core ACCOUNT_PAYMENT_RECEIPT projection, Treasury bridge FIFO allocation, POS-only deployment regression, and endpoint-driven full-flow closure tests. Phase 1.5.2 and Phase 1.5.3 subsequently merged to `dev`, closing the customer-facing deployment gate recorded in the earlier Phase 2 handoff.
 
 ### 4.1 Tasks shipped (1–20 inclusive)
 
@@ -219,16 +221,24 @@ Phase 1 spec **v7 is APPROVED** — Codex re-review 2026-05-14, 0 findings. The 
 - **Phase 1 task status (33 of 33 shipped or absorbed, post-Task-33):**
   - **Shipped/closed:** 1-27 Pass 1, 27B Pass 2A/2B, 29, 30, 31, 32, 33.
   - **Absorbed:** Task 28 was folded into 27B Pass 2B: `/pos/receipts/sync`, `ReceiptSyncService`, `SyncReceiptPayload`, `SyncReceiptsRequest`, and `SyncReceiptResult` were deleted.
-  - **Next:** Phase 1.5 mirror-column audit/drop + other cleanup items before any Phase 2 customer-facing deployment.
-- **Recommended next-session order:** finish Phase 1.5 cleanup or create/merge the PR to dev, depending on owner direction. Phase 1 implementation itself is complete and pushed.
+  - **Historical deferred cleanup:** Phase 1.5 mirror-column audit/drop and related hardening remain tracked as deferred cleanup, not as the active continuation pointer for Phase 2/Phase 3 work.
+- **Historical next-session note, now superseded:** Phase 1 implementation itself is complete and pushed; Phase 1.5.2 and Phase 1.5.3 later merged to `dev`. The current next step is the Phase 3 PR merge to `dev`, then Phase 4 planning/implementation.
 - **5-task boundary memory refresh.** `project_pos_fiscal_event_engine.md` refreshed after Task 33 completion in this session. The next memory update should track Phase 1.5 / merge work, not further Phase 1 implementation tasks.
 
 ### 4.4 Worktree + CI status
 
-- Current working directory: `/Users/houssamr/Projects/syneriva/apps/erp.customer-accounts-phase2` (dedicated git worktree), branch `feat/pos-customer-accounts-phase2`. Latest pushed HEAD before this refresh: `9832a6315` (`Phase 2.11.3: Record account payment closure reviews`).
-- Phase 2 Task 11 verification: targeted closure PHPUnit PASS (`OK (3 tests, 89 assertions)`); full Fiscal/POS backend subset PASS (`1124 tests`, `3820 assertions`, `107 skipped`, `2 incomplete`, no failures); PHPStan L8 PASS on touched closure tests; Pint PASS; POS `pnpm test` PASS (`162` files / `1445` tests); POS `pnpm typecheck` PASS; POS `pnpm lint` PASS with existing warnings only; §14.3 chokepoint gate PASS; Pass 2B sentinel absence PASS.
+- Current working directory: `/Users/houssamr/Projects/syneriva/apps/erp.phase-3` (dedicated git worktree), branch `feat/fiscal-phase-3-charge-to-account`. Latest pushed HEAD before this refresh: `309662df8` (`Phase 3.10.3: Record account charge integration reviews`).
+- Phase 3 Task 10 verification: targeted closure PHPUnit PASS (`OK (6 tests, 73 assertions)`); full Fiscal/POS/Document/Accounting backend subset PASS (`1530 tests`, `5388 assertions`, `114 skipped`, `2 incomplete`, no failures); PHPStan L8 PASS on full `apps/api` with `--memory-limit=2G` (default 512M exhausted before diagnostics); Pint PASS; POS `pnpm test` PASS (`169` files / `1503` tests); POS `pnpm typecheck` PASS; POS `pnpm lint` PASS with existing 41 warnings only; §14.3 saleReceipt chokepoint gate PASS; ACCOUNT_CHARGE chokepoint gate PASS; Pass 2B sentinel absence PASS. Opus-style Task 10 R2 review: APPROVE.
+- Phase 3 Task 11 closure verification: backend Fiscal/POS suite PASS (`1208 tests`, `4200 assertions`, `107 skipped`, `2 incomplete`, `16` PHPUnit deprecations, no failures); PHPStan L8 module-path run PASS; Pint module/test path run PASS; POS `pnpm test` PASS (`169` files / `1503` tests); POS `pnpm typecheck` PASS; POS `pnpm lint` PASS with existing 41 warnings only; §14.3 saleReceipt chokepoint gate PASS; ACCOUNT_CHARGE chokepoint gate PASS; Pass 2B sentinel absence PASS; `git diff --check` PASS.
+- Historical Phase 2 worktree: `/Users/houssamr/Projects/syneriva/apps/erp.customer-accounts-phase2`, branch `feat/pos-customer-accounts-phase2`, merged to `dev`.
 - Historical Phase 1 worktree: `/Users/houssamr/Projects/syneriva/apps/erp.fiscal-phase1`, branch `feat/pos-fiscal-event-engine-phase1` (PR #124). Do not assume it is the active worktree for Phase 2 continuation.
 - PG-only smoke runs only happen in CI (the local SQLite runner skips them with `markTestSkipped`). The CI filter at `.github/workflows/ci.yml:~404` includes (post-Task-32): adds `DeviceLossIncidentTest` to the existing post-Task-30 set. Full filter list post-Task-30: `VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest`. Plus a new dedicated `chokepoint-gate` CI job (lightweight: `rg + jq + bash` only, `SKIP_RECEIVER_TYPE_VALIDATOR=1` env var; the PHP validator runs in `backend-test-pgsql` which already has vendor). **Task 23 `ApplyFiscalEventProjectionJobTest` NOT added** — the 18 tests assert lifecycle semantics in single-worker scenarios; `lockForUpdate()` + `WithoutOverlapping` cache-lock are exercised but tests don't depend on actual concurrent locking (PG driver behavior identical to SQLite for the assertions). Documented in Task 23 round-1 implementer report + Codex round-1 review CLEAN section.
+
+**Phase 3 standing patterns added/refreshed:**
+- **When rebinding module activation in endpoint tests, forget every singleton that captured the old registry/resolver.** Task 10 initially forgot `FiscalEventProjectionRegistry` only; the live `OutboxIngestor` singleton still held the old inactive registry across requests. Pattern: after rebinding `ModuleActivationResolver`, forget both `FiscalEventProjectionRegistry` and `OutboxIngestor` before exercising ingestion.
+- **Integration fixtures must enter through the production parser shape, not direct-projector shortcuts.** Task 10's business facture fixture initially copied the direct-projector buyer shape from Task 9; the live strict parser requires the full buyer key set. Closure tests must use the endpoint/parser contract so they catch schema drift.
+- **Sentinel grep guards should be call-site-shaped, not broad text bans.** Task 10 R2 narrowed `/pos/receipts` account-charge detection to `fetch|apiPost|apiFetch|apiRequest` call shapes so tests/comments can document the forbidden route without failing CI, while real client calls still fail.
+- **Use phase-specific review filenames when task numbers repeat across phases.** Phase 3 Task 10 initially collided with existing Phase 2 Task 10 review paths. Pattern: prefer `2026-05-21-phase3-task-10-*.md` (or equivalent phase tag) once roadmap task numbers restart.
 
 ---
 
@@ -277,7 +287,7 @@ Every adversarial-review prompt this effort uses (Opus or Codex): instruct the r
 - **Verification evidence for Task C:** targeted Task 33 PHPUnit PASS (1 test / 41 assertions); fiscal/POS PHPUnit subset PASS (546 tests / 2005 assertions / 53 skipped); `pnpm typecheck` PASS; `pnpm lint` PASS with existing warnings only; `pnpm test` PASS (POS + web Vitest); PHPStan L8 PASS; Pint PASS; Pass 2B sentinel PASS; §14.3 chokepoint gate PASS; dead-path grep PASS.
 - **Review outcomes:** Codex self-review APPROVE; Opus-equivalent second-pass APPROVE-WITH-MINOR-EDITS, with no BLOCKER/REQUEST-CHANGES. Residual note: Task 33 PHPUnit builds a device-shaped envelope in PHP rather than invoking the TS Tauri engine; TS device coverage remains in Pass 2B POS tests and drift gates.
 
-**Current Phase 1 status:** COMPLETE. All Phase 1 task slots are shipped or absorbed. Branch `feat/pos-fiscal-event-engine-phase1` pushed through `e070a6fed` before this handoff-refresh commit. Next owner decision is Phase 1.5 cleanup versus merge/PR disposition.
+**Historical Phase 1 status:** COMPLETE. All Phase 1 task slots are shipped or absorbed. Branch `feat/pos-fiscal-event-engine-phase1` pushed through `e070a6fed` before the Phase 1 closure handoff. Phase 1.5.2 and Phase 1.5.3 later merged to `dev`; the active branch for this handoff refresh is Phase 3.
 
 **End of handoff (refreshed 2026-05-20 after Task 27B Pass 2A complete — synthesis arc + PHP.1 + PHP.2 + TS all shipped/pushed; Pass 2B + Task 33 deferred to Codex-led continuation session per owner directive 2026-05-20.** 
 

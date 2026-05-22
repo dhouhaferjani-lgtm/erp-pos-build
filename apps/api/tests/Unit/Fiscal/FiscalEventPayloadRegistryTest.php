@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
+use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
@@ -26,6 +27,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(ChainRestartPayload::class, $r->dtoClassFor(FiscalEventType::CHAIN_RESTART));
         $this->assertSame(TerminalRegistrySnapshotPayload::class, $r->dtoClassFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(AccountPaymentPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_PAYMENT));
+        $this->assertSame(AccountChargePayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_CHARGE));
     }
 
     public function test_returns_event_version_one_for_implemented_types(): void
@@ -37,6 +39,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::CHAIN_RESTART));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_PAYMENT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_CHARGE));
     }
 
     public function test_reserved_type_company_day_closure_manifest_throws(): void
@@ -72,10 +75,20 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertTrue($r->isImplemented(FiscalEventType::CHAIN_RESTART));
         $this->assertTrue($r->isImplemented(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_PAYMENT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_CHARGE));
 
         $this->assertFalse($r->isImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST));
         $this->assertFalse($r->isImplemented(FiscalEventType::SALE_VOID));
         $this->assertFalse($r->isImplemented(FiscalEventType::Z_REPORT));
+    }
+
+    public function test_account_charge_is_implemented_at_version_one(): void
+    {
+        $registry = new FiscalEventPayloadRegistry;
+
+        $this->assertTrue($registry->isImplemented(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(1, $registry->eventVersionFor(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(AccountChargePayload::class, $registry->dtoClassFor(FiscalEventType::ACCOUNT_CHARGE));
     }
 
     public function test_registry_is_consistent_with_enum_phase1_helper(): void
@@ -120,6 +133,21 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame('ACCOUNT_PAYMENT', $dto->receiptTypeCode);
         $this->assertSame('FIFO', $dto->treasuryAllocationPolicy);
         $this->assertSame('100.000', $dto->payment['amount']);
+        $out = $dto->toArray();
+        ksort($data);
+        ksort($out);
+        $this->assertSame($data, $out);
+    }
+
+    public function test_account_charge_payload_from_array_to_array_roundtrip(): void
+    {
+        $data = $this->canonicalAccountChargeArray();
+
+        $dto = AccountChargePayload::fromArray($data);
+
+        $this->assertSame('ACCOUNT_CHARGE', $dto->receiptTypeCode);
+        $this->assertSame('119.000', $dto->totals['amount_charged_to_account']);
+        $this->assertNull($dto->buyer);
         $out = $dto->toArray();
         ksort($data);
         ksort($out);
@@ -456,6 +484,113 @@ final class FiscalEventPayloadRegistryTest extends TestCase
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'training_flag' => false,
             'treasury_allocation_policy' => 'FIFO',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountChargeArray(): array
+    {
+        return [
+            'account_charge_uuid' => '66666666-6666-4666-8666-666666666666',
+            'business_date' => '2026-05-21',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'charge_terms' => [
+                'due_date' => '2026-06-20',
+                'payment_terms_days' => 30,
+                'terms_label' => 'Net 30',
+            ],
+            'credit_decision' => [
+                'credit_available_after' => '81.000',
+                'credit_available_before' => '200.000',
+                'credit_limit' => '500.000',
+                'decision' => 'approved',
+                'limit_exceeded' => false,
+                'mirror_stale_at_authoring' => false,
+                'policy_version' => 'phase3-default-v1',
+                'stale_policy_action' => 'allow',
+                'warnings' => [],
+            ],
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null,
+                'account_identifier' => 'CUST-0001',
+                'customer_category' => 'individual',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'invoice_classification' => 'b2c_charge_receipt',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '100.000',
+                'line_uuid' => '77777777-7777-4777-8777-777777777777',
+                'line_vat' => '19.000',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '100.000',
+                'vat_rate' => '19.00',
+            ]],
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'charge_amount' => '119.000',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '419.000',
+                'projected_receivable_balance_after' => '419.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'print_profile' => 'ACCOUNT_CHARGE_RECEIPT',
+            'receipt_type_code' => 'ACCOUNT_CHARGE',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'totals' => [
+                'amount_charged_to_account' => '119.000',
+                'grand_total_before_charge' => '119.000',
+                'subtotal' => '100.000',
+                'total' => '119.000',
+                'vat_total' => '19.000',
+            ],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '119.000',
+                'net_amount' => '100.000',
+                'rate' => '19.00',
+                'tax_category_code' => '',
+                'vat_amount' => '19.000',
+            ]],
         ];
     }
 }

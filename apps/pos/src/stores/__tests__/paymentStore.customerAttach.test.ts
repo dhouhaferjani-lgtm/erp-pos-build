@@ -67,7 +67,12 @@ function attached(overrides: Partial<AttachedCheckoutCustomer> = {}): AttachedCh
     customer_category: 'retail',
     receivable_balance: '42.500',
     credit_balance: '0.000',
+    credit_limit: '500.000',
+    payment_terms_days: 15,
+    charge_account_enabled: true,
+    charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T08:00:00.000Z',
+    is_active: 1,
     customer_sync_status: 'synced',
     ...overrides,
   };

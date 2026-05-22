@@ -32,10 +32,8 @@ import {
   FiscalEventTypeNotImplementedError,
 } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
-import {
-  ACCOUNT_PAYMENT_PAYLOAD_KEYS,
-  goldenAccountPaymentPayload,
-} from '../payloads/AccountPaymentPayload';
+import { goldenAccountPaymentPayload } from '../payloads/AccountPaymentPayload';
+import { goldenAccountChargePayload } from '../payloads/AccountChargePayload';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 
 const nodeSqliteAvailable = (() => {
@@ -212,6 +210,24 @@ function accountPaymentRequest(
     payload: goldenAccountPaymentPayload(),
     source_event_class: 'account_payments',
     source_event_id: '44444444-4444-4444-8444-444444444444',
+    ...overrides,
+  };
+}
+
+function accountChargeRequest(
+  overrides: Partial<FiscalEventAppendRequest> = {},
+): FiscalEventAppendRequest {
+  return {
+    event_type: 'ACCOUNT_CHARGE',
+    tenant_id: TENANT_ID,
+    company_id: COMPANY_ID,
+    terminal_id: TERMINAL_ID,
+    operator_id: OPERATOR_ID,
+    event_time_device: '2026-05-21T10:15:30Z',
+    business_date: '2026-05-21',
+    payload: goldenAccountChargePayload(),
+    source_event_class: 'account_charges',
+    source_event_id: '66666666-6666-4666-8666-666666666666',
     ...overrides,
   };
 }
@@ -1371,32 +1387,231 @@ d('FiscalEventEngine.append', () => {
   });
 
   // -------------------------------------------------------------------
-  // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
-  // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].
-  //
-  // Synthesis v5 §3 + Task 14 standing pattern: the device-side TS key
-  // list and the server-side PHP key list have to be kept identical;
-  // any drift would mean TS accepts what PHP rejects (silent partial
-  // failure at sync time). Test reads the PHP file at test time and
-  // extracts the SALE_RECEIPT array via regex, then asserts sorted
-  // equality with the TS const.
+  // Phase 3 Task 1 R2 — ACCOUNT_CHARGE registry must not create an
+  // unvalidated append path. Full nested/accounting invariants are added
+  // in later tasks; Task 1 owns object shape + exact top-level key drift.
   // -------------------------------------------------------------------
 
-  it('Pass 2A.TS — cross-language drift gate: SALE_RECEIPT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
-    const phpKeys = readPhpSaleReceiptPayloadKeys();
-    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS].sort();
-    const sortedPhp = [...phpKeys].sort();
-    expect(tsKeys).toEqual(sortedPhp);
-    expect(tsKeys).toHaveLength(27);
+  it('Phase 3.1 R2 — happy path: ACCOUNT_CHARGE payload validates top-level keys and seals on the device chain', async () => {
+    const event = await engine.append(adapter, accountChargeRequest());
+
+    expect(event.event_type).toBe('ACCOUNT_CHARGE');
+    expect(event.sequence_number).toBe(1);
+    expect(event.source_event_class).toBe('account_charges');
+    expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('Phase 2.7 — cross-language drift gate: ACCOUNT_PAYMENT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
-    const phpKeys = readPhpAccountPaymentPayloadKeys();
-    const tsKeys = [...ACCOUNT_PAYMENT_PAYLOAD_KEYS].sort();
-    const sortedPhp = [...phpKeys].sort();
-    expect(tsKeys).toEqual(sortedPhp);
-    expect(tsKeys).toHaveLength(20);
+  it('Phase 3.1 R2 — rejects ACCOUNT_CHARGE with an extra top-level key before mutation', async () => {
+    const payload = { ...goldenAccountChargePayload(), dual_chain_shadow: true };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:dual_chain_shadow/,
+    );
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
   });
+
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with a payments key', async () => {
+    const payload = { ...goldenAccountChargePayload(), payments: [{ amount: '119.000' }] };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:payments/,
+    );
+  });
+
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with non-string money fields', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      totals: {
+        ...goldenAccountChargePayload().totals,
+        amount_charged_to_account: 119,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_money_invalid:field=totals\.amount_charged_to_account/,
+    );
+  });
+
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with invalid device time or business date', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            event_time_device: '2026-05-21T10:15:30Z',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_field_invalid:event_time_device/);
+
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            business_date: '21/05/2026',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_field_invalid:business_date/);
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE with a recursive payments key', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      regime_extensions: {
+        future_adapter: {
+          payments: [{ amount: '119.000' }],
+        },
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_payments_forbidden/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE v1 split-sale references before append', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      references: {
+        external_reference: null,
+        related_sale_receipt_event_id: '99999999-9999-4999-8999-999999999999',
+        server_customer_alias_id: null,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_reference_forbidden:references\.related_sale_receipt_event_id/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE terms days without a due date', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      charge_terms: {
+        ...goldenAccountChargePayload().charge_terms,
+        due_date: null,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_terms_invalid/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects non-training ACCOUNT_CHARGE limit exceeded decisions', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      credit_decision: {
+        ...goldenAccountChargePayload().credit_decision,
+        limit_exceeded: true,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_credit_decision_invalid:limit_exceeded/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE amount and balance arithmetic mismatches', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            totals: {
+              ...goldenAccountChargePayload().totals,
+              amount_charged_to_account: '118.000',
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_account_charge_amount_mismatch/);
+
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            local_balance_snapshot: {
+              ...goldenAccountChargePayload().local_balance_snapshot,
+              projected_receivable_balance_after: '418.000',
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_account_charge_balance_mismatch/);
+  });
+
+  it('Phase 3.5 R2 — rejects B2B facture draft classification for non-business ACCOUNT_CHARGE customers', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      invoice_classification: 'b2b_facture_draft_requested',
+      customer: {
+        ...goldenAccountChargePayload().customer,
+        customer_category: 'individual',
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_invoice_classification_mismatch/,
+    );
+  });
+
+  it('Phase 3.5 R3 — accepts fully credit-offset ACCOUNT_CHARGE projected net clamped to zero', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      credit_decision: {
+        ...goldenAccountChargePayload().credit_decision,
+        credit_available_after: '500.000',
+        credit_available_before: '500.000',
+      },
+      line_items: [{
+        ...goldenAccountChargePayload().line_items[0]!,
+        line_subtotal: '50.000',
+        line_vat: '0.000',
+        unit_price: '50.000',
+        vat_rate: '0.00',
+      }],
+      local_balance_snapshot: {
+        ...goldenAccountChargePayload().local_balance_snapshot,
+        charge_amount: '50.000',
+        credit_balance_before: '100.000',
+        net_balance_before: '0.000',
+        projected_credit_balance_after: '100.000',
+        projected_net_balance_after: '0.000',
+        projected_receivable_balance_after: '50.000',
+        receivable_balance_before: '0.000',
+      },
+      totals: {
+        ...goldenAccountChargePayload().totals,
+        amount_charged_to_account: '50.000',
+        grand_total_before_charge: '50.000',
+        subtotal: '50.000',
+        total: '50.000',
+        vat_total: '0.000',
+      },
+      vat_breakdown: [{
+        ...goldenAccountChargePayload().vat_breakdown[0]!,
+        gross_amount: '50.000',
+        net_amount: '50.000',
+        rate: '0.00',
+        vat_amount: '0.000',
+      }],
+    };
+
+    const event = await engine.append(adapter, accountChargeRequest({ payload }));
+
+    expect(event.event_type).toBe('ACCOUNT_CHARGE');
+  });
+
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1443,50 +1658,4 @@ function recomputeForScale(payload: Record<string, unknown>, scale: number): Rec
     gross_amount: money(12),
   }));
   return next;
-}
-
-/**
- * Cross-language drift gate helper — read the PHP validator file and
- * extract the SALE_RECEIPT PAYLOAD_KEYS list. Uses Node `fs` directly
- * (test-only; not bundled). Throws if the PHP file shape changes (which
- * is exactly the drift signal we want).
- */
-function readPhpSaleReceiptPayloadKeys(): string[] {
-  return readPhpPayloadKeys('SALE_RECEIPT');
-}
-
-function readPhpAccountPaymentPayloadKeys(): string[] {
-  return readPhpPayloadKeys('ACCOUNT_PAYMENT');
-}
-
-function readPhpPayloadKeys(eventType: 'SALE_RECEIPT' | 'ACCOUNT_PAYMENT'): string[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fs = require('node:fs') as typeof import('node:fs');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require('node:path') as typeof import('node:path');
-  // Walk up from this test file to the worktree root, then into apps/api.
-  // __dirname at test-time = apps/pos/src/lib/fiscal/__tests__/
-  const candidates = [
-    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
-    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
-  ];
-  const phpPath = candidates.find((p) => fs.existsSync(p));
-  if (!phpPath) {
-    throw new Error(
-      `FiscalPayloadConstraintValidator.php not found at any candidate path: ${candidates.join(', ')}`,
-    );
-  }
-  const src = fs.readFileSync(phpPath, 'utf8');
-  // Match the event-type array literal up to its closing ],
-  // tolerating whitespace + per-line comments + trailing commas.
-  const match = src.match(new RegExp(`'${eventType}'\\s*=>\\s*\\[([\\s\\S]*?)\\]`));
-  if (!match) {
-    throw new Error(`Could not locate '${eventType}' => [...] in ${phpPath}`);
-  }
-  const body = match[1] ?? '';
-  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
-  if (keys.length === 0) {
-    throw new Error(`No keys extracted from '${eventType}' array body in ${phpPath}`);
-  }
-  return keys;
 }

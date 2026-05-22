@@ -137,7 +137,12 @@ export interface AttachedCheckoutCustomer {
   customer_category: string | null;
   receivable_balance: string;
   credit_balance: string;
+  credit_limit: string | null;
+  payment_terms_days: number | null;
+  charge_account_enabled: boolean | 0 | 1;
+  charge_policy_version: string | null;
   balance_updated_at: string | null;
+  is_active: boolean | 0 | 1;
   customer_sync_status: CustomerSyncStatus;
 }
 

@@ -44,6 +44,10 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     customer_category: 'individual',
     receivable_balance: '100.0000',
     credit_balance: '0.0000',
+    credit_limit: '500.0000',
+    payment_terms_days: 15,
+    charge_account_enabled: true,
+    charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T10:45:00.000Z',
     is_active: 1,
     sync_version: '2026-05-21T10:50:00.000Z',
@@ -106,6 +110,31 @@ describe('pullCustomers', () => {
       'customers.updated_since',
       SERVER_SYNCED_AT,
     );
+  });
+
+  it('passes phase three credit fields through to the local mirror repository', async () => {
+    const row = customer({
+      credit_limit: '750.0000',
+      payment_terms_days: 30,
+      charge_account_enabled: false,
+      charge_policy_version: 'phase3-custom-v2',
+    });
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      customers: [row],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
+      synced_at: SERVER_SYNCED_AT,
+    });
+
+    await pullCustomers(db, TENANT_ID, COMPANY_ID);
+
+    expect(upsertCustomer).toHaveBeenCalledWith(db, expect.objectContaining({
+      credit_limit: '750.0000',
+      payment_terms_days: 30,
+      charge_account_enabled: false,
+      charge_policy_version: 'phase3-custom-v2',
+    }));
   });
 
   it('fails loudly when the server returns a row for another tenant or company', async () => {

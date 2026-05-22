@@ -16,6 +16,7 @@ final class FiscalEventTypeTest extends TestCase
         $this->assertTrue(FiscalEventType::CHAIN_RESTART->isImplemented());
         $this->assertTrue(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->isImplemented());
         $this->assertTrue(FiscalEventType::ACCOUNT_PAYMENT->isImplemented());
+        $this->assertTrue(FiscalEventType::ACCOUNT_CHARGE->isImplemented());
     }
 
     public function test_reserved_types_are_not_implemented(): void

@@ -30,7 +30,12 @@ function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
     customer_category: row.customer_category,
     receivable_balance: row.receivable_balance,
     credit_balance: row.credit_balance,
+    credit_limit: row.credit_limit,
+    payment_terms_days: row.payment_terms_days,
+    charge_account_enabled: row.charge_account_enabled,
+    charge_policy_version: row.charge_policy_version,
     balance_updated_at: row.balance_updated_at,
+    is_active: row.is_active,
     customer_sync_status: 'synced',
   };
 }
@@ -118,7 +123,12 @@ export function CustomerAttachPanel({
         customer_category: 'retail',
         receivable_balance: '0.000',
         credit_balance: '0.000',
+        credit_limit: null,
+        payment_terms_days: null,
+        charge_account_enabled: false,
+        charge_policy_version: null,
         balance_updated_at: null,
+        is_active: 1,
         customer_sync_status: 'pending_create',
       });
       setNewName('');

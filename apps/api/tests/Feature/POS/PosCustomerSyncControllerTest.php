@@ -271,6 +271,27 @@ final class PosCustomerSyncControllerTest extends TestCase
         $this->assertArrayHasKey('synced_at', $row);
     }
 
+    public function test_pos_customer_sync_includes_phase_three_credit_fields(): void
+    {
+        $customer = $this->createCustomer([
+            'name' => 'Charge Customer',
+            'credit_limit' => '500.0000',
+            'payment_terms_days' => 15,
+            'is_active' => true,
+        ]);
+
+        $response = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync');
+
+        $response->assertOk()
+            ->assertJsonPath('data.customers.0.id', $customer->id)
+            ->assertJsonPath('data.customers.0.credit_limit', '500.0000')
+            ->assertJsonPath('data.customers.0.payment_terms_days', 15)
+            ->assertJsonPath('data.customers.0.charge_account_enabled', true)
+            ->assertJsonPath('data.customers.0.charge_policy_version', 'phase3-v1');
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */

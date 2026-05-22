@@ -91,6 +91,19 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertSame('synced', $result->payload['customer']['customer_sync_status']);
     }
 
+    public function test_strict_parser_accepts_account_charge_canonical_envelope(): void
+    {
+        $bytes = $this->validAccountChargeEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_CHARGE);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame('ACCOUNT_CHARGE', $result->payload['receipt_type_code']);
+        $this->assertSame('b2c_charge_receipt', $result->payload['invoice_classification']);
+        $this->assertSame('119.000', $result->payload['totals']['amount_charged_to_account']);
+    }
+
     public function test_strict_parser_rejects_account_payment_extra_payload_key(): void
     {
         $payload = $this->canonicalAccountPaymentPayload();
@@ -637,6 +650,7 @@ final class StrictCanonicalParserTest extends TestCase
             'CHAIN_RESTART' => $this->validChainRestartEnvelope(),
             'TERMINAL_REGISTRY_SNAPSHOT' => $this->validTerminalRegistrySnapshotEnvelope(),
             'ACCOUNT_PAYMENT' => $this->validAccountPaymentEnvelope(),
+            'ACCOUNT_CHARGE' => $this->validAccountChargeEnvelope(),
             default => throw new \LogicException('unsupported event type for helper: '.$eventType),
         };
     }
@@ -653,6 +667,11 @@ final class StrictCanonicalParserTest extends TestCase
     private function validAccountPaymentEnvelope(): string
     {
         return $this->envelope('ACCOUNT_PAYMENT', $this->canonicalAccountPaymentPayload());
+    }
+
+    private function validAccountChargeEnvelope(): string
+    {
+        return $this->envelope('ACCOUNT_CHARGE', $this->canonicalAccountChargePayload());
     }
 
     /**
@@ -739,6 +758,109 @@ final class StrictCanonicalParserTest extends TestCase
             ]],
             'vat_total' => '0.350',
             'vouchers_redeemed' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountChargePayload(): array
+    {
+        return [
+            'account_charge_uuid' => '66666666-6666-4666-8666-666666666666',
+            'business_date' => '2026-05-21',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'charge_terms' => ['due_date' => '2026-06-20', 'payment_terms_days' => 30, 'terms_label' => 'Net 30'],
+            'credit_decision' => [
+                'credit_available_after' => '81.000',
+                'credit_available_before' => '200.000',
+                'credit_limit' => '500.000',
+                'decision' => 'approved',
+                'limit_exceeded' => false,
+                'mirror_stale_at_authoring' => false,
+                'policy_version' => 'phase3-default-v1',
+                'stale_policy_action' => 'allow',
+                'warnings' => [],
+            ],
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'account_identifier' => 'CUST-0001',
+                'address' => null,
+                'customer_category' => 'individual',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'invoice_classification' => 'b2c_charge_receipt',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '100.000',
+                'line_uuid' => '77777777-7777-4777-8777-777777777777',
+                'line_vat' => '19.000',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '100.000',
+                'vat_rate' => '19.00',
+            ]],
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'charge_amount' => '119.000',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '419.000',
+                'projected_receivable_balance_after' => '419.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'print_profile' => 'ACCOUNT_CHARGE_RECEIPT',
+            'receipt_type_code' => 'ACCOUNT_CHARGE',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'totals' => [
+                'amount_charged_to_account' => '119.000',
+                'grand_total_before_charge' => '119.000',
+                'subtotal' => '100.000',
+                'total' => '119.000',
+                'vat_total' => '19.000',
+            ],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '119.000',
+                'net_amount' => '100.000',
+                'rate' => '19.00',
+                'tax_category_code' => '',
+                'vat_amount' => '19.000',
+            ]],
         ];
     }
 

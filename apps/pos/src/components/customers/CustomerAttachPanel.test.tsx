@@ -130,6 +130,10 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     customer_category: 'retail',
     receivable_balance: '42.500',
     credit_balance: '0.000',
+    credit_limit: null,
+    payment_terms_days: null,
+    charge_account_enabled: 1,
+    charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T08:00:00.000Z',
     is_active: 1,
     sync_version: 'sync-1',
@@ -173,6 +177,9 @@ describe('CustomerAttachPanel', () => {
     expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
       id: 'customer-1',
       name: 'Mariam Ben Ali',
+      credit_limit: null,
+      charge_account_enabled: 1,
+      charge_policy_version: 'phase3-v1',
       customer_sync_status: 'synced',
     });
     expect(screen.getByText('Attached')).toBeInTheDocument();
@@ -194,6 +201,9 @@ describe('CustomerAttachPanel', () => {
     await waitFor(() => {
       expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
         name: 'Amina Trabelsi',
+        credit_limit: null,
+        charge_account_enabled: false,
+        charge_policy_version: null,
         customer_sync_status: 'pending_create',
       });
     });
