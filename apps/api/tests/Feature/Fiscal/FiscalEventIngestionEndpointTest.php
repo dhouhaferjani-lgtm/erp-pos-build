@@ -239,6 +239,28 @@ final class FiscalEventIngestionEndpointTest extends TestCase
         $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
     }
 
+    public function test_endpoint_rejects_server_only_event_type_before_insert(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $envWire = $this->validEnvelopeWire([
+            'event_type' => FiscalEventType::ACCOUNT_STATUS_CHANGED->value,
+            'event_version' => 1,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$envWire],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SERVER_ONLY_EVENT_TYPE');
+        $this->assertSame(
+            0,
+            DB::table('fiscal_events')->where('event_type', FiscalEventType::ACCOUNT_STATUS_CHANGED->value)->count(),
+        );
+        $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
+    }
+
     /**
      * Mixed-batch tenant-boundary check — even when only ONE envelope in a
      * batch claims a foreign tenant, the entire batch is rejected with 403

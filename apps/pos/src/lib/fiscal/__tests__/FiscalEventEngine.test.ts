@@ -832,6 +832,39 @@ d('FiscalEventEngine.append', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('Phase 4 — rejects ACCOUNT_STATUS_CHANGED with ServerAuthoredEventTypeError', async () => {
+    const statusRequest: FiscalEventAppendRequest = {
+      event_type: 'ACCOUNT_STATUS_CHANGED',
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      terminal_id: TERMINAL_ID,
+      operator_id: OPERATOR_ID,
+      event_time_device: '2026-05-16T10:00:00Z',
+      business_date: '2026-05-16',
+      payload: {
+        actor_user_id: OPERATOR_ID,
+        company_id: COMPANY_ID,
+        event_time_device: '2026-05-16T10:00:00.000Z',
+        new_status: 'suspended',
+        old_status: 'active',
+        partner_id: 'partner-1',
+        partner_snapshot: {},
+        reason: 'Manual suspension',
+        status_version: 'status-version-1',
+        tenant_id: TENANT_ID,
+        terminal_id: TERMINAL_ID,
+        training_flag: false,
+      },
+    };
+
+    await expect(engine.append(adapter, statusRequest)).rejects.toBeInstanceOf(
+      ServerAuthoredEventTypeError,
+    );
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
   it('Task 26 §11.0 — ServerAuthoredEventTypeError message cites spec §11.0 and the event type', async () => {
     const trsRequest: FiscalEventAppendRequest = {
       event_type: 'TERMINAL_REGISTRY_SNAPSHOT',
