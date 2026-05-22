@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LineDiscountModal } from '../LineDiscountModal';
+import { apiPost } from '@/lib/api';
+import { authorPosOverride } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
@@ -9,6 +11,10 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/lib/api', () => ({
   apiPost: vi.fn(),
+}));
+
+vi.mock('@/lib/operatorApproval/posOverrideAuthoring', () => ({
+  authorPosOverride: vi.fn(),
 }));
 
 function renderModal(overrides: Partial<Parameters<typeof LineDiscountModal>[0]> = {}) {
@@ -20,6 +26,15 @@ function renderModal(overrides: Partial<Parameters<typeof LineDiscountModal>[0]>
     canDiscount: true,
     maxDiscountPercent: 100,
     terminalMaxDiscountPercent: 100,
+    approvalContext: {
+      tenantId: 'tenant-1',
+      companyId: 'company-1',
+      terminalId: 'terminal-1',
+      cashierUserId: 'cashier-1',
+      businessDate: '2026-05-21',
+      isTraining: false,
+    },
+    lineReferenceId: 'line-1',
   };
   return render(<LineDiscountModal {...defaults} {...overrides} />);
 }
@@ -59,6 +74,54 @@ describe('LineDiscountModal', () => {
     fireEvent.click(screen.getByText('5'));
     fireEvent.click(screen.getByText('cart.applyDiscount'));
     expect(onApply).toHaveBeenCalledWith({ type: 'percentage', value: '15', reason: '' });
+  });
+
+  it('requires fiscal approval evidence before applying a manager-approved line discount override', async () => {
+    const evidence = {
+      approval_id: 'approval-1',
+      approval_event_id: 'approval-event-1',
+      approval_scope: 'discount_limit_override',
+      override_event_id: 'override-event-1',
+      policy_version: 'pos-discount-policy-v1',
+      supervisor_user_id: 'manager-1',
+      target_reference_id: 'line-1',
+    } as const;
+    vi.mocked(apiPost).mockResolvedValue({
+      id: 'manager-1',
+      name: 'Manager',
+      roles: ['manager'],
+      can_discount: true,
+      max_discount_percent: 50,
+    });
+    vi.mocked(authorPosOverride).mockResolvedValue(evidence);
+    const onApply = vi.fn();
+    renderModal({
+      onApply,
+      maxDiscountPercent: 10,
+      terminalMaxDiscountPercent: 50,
+    });
+
+    fireEvent.click(screen.getByText('1'));
+    fireEvent.click(screen.getByText('5'));
+    fireEvent.click(screen.getByText('cart.applyDiscount'));
+    fireEvent.click(screen.getByText('1'));
+    fireEvent.click(screen.getByText('2'));
+    fireEvent.click(screen.getByText('3'));
+    fireEvent.click(screen.getByText('4'));
+    fireEvent.click(screen.getByText('discount.authorize'));
+
+    await waitFor(() => expect(onApply).toHaveBeenCalledOnce());
+    expect(authorPosOverride).toHaveBeenCalledWith(expect.objectContaining({
+      approvalScope: 'discount_limit_override',
+      targetReferenceId: 'line-1',
+      supervisor: expect.objectContaining({ id: 'manager-1' }),
+    }));
+    expect(onApply).toHaveBeenCalledWith({
+      type: 'percentage',
+      value: '15',
+      reason: '',
+      approvalEvidence: evidence,
+    });
   });
 });
 

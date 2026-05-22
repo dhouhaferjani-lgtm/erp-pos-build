@@ -150,6 +150,21 @@ export function HomePage() {
   const companyIdForVoucherDb = useAuthStore((s) => s.companyId);
   const activeCompanyId = useAuthStore((s) => s.companyId);
   const activeTenantId = useAuthStore((s) => s.user?.tenantId ?? null);
+  const activeUserId = useAuthStore((s) => s.user?.id ?? null);
+  const approvalContext = useMemo(() => {
+    if (!activeTenantId || !activeCompanyId || !terminal) return undefined;
+    const cashierUserId = operator?.id ?? activeUserId;
+    if (!cashierUserId) return undefined;
+
+    return {
+      tenantId: activeTenantId,
+      companyId: activeCompanyId,
+      terminalId: terminal.id,
+      cashierUserId,
+      businessDate: new Date().toISOString().slice(0, 10),
+      isTraining: terminal.is_training_mode === true,
+    };
+  }, [activeTenantId, activeCompanyId, terminal, operator?.id, activeUserId]);
   const [voucherDb, setVoucherDb] = useState<import('@tauri-apps/plugin-sql').default | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -1199,6 +1214,7 @@ export function HomePage() {
             : undefined
         }
         requiresReason={true}
+        approvalContext={approvalContext}
       />
 
       {/* Line discount modal */}
@@ -1215,6 +1231,8 @@ export function HomePage() {
             ? t(`pos:${lineDiscountAccess.disabledReason}`)
             : undefined
         }
+        approvalContext={approvalContext}
+        lineReferenceId={discountItemId}
       />
 
       {/* Modifier selection modal */}
