@@ -393,7 +393,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             'credit_decision' => [
                 'mirror_stale_at_authoring' => true,
                 'stale_policy_action' => 'warn',
-                'warnings' => ['balance snapshot stale'],
+                'warnings' => ['balance_snapshot_stale'],
             ],
         ]);
         $this->assertAccountChargeAccepted($payload);
@@ -448,6 +448,17 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         ]);
 
         $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid:warnings/', $payload);
+    }
+
+    public function test_account_charge_rejects_display_text_credit_decision_warning(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'warnings' => ['balance snapshot stale'],
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid:warnings\\[0\\] must be a stable lower_snake_case code/', $payload);
     }
 
     public function test_account_charge_accepts_discount_present_and_absent_variants(): void
@@ -538,7 +549,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             'training_flag' => true,
             'credit_decision' => [
                 'limit_exceeded' => true,
-                'warnings' => ['training over limit'],
+                'warnings' => ['training_over_limit'],
             ],
         ]);
         $this->assertAccountChargeAccepted($training);

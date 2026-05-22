@@ -803,6 +803,9 @@ final class FiscalPayloadConstraintValidator
             if (! is_string($warning) || $warning === '') {
                 throw new RuntimeException("payload_field_invalid:credit_decision.warnings[{$index}] must be non-empty string");
             }
+            if (preg_match('/^[a-z][a-z0-9_]*$/D', $warning) !== 1) {
+                throw new RuntimeException("payload_account_charge_credit_decision_invalid:warnings[{$index}] must be a stable lower_snake_case code");
+            }
         }
         $sortedWarnings = $warnings;
         sort($sortedWarnings, SORT_STRING);
