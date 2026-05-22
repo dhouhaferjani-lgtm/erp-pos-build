@@ -10,6 +10,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\AccountChargeReceipt;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Always-active POS-core printable projection for ACCOUNT_CHARGE events.
@@ -53,22 +54,21 @@ final class AccountChargeReceiptProjection implements FiscalEventProjector
         $view = $this->canonicalReader->forAccountCharge($event);
         $payload = $view->payload;
 
-        DB::transaction(function () use ($event, $payload, $view): void {
-            if (AccountChargeReceipt::query()->where('fiscal_event_id', $event->id)->exists()) {
-                return;
-            }
+        $now = now();
 
-            AccountChargeReceipt::query()->create([
-                'tenant_id' => $event->tenant_id,
-                'company_id' => $event->company_id,
-                'fiscal_event_id' => $event->id,
-                'account_charge_uuid' => $payload->accountChargeUuid,
-                'customer_id' => $view->customer->customerId,
-                'customer_name' => $view->customer->name,
-                'amount_charged' => $view->totals->amountChargedToAccount,
-                'currency_code' => $payload->currencyCode,
-                'payload_snapshot' => $payload->toArray(),
-            ]);
-        });
+        DB::table('pos_account_charge_receipts')->insertOrIgnore([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $event->tenant_id,
+            'company_id' => $event->company_id,
+            'fiscal_event_id' => $event->id,
+            'account_charge_uuid' => $payload->accountChargeUuid,
+            'customer_id' => $view->customer->customerId,
+            'customer_name' => $view->customer->name,
+            'amount_charged' => $view->totals->amountChargedToAccount,
+            'currency_code' => $payload->currencyCode,
+            'payload_snapshot' => json_encode($payload->toArray(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 }
