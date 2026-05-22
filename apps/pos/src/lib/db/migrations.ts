@@ -1264,4 +1264,30 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Phase 4 Task 10 — approval evidence for legacy cash drawer DEPOSIT/PAYOUT queue rows.
+    version: 44,
+    name: 'add_cash_drawer_approval_evidence',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_fiscal_event_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_scope TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_supervisor_user_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_target_hash TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

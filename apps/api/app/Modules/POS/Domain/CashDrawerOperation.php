@@ -51,6 +51,11 @@ class CashDrawerOperation extends Model
         'user_id',
         'reason',
         'receipt_id',
+        'approval_id',
+        'approval_fiscal_event_id',
+        'approval_scope',
+        'approval_supervisor_user_id',
+        'approval_target_hash',
         'created_at',
     ];
 

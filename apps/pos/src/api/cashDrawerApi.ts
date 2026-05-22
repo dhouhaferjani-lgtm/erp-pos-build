@@ -8,24 +8,42 @@ import {
   getCashDrawerOpsForShift,
 } from '@/lib/db/repositories/cashDrawerRepository';
 
+export interface CashDrawerApprovalEvidence {
+  approval_id: string;
+  approval_fiscal_event_id: string;
+  approval_scope: 'cash_drawer_control';
+  approval_supervisor_user_id: string;
+  approval_target_hash: string;
+}
+
 function getDb() {
   const { companyId } = useAuthStore.getState();
   return getDatabase(companyId ?? '');
 }
 
-export async function depositCash(data: { amount: string; reason: string }): Promise<void> {
+export async function depositCash(data: {
+  amount: string;
+  reason: string;
+  approvalEvidence?: CashDrawerApprovalEvidence | null;
+}): Promise<void> {
+  const payload = cashDrawerPayload(data);
   try {
-    return await apiPost<void>('/pos/cash-drawer/deposit', data);
+    return await apiPost<void>('/pos/cash-drawer/deposit', payload);
   } catch {
-    await saveOfflineCashDrawerOp('deposit', data.amount, data.reason);
+    await saveOfflineCashDrawerOp('deposit', data.amount, data.reason, data.approvalEvidence ?? null);
   }
 }
 
-export async function payoutCash(data: { amount: string; reason: string }): Promise<void> {
+export async function payoutCash(data: {
+  amount: string;
+  reason: string;
+  approvalEvidence?: CashDrawerApprovalEvidence | null;
+}): Promise<void> {
+  const payload = cashDrawerPayload(data);
   try {
-    return await apiPost<void>('/pos/cash-drawer/payout', data);
+    return await apiPost<void>('/pos/cash-drawer/payout', payload);
   } catch {
-    await saveOfflineCashDrawerOp('payout', data.amount, data.reason);
+    await saveOfflineCashDrawerOp('payout', data.amount, data.reason, data.approvalEvidence ?? null);
   }
 }
 
@@ -52,6 +70,7 @@ async function saveOfflineCashDrawerOp(
   type: 'deposit' | 'payout',
   amount: string,
   reason: string,
+  approvalEvidence: CashDrawerApprovalEvidence | null,
 ): Promise<void> {
   const db = await getDb();
   const { shift, terminal } = useTerminalStore.getState();
@@ -72,5 +91,22 @@ async function saveOfflineCashDrawerOp(
     terminal_id: terminal.id,
     shift_id: shift.id,
     status: 'pending',
+    approval_id: approvalEvidence?.approval_id ?? null,
+    approval_fiscal_event_id: approvalEvidence?.approval_fiscal_event_id ?? null,
+    approval_scope: approvalEvidence?.approval_scope ?? null,
+    approval_supervisor_user_id: approvalEvidence?.approval_supervisor_user_id ?? null,
+    approval_target_hash: approvalEvidence?.approval_target_hash ?? null,
   });
+}
+
+function cashDrawerPayload(data: {
+  amount: string;
+  reason: string;
+  approvalEvidence?: CashDrawerApprovalEvidence | null;
+}): Record<string, unknown> {
+  return {
+    amount: data.amount,
+    reason: data.reason,
+    ...(data.approvalEvidence ?? {}),
+  };
 }

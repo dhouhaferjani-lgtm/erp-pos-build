@@ -70,7 +70,14 @@ final class CashDrawerController extends Controller
             $shift,
             $request->validated('amount'),
             $user,
-            $request->validated('reason')
+            $request->validated('reason'),
+            $request->safe()->only([
+                'approval_id',
+                'approval_fiscal_event_id',
+                'approval_scope',
+                'approval_supervisor_user_id',
+                'approval_target_hash',
+            ]),
         );
 
         return response()->json([
@@ -117,7 +124,14 @@ final class CashDrawerController extends Controller
             $shift,
             $request->validated('amount'),
             $user,
-            $request->validated('reason')
+            $request->validated('reason'),
+            $request->safe()->only([
+                'approval_id',
+                'approval_fiscal_event_id',
+                'approval_scope',
+                'approval_supervisor_user_id',
+                'approval_target_hash',
+            ]),
         );
 
         return response()->json([

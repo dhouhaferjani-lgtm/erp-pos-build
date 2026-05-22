@@ -38,6 +38,30 @@ final class CashDrawerService
     }
 
     /**
+     * @return array<string, string|null>
+     */
+    private function approvalAttributes(?array $approvalEvidence): array
+    {
+        if ($approvalEvidence === null) {
+            return [
+                'approval_id' => null,
+                'approval_fiscal_event_id' => null,
+                'approval_scope' => null,
+                'approval_supervisor_user_id' => null,
+                'approval_target_hash' => null,
+            ];
+        }
+
+        return [
+            'approval_id' => $approvalEvidence['approval_id'] ?? null,
+            'approval_fiscal_event_id' => $approvalEvidence['approval_fiscal_event_id'] ?? null,
+            'approval_scope' => $approvalEvidence['approval_scope'] ?? null,
+            'approval_supervisor_user_id' => $approvalEvidence['approval_supervisor_user_id'] ?? null,
+            'approval_target_hash' => $approvalEvidence['approval_target_hash'] ?? null,
+        ];
+    }
+
+    /**
      * Record opening cash drawer operation
      *
      * Called when a shift is opened with the cashier's declared starting balance.
@@ -100,7 +124,8 @@ final class CashDrawerService
         Shift $shift,
         string $amount,
         User $user,
-        string $reason
+        string $reason,
+        ?array $approvalEvidence = null,
     ): CashDrawerOperation {
         $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
@@ -109,7 +134,7 @@ final class CashDrawerService
             'user_id' => $user->id,
             'reason' => $reason,
             'receipt_id' => null,
-        ]);
+        ] + $this->approvalAttributes($approvalEvidence));
 
         $this->dispatchOperationEvent($operation, $shift);
 
@@ -131,7 +156,8 @@ final class CashDrawerService
         Shift $shift,
         string $amount,
         User $user,
-        string $reason
+        string $reason,
+        ?array $approvalEvidence = null,
     ): CashDrawerOperation {
         $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
@@ -140,7 +166,7 @@ final class CashDrawerService
             'user_id' => $user->id,
             'reason' => $reason,
             'receipt_id' => null,
-        ]);
+        ] + $this->approvalAttributes($approvalEvidence));
 
         $this->dispatchOperationEvent($operation, $shift);
 

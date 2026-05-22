@@ -30,6 +30,11 @@ final class RecordDepositRequest extends FormRequest
             'shift_id' => ['required', 'string', 'uuid', 'exists:pos_shifts,id'],
             'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => ['required', 'string', 'max:255'],
+            'approval_id' => ['nullable', 'uuid'],
+            'approval_fiscal_event_id' => ['nullable', 'uuid'],
+            'approval_scope' => ['nullable', 'in:cash_drawer_control'],
+            'approval_supervisor_user_id' => ['nullable', 'uuid'],
+            'approval_target_hash' => ['nullable', 'string', 'size:64'],
         ];
     }
 

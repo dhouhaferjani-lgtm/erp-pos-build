@@ -114,6 +114,23 @@ class CashDrawerServiceTest extends TestCase
         $this->assertEquals('145.000', $expected);
     }
 
+    public function test_record_deposit_persists_approval_evidence(): void
+    {
+        $operation = $this->service->recordDeposit($this->shift, '20.00', $this->cashier, 'Safe deposit', [
+            'approval_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'approval_fiscal_event_id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            'approval_scope' => 'cash_drawer_control',
+            'approval_supervisor_user_id' => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            'approval_target_hash' => str_repeat('d', 64),
+        ]);
+
+        $this->assertEquals('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', $operation->approval_id);
+        $this->assertEquals('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', $operation->approval_fiscal_event_id);
+        $this->assertEquals('cash_drawer_control', $operation->approval_scope);
+        $this->assertEquals('cccccccc-cccc-4ccc-8ccc-cccccccccccc', $operation->approval_supervisor_user_id);
+        $this->assertEquals(str_repeat('d', 64), $operation->approval_target_hash);
+    }
+
     public function test_calculate_expected_cash_excludes_closing(): void
     {
         $this->service->recordOpening($this->shift, '100.00', $this->cashier);
