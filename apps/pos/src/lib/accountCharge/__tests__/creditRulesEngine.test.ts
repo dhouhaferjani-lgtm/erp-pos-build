@@ -36,6 +36,7 @@ describe('evaluateAccountChargeCreditDecision', () => {
     ['missing_policy', { charge_policy_version: null }, 'charge_policy_missing'],
     ['limit_exceeded', { credit_limit: '500.000', receivable_balance: '450.000', credit_balance: '0.000' }, 'credit_limit_exceeded'],
     ['missing_balance_snapshot', { balance_updated_at: null }, 'balance_snapshot_missing'],
+    ['invalid_balance_snapshot', { balance_updated_at: 'not-a-date' }, 'balance_snapshot_invalid'],
     ['hard_stale', { balance_updated_at: '2026-05-01T00:00:00.000Z' }, 'balance_snapshot_hard_stale'],
     [
       'ambiguous_alias',
