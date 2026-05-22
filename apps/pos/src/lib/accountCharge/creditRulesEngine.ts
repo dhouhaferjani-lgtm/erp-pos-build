@@ -75,6 +75,10 @@ function minutesBetween(a: Date, b: Date): number {
 export function evaluateAccountChargeCreditDecision(
   input: AccountChargeCreditDecisionInput,
 ): AccountChargeCreditDecisionResult {
+  if (Number.isNaN(input.now.getTime())) {
+    return reject('balance_snapshot_invalid', 'now');
+  }
+
   if (input.tenant_id !== input.expected_tenant_id) {
     return reject('customer_tenant_mismatch', 'tenant_id');
   }
@@ -104,6 +108,10 @@ export function evaluateAccountChargeCreditDecision(
     return reject('balance_snapshot_invalid', 'balance_updated_at');
   }
 
+  if (balanceUpdatedAt.getTime() > input.now.getTime()) {
+    return reject('balance_snapshot_invalid', 'balance_updated_at');
+  }
+
   if (minutesBetween(input.now, balanceUpdatedAt) > input.hard_stale_after_minutes) {
     return reject('balance_snapshot_hard_stale', 'balance_updated_at');
   }
@@ -130,7 +138,10 @@ export function evaluateAccountChargeCreditDecision(
   const zero = 0n;
   const netBefore = receivableBefore > creditBefore ? receivableBefore - creditBefore : zero;
   const creditAvailableBefore = creditLimit - netBefore;
-  const projectedNetAfter = netBefore + chargeAmount;
+  const projectedReceivableAfter = receivableBefore + chargeAmount;
+  const projectedNetAfter = projectedReceivableAfter > creditBefore
+    ? projectedReceivableAfter - creditBefore
+    : zero;
   const creditAvailableAfter = creditLimit - projectedNetAfter;
 
   if (creditAvailableAfter < zero) {

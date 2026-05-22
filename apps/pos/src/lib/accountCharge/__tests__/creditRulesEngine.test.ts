@@ -37,6 +37,8 @@ describe('evaluateAccountChargeCreditDecision', () => {
     ['limit_exceeded', { credit_limit: '500.000', receivable_balance: '450.000', credit_balance: '0.000' }, 'credit_limit_exceeded'],
     ['missing_balance_snapshot', { balance_updated_at: null }, 'balance_snapshot_missing'],
     ['invalid_balance_snapshot', { balance_updated_at: 'not-a-date' }, 'balance_snapshot_invalid'],
+    ['future_balance_snapshot', { balance_updated_at: '2026-05-21T12:01:00.000Z' }, 'balance_snapshot_invalid'],
+    ['invalid_authoring_clock', { now: new Date('not-a-date') }, 'balance_snapshot_invalid'],
     ['hard_stale', { balance_updated_at: '2026-05-01T00:00:00.000Z' }, 'balance_snapshot_hard_stale'],
     [
       'ambiguous_alias',
@@ -94,6 +96,62 @@ describe('evaluateAccountChargeCreditDecision', () => {
         credit_available_before: '0.200',
         credit_available_after: '0.000',
         limit_exceeded: false,
+      },
+    });
+  });
+
+  it('lets existing credit balance offset the new charge before enforcing the limit', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      receivable_balance: '0.000',
+      credit_balance: '100.000',
+      credit_limit: '500.000',
+      charge_amount: '550.000',
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      decision: {
+        credit_available_before: '500.000',
+        credit_available_after: '50.000',
+        limit_exceeded: false,
+      },
+    });
+  });
+
+  it('supports two-decimal currency scales with exact minor-unit math', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      receivable_balance: '10.25',
+      credit_balance: '0.25',
+      credit_limit: '50.00',
+      charge_amount: '19.75',
+      currency_scale: 2,
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      decision: {
+        credit_available_before: '40.00',
+        credit_available_after: '20.25',
+        credit_limit: '50.00',
+      },
+    });
+  });
+
+  it('supports zero-decimal currency scales with exact minor-unit math', () => {
+    const result = evaluateAccountChargeCreditDecision(makeInput({
+      receivable_balance: '10',
+      credit_balance: '3',
+      credit_limit: '50',
+      charge_amount: '20',
+      currency_scale: 0,
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      decision: {
+        credit_available_before: '43',
+        credit_available_after: '23',
+        credit_limit: '50',
       },
     });
   });
