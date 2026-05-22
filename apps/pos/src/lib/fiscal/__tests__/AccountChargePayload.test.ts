@@ -58,4 +58,17 @@ describe('AccountChargePayload', () => {
     expect(payload.line_items[0]?.non_collected_subtype).toBeNull();
     expect(payload.buyer).toBeNull();
   });
+
+  it('preserves raw non-business customer categories from the mirror', () => {
+    const base = goldenAccountChargePayload();
+    const payload: AccountChargePayload = {
+      ...base,
+      customer: {
+        ...base.customer,
+        customer_category: 'retail',
+      },
+    };
+
+    expect(payload.customer.customer_category).toBe('retail');
+  });
 });

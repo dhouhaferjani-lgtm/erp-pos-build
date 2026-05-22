@@ -55,7 +55,7 @@ export interface AccountChargeBuyer {
 export interface AccountChargeCustomer {
   address: AccountChargeAddress | null;
   account_identifier: string | null;
-  customer_category: 'individual' | 'business';
+  customer_category: string | null;
   customer_id: string;
   customer_sync_status: 'synced' | 'pending_create';
   email: string | null;

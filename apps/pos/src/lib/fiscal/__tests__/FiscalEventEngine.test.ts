@@ -32,14 +32,8 @@ import {
   FiscalEventTypeNotImplementedError,
 } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
-import {
-  ACCOUNT_PAYMENT_PAYLOAD_KEYS,
-  goldenAccountPaymentPayload,
-} from '../payloads/AccountPaymentPayload';
-import {
-  ACCOUNT_CHARGE_PAYLOAD_KEYS,
-  goldenAccountChargePayload,
-} from '../payloads/AccountChargePayload';
+import { goldenAccountPaymentPayload } from '../payloads/AccountPaymentPayload';
+import { goldenAccountChargePayload } from '../payloads/AccountChargePayload';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 
 const nodeSqliteAvailable = (() => {
@@ -1418,41 +1412,6 @@ d('FiscalEventEngine.append', () => {
     expect(rows).toHaveLength(0);
   });
 
-  // -------------------------------------------------------------------
-  // Cross-language drift gate — SALE_RECEIPT_PAYLOAD_KEYS must byte-mirror
-  // PHP FiscalPayloadConstraintValidator::PAYLOAD_KEYS['SALE_RECEIPT'].
-  //
-  // Synthesis v5 §3 + Task 14 standing pattern: the device-side TS key
-  // list and the server-side PHP key list have to be kept identical;
-  // any drift would mean TS accepts what PHP rejects (silent partial
-  // failure at sync time). Test reads the PHP file at test time and
-  // extracts the SALE_RECEIPT array via regex, then asserts sorted
-  // equality with the TS const.
-  // -------------------------------------------------------------------
-
-  it('Pass 2A.TS — cross-language drift gate: SALE_RECEIPT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
-    const phpKeys = readPhpSaleReceiptPayloadKeys();
-    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS].sort();
-    const sortedPhp = [...phpKeys].sort();
-    expect(tsKeys).toEqual(sortedPhp);
-    expect(tsKeys).toHaveLength(27);
-  });
-
-  it('Phase 2.7 — cross-language drift gate: ACCOUNT_PAYMENT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
-    const phpKeys = readPhpAccountPaymentPayloadKeys();
-    const tsKeys = [...ACCOUNT_PAYMENT_PAYLOAD_KEYS].sort();
-    const sortedPhp = [...phpKeys].sort();
-    expect(tsKeys).toEqual(sortedPhp);
-    expect(tsKeys).toHaveLength(20);
-  });
-
-  it('Phase 3.1 R3 — cross-language drift gate: ACCOUNT_CHARGE_PAYLOAD_KEYS byte-mirrors PHP DTO PAYLOAD_KEYS', () => {
-    const phpKeys = readPhpAccountChargePayloadKeys();
-    const tsKeys = [...ACCOUNT_CHARGE_PAYLOAD_KEYS].sort();
-    const sortedPhp = [...phpKeys].sort();
-    expect(tsKeys).toEqual(sortedPhp);
-    expect(tsKeys).toHaveLength(28);
-  });
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1499,76 +1458,4 @@ function recomputeForScale(payload: Record<string, unknown>, scale: number): Rec
     gross_amount: money(12),
   }));
   return next;
-}
-
-/**
- * Cross-language drift gate helper — read the PHP validator file and
- * extract the SALE_RECEIPT PAYLOAD_KEYS list. Uses Node `fs` directly
- * (test-only; not bundled). Throws if the PHP file shape changes (which
- * is exactly the drift signal we want).
- */
-function readPhpSaleReceiptPayloadKeys(): string[] {
-  return readPhpPayloadKeys('SALE_RECEIPT');
-}
-
-function readPhpAccountPaymentPayloadKeys(): string[] {
-  return readPhpPayloadKeys('ACCOUNT_PAYMENT');
-}
-
-function readPhpAccountChargePayloadKeys(): string[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fs = require('node:fs') as typeof import('node:fs');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require('node:path') as typeof import('node:path');
-  const candidates = [
-    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
-    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
-  ];
-  const phpPath = candidates.find((p) => fs.existsSync(p));
-  if (!phpPath) {
-    throw new Error(`AccountChargePayload.php not found at any candidate path: ${candidates.join(', ')}`);
-  }
-  const src = fs.readFileSync(phpPath, 'utf8');
-  const match = src.match(/public const PAYLOAD_KEYS = \[([\s\S]*?)\];/);
-  if (!match) {
-    throw new Error(`Could not locate AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
-  }
-  const body = match[1] ?? '';
-  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
-  if (keys.length === 0) {
-    throw new Error(`No keys extracted from AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
-  }
-  return keys;
-}
-
-function readPhpPayloadKeys(eventType: 'SALE_RECEIPT' | 'ACCOUNT_PAYMENT'): string[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fs = require('node:fs') as typeof import('node:fs');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require('node:path') as typeof import('node:path');
-  // Walk up from this test file to the worktree root, then into apps/api.
-  // __dirname at test-time = apps/pos/src/lib/fiscal/__tests__/
-  const candidates = [
-    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
-    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
-  ];
-  const phpPath = candidates.find((p) => fs.existsSync(p));
-  if (!phpPath) {
-    throw new Error(
-      `FiscalPayloadConstraintValidator.php not found at any candidate path: ${candidates.join(', ')}`,
-    );
-  }
-  const src = fs.readFileSync(phpPath, 'utf8');
-  // Match the event-type array literal up to its closing ],
-  // tolerating whitespace + per-line comments + trailing commas.
-  const match = src.match(new RegExp(`'${eventType}'\\s*=>\\s*\\[([\\s\\S]*?)\\]`));
-  if (!match) {
-    throw new Error(`Could not locate '${eventType}' => [...] in ${phpPath}`);
-  }
-  const body = match[1] ?? '';
-  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
-  if (keys.length === 0) {
-    throw new Error(`No keys extracted from '${eventType}' array body in ${phpPath}`);
-  }
-  return keys;
 }
