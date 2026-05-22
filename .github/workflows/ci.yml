@@ -422,6 +422,14 @@ jobs:
         #     is persisted. SQLite covers local happy-path replay; PG is the
         #     production truth for advisory locks, UUID FKs, rollback
         #     semantics, and idempotency-tail behaviour.
+        #   - DocumentAccountChargeFactureBridgeTest (Feature, Phase 3
+        #     Task 9): the Sales-gated ACCOUNT_CHARGE document bridge writes
+        #     draft invoice/document_lines from sealed fiscal events and
+        #     must stay draft-only, idempotent by fiscal event reference,
+        #     and tenant/company scoped on the business customer lookup.
+        #     SQLite covers local happy-path replay; PG is the production
+        #     truth for UUID FKs, jsonb payload snapshots, document-line
+        #     uniqueness, and CI visibility of the Sales module projection.
         #   - TreasuryReceiptBridgeTest (Feature, Task 22): the Treasury
         #     bridge writes `payments` rows with the PG-only
         #     `payments_fiscal_event_id_fk` FK + `payments_fiscal_event_id_idx`
@@ -510,7 +518,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
