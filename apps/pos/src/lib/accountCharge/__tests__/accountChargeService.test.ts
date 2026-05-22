@@ -261,6 +261,39 @@ describe('accountChargeService', () => {
     expect(payload.local_balance_snapshot.projected_net_balance_after).toBe('450.000');
   });
 
+  it('clamps projected net to zero when existing credit fully offsets the charge', () => {
+    const payload = buildAccountChargePayload(makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        receivable_balance: '0.000',
+        credit_balance: '100.000',
+        credit_limit: '500.000',
+      },
+      total: '50.000',
+      subtotal: '50.000',
+      vatTotal: '0.000',
+      lines: [{
+        ...makeAccountChargeInput().lines[0]!,
+        lineSubtotal: '50.000',
+        lineVat: '0.000',
+        unitPrice: '50.000',
+        vatRate: '0.00',
+      }],
+      vatBreakdown: [{
+        netAmount: '50.000',
+        vatAmount: '0.000',
+        grossAmount: '50.000',
+        rate: '0.00',
+        taxCategoryCode: '',
+      }],
+    }));
+
+    expect(payload.credit_decision.credit_available_after).toBe('500.000');
+    expect(payload.local_balance_snapshot.projected_receivable_balance_after).toBe('50.000');
+    expect(payload.local_balance_snapshot.projected_credit_balance_after).toBe('100.000');
+    expect(payload.local_balance_snapshot.projected_net_balance_after).toBe('0.000');
+  });
+
   it('requires a selected customer', () => {
     expect(() =>
       buildAccountChargePayload(makeAccountChargeInput({ customer: null })),

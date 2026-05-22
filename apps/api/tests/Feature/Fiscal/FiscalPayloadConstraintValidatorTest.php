@@ -347,6 +347,46 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->expectAccountChargeException('/payload_account_charge_amount_mismatch/', $payload);
     }
 
+    public function test_account_charge_accepts_fully_credit_offset_projected_net(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'credit_available_after' => '500.000',
+                'credit_available_before' => '500.000',
+            ],
+            'line_items' => [[
+                'line_subtotal' => '50.000',
+                'line_vat' => '0.000',
+                'unit_price' => '50.000',
+                'vat_rate' => '0.00',
+            ]],
+            'local_balance_snapshot' => [
+                'charge_amount' => '50.000',
+                'credit_balance_before' => '100.000',
+                'net_balance_before' => '0.000',
+                'projected_credit_balance_after' => '100.000',
+                'projected_net_balance_after' => '0.000',
+                'projected_receivable_balance_after' => '50.000',
+                'receivable_balance_before' => '0.000',
+            ],
+            'totals' => [
+                'amount_charged_to_account' => '50.000',
+                'grand_total_before_charge' => '50.000',
+                'subtotal' => '50.000',
+                'total' => '50.000',
+                'vat_total' => '0.000',
+            ],
+            'vat_breakdown' => [[
+                'gross_amount' => '50.000',
+                'net_amount' => '50.000',
+                'rate' => '0.00',
+                'vat_amount' => '0.000',
+            ]],
+        ]);
+
+        $this->assertAccountChargeAccepted($payload);
+    }
+
     public function test_account_charge_rejects_grand_total_before_charge_mismatch(): void
     {
         $payload = $this->canonicalAccountChargePayload();

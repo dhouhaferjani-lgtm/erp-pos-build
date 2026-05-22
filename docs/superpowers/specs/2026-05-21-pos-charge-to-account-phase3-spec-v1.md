@@ -267,7 +267,7 @@ The validator enforces:
 - `totals.amount_charged_to_account === totals.total`.
 - `local_balance_snapshot.charge_amount === totals.amount_charged_to_account`.
 - `projected_receivable_balance_after = receivable_balance_before + charge_amount`.
-- `projected_net_balance_after = projected_receivable_balance_after - projected_credit_balance_after`.
+- `projected_net_balance_after = max(projected_receivable_balance_after - projected_credit_balance_after, 0)`.
 - `credit_decision.decision === 'approved'`.
 - If `training_flag=false`, `credit_decision.limit_exceeded === false`.
 - VAT partition rule mirrors synthesis v5 §6.C for `(vat_rate, tax_category_code)`.

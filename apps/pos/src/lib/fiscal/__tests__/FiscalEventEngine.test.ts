@@ -1565,6 +1565,53 @@ d('FiscalEventEngine.append', () => {
     );
   });
 
+  it('Phase 3.5 R3 — accepts fully credit-offset ACCOUNT_CHARGE projected net clamped to zero', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      credit_decision: {
+        ...goldenAccountChargePayload().credit_decision,
+        credit_available_after: '500.000',
+        credit_available_before: '500.000',
+      },
+      line_items: [{
+        ...goldenAccountChargePayload().line_items[0]!,
+        line_subtotal: '50.000',
+        line_vat: '0.000',
+        unit_price: '50.000',
+        vat_rate: '0.00',
+      }],
+      local_balance_snapshot: {
+        ...goldenAccountChargePayload().local_balance_snapshot,
+        charge_amount: '50.000',
+        credit_balance_before: '100.000',
+        net_balance_before: '0.000',
+        projected_credit_balance_after: '100.000',
+        projected_net_balance_after: '0.000',
+        projected_receivable_balance_after: '50.000',
+        receivable_balance_before: '0.000',
+      },
+      totals: {
+        ...goldenAccountChargePayload().totals,
+        amount_charged_to_account: '50.000',
+        grand_total_before_charge: '50.000',
+        subtotal: '50.000',
+        total: '50.000',
+        vat_total: '0.000',
+      },
+      vat_breakdown: [{
+        ...goldenAccountChargePayload().vat_breakdown[0]!,
+        gross_amount: '50.000',
+        net_amount: '50.000',
+        rate: '0.00',
+        vat_amount: '0.000',
+      }],
+    };
+
+    const event = await engine.append(adapter, accountChargeRequest({ payload }));
+
+    expect(event.event_type).toBe('ACCOUNT_CHARGE');
+  });
+
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

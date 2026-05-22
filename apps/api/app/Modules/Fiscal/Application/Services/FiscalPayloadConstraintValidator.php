@@ -983,6 +983,9 @@ final class FiscalPayloadConstraintValidator
         $projectedCredit = $this->asNumericString($snapshot['projected_credit_balance_after'], 'local_balance_snapshot.projected_credit_balance_after');
         $projectedNet = $this->asNumericString($snapshot['projected_net_balance_after'], 'local_balance_snapshot.projected_net_balance_after');
         $expectedNet = bcsub($projectedReceivable, $projectedCredit, $scale);
+        if (bccomp($expectedNet, '0', $scale) < 0) {
+            $expectedNet = bcadd('0', '0', $scale);
+        }
         if (bccomp($expectedNet, $projectedNet, $scale) !== 0) {
             throw new RuntimeException('payload_account_charge_balance_mismatch:projected_net_balance_after expected '.$expectedNet.' got '.$projectedNet);
         }
