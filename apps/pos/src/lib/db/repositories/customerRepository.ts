@@ -42,6 +42,7 @@ function assertScope(input: { tenant_id: string; company_id: string }): void {
 export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Promise<void> {
   assertScope(input);
   assertPresent('id', input.id);
+  const chargeAccountEnabled = input.charge_account_enabled === true || input.charge_account_enabled === 1 ? 1 : 0;
 
   const drift = await queryOne<{ company_id: string }>(
     db,
@@ -67,10 +68,11 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
     db,
     `INSERT INTO customers (
        id, tenant_id, company_id, name, phone, email, tax_number, customer_category,
-       receivable_balance, credit_balance, balance_updated_at, is_active,
-       sync_version, updated_at, synced_at
+       receivable_balance, credit_balance, credit_limit, payment_terms_days,
+       charge_account_enabled, charge_policy_version, balance_updated_at,
+       is_active, sync_version, updated_at, synced_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      ON CONFLICT(tenant_id, company_id, id) DO UPDATE SET
        name = excluded.name,
        phone = excluded.phone,
@@ -79,6 +81,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
        customer_category = excluded.customer_category,
        receivable_balance = excluded.receivable_balance,
        credit_balance = excluded.credit_balance,
+       credit_limit = excluded.credit_limit,
+       payment_terms_days = excluded.payment_terms_days,
+       charge_account_enabled = excluded.charge_account_enabled,
+       charge_policy_version = excluded.charge_policy_version,
        balance_updated_at = excluded.balance_updated_at,
        is_active = excluded.is_active,
        sync_version = excluded.sync_version,
@@ -95,6 +101,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
       input.customer_category,
       input.receivable_balance,
       input.credit_balance,
+      input.credit_limit,
+      input.payment_terms_days,
+      chargeAccountEnabled,
+      input.charge_policy_version,
       input.balance_updated_at,
       input.is_active,
       input.sync_version,

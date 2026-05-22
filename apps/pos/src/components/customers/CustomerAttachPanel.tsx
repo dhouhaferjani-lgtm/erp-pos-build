@@ -135,6 +135,10 @@ export function CustomerAttachPanel({
     ? isBalanceStale(
       {
         ...selectedCustomer,
+        credit_limit: null,
+        payment_terms_days: null,
+        charge_account_enabled: 1,
+        charge_policy_version: 'phase3-v1',
         is_active: 1,
         sync_version: null,
         updated_at: null,

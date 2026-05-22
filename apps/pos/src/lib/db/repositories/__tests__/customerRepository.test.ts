@@ -32,6 +32,10 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     customer_category: 'para-pharmacy',
     receivable_balance: '42.5000',
     credit_balance: '0.0000',
+    credit_limit: '500.0000',
+    payment_terms_days: 15,
+    charge_account_enabled: true,
+    charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T08:00:00.000Z',
     is_active: 1,
     sync_version: 'sync-v1',
@@ -83,6 +87,38 @@ describe('customerRepository', () => {
       company_id: 'company-9',
       name: 'Other Tenant Sarah',
     });
+  });
+
+  it('upserts credit controls without weakening tenant/company scope', async () => {
+    await upsertCustomer(db, customer({
+      id: '55555555-5555-4555-8555-555555555555',
+      tenant_id: '11111111-1111-4111-8111-111111111111',
+      company_id: '22222222-2222-4222-8222-222222222222',
+      name: 'Mariam Ben Ali',
+      customer_category: 'para-pharmacy',
+      receivable_balance: '300.000',
+      credit_balance: '0.000',
+      credit_limit: '500.000',
+      payment_terms_days: 15,
+      charge_account_enabled: true,
+      charge_policy_version: 'phase3-v1',
+      balance_updated_at: '2026-05-21T10:10:00.000Z',
+      updated_at: '2026-05-21T10:10:00.000Z',
+    }));
+
+    const row = await getCustomerById(
+      db,
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '55555555-5555-4555-8555-555555555555',
+    );
+
+    expect(row?.tenant_id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(row?.company_id).toBe('22222222-2222-4222-8222-222222222222');
+    expect(row?.credit_limit).toBe('500.000');
+    expect(row?.payment_terms_days).toBe(15);
+    expect(row?.charge_account_enabled).toBe(1);
+    expect(row?.charge_policy_version).toBe('phase3-v1');
   });
 
   it('searches active customers by name, phone, and tax number within tenant and company', async () => {
