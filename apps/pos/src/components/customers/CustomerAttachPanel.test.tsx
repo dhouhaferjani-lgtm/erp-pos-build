@@ -177,6 +177,9 @@ describe('CustomerAttachPanel', () => {
     expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
       id: 'customer-1',
       name: 'Mariam Ben Ali',
+      credit_limit: null,
+      charge_account_enabled: 1,
+      charge_policy_version: 'phase3-v1',
       customer_sync_status: 'synced',
     });
     expect(screen.getByText('Attached')).toBeInTheDocument();
@@ -198,6 +201,9 @@ describe('CustomerAttachPanel', () => {
     await waitFor(() => {
       expect(usePaymentStore.getState().selectedCustomer).toMatchObject({
         name: 'Amina Trabelsi',
+        credit_limit: null,
+        charge_account_enabled: false,
+        charge_policy_version: null,
         customer_sync_status: 'pending_create',
       });
     });

@@ -1196,7 +1196,7 @@ export const migrations: Migration[] = [
       const statements = [
         'ALTER TABLE customers ADD COLUMN credit_limit TEXT',
         'ALTER TABLE customers ADD COLUMN payment_terms_days INTEGER',
-        'ALTER TABLE customers ADD COLUMN charge_account_enabled INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE customers ADD COLUMN charge_account_enabled INTEGER NOT NULL DEFAULT 0',
         'ALTER TABLE customers ADD COLUMN charge_policy_version TEXT',
       ];
 
