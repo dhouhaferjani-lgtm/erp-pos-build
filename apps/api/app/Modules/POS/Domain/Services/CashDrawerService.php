@@ -25,6 +25,14 @@ use Illuminate\Database\Eloquent\Collection;
  * - Closing balance (CLOSING)
  *
  * All operations are immutable once created (audit trail).
+ *
+ * @phpstan-type CashDrawerApprovalEvidence array{
+ *     approval_id?: string|null,
+ *     approval_fiscal_event_id?: string|null,
+ *     approval_scope?: string|null,
+ *     approval_supervisor_user_id?: string|null,
+ *     approval_target_hash?: string|null
+ * }
  */
 final class CashDrawerService
 {
@@ -38,6 +46,7 @@ final class CashDrawerService
     }
 
     /**
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
      * @return array<string, string|null>
      */
     private function approvalAttributes(?array $approvalEvidence): array
@@ -119,6 +128,7 @@ final class CashDrawerService
      * @param  string  $amount  Amount deposited to safe (positive decimal)
      * @param  User  $user  User performing the deposit
      * @param  string  $reason  Reason for deposit
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
      */
     public function recordDeposit(
         Shift $shift,
@@ -151,6 +161,7 @@ final class CashDrawerService
      * @param  string  $amount  Amount paid out (positive decimal)
      * @param  User  $user  User performing the payout
      * @param  string  $reason  Reason for payout
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
      */
     public function recordPayout(
         Shift $shift,

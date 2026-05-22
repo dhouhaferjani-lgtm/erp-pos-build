@@ -22,9 +22,7 @@ final class PosCustomerMirrorResource extends JsonResource
     {
         $updatedAt = $this->updated_at?->toISOString();
         $accountStatus = $this->account_status ?? CustomerAccountStatus::Active;
-        $accountStatusValue = $accountStatus instanceof CustomerAccountStatus
-            ? $accountStatus->value
-            : (string) $accountStatus;
+        $accountStatusValue = $accountStatus->value;
         $chargeAccountEnabled = (bool) $this->is_active && $accountStatusValue === CustomerAccountStatus::Active->value;
 
         return [

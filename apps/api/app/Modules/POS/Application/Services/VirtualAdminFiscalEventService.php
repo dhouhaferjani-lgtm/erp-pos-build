@@ -189,12 +189,8 @@ final class VirtualAdminFiscalEventService
     private function canonicalEncode(mixed $value): string
     {
         $normalized = $this->sortObjectKeys($value);
-        $json = json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if (! is_string($json)) {
-            throw new JsonException('Unable to encode canonical fiscal envelope.');
-        }
 
-        return $json;
+        return json_encode($normalized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
     private function sortObjectKeys(mixed $value): mixed

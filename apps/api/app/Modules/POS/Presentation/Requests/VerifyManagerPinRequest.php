@@ -10,6 +10,7 @@ use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
+use Illuminate\Validation\Rules\In;
 
 final class VerifyManagerPinRequest extends FormRequest
 {
@@ -25,7 +26,7 @@ final class VerifyManagerPinRequest extends FormRequest
     }
 
     /**
-     * @return array<string, list<string|Exists>>
+     * @return array<string, list<string|Exists|In>>
      */
     public function rules(): array
     {
