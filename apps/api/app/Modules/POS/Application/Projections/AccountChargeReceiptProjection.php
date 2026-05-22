@@ -56,7 +56,7 @@ final class AccountChargeReceiptProjection implements FiscalEventProjector
 
         $now = now();
 
-        DB::table('pos_account_charge_receipts')->insertOrIgnore([
+        $this->insertOnFiscalEventConflictDoNothing([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $event->tenant_id,
             'company_id' => $event->company_id,
@@ -70,5 +70,25 @@ final class AccountChargeReceiptProjection implements FiscalEventProjector
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function insertOnFiscalEventConflictDoNothing(array $row): void
+    {
+        $columns = array_keys($row);
+        $columnList = implode(', ', array_map(static fn (string $column): string => '"'.$column.'"', $columns));
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+
+        DB::affectingStatement(
+            sprintf(
+                'INSERT INTO "pos_account_charge_receipts" (%s) VALUES (%s) '.
+                'ON CONFLICT (fiscal_event_id) DO NOTHING',
+                $columnList,
+                $placeholders,
+            ),
+            array_values($row),
+        );
     }
 }

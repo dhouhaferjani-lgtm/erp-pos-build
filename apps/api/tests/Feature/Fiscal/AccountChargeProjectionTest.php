@@ -15,9 +15,11 @@ use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Domain\AccountChargeReceipt;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
 final class AccountChargeProjectionTest extends TestCase
@@ -74,6 +76,28 @@ final class AccountChargeProjectionTest extends TestCase
         $this->assertSame(1, AccountChargeReceipt::query()->count());
     }
 
+    public function test_account_charge_projection_fails_loud_on_non_replay_primary_key_conflict(): void
+    {
+        $firstEvent = $this->storeAccountChargeFiscalEvent();
+
+        $secondPayload = $this->accountChargePayload();
+        $secondPayload['account_charge_uuid'] = '99999999-9999-4999-8999-999999999999';
+        $secondEvent = $this->storeAccountChargeFiscalEvent($secondPayload, sequenceNumber: 10);
+
+        $collidingProjectionId = Uuid::fromString('88888888-8888-4888-8888-888888888888');
+        Str::createUuidsUsing(static fn () => $collidingProjectionId);
+
+        try {
+            $projector = $this->app->make(AccountChargeReceiptProjection::class);
+            $projector->apply($firstEvent);
+
+            $this->expectException(QueryException::class);
+            $projector->apply($secondEvent);
+        } finally {
+            Str::createUuidsUsing(null);
+        }
+    }
+
     public function test_account_charge_pos_core_projection_runs_without_treasury_effects(): void
     {
         $event = $this->storeAccountChargeFiscalEvent();
@@ -110,7 +134,7 @@ final class AccountChargeProjectionTest extends TestCase
     /**
      * @param  array<string, mixed>|null  $payload
      */
-    private function storeAccountChargeFiscalEvent(?array $payload = null): FiscalEvent
+    private function storeAccountChargeFiscalEvent(?array $payload = null, int $sequenceNumber = 9): FiscalEvent
     {
         $payload ??= $this->accountChargePayload();
         $eventId = Str::uuid()->toString();
@@ -124,7 +148,7 @@ final class AccountChargeProjectionTest extends TestCase
             'event_type' => FiscalEventType::ACCOUNT_CHARGE,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
-            'sequence_number' => 9,
+            'sequence_number' => $sequenceNumber,
             'event_time_device' => '2026-05-21 10:15:30',
             'business_date' => '2026-05-21',
             'last_server_time_seen' => null,
