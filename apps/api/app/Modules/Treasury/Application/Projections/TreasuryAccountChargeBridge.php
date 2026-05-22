@@ -6,7 +6,9 @@ namespace App\Modules\Treasury\Application\Projections;
 
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeView;
@@ -70,7 +72,7 @@ final class TreasuryAccountChargeBridge implements FiscalEventProjector
 
             $existing = $this->existingJournalEntryForEvent($event);
             if ($existing instanceof JournalEntry) {
-                $this->assertExistingJournalEntryMatches($event, $existing, $view);
+                $this->assertExistingJournalEntryMatches($event, $existing, $view, $partner);
 
                 return;
             }
@@ -155,6 +157,9 @@ final class TreasuryAccountChargeBridge implements FiscalEventProjector
     private function existingJournalEntryForEvent(FiscalEvent $event): ?JournalEntry
     {
         $entries = JournalEntry::query()
+            ->with('lines.account')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
             ->where('source_type', 'pos_account_charge')
             ->where('source_id', $event->id)
             ->get();
@@ -172,6 +177,7 @@ final class TreasuryAccountChargeBridge implements FiscalEventProjector
         FiscalEvent $event,
         JournalEntry $existing,
         AccountChargeView $view,
+        Partner $partner,
     ): void {
         $mismatches = [];
 
@@ -198,6 +204,89 @@ final class TreasuryAccountChargeBridge implements FiscalEventProjector
         if ($mismatches !== []) {
             throw $this->invariant($event, 'idempotency_conflict:'.implode(',', $mismatches));
         }
+
+        $this->assertExistingJournalLinesMatch($event, $existing, $view, $partner);
+    }
+
+    private function assertExistingJournalLinesMatch(
+        FiscalEvent $event,
+        JournalEntry $existing,
+        AccountChargeView $view,
+        Partner $partner,
+    ): void {
+        $expected = [
+            SystemAccountPurpose::CustomerReceivable->value => [
+                'debit' => $this->numericString($event, 'totals.total', $view->totals->total),
+                'credit' => '0',
+                'partner_id' => $partner->id,
+            ],
+            SystemAccountPurpose::ProductRevenue->value => [
+                'debit' => '0',
+                'credit' => $this->numericString($event, 'totals.subtotal', $view->totals->subtotal),
+                'partner_id' => null,
+            ],
+        ];
+
+        $vatTotal = $this->numericString($event, 'totals.vat_total', $view->totals->vatTotal);
+        if ($this->isPositive($vatTotal, $view->payload->currencyScale)) {
+            $expected[SystemAccountPurpose::VatCollected->value] = [
+                'debit' => '0',
+                'credit' => $vatTotal,
+                'partner_id' => null,
+            ];
+        }
+
+        $discount = $this->numericString(
+            $event,
+            'transaction_discount_amount',
+            $view->payload->transactionDiscountAmount,
+        );
+        if ($this->isPositive($discount, $view->payload->currencyScale)) {
+            $expected[SystemAccountPurpose::SalesDiscount->value] = [
+                'debit' => $discount,
+                'credit' => '0',
+                'partner_id' => null,
+            ];
+        }
+
+        if ($existing->lines->count() !== count($expected)) {
+            throw $this->invariant($event, 'idempotency_conflict:line_count');
+        }
+
+        foreach ($expected as $purpose => $lineExpectation) {
+            $lines = $existing->lines->filter(
+                static fn (JournalLine $line): bool => $line->account->system_purpose?->value === $purpose,
+            )->values();
+
+            if ($lines->count() !== 1) {
+                throw $this->invariant($event, 'idempotency_conflict:line_purpose:'.$purpose);
+            }
+
+            $line = $lines->first();
+            if (! $line instanceof JournalLine) {
+                throw $this->invariant($event, 'idempotency_conflict:line_purpose:'.$purpose);
+            }
+
+            $lineMismatches = [];
+            if (bccomp($line->debit, $lineExpectation['debit'], $view->payload->currencyScale) !== 0) {
+                $lineMismatches[] = 'debit';
+            }
+
+            if (bccomp($line->credit, $lineExpectation['credit'], $view->payload->currencyScale) !== 0) {
+                $lineMismatches[] = 'credit';
+            }
+
+            if ($line->partner_id !== $lineExpectation['partner_id']) {
+                $lineMismatches[] = 'partner_id';
+            }
+
+            if ($lineMismatches !== []) {
+                throw $this->invariant(
+                    $event,
+                    'idempotency_conflict:line:'.$purpose.':'.implode(',', $lineMismatches),
+                );
+            }
+        }
     }
 
     private function invariant(FiscalEvent $event, string $reason): ProjectionInvariantViolationException
@@ -219,5 +308,13 @@ final class TreasuryAccountChargeBridge implements FiscalEventProjector
         }
 
         return $value;
+    }
+
+    /**
+     * @param  numeric-string  $value
+     */
+    private function isPositive(string $value, int $scale): bool
+    {
+        return bccomp($value, '0', $scale) === 1;
     }
 }

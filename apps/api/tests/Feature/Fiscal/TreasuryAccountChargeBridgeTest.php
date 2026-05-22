@@ -130,6 +130,34 @@ final class TreasuryAccountChargeBridgeTest extends TestCase
         $this->bridge()->apply($event);
     }
 
+    public function test_bridge_fails_loud_on_header_matching_existing_entry_with_wrong_lines(): void
+    {
+        $event = $this->storeAccountChargeFiscalEvent();
+        JournalEntry::query()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'entry_number' => 'JE-2026-000001',
+            'entry_date' => '2026-05-21',
+            'description' => 'POS Account Charge 66666666-6666-4666-8666-666666666666',
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => 'pos_account_charge',
+            'source_id' => $event->id,
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('idempotency_conflict:line_count');
+
+        try {
+            $this->bridge()->apply($event);
+        } finally {
+            $this->assertSame(1, JournalEntry::query()
+                ->where('source_type', 'pos_account_charge')
+                ->where('source_id', $event->id)
+                ->count());
+            $this->assertSame(0, JournalLine::query()->count());
+        }
+    }
+
     public function test_bridge_resolves_pending_customer_alias_before_ar_creation(): void
     {
         $clientCustomerUuid = '55555555-5555-4555-8555-555555555555';
