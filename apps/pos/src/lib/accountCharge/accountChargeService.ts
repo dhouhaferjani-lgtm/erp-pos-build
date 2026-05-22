@@ -219,6 +219,7 @@ function buildCreditDecision(
     customer_sync_status: input.customer.customer_sync_status,
     alias_candidates: input.aliasCandidates ?? [],
     is_active: input.customer.is_active,
+    account_status: input.customer.account_status,
     charge_account_enabled: input.customer.charge_account_enabled,
     charge_policy_version: input.customer.charge_policy_version,
     receivable_balance: bcformat(input.customer.receivable_balance, input.scale),

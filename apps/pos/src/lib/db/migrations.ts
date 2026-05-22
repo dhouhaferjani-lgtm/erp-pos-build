@@ -1212,4 +1212,29 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Phase 4 Task 6 — account-status mirror for account-charge fail-closed rules.
+    version: 42,
+    name: 'add_account_status_to_customers_mirror',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE customers ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended', 'closed', 'disputed'))",
+        'ALTER TABLE customers ADD COLUMN account_status_changed_at TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_reason TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_version INTEGER NOT NULL DEFAULT 1',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

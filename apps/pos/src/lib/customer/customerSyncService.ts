@@ -34,6 +34,8 @@ type ParsedCustomerSyncResponse =
       synced_at: string;
     };
 
+const CUSTOMER_ACCOUNT_STATUSES = new Set(['active', 'suspended', 'closed', 'disputed']);
+
 export class CustomerSyncResponseError extends Error {
   constructor(message: string) {
     super(`[customer] ${message}`);
@@ -58,6 +60,20 @@ export class CustomerSyncScopeError extends Error {
 function assertScope(row: CustomerMirrorRow, tenantId: string, companyId: string): void {
   if (row.tenant_id !== tenantId || row.company_id !== companyId) {
     throw new CustomerSyncScopeError(tenantId, companyId, row);
+  }
+}
+
+function assertAccountStatus(row: CustomerMirrorRow): void {
+  if (!CUSTOMER_ACCOUNT_STATUSES.has(row.account_status)) {
+    throw new CustomerSyncResponseError(
+      `Server returned customer ${row.id} with unknown account_status ${String(row.account_status)}.`,
+    );
+  }
+
+  if (!Number.isInteger(row.account_status_version) || row.account_status_version < 1) {
+    throw new CustomerSyncResponseError(
+      `Server returned customer ${row.id} with invalid account_status_version.`,
+    );
   }
 }
 
@@ -136,6 +152,7 @@ export async function pullCustomers(
 
     for (const customer of customers) {
       assertScope(customer, tenantId, companyId);
+      assertAccountStatus(customer);
     }
 
     for (const customer of customers) {

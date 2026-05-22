@@ -48,6 +48,10 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     payment_terms_days: 15,
     charge_account_enabled: true,
     charge_policy_version: 'phase3-v1',
+    account_status: 'active',
+    account_status_changed_at: null,
+    account_status_reason: null,
+    account_status_version: 1,
     balance_updated_at: '2026-05-21T10:45:00.000Z',
     is_active: 1,
     sync_version: '2026-05-21T10:50:00.000Z',
@@ -112,12 +116,16 @@ describe('pullCustomers', () => {
     );
   });
 
-  it('passes phase three credit fields through to the local mirror repository', async () => {
+  it('passes phase four account status fields through to the local mirror repository', async () => {
     const row = customer({
       credit_limit: '750.0000',
       payment_terms_days: 30,
       charge_account_enabled: false,
-      charge_policy_version: 'phase3-custom-v2',
+      charge_policy_version: 'phase4-custom-v2',
+      account_status: 'suspended',
+      account_status_changed_at: '2026-05-21T10:40:00.000Z',
+      account_status_reason: 'Credit control hold',
+      account_status_version: 3,
     });
     vi.mocked(apiGet).mockResolvedValueOnce({
       customers: [row],
@@ -133,8 +141,29 @@ describe('pullCustomers', () => {
       credit_limit: '750.0000',
       payment_terms_days: 30,
       charge_account_enabled: false,
-      charge_policy_version: 'phase3-custom-v2',
+      charge_policy_version: 'phase4-custom-v2',
+      account_status: 'suspended',
+      account_status_changed_at: '2026-05-21T10:40:00.000Z',
+      account_status_reason: 'Credit control hold',
+      account_status_version: 3,
     }));
+  });
+
+  it('fails loudly when the server returns an unknown account status', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      customers: [customer({ account_status: 'frozen' as never })],
+      has_more: false,
+      next_updated_since: null,
+      next_updated_since_id: null,
+      synced_at: SERVER_SYNCED_AT,
+    });
+
+    await expect(pullCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toThrow(
+      'unknown account_status',
+    );
+
+    expect(upsertCustomer).not.toHaveBeenCalled();
+    expect(setSyncMetadata).not.toHaveBeenCalled();
   });
 
   it('fails loudly when the server returns a row for another tenant or company', async () => {

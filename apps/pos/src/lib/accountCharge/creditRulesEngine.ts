@@ -1,9 +1,13 @@
 import type { AccountChargeCreditDecision } from '@/lib/fiscal/payloads/AccountChargePayload';
+import type { CustomerAccountStatus } from '@/lib/customer/customerTypes';
 
 export type AccountChargeRejectionCode =
   | 'customer_tenant_mismatch'
   | 'customer_company_mismatch'
   | 'customer_inactive'
+  | 'account_suspended'
+  | 'account_closed'
+  | 'account_disputed'
   | 'charge_account_disabled'
   | 'charge_policy_missing'
   | 'balance_snapshot_missing'
@@ -22,6 +26,7 @@ export interface AccountChargeCreditDecisionInput {
   customer_sync_status: 'synced' | 'pending_create';
   alias_candidates: string[];
   is_active: boolean | 0 | 1;
+  account_status: CustomerAccountStatus;
   charge_account_enabled: boolean | 0 | 1;
   charge_policy_version: string | null;
   receivable_balance: string;
@@ -89,6 +94,18 @@ export function evaluateAccountChargeCreditDecision(
 
   if (!isEnabled(input.is_active)) {
     return reject('customer_inactive', 'is_active');
+  }
+
+  if (input.account_status === 'closed') {
+    return reject('account_closed', 'account_status');
+  }
+
+  if (input.account_status === 'suspended') {
+    return reject('account_suspended', 'account_status');
+  }
+
+  if (input.account_status === 'disputed') {
+    return reject('account_disputed', 'account_status');
   }
 
   if (!isEnabled(input.charge_account_enabled)) {

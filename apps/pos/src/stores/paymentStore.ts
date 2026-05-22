@@ -16,6 +16,7 @@ import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
 import type { CreateReceiptResponse } from '@/types/receipt';
+import type { CustomerAccountStatus } from '@/lib/customer/customerTypes';
 import type { ReceiptData } from '@/lib/printing';
 
 export class ActiveTerminalRequiredError extends Error {
@@ -141,6 +142,10 @@ export interface AttachedCheckoutCustomer {
   payment_terms_days: number | null;
   charge_account_enabled: boolean | 0 | 1;
   charge_policy_version: string | null;
+  account_status: CustomerAccountStatus;
+  account_status_changed_at: string | null;
+  account_status_reason: string | null;
+  account_status_version: number;
   balance_updated_at: string | null;
   is_active: boolean | 0 | 1;
   customer_sync_status: CustomerSyncStatus;

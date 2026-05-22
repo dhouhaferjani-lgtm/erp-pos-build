@@ -70,9 +70,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
        id, tenant_id, company_id, name, phone, email, tax_number, customer_category,
        receivable_balance, credit_balance, credit_limit, payment_terms_days,
        charge_account_enabled, charge_policy_version, balance_updated_at,
+       account_status, account_status_changed_at, account_status_reason, account_status_version,
        is_active, sync_version, updated_at, synced_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
      ON CONFLICT(tenant_id, company_id, id) DO UPDATE SET
        name = excluded.name,
        phone = excluded.phone,
@@ -86,6 +87,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
        charge_account_enabled = excluded.charge_account_enabled,
        charge_policy_version = excluded.charge_policy_version,
        balance_updated_at = excluded.balance_updated_at,
+       account_status = excluded.account_status,
+       account_status_changed_at = excluded.account_status_changed_at,
+       account_status_reason = excluded.account_status_reason,
+       account_status_version = excluded.account_status_version,
        is_active = excluded.is_active,
        sync_version = excluded.sync_version,
        updated_at = excluded.updated_at,
@@ -106,6 +111,10 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
       chargeAccountEnabled,
       input.charge_policy_version,
       input.balance_updated_at,
+      input.account_status,
+      input.account_status_changed_at,
+      input.account_status_reason,
+      input.account_status_version,
       input.is_active,
       input.sync_version,
       input.updated_at,
