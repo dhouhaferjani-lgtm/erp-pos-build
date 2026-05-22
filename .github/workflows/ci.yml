@@ -408,6 +408,12 @@ jobs:
         #     also only resolves to the named constraint on PG. SQLite
         #     covers the happy-path locally; PG is the production truth
         #     for the projector's failure-mode contract.
+        #   - AccountChargeProjectionTest (Feature, Phase 3 Task 6): the
+        #     POS-core ACCOUNT_CHARGE printable projector writes a jsonb
+        #     payload snapshot plus a unique `fiscal_event_id` idempotency
+        #     guard. SQLite covers local happy-path replay; PG is the
+        #     production truth for jsonb, UUID FKs, and unique replay
+        #     semantics.
         #   - TreasuryReceiptBridgeTest (Feature, Task 22): the Treasury
         #     bridge writes `payments` rows with the PG-only
         #     `payments_fiscal_event_id_fk` FK + `payments_fiscal_event_id_idx`
@@ -496,7 +502,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

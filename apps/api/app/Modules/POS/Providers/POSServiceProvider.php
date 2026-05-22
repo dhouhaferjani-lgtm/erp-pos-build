@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Providers;
 
+use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Application\Projections\AccountPaymentReceiptProjection;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
@@ -46,6 +47,7 @@ final class POSServiceProvider extends ServiceProvider
             [
                 PosCoreReceiptProjection::class,
                 AccountPaymentReceiptProjection::class,
+                AccountChargeReceiptProjection::class,
             ],
             FiscalEventProjector::class,
         );
