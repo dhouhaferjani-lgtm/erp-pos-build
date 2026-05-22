@@ -1412,6 +1412,54 @@ d('FiscalEventEngine.append', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with a payments key', async () => {
+    const payload = { ...goldenAccountChargePayload(), payments: [{ amount: '119.000' }] };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_extra_field:payments/,
+    );
+  });
+
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with non-string money fields', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      totals: {
+        ...goldenAccountChargePayload().totals,
+        amount_charged_to_account: 119,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_money_invalid:field=totals\.amount_charged_to_account/,
+    );
+  });
+
+  it('Phase 3.5 — rejects ACCOUNT_CHARGE with invalid device time or business date', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            event_time_device: '2026-05-21T10:15:30Z',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_field_invalid:event_time_device/);
+
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            business_date: '21/05/2026',
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_field_invalid:business_date/);
+  });
+
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {

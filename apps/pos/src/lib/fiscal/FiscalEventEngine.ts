@@ -1194,6 +1194,53 @@ function validateAccountChargePayload(payload: unknown): void {
   const p = payload as Record<string, unknown>;
 
   assertExactKeySet(p, ACCOUNT_CHARGE_PAYLOAD_KEYS, 'ACCOUNT_CHARGE');
+
+  const scale = p['currency_scale'];
+  if (typeof scale !== 'number' || !Number.isInteger(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_invalid:must be int; got ${typeofTag(scale)}`,
+    );
+  }
+  if (!SUPPORTED_CURRENCY_SCALES.includes(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${scale}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}`,
+    );
+  }
+  const money = moneyRegex(scale);
+
+  const currencyCode = p['currency_code'];
+  if (typeof currencyCode !== 'string' || !ISO_4217.test(currencyCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(currencyCode)}`,
+    );
+  }
+
+  assertUuid(p, 'account_charge_uuid');
+  assertCalendarDate(p, 'business_date');
+  validateBuyer(p);
+  assertUuid(p, 'cashier_id');
+  assertNonEmptyString(p, 'cashier_name');
+  validateAccountChargeTerms(p['charge_terms']);
+  validateAccountChargeCreditDecision(p['credit_decision'], money, scale);
+  const sellerCountryCode = validateSeller(p);
+  validateAccountChargeCustomer(p['customer'], sellerCountryCode);
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertEnum(p, 'invoice_classification', ['b2c_charge_receipt', 'b2b_facture_draft_requested'] as const);
+  validateAccountChargeLineItems(p, money, scale);
+  validateAccountChargeBalanceSnapshot(p['local_balance_snapshot'], money, scale);
+  assertOptionalNonEmptyString(p, 'notes');
+  assertEnum(p, 'print_profile', ['ACCOUNT_CHARGE_RECEIPT'] as const);
+  assertEnum(p, 'receipt_type_code', ['ACCOUNT_CHARGE'] as const);
+  validateAccountChargeReferences(p['references']);
+  validateNullableAssoc(p['regime_extensions'], 'regime_extensions');
+  assertUuid(p, 'shift_id');
+  validateAccountChargeStaleness(p['staleness']);
+  assertUuid(p, 'terminal_id');
+  validateAccountChargeTotals(p['totals'], money, scale);
+  assertBool(p, 'training_flag');
+  assertMoneyString(p, 'transaction_discount_amount', money, scale);
+  assertOptionalNonEmptyString(p, 'transaction_discount_reason');
+  validateAccountChargeVatBreakdown(p, money, scale);
 }
 
 // -------------------------------------------------------------------
@@ -1257,6 +1304,339 @@ const ACCOUNT_PAYMENT_REFERENCES_KEYS = [
   'related_sale_receipt_event_id',
   'server_customer_alias_id',
 ] as const;
+const ACCOUNT_CHARGE_CUSTOMER_KEYS = [
+  'account_identifier',
+  'address',
+  'customer_category',
+  'customer_id',
+  'customer_sync_status',
+  'email',
+  'name',
+  'phone',
+  'tax_number',
+] as const;
+const ACCOUNT_CHARGE_LINE_ITEM_KEYS = [
+  'gtin',
+  'line_discount_amount',
+  'line_discount_reason',
+  'line_subtotal',
+  'line_uuid',
+  'line_vat',
+  'name',
+  'non_collected_subtype',
+  'product_id',
+  'quantity',
+  'sku',
+  'tax_category_code',
+  'unit_price',
+  'vat_rate',
+] as const;
+const ACCOUNT_CHARGE_BALANCE_SNAPSHOT_KEYS = [
+  'balance_updated_at',
+  'charge_amount',
+  'credit_balance_before',
+  'net_balance_before',
+  'projected_credit_balance_after',
+  'projected_net_balance_after',
+  'projected_receivable_balance_after',
+  'receivable_balance_before',
+] as const;
+const ACCOUNT_CHARGE_CREDIT_DECISION_KEYS = [
+  'credit_available_after',
+  'credit_available_before',
+  'credit_limit',
+  'decision',
+  'limit_exceeded',
+  'mirror_stale_at_authoring',
+  'policy_version',
+  'stale_policy_action',
+  'warnings',
+] as const;
+const ACCOUNT_CHARGE_TERMS_KEYS = [
+  'due_date',
+  'payment_terms_days',
+  'terms_label',
+] as const;
+const ACCOUNT_CHARGE_TOTALS_KEYS = [
+  'amount_charged_to_account',
+  'grand_total_before_charge',
+  'subtotal',
+  'total',
+  'vat_total',
+] as const;
+const ACCOUNT_CHARGE_STALENESS_KEYS = ACCOUNT_PAYMENT_STALENESS_KEYS;
+const ACCOUNT_CHARGE_REFERENCES_KEYS = ACCOUNT_PAYMENT_REFERENCES_KEYS;
+
+function validateAccountChargeCustomer(customer: unknown, sellerCountryCode: string): void {
+  if (!isPlainObject(customer)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:customer must be object; got ${typeofTag(customer)}`,
+    );
+  }
+  assertExactKeySetWithPath(customer, ACCOUNT_CHARGE_CUSTOMER_KEYS, 'customer');
+  assertOptionalNonEmptyStringAt(customer, 'account_identifier', 'customer.account_identifier');
+  assertUuidAt(customer, 'customer_id', 'customer.customer_id');
+  assertEnum(customer, 'customer_sync_status', ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES);
+  assertNonEmptyStringAt(customer, 'name', 'customer.name');
+  assertOptionalNonEmptyStringAt(customer, 'phone', 'customer.phone');
+  assertOptionalNonEmptyStringAt(customer, 'email', 'customer.email');
+  assertOptionalNonEmptyStringAt(customer, 'customer_category', 'customer.customer_category');
+  validateAddress(customer['address'], 'customer.address', /* required */ false);
+  if (customer['tax_number'] !== null && customer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(
+      customer['tax_number'],
+      countryCodeFromAddress(customer['address']) ?? sellerCountryCode,
+      'customer.tax_number',
+      true,
+    );
+  }
+}
+
+function validateAccountChargeTerms(terms: unknown): void {
+  if (!isPlainObject(terms)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:charge_terms must be object; got ${typeofTag(terms)}`,
+    );
+  }
+  assertExactKeySetWithPath(terms, ACCOUNT_CHARGE_TERMS_KEYS, 'charge_terms');
+  if (terms['due_date'] !== null) {
+    assertCalendarDateAt(terms, 'due_date', 'charge_terms.due_date');
+  }
+  const days = terms['payment_terms_days'];
+  if (days !== null && (typeof days !== 'number' || !Number.isInteger(days) || days < 0)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:charge_terms.payment_terms_days must be non-negative integer or null; got ${jsonOrType(days)}`,
+    );
+  }
+  assertOptionalNonEmptyStringAt(terms, 'terms_label', 'charge_terms.terms_label');
+}
+
+function validateAccountChargeCreditDecision(
+  decision: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(decision)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:credit_decision must be object; got ${typeofTag(decision)}`,
+    );
+  }
+  assertExactKeySetWithPath(decision, ACCOUNT_CHARGE_CREDIT_DECISION_KEYS, 'credit_decision');
+  for (const field of ['credit_available_after', 'credit_available_before', 'credit_limit'] as const) {
+    if (decision[field] !== null) {
+      assertMoneyStringAt(decision, field, money, scale, `credit_decision.${field}`);
+    }
+  }
+  assertEnum(decision, 'decision', ['approved'] as const);
+  assertBoolAt(decision, 'limit_exceeded', 'credit_decision.limit_exceeded');
+  assertBoolAt(
+    decision,
+    'mirror_stale_at_authoring',
+    'credit_decision.mirror_stale_at_authoring',
+  );
+  assertNonEmptyStringAt(decision, 'policy_version', 'credit_decision.policy_version');
+  assertEnum(decision, 'stale_policy_action', ['allow', 'warn', 'block'] as const);
+  const warnings = decision['warnings'];
+  if (!Array.isArray(warnings)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:credit_decision.warnings must be a JSON list; got ${typeofTag(warnings)}`,
+    );
+  }
+  warnings.forEach((warning, index) => {
+    if (typeof warning !== 'string' || warning === '') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_field_invalid:credit_decision.warnings[${index}] must be non-empty string; got ${jsonOrType(warning)}`,
+      );
+    }
+  });
+}
+
+function validateAccountChargeLineItems(
+  p: Record<string, unknown>,
+  money: RegExp,
+  scale: number,
+): void {
+  const lineItems = requireList(p, 'line_items');
+  if (lineItems.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_line_items_empty:line_items must have >= 1 row',
+    );
+  }
+  lineItems.forEach((row, index) => validateAccountChargeLineItem(index, row, money, scale));
+}
+
+function validateAccountChargeLineItem(
+  index: number,
+  row: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_invalid:line_items[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `line_items[${index}]`;
+  assertExactKeySetWithPath(row, ACCOUNT_CHARGE_LINE_ITEM_KEYS, path);
+  assertUuidAt(row, 'line_uuid', `${path}.line_uuid`);
+  assertMoneyStringAt(row, 'unit_price', money, scale, `${path}.unit_price`);
+  assertMoneyStringAt(row, 'line_subtotal', money, scale, `${path}.line_subtotal`);
+  assertMoneyStringAt(row, 'line_vat', money, scale, `${path}.line_vat`);
+  assertMoneyStringAt(row, 'line_discount_amount', money, scale, `${path}.line_discount_amount`);
+  assertMoneyStringAt(row, 'quantity', moneyRegex(QUANTITY_SCALE), QUANTITY_SCALE, `${path}.quantity`);
+  assertMoneyStringAt(row, 'vat_rate', moneyRegex(VAT_RATE_SCALE), VAT_RATE_SCALE, `${path}.vat_rate`);
+  assertNonEmptyStringAt(row, 'name', `${path}.name`);
+  assertNonEmptyStringAt(row, 'product_id', `${path}.product_id`);
+  assertOptionalNonEmptyStringAt(row, 'sku', `${path}.sku`);
+  assertOptionalNonEmptyStringAt(row, 'gtin', `${path}.gtin`);
+  assertOptionalNonEmptyStringAt(row, 'line_discount_reason', `${path}.line_discount_reason`);
+  assertOptionalEnumAt(row, 'non_collected_subtype', NON_COLLECTED_SUBTYPES, `${path}.non_collected_subtype`);
+  assertOptionalTaxCategoryCode(row['tax_category_code'], `${path}.tax_category_code`);
+}
+
+function validateAccountChargeBalanceSnapshot(
+  snapshot: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(snapshot)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:local_balance_snapshot must be object; got ${typeofTag(snapshot)}`,
+    );
+  }
+  assertExactKeySetWithPath(
+    snapshot,
+    ACCOUNT_CHARGE_BALANCE_SNAPSHOT_KEYS,
+    'local_balance_snapshot',
+  );
+  for (const field of [
+    'charge_amount',
+    'credit_balance_before',
+    'net_balance_before',
+    'projected_credit_balance_after',
+    'projected_net_balance_after',
+    'projected_receivable_balance_after',
+    'receivable_balance_before',
+  ] as const) {
+    assertMoneyStringAt(snapshot, field, money, scale, `local_balance_snapshot.${field}`);
+  }
+  assertIsoDateTimeMsAt(
+    snapshot,
+    'balance_updated_at',
+    'local_balance_snapshot.balance_updated_at',
+  );
+}
+
+function validateAccountChargeReferences(references: unknown): void {
+  if (references === null) {
+    return;
+  }
+  if (!isPlainObject(references)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:references must be object; got ${typeofTag(references)}`,
+    );
+  }
+  assertExactKeySetWithPath(references, ACCOUNT_CHARGE_REFERENCES_KEYS, 'references');
+  assertOptionalNonEmptyStringAt(references, 'external_reference', 'references.external_reference');
+  assertOptionalNonEmptyStringAt(
+    references,
+    'related_sale_receipt_event_id',
+    'references.related_sale_receipt_event_id',
+  );
+  if (references['server_customer_alias_id'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for server reconciliation',
+    );
+  }
+}
+
+function validateAccountChargeStaleness(staleness: unknown): void {
+  if (!isPlainObject(staleness)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:staleness must be object; got ${typeofTag(staleness)}`,
+    );
+  }
+  assertExactKeySetWithPath(staleness, ACCOUNT_CHARGE_STALENESS_KEYS, 'staleness');
+  const customerStale = assertBoolAt(
+    staleness,
+    'customer_snapshot_stale',
+    'staleness.customer_snapshot_stale',
+  );
+  const balanceStale = assertBoolAt(
+    staleness,
+    'balance_snapshot_stale',
+    'staleness.balance_snapshot_stale',
+  );
+  if (staleness['mirror_last_synced_at'] !== null) {
+    assertIsoDateTimeMsAt(
+      staleness,
+      'mirror_last_synced_at',
+      'staleness.mirror_last_synced_at',
+    );
+  }
+  assertOptionalEnumAt(
+    staleness,
+    'staleness_reason',
+    ACCOUNT_PAYMENT_STALENESS_REASONS,
+    'staleness.staleness_reason',
+  );
+  const reason = staleness['staleness_reason'];
+  const stale = customerStale || balanceStale;
+  if (stale && reason === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_staleness_reason_required:staleness_reason required when any stale flag is true',
+    );
+  }
+  if (!stale && reason !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_staleness_reason_mismatch:staleness_reason must be null when stale flags are false',
+    );
+  }
+}
+
+function validateAccountChargeTotals(
+  totals: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(totals)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:totals must be object; got ${typeofTag(totals)}`,
+    );
+  }
+  assertExactKeySetWithPath(totals, ACCOUNT_CHARGE_TOTALS_KEYS, 'totals');
+  for (const field of ACCOUNT_CHARGE_TOTALS_KEYS) {
+    assertMoneyStringAt(totals, field, money, scale, `totals.${field}`);
+  }
+}
+
+function validateAccountChargeVatBreakdown(
+  p: Record<string, unknown>,
+  money: RegExp,
+  scale: number,
+): void {
+  const vatBreakdown = requireList(p, 'vat_breakdown');
+  if (vatBreakdown.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_vat_breakdown_empty:vat_breakdown must have >= 1 row',
+    );
+  }
+  vatBreakdown.forEach((row, index) => validateVatBreakdownRow(index, row, money, scale));
+}
+
+function assertOptionalTaxCategoryCode(value: unknown, path: string): void {
+  if (value === null) return;
+  if (typeof value !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path} must be string or null; got ${typeofTag(value)}`,
+    );
+  }
+  if (value !== '' && !TAX_CATEGORY_CODE.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path} must match ^[A-Z0-9_-]+$ or null; got ${jsonOrType(value)}`,
+    );
+  }
+}
 
 function validateSeller(p: Record<string, unknown>): string {
   const seller = p['seller'];
