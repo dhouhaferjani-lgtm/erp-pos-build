@@ -5,11 +5,18 @@ declare(strict_types=1);
 namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\CompanyDayClosureManifestPayload;
+use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\TerminalRegistrySnapshotPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -28,6 +35,13 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(TerminalRegistrySnapshotPayload::class, $r->dtoClassFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(AccountPaymentPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertSame(AccountChargePayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(AccountStatusChangedPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertSame(OperatorApprovalGrantedPayload::class, $r->dtoClassFor(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertSame(OverrideCreditLimitPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertSame(OverrideAccountStatusPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertSame(OverrideDiscountLimitPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertSame(OverrideTenderTolerancePayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertSame(OverrideVoidOrReturnPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
     }
 
     public function test_returns_event_version_one_for_implemented_types(): void
@@ -40,6 +54,13 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
     }
 
     public function test_reserved_type_company_day_closure_manifest_throws(): void
@@ -76,10 +97,19 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertTrue($r->isImplemented(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
 
         $this->assertFalse($r->isImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST));
         $this->assertFalse($r->isImplemented(FiscalEventType::SALE_VOID));
         $this->assertFalse($r->isImplemented(FiscalEventType::Z_REPORT));
+        $this->assertFalse($r->isImplemented(FiscalEventType::CASH_OUT));
+        $this->assertFalse($r->isImplemented(FiscalEventType::SAFE_DROP));
     }
 
     public function test_account_charge_is_implemented_at_version_one(): void

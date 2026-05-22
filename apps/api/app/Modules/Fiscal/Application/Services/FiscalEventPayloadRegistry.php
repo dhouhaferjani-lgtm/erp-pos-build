@@ -6,8 +6,15 @@ namespace App\Modules\Fiscal\Application\Services;
 
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
+use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\TerminalRegistrySnapshotPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -43,6 +50,13 @@ final class FiscalEventPayloadRegistry
         FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value => [TerminalRegistrySnapshotPayload::class, 1],
         FiscalEventType::ACCOUNT_PAYMENT->value => [AccountPaymentPayload::class, 1],
         FiscalEventType::ACCOUNT_CHARGE->value => [AccountChargePayload::class, 1],
+        FiscalEventType::ACCOUNT_STATUS_CHANGED->value => [AccountStatusChangedPayload::class, 1],
+        FiscalEventType::OPERATOR_APPROVAL_GRANTED->value => [OperatorApprovalGrantedPayload::class, 1],
+        FiscalEventType::OVERRIDE_CREDIT_LIMIT->value => [OverrideCreditLimitPayload::class, 1],
+        FiscalEventType::OVERRIDE_ACCOUNT_STATUS->value => [OverrideAccountStatusPayload::class, 1],
+        FiscalEventType::OVERRIDE_DISCOUNT_LIMIT->value => [OverrideDiscountLimitPayload::class, 1],
+        FiscalEventType::OVERRIDE_TENDER_TOLERANCE->value => [OverrideTenderTolerancePayload::class, 1],
+        FiscalEventType::OVERRIDE_VOID_OR_RETURN->value => [OverrideVoidOrReturnPayload::class, 1],
     ];
 
     /**

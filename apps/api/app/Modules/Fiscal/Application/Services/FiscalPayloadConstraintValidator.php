@@ -5,6 +5,13 @@ declare(strict_types=1);
 namespace App\Modules\Fiscal\Application\Services;
 
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use LogicException;
 use RuntimeException;
@@ -270,6 +277,13 @@ final class FiscalPayloadConstraintValidator
             'treasury_allocation_policy',
         ],
         'ACCOUNT_CHARGE' => AccountChargePayload::PAYLOAD_KEYS,
+        'ACCOUNT_STATUS_CHANGED' => AccountStatusChangedPayload::PAYLOAD_KEYS,
+        'OPERATOR_APPROVAL_GRANTED' => OperatorApprovalGrantedPayload::PAYLOAD_KEYS,
+        'OVERRIDE_CREDIT_LIMIT' => OverrideCreditLimitPayload::PAYLOAD_KEYS,
+        'OVERRIDE_ACCOUNT_STATUS' => OverrideAccountStatusPayload::PAYLOAD_KEYS,
+        'OVERRIDE_DISCOUNT_LIMIT' => OverrideDiscountLimitPayload::PAYLOAD_KEYS,
+        'OVERRIDE_TENDER_TOLERANCE' => OverrideTenderTolerancePayload::PAYLOAD_KEYS,
+        'OVERRIDE_VOID_OR_RETURN' => OverrideVoidOrReturnPayload::PAYLOAD_KEYS,
     ];
 
     /**
@@ -324,10 +338,33 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT => $this->validateTerminalRegistrySnapshotPayload($payload),
             FiscalEventType::ACCOUNT_PAYMENT => $this->validateAccountPaymentPayload($payload),
             FiscalEventType::ACCOUNT_CHARGE => $this->validateAccountChargePayload($payload),
+            FiscalEventType::ACCOUNT_STATUS_CHANGED => $this->validatePhase4Payload($payload),
+            FiscalEventType::OPERATOR_APPROVAL_GRANTED => $this->validatePhase4Payload($payload),
+            FiscalEventType::OVERRIDE_CREDIT_LIMIT => $this->validatePhase4Payload($payload),
+            FiscalEventType::OVERRIDE_ACCOUNT_STATUS => $this->validatePhase4Payload($payload),
+            FiscalEventType::OVERRIDE_DISCOUNT_LIMIT => $this->validatePhase4Payload($payload),
+            FiscalEventType::OVERRIDE_TENDER_TOLERANCE => $this->validatePhase4Payload($payload),
+            FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validatePhase4Payload($payload),
             default => throw new LogicException(
                 'FiscalPayloadConstraintValidator missing per-event clause for FiscalEventType::'.$type->name
             ),
         };
+    }
+
+    /**
+     * Phase 4 payloads share the strict key-set gate above; nested business
+     * invariants are enforced by their authoring services before canonical
+     * bytes are sealed.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function validatePhase4Payload(array $payload): void
+    {
+        foreach (['tenant_id', 'company_id', 'terminal_id', 'event_time_device', 'training_flag'] as $key) {
+            if (! array_key_exists($key, $payload)) {
+                throw new RuntimeException('payload_phase4_missing_required:'.$key);
+            }
+        }
     }
 
     /**
