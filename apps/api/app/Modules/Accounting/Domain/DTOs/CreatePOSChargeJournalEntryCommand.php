@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Treasury\Application\DTOs;
+namespace App\Modules\Accounting\Domain\DTOs;
 
 final readonly class CreatePOSChargeJournalEntryCommand
 {

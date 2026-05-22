@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Domain\Services;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
@@ -17,7 +18,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
-use App\Modules\Treasury\Application\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
