@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeBalanceSnapshotDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeCreditDecisionDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeCustomerDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeTermsDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeTotalsDTO;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentBalanceSnapshotDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentCustomerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentPaymentDTO;
@@ -129,6 +136,38 @@ final class CanonicalPayloadReader
             localBalanceSnapshot: AccountPaymentBalanceSnapshotDTO::fromArray($payload->localBalanceSnapshot),
             staleness: AccountPaymentStalenessDTO::fromArray($payload->staleness),
             seller: SellerDTO::fromArray($payload->seller),
+        );
+    }
+
+    public function forAccountCharge(FiscalEvent $event): AccountChargeView
+    {
+        if ($event->event_type !== FiscalEventType::ACCOUNT_CHARGE) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forAccountCharge called with event_type=%s; expected ACCOUNT_CHARGE',
+                $event->event_type->value,
+            ));
+        }
+        $payloadArray = $event->payload;
+        if ($payloadArray === null) {
+            throw new InvalidArgumentException(sprintf(
+                'CanonicalPayloadReader::forAccountCharge called on fiscal_event_id=%s with NULL payload (parse_failure quarantine?)',
+                $event->id,
+            ));
+        }
+
+        $payload = AccountChargePayload::fromArray($payloadArray);
+
+        return new AccountChargeView(
+            payload: $payload,
+            customer: AccountChargeCustomerDTO::fromArray($payload->customer),
+            localBalanceSnapshot: AccountChargeBalanceSnapshotDTO::fromArray($payload->localBalanceSnapshot),
+            creditDecision: AccountChargeCreditDecisionDTO::fromArray($payload->creditDecision),
+            chargeTerms: AccountChargeTermsDTO::fromArray($payload->chargeTerms),
+            totals: AccountChargeTotalsDTO::fromArray($payload->totals),
+            seller: SellerDTO::fromArray($payload->seller),
+            buyer: $payload->buyer === null ? null : BuyerDTO::fromArray($payload->buyer),
+            lineItems: $payload->lineItems,
+            vatBreakdown: $payload->vatBreakdown,
         );
     }
 }

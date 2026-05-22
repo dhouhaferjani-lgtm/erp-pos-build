@@ -214,6 +214,259 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
     }
 
+    public function test_account_charge_validator_accepts_discounted_b2b_buyer_payload(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'customer' => [
+                'customer_category' => 'business',
+                'tax_number' => '7654321BM000',
+            ],
+            'invoice_classification' => 'b2b_facture_draft_requested',
+            'buyer' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => 'Rue Buyer'],
+                'codice_fiscale' => null,
+                'contact_id' => 'contact-1',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'name' => 'Business Buyer',
+                'tax_number' => '7654321BM000',
+            ],
+        ]);
+        $payload['line_items'][0]['unit_price'] = '110.000';
+        $payload['line_items'][0]['line_discount_amount'] = '10.000';
+        $payload['line_items'][0]['line_discount_reason'] = 'customer discount';
+
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_rejects_extra_top_level_key(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['unexpected'] = true;
+
+        self::assertSame(
+            'payload_extra_field:unexpected',
+            $this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload),
+        );
+    }
+
+    public function test_account_charge_rejects_missing_required_top_level_key(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        unset($payload['customer']);
+
+        self::assertSame(
+            'payload_missing_required:customer',
+            $this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload),
+        );
+    }
+
+    public function test_account_charge_rejects_missing_nested_customer_key(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        unset($payload['customer']['account_identifier']);
+
+        $this->expectAccountChargeException('/payload_object_missing_keys:customer:account_identifier/', $payload);
+    }
+
+    public function test_account_charge_rejects_malformed_money_field(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['totals']['total'] = '119.00';
+
+        $this->expectAccountChargeException('/payload_money_scale_mismatch:field=totals\\.total/', $payload);
+    }
+
+    public function test_account_charge_rejects_malformed_vat_partition(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['vat_breakdown'][0]['net_amount'] = '99.000';
+        $payload['vat_breakdown'][0]['gross_amount'] = '118.000';
+
+        $this->expectAccountChargeException('/payload_partition_net_mismatch/', $payload);
+    }
+
+    public function test_account_charge_rejects_payments_key(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['payments'] = [];
+
+        self::assertSame(
+            'payload_account_charge_payments_forbidden:payments is not valid on ACCOUNT_CHARGE',
+            $this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload),
+        );
+    }
+
+    public function test_account_charge_rejects_missing_product_id(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        unset($payload['line_items'][0]['product_id']);
+
+        $this->expectAccountChargeException('/payload_line_item_missing_keys:line_items\\[0\\]:product_id/', $payload);
+    }
+
+    public function test_account_charge_rejects_invalid_buyer_codice_fiscale(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'buyer' => [
+                'address' => ['city' => 'Rome', 'country_code' => 'IT', 'postal_code' => '00100', 'street' => 'Via Test'],
+                'codice_fiscale' => 'BAD-CF',
+                'contact_id' => 'contact-1',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'name' => 'Italian Buyer',
+                'tax_number' => null,
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/buyer\\.codice_fiscale/', $payload);
+    }
+
+    public function test_account_charge_rejects_limit_exceeded_production_event(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['credit_decision']['limit_exceeded'] = true;
+
+        $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid/', $payload);
+    }
+
+    public function test_account_charge_rejects_amount_balance_mismatch(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['local_balance_snapshot']['charge_amount'] = '120.000';
+
+        $this->expectAccountChargeException('/payload_account_charge_amount_mismatch/', $payload);
+    }
+
+    public function test_account_charge_rejects_invalid_invoice_classification_for_non_business_customer(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'customer' => ['customer_category' => 'retail'],
+            'invoice_classification' => 'b2b_facture_draft_requested',
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_invoice_classification_mismatch/', $payload);
+    }
+
+    public function test_account_charge_accepts_synced_and_pending_customer_variants(): void
+    {
+        $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
+
+        $payload = $this->canonicalAccountChargePayload([
+            'customer' => [
+                'customer_id' => '66666666-6666-4666-8666-666666666666',
+                'customer_sync_status' => 'pending_create',
+                'customer_category' => null,
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_stale_and_fresh_mirror_variants(): void
+    {
+        $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
+
+        $payload = $this->canonicalAccountChargePayload([
+            'staleness' => [
+                'balance_snapshot_stale' => true,
+                'customer_snapshot_stale' => true,
+                'mirror_last_synced_at' => '2026-05-20T08:00:00.000Z',
+                'staleness_reason' => 'older_than_threshold',
+            ],
+            'credit_decision' => [
+                'mirror_stale_at_authoring' => true,
+                'stale_policy_action' => 'warn',
+                'warnings' => ['balance snapshot stale'],
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_credit_limit_present_and_absent_variants(): void
+    {
+        $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
+
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'credit_available_after' => null,
+                'credit_available_before' => null,
+                'credit_limit' => null,
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_discount_present_and_absent_variants(): void
+    {
+        $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
+
+        $payload = $this->canonicalAccountChargePayload([
+            'transaction_discount_amount' => '5.000',
+            'transaction_discount_reason' => 'manager discount',
+            'totals' => [
+                'amount_charged_to_account' => '114.000',
+                'total' => '114.000',
+            ],
+            'local_balance_snapshot' => [
+                'charge_amount' => '114.000',
+                'projected_net_balance_after' => '414.000',
+                'projected_receivable_balance_after' => '414.000',
+            ],
+            'credit_decision' => [
+                'credit_available_after' => '86.000',
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_nullable_and_populated_buyer_and_references(): void
+    {
+        $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
+
+        $payload = $this->canonicalAccountChargePayload([
+            'buyer' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => 'Rue Buyer'],
+                'codice_fiscale' => null,
+                'contact_id' => 'contact-1',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'name' => 'Mariam Ben Ali',
+                'tax_number' => '1234567AM000',
+            ],
+            'references' => [
+                'external_reference' => 'charge-ref-1',
+                'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_nullable_non_collected_subtype(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['line_items'][0]['non_collected_subtype'] = 'servizi';
+        $this->assertAccountChargeAccepted($payload);
+
+        $payload['line_items'][0]['non_collected_subtype'] = null;
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_accepts_training_limit_exceeded_but_rejects_production_limit_exceeded(): void
+    {
+        $training = $this->canonicalAccountChargePayload([
+            'training_flag' => true,
+            'credit_decision' => [
+                'limit_exceeded' => true,
+                'warnings' => ['training over limit'],
+            ],
+        ]);
+        $this->assertAccountChargeAccepted($training);
+
+        $production = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'limit_exceeded' => true,
+            ],
+        ]);
+        $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid/', $production);
+    }
+
     public function test_phase_1_5_2_accepts_per_country_seller_tax_numbers(): void
     {
         $fixtures = [
@@ -1099,6 +1352,137 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             }
         }
         $this->addToAssertionCount(1);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountChargePayload(array $overrides = []): array
+    {
+        $payload = [
+            'account_charge_uuid' => '66666666-6666-4666-8666-666666666666',
+            'business_date' => '2026-05-21',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'charge_terms' => [
+                'due_date' => '2026-06-20',
+                'payment_terms_days' => 30,
+                'terms_label' => 'Net 30',
+            ],
+            'credit_decision' => [
+                'credit_available_after' => '81.000',
+                'credit_available_before' => '200.000',
+                'credit_limit' => '500.000',
+                'decision' => 'approved',
+                'limit_exceeded' => false,
+                'mirror_stale_at_authoring' => false,
+                'policy_version' => 'phase3-default-v1',
+                'stale_policy_action' => 'allow',
+                'warnings' => [],
+            ],
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'account_identifier' => 'CUST-0001',
+                'address' => null,
+                'customer_category' => 'individual',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'invoice_classification' => 'b2c_charge_receipt',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '100.000',
+                'line_uuid' => '77777777-7777-4777-8777-777777777777',
+                'line_vat' => '19.000',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '100.000',
+                'vat_rate' => '19.00',
+            ]],
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'charge_amount' => '119.000',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '419.000',
+                'projected_receivable_balance_after' => '419.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'print_profile' => 'ACCOUNT_CHARGE_RECEIPT',
+            'receipt_type_code' => 'ACCOUNT_CHARGE',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'totals' => [
+                'amount_charged_to_account' => '119.000',
+                'grand_total_before_charge' => '119.000',
+                'subtotal' => '100.000',
+                'total' => '119.000',
+                'vat_total' => '19.000',
+            ],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '119.000',
+                'net_amount' => '100.000',
+                'rate' => '19.00',
+                'tax_category_code' => '',
+                'vat_amount' => '19.000',
+            ]],
+        ];
+
+        return array_replace_recursive($payload, $overrides);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function assertAccountChargeAccepted(array $payload): void
+    {
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function expectAccountChargeException(string $pattern, array $payload): void
+    {
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload));
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches($pattern);
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
     }
 
     /**
