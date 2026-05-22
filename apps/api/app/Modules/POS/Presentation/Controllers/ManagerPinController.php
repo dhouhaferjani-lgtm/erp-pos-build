@@ -8,7 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\PinVerifier;
+use App\Modules\POS\Domain\Enums\ApprovalScope;
+use App\Modules\POS\Domain\Enums\OperatorApprovalDecision;
 use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
+use App\Modules\POS\Domain\OperatorApproval;
 use App\Modules\POS\Presentation\Requests\VerifyManagerPinRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\RateLimiter;
@@ -39,14 +42,17 @@ final class ManagerPinController extends Controller
     {
         $userId = $request->string('user_id')->toString();
         $pin = $request->string('pin')->toString();
+        $companyId = $request->string('company_id')->toString();
+        $terminalId = $request->string('terminal_id')->toString();
+        $approvalScope = ApprovalScope::from($request->string('approval_scope')->toString());
         $caller = $request->user();
 
         if (! $caller instanceof User) {
             return response()->json(['data' => ['valid' => false]]);
         }
 
-        // Rate limiting: 3 attempts per 30 seconds per (ip + user_id).
-        $key = 'verify-manager-pin:'.$request->ip().':'.$userId;
+        // Rate limiting: 3 attempts per 30 seconds per (tenant + terminal + user + approval scope).
+        $key = 'verify-manager-pin:'.$caller->tenant_id.':'.$terminalId.':'.$userId.':'.$approvalScope->value;
         if (RateLimiter::tooManyAttempts($key, 3)) {
             $seconds = RateLimiter::availableIn($key);
 
@@ -76,35 +82,58 @@ final class ManagerPinController extends Controller
             ]);
         }
 
-        // Permission scope: manager must hold pos.close_shift_with_variance.
-        if (! $manager->hasPermissionTo('pos.close_shift_with_variance')) {
+        $decision = $this->pinVerifier->verifyForApproval(
+            userId: $userId,
+            pin: $pin,
+            tenantId: $caller->tenant_id,
+            companyId: $companyId,
+            approvalScope: $approvalScope,
+        );
+
+        if ($decision !== OperatorApprovalDecision::Approved) {
             return response()->json([
-                'data' => ['valid' => false],
+                'data' => [
+                    'valid' => false,
+                    'failure_code' => $decision->value,
+                ],
             ]);
         }
 
-        $valid = $this->pinVerifier->verify($userId, $pin);
-        if ($valid) {
-            RateLimiter::clear($key);
+        RateLimiter::clear($key);
 
-            // Privileged action — a successful verification is a manager
-            // authorising a cashier to exceed a limit. Leave a timestamped
-            // audit trail (actor = caller, target = manager). verify() does
-            // no DB writes, so a direct event() dispatch is correct — there
-            // is no surrounding transaction to roll back.
-            event(new ManagerOverrideAuthorized(
-                managerId: $userId,
-                callerId: $caller->id,
-                companyId: $this->companyContext->requireCompany()->id,
-                verifiedAt: now()->toIso8601String(),
-            ));
-        }
+        // Privileged action — a successful verification is a manager
+        // authorising a cashier to exceed a limit. Leave a timestamped
+        // audit trail (actor = caller, target = manager). verify() does
+        // no DB writes, so a direct event() dispatch is correct — there
+        // is no surrounding transaction to roll back.
+        event(new ManagerOverrideAuthorized(
+            managerId: $userId,
+            callerId: $caller->id,
+            companyId: $this->companyContext->requireCompany()->id,
+            verifiedAt: now()->toIso8601String(),
+        ));
+
+        OperatorApproval::query()->create([
+            'tenant_id' => $caller->tenant_id,
+            'company_id' => $companyId,
+            'terminal_id' => $terminalId,
+            'supervisor_user_id' => $userId,
+            'cashier_user_id' => $caller->id,
+            'approval_scope' => $approvalScope,
+            'target_event_type' => $request->string('target_event_type')->toString(),
+            'target_reference_id' => $request->string('target_reference_id')->toString(),
+            'reason' => $request->string('reason')->toString(),
+            'approved_at' => now(),
+        ]);
 
         return response()->json([
             'data' => [
-                'valid' => $valid,
+                'valid' => true,
                 'user_id' => $userId,
-                'user_name' => $valid ? $manager->name : null,
+                'user_name' => $manager->name,
+                'approval_scope' => $approvalScope->value,
+                'company_id' => $companyId,
+                'terminal_id' => $terminalId,
             ],
         ]);
     }

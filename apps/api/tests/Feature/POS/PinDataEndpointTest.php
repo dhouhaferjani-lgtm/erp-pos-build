@@ -116,6 +116,12 @@ class PinDataEndpointTest extends TestCase
         $this->assertArrayHasKey('permissions', $operator);
         $this->assertArrayHasKey('can_discount', $operator);
         $this->assertArrayHasKey('max_discount_percent', $operator);
+        $this->assertSame($this->tenant->id, $operator['tenant_id']);
+        $this->assertSame([$this->company->id], $operator['company_ids']);
+        $this->assertArrayHasKey('terminal_ids', $operator);
+        $this->assertContains('close_shift_variance', $operator['approval_scopes']);
+        $this->assertArrayHasKey('approval_scope_permissions_fetched_at', $operator);
+        $this->assertArrayHasKey('server_time', $operator);
         $this->assertTrue($operator['can_discount']);
     }
 

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\ApprovalScope;
 use App\Modules\POS\Presentation\Requests\VerifyPinRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +18,10 @@ use Illuminate\Validation\ValidationException;
 
 final class PosAuthController extends Controller
 {
+    public function __construct(
+        private readonly CompanyContext $companyContext,
+    ) {}
+
     /**
      * Verify a POS PIN and return the matching operator.
      *
@@ -120,16 +126,28 @@ final class PosAuthController extends Controller
 
         /** @var User $currentUser */
         $currentUser = $request->user();
+        $company = $this->companyContext->requireCompany();
+        $terminalId = $request->query('terminal_id');
+        $terminalIds = is_string($terminalId) && $terminalId !== '' ? [$terminalId] : [];
+        $serverTime = now()->toIso8601String();
 
         $operators = User::where('tenant_id', $currentUser->tenant_id)
             ->whereNotNull('pos_pin')
             ->get();
 
-        $data = $operators->map(function (User $user): array {
+        $data = $operators->map(function (User $user) use ($company, $terminalIds, $serverTime): array {
             $isAdmin = $user->hasRole(['super_admin', 'admin']);
+            $approvalScopes = array_values(array_map(
+                static fn (ApprovalScope $scope): string => $scope->value,
+                array_filter(
+                    ApprovalScope::cases(),
+                    static fn (ApprovalScope $scope): bool => $user->hasPermissionTo($scope->permissionName()),
+                ),
+            ));
 
             return [
                 'id' => $user->id,
+                'tenant_id' => $user->tenant_id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'pin_hash' => $user->pos_pin,
@@ -137,6 +155,11 @@ final class PosAuthController extends Controller
                 'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
                 'can_discount' => $isAdmin || (bool) $user->can_discount,
                 'max_discount_percent' => $isAdmin ? 100.0 : $user->max_discount_percent,
+                'company_ids' => [$company->id],
+                'terminal_ids' => $terminalIds,
+                'approval_scopes' => $approvalScopes,
+                'approval_scope_permissions_fetched_at' => $serverTime,
+                'server_time' => $serverTime,
             ];
         })->values()->all();
 

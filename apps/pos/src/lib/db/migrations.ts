@@ -1237,4 +1237,31 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Phase 4 Task 7 — scoped approval metadata for offline supervisor PIN checks.
+    version: 43,
+    name: 'add_scoped_approval_metadata_to_operator_pins',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE operator_pins ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE operator_pins ADD COLUMN company_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN approval_scopes TEXT NOT NULL DEFAULT '[]'",
+        'ALTER TABLE operator_pins ADD COLUMN approval_scope_permissions_fetched_at TEXT',
+        "ALTER TABLE operator_pins ADD COLUMN approval_mirror_status TEXT NOT NULL DEFAULT 'fresh' CHECK (approval_mirror_status IN ('fresh', 'server_quarantined'))",
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];
