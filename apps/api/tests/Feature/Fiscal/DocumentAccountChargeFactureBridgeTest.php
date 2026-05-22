@@ -193,6 +193,28 @@ final class DocumentAccountChargeFactureBridgeTest extends TestCase
         $bridge->apply($event);
     }
 
+    public function test_document_bridge_replay_accepts_semantically_equal_canonical_payload_after_jsonb_key_reorder(): void
+    {
+        $event = $this->storeAccountChargeFiscalEvent($this->businessFacturePayload());
+        $bridge = $this->bridge();
+
+        $bridge->apply($event);
+
+        $document = Document::query()->firstOrFail();
+        $payload = $document->payload;
+        $this->assertIsArray($payload);
+        $canonicalPayload = $payload['canonical_payload'] ?? null;
+        $this->assertIsArray($canonicalPayload);
+
+        $payload['canonical_payload'] = $this->reverseAssociativeKeys($canonicalPayload);
+        $document->update(['payload' => $payload]);
+
+        $bridge->apply($event);
+
+        $this->assertSame(1, Document::query()->count());
+        $this->assertSame(1, DocumentLine::query()->count());
+    }
+
     public function test_document_bridge_fails_loud_for_cross_company_partner(): void
     {
         $otherCompany = Company::factory()->create(['tenant_id' => $this->tenantId]);
@@ -476,5 +498,28 @@ final class DocumentAccountChargeFactureBridgeTest extends TestCase
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $value
+     * @return array<array-key, mixed>
+     */
+    private function reverseAssociativeKeys(array $value): array
+    {
+        if (array_is_list($value)) {
+            return array_map(
+                fn (mixed $item): mixed => is_array($item) ? $this->reverseAssociativeKeys($item) : $item,
+                $value,
+            );
+        }
+
+        $reversed = array_reverse($value, preserve_keys: true);
+        foreach ($reversed as $key => $item) {
+            if (is_array($item)) {
+                $reversed[$key] = $this->reverseAssociativeKeys($item);
+            }
+        }
+
+        return $reversed;
     }
 }

@@ -154,7 +154,7 @@ final class POSAccountChargeDraftService
                 $mismatches[] = 'payload.account_charge_uuid';
             }
 
-            if (($payload['canonical_payload'] ?? null) !== $command->payloadSnapshot) {
+            if (! $this->payloadSnapshotsMatch($payload['canonical_payload'] ?? null, $command->payloadSnapshot)) {
                 $mismatches[] = 'payload.canonical_payload';
             }
         }
@@ -228,6 +228,41 @@ final class POSAccountChargeDraftService
         }
 
         return $mismatches;
+    }
+
+    /**
+     * @param  array<string, mixed>  $expected
+     */
+    private function payloadSnapshotsMatch(mixed $actual, array $expected): bool
+    {
+        if (! is_array($actual)) {
+            return false;
+        }
+
+        return $this->sortPayloadSnapshot($actual) === $this->sortPayloadSnapshot($expected);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $value
+     * @return array<array-key, mixed>
+     */
+    private function sortPayloadSnapshot(array $value): array
+    {
+        if (array_is_list($value)) {
+            return array_map(
+                fn (mixed $item): mixed => is_array($item) ? $this->sortPayloadSnapshot($item) : $item,
+                $value,
+            );
+        }
+
+        ksort($value, SORT_STRING);
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = $this->sortPayloadSnapshot($item);
+            }
+        }
+
+        return $value;
     }
 
     /**
