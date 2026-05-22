@@ -218,7 +218,7 @@ function buildCreditDecision(
     customer_id: input.customer.id,
     customer_sync_status: input.customer.customer_sync_status,
     alias_candidates: input.aliasCandidates ?? [],
-    is_active: true,
+    is_active: input.customer.is_active,
     charge_account_enabled: input.customer.charge_account_enabled,
     charge_policy_version: input.customer.charge_policy_version,
     receivable_balance: bcformat(input.customer.receivable_balance, input.scale),
@@ -325,7 +325,9 @@ export function buildAccountChargePayload(input: AuthorAccountChargeInput): Acco
         : normalizeTaxNumberForCountry(input.customer.tax_number, seller.tax_jurisdiction_country_code),
     },
     event_time_device: eventTimeIso,
-    invoice_classification: 'b2c_charge_receipt',
+    invoice_classification: input.customer.customer_category === 'business'
+      ? 'b2b_facture_draft_requested'
+      : 'b2c_charge_receipt',
     line_items: input.lines.map((line) => ({
       gtin: line.gtin,
       line_discount_amount: bcformat(line.lineDiscountAmount, scale),

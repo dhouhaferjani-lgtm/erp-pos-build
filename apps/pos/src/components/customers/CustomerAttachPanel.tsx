@@ -35,6 +35,7 @@ function fromMirror(row: CustomerMirrorRow): AttachedCheckoutCustomer {
     charge_account_enabled: row.charge_account_enabled,
     charge_policy_version: row.charge_policy_version,
     balance_updated_at: row.balance_updated_at,
+    is_active: row.is_active,
     customer_sync_status: 'synced',
   };
 }
@@ -127,6 +128,7 @@ export function CustomerAttachPanel({
         charge_account_enabled: false,
         charge_policy_version: null,
         balance_updated_at: null,
+        is_active: 1,
         customer_sync_status: 'pending_create',
       });
       setNewName('');

@@ -72,6 +72,7 @@ function attached(overrides: Partial<AttachedCheckoutCustomer> = {}): AttachedCh
     charge_account_enabled: true,
     charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T08:00:00.000Z',
+    is_active: 1,
     customer_sync_status: 'synced',
     ...overrides,
   };

@@ -72,6 +72,7 @@ function makeAttachedCustomer(): NonNullable<AuthorAccountChargeInput['customer'
     charge_account_enabled: true,
     charge_policy_version: 'phase3-default-v1',
     balance_updated_at: '2026-05-21T10:10:00.000Z',
+    is_active: 1,
     customer_sync_status: 'synced',
   };
 }
@@ -189,6 +190,44 @@ describe('accountChargeService', () => {
         },
       })),
     ).toThrow(/credit_limit_exceeded/);
+  });
+
+  it('fails closed before append when the selected customer is inactive', async () => {
+    const db = makeMockDb();
+
+    await expect(
+      authorAccountCharge(db, makeAccountChargeInput({
+        customer: {
+          ...makeAttachedCustomer(),
+          is_active: 0,
+        },
+      })),
+    ).rejects.toThrow(/account_charge_credit_rejected:customer_inactive/);
+
+    expect(getFiscalEventEngine).not.toHaveBeenCalled();
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
+  it('classifies business customers as B2B facture draft requests', () => {
+    const payload = buildAccountChargePayload(makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        customer_category: 'business',
+      },
+    }));
+
+    expect(payload.invoice_classification).toBe('b2b_facture_draft_requested');
+  });
+
+  it('classifies non-business customers as B2C charge receipts', () => {
+    const payload = buildAccountChargePayload(makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        customer_category: 'retail',
+      },
+    }));
+
+    expect(payload.invoice_classification).toBe('b2c_charge_receipt');
   });
 
   it('lets existing credit balance offset a new charge in decision and snapshot math', () => {

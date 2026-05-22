@@ -1194,6 +1194,7 @@ function validateAccountChargePayload(payload: unknown): void {
   const p = payload as Record<string, unknown>;
 
   assertExactKeySet(p, ACCOUNT_CHARGE_PAYLOAD_KEYS, 'ACCOUNT_CHARGE');
+  rejectAccountChargePaymentsKeyRecursively(p);
 
   const scale = p['currency_scale'];
   if (typeof scale !== 'number' || !Number.isInteger(scale)) {
@@ -1217,15 +1218,20 @@ function validateAccountChargePayload(payload: unknown): void {
 
   assertUuid(p, 'account_charge_uuid');
   assertCalendarDate(p, 'business_date');
-  validateBuyer(p);
   assertUuid(p, 'cashier_id');
   assertNonEmptyString(p, 'cashier_name');
+  const trainingFlag = assertBool(p, 'training_flag');
   validateAccountChargeTerms(p['charge_terms']);
-  validateAccountChargeCreditDecision(p['credit_decision'], money, scale);
+  validateAccountChargeCreditDecision(p['credit_decision'], money, scale, trainingFlag);
   const sellerCountryCode = validateSeller(p);
-  validateAccountChargeCustomer(p['customer'], sellerCountryCode);
+  const customerCategory = validateAccountChargeCustomer(p['customer'], sellerCountryCode);
+  validateBuyer(p);
   assertIsoDateTimeMs(p, 'event_time_device');
-  assertEnum(p, 'invoice_classification', ['b2c_charge_receipt', 'b2b_facture_draft_requested'] as const);
+  const invoiceClassification = assertEnum(
+    p,
+    'invoice_classification',
+    ['b2c_charge_receipt', 'b2b_facture_draft_requested'] as const,
+  );
   validateAccountChargeLineItems(p, money, scale);
   validateAccountChargeBalanceSnapshot(p['local_balance_snapshot'], money, scale);
   assertOptionalNonEmptyString(p, 'notes');
@@ -1237,10 +1243,15 @@ function validateAccountChargePayload(payload: unknown): void {
   validateAccountChargeStaleness(p['staleness']);
   assertUuid(p, 'terminal_id');
   validateAccountChargeTotals(p['totals'], money, scale);
-  assertBool(p, 'training_flag');
   assertMoneyString(p, 'transaction_discount_amount', money, scale);
   assertOptionalNonEmptyString(p, 'transaction_discount_reason');
   validateAccountChargeVatBreakdown(p, money, scale);
+  validateAccountChargeArithmetic(p, scale);
+  if (invoiceClassification === 'b2b_facture_draft_requested' && customerCategory !== 'business') {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_invoice_classification_mismatch:b2b_facture_draft_requested requires customer.customer_category=business',
+    );
+  }
 }
 
 // -------------------------------------------------------------------
@@ -1367,7 +1378,7 @@ const ACCOUNT_CHARGE_TOTALS_KEYS = [
 const ACCOUNT_CHARGE_STALENESS_KEYS = ACCOUNT_PAYMENT_STALENESS_KEYS;
 const ACCOUNT_CHARGE_REFERENCES_KEYS = ACCOUNT_PAYMENT_REFERENCES_KEYS;
 
-function validateAccountChargeCustomer(customer: unknown, sellerCountryCode: string): void {
+function validateAccountChargeCustomer(customer: unknown, sellerCountryCode: string): string | null {
   if (!isPlainObject(customer)) {
     throw new FiscalEventPayloadValidationError(
       `payload_object_invalid:customer must be object; got ${typeofTag(customer)}`,
@@ -1390,6 +1401,8 @@ function validateAccountChargeCustomer(customer: unknown, sellerCountryCode: str
       true,
     );
   }
+
+  return typeof customer['customer_category'] === 'string' ? customer['customer_category'] : null;
 }
 
 function validateAccountChargeTerms(terms: unknown): void {
@@ -1399,13 +1412,18 @@ function validateAccountChargeTerms(terms: unknown): void {
     );
   }
   assertExactKeySetWithPath(terms, ACCOUNT_CHARGE_TERMS_KEYS, 'charge_terms');
-  if (terms['due_date'] !== null) {
-    assertCalendarDateAt(terms, 'due_date', 'charge_terms.due_date');
-  }
   const days = terms['payment_terms_days'];
   if (days !== null && (typeof days !== 'number' || !Number.isInteger(days) || days < 0)) {
     throw new FiscalEventPayloadValidationError(
       `payload_field_invalid:charge_terms.payment_terms_days must be non-negative integer or null; got ${jsonOrType(days)}`,
+    );
+  }
+  if (terms['due_date'] !== null) {
+    assertCalendarDateAt(terms, 'due_date', 'charge_terms.due_date');
+  }
+  if (days !== null && terms['due_date'] === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_terms_invalid:charge_terms.due_date required when payment_terms_days is non-null',
     );
   }
   assertOptionalNonEmptyStringAt(terms, 'terms_label', 'charge_terms.terms_label');
@@ -1415,6 +1433,7 @@ function validateAccountChargeCreditDecision(
   decision: unknown,
   money: RegExp,
   scale: number,
+  training: boolean,
 ): void {
   if (!isPlainObject(decision)) {
     throw new FiscalEventPayloadValidationError(
@@ -1428,7 +1447,7 @@ function validateAccountChargeCreditDecision(
     }
   }
   assertEnum(decision, 'decision', ['approved'] as const);
-  assertBoolAt(decision, 'limit_exceeded', 'credit_decision.limit_exceeded');
+  const limitExceeded = assertBoolAt(decision, 'limit_exceeded', 'credit_decision.limit_exceeded');
   assertBoolAt(
     decision,
     'mirror_stale_at_authoring',
@@ -1448,7 +1467,23 @@ function validateAccountChargeCreditDecision(
         `payload_field_invalid:credit_decision.warnings[${index}] must be non-empty string; got ${jsonOrType(warning)}`,
       );
     }
+    if (!/^[a-z][a-z0-9_]*$/.test(warning)) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_account_charge_credit_decision_invalid:warnings[${index}] must be a stable lower_snake_case code`,
+      );
+    }
   });
+  const sortedWarnings = [...warnings].sort();
+  if (warnings.some((warning, index) => warning !== sortedWarnings[index])) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes',
+    );
+  }
+  if (!training && limitExceeded) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true',
+    );
+  }
 }
 
 function validateAccountChargeLineItems(
@@ -1543,6 +1578,11 @@ function validateAccountChargeReferences(references: unknown): void {
     'related_sale_receipt_event_id',
     'references.related_sale_receipt_event_id',
   );
+  if (references['related_sale_receipt_event_id'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_reference_forbidden:references.related_sale_receipt_event_id is reserved for post-v1 split-sale links',
+    );
+  }
   if (references['server_customer_alias_id'] !== null) {
     throw new FiscalEventPayloadValidationError(
       'payload_account_charge_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for server reconciliation',
@@ -1622,6 +1662,121 @@ function validateAccountChargeVatBreakdown(
     );
   }
   vatBreakdown.forEach((row, index) => validateVatBreakdownRow(index, row, money, scale));
+}
+
+function validateAccountChargeArithmetic(
+  payload: Record<string, unknown>,
+  scale: number,
+): void {
+  const totals = payload['totals'];
+  const snapshot = payload['local_balance_snapshot'];
+  if (!isPlainObject(totals) || !isPlainObject(snapshot)) {
+    return;
+  }
+
+  const subtotal = accountChargeMinorUnits(totals['subtotal'] as string, scale);
+  const vatTotal = accountChargeMinorUnits(totals['vat_total'] as string, scale);
+  const total = accountChargeMinorUnits(totals['total'] as string, scale);
+  const discount = accountChargeMinorUnits(payload['transaction_discount_amount'] as string, scale);
+  const grandTotalBeforeCharge = accountChargeMinorUnits(
+    totals['grand_total_before_charge'] as string,
+    scale,
+  );
+  if (grandTotalBeforeCharge !== total) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:grand_total_before_charge must equal totals.total',
+    );
+  }
+  if (subtotal + vatTotal !== total + discount) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:subtotal_plus_vat must equal total_plus_discount',
+    );
+  }
+
+  const amountCharged = accountChargeMinorUnits(
+    totals['amount_charged_to_account'] as string,
+    scale,
+  );
+  if (amountCharged !== total) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:amount_charged_to_account must equal totals.total',
+    );
+  }
+  const chargeAmount = accountChargeMinorUnits(snapshot['charge_amount'] as string, scale);
+  if (chargeAmount !== amountCharged) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:local_balance_snapshot.charge_amount must equal totals.amount_charged_to_account',
+    );
+  }
+
+  const receivableBefore = accountChargeMinorUnits(
+    snapshot['receivable_balance_before'] as string,
+    scale,
+  );
+  const projectedReceivable = accountChargeMinorUnits(
+    snapshot['projected_receivable_balance_after'] as string,
+    scale,
+  );
+  const expectedReceivable = receivableBefore + chargeAmount;
+  if (expectedReceivable !== projectedReceivable) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_charge_balance_mismatch:projected_receivable_balance_after expected ${accountChargeFormatMinorUnits(expectedReceivable, scale)} got ${snapshot['projected_receivable_balance_after'] as string}`,
+    );
+  }
+
+  const projectedCredit = accountChargeMinorUnits(
+    snapshot['projected_credit_balance_after'] as string,
+    scale,
+  );
+  const projectedNet = accountChargeMinorUnits(
+    snapshot['projected_net_balance_after'] as string,
+    scale,
+  );
+  const expectedNet = projectedReceivable > projectedCredit
+    ? projectedReceivable - projectedCredit
+    : 0n;
+  if (expectedNet !== projectedNet) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_charge_balance_mismatch:projected_net_balance_after expected ${accountChargeFormatMinorUnits(expectedNet, scale)} got ${snapshot['projected_net_balance_after'] as string}`,
+    );
+  }
+}
+
+function accountChargeMinorUnits(value: string, scale: number): bigint {
+  if (scale === 0) {
+    return BigInt(value);
+  }
+
+  const [whole = '0', fractional = ''] = value.split('.');
+  return BigInt(`${whole}${fractional.padEnd(scale, '0')}`);
+}
+
+function accountChargeFormatMinorUnits(value: bigint, scale: number): string {
+  if (scale === 0) {
+    return value.toString();
+  }
+
+  const denominator = 10n ** BigInt(scale);
+  const whole = value / denominator;
+  const fractional = (value % denominator).toString().padStart(scale, '0');
+
+  return `${whole}.${fractional}`;
+}
+
+function rejectAccountChargePaymentsKeyRecursively(value: unknown, path = 'payload'): void {
+  if (!isPlainObject(value) && !Array.isArray(value)) {
+    return;
+  }
+  const entries = Array.isArray(value) ? value.entries() : Object.entries(value);
+  for (const [key, child] of entries) {
+    const segment = typeof key === 'number' ? `[${key}]` : `.${key}`;
+    if (key === 'payments') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_account_charge_payments_forbidden:payments is not valid anywhere on ACCOUNT_CHARGE at ${path}${segment}`,
+      );
+    }
+    rejectAccountChargePaymentsKeyRecursively(child, `${path}${segment}`);
+  }
 }
 
 function assertOptionalTaxCategoryCode(value: unknown, path: string): void {

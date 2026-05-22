@@ -97,6 +97,7 @@ const baseInput: CreateAccountPaymentInput = {
     charge_account_enabled: true,
     charge_policy_version: 'phase3-v1',
     balance_updated_at: '2026-05-21T10:10:00.000Z',
+    is_active: 1,
     customer_sync_status: 'synced',
   },
   payment: {

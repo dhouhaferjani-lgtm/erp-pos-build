@@ -142,6 +142,7 @@ export interface AttachedCheckoutCustomer {
   charge_account_enabled: boolean | 0 | 1;
   charge_policy_version: string | null;
   balance_updated_at: string | null;
+  is_active: boolean | 0 | 1;
   customer_sync_status: CustomerSyncStatus;
 }
 

@@ -1460,6 +1460,111 @@ d('FiscalEventEngine.append', () => {
     ).rejects.toThrow(/payload_field_invalid:business_date/);
   });
 
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE with a recursive payments key', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      regime_extensions: {
+        future_adapter: {
+          payments: [{ amount: '119.000' }],
+        },
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_payments_forbidden/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE v1 split-sale references before append', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      references: {
+        external_reference: null,
+        related_sale_receipt_event_id: '99999999-9999-4999-8999-999999999999',
+        server_customer_alias_id: null,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_reference_forbidden:references\.related_sale_receipt_event_id/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE terms days without a due date', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      charge_terms: {
+        ...goldenAccountChargePayload().charge_terms,
+        due_date: null,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_terms_invalid/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects non-training ACCOUNT_CHARGE limit exceeded decisions', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      credit_decision: {
+        ...goldenAccountChargePayload().credit_decision,
+        limit_exceeded: true,
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_credit_decision_invalid:limit_exceeded/,
+    );
+  });
+
+  it('Phase 3.5 R2 — rejects ACCOUNT_CHARGE amount and balance arithmetic mismatches', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            totals: {
+              ...goldenAccountChargePayload().totals,
+              amount_charged_to_account: '118.000',
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_account_charge_amount_mismatch/);
+
+    await expect(
+      engine.append(
+        adapter,
+        accountChargeRequest({
+          payload: {
+            ...goldenAccountChargePayload(),
+            local_balance_snapshot: {
+              ...goldenAccountChargePayload().local_balance_snapshot,
+              projected_receivable_balance_after: '418.000',
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow(/payload_account_charge_balance_mismatch/);
+  });
+
+  it('Phase 3.5 R2 — rejects B2B facture draft classification for non-business ACCOUNT_CHARGE customers', async () => {
+    const payload = {
+      ...goldenAccountChargePayload(),
+      invoice_classification: 'b2b_facture_draft_requested',
+      customer: {
+        ...goldenAccountChargePayload().customer,
+        customer_category: 'individual',
+      },
+    };
+
+    await expect(engine.append(adapter, accountChargeRequest({ payload }))).rejects.toThrow(
+      /payload_account_charge_invoice_classification_mismatch/,
+    );
+  });
+
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
