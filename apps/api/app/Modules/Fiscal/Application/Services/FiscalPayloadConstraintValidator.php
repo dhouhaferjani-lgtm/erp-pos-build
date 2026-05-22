@@ -644,6 +644,8 @@ final class FiscalPayloadConstraintValidator
      */
     private function validateAccountChargePayload(array $payload): void
     {
+        $this->rejectAccountChargePaymentsKeyRecursively($payload);
+
         $scale = $payload['currency_scale'] ?? null;
         if (! is_int($scale)) {
             throw new RuntimeException('payload_currency_scale_invalid:must be int; got '.var_export($scale, true));
@@ -755,11 +757,17 @@ final class FiscalPayloadConstraintValidator
         $row = $this->requireAssocObject($terms, 'charge_terms');
         $expected = ['due_date', 'payment_terms_days', 'terms_label'];
         $this->assertExactObjectKeys($row, $expected, 'charge_terms');
-        $this->assertIsoDate($row, 'due_date', 'charge_terms.due_date');
-        if (! is_int($row['payment_terms_days']) || $row['payment_terms_days'] < 0) {
+
+        if ($row['payment_terms_days'] !== null && (! is_int($row['payment_terms_days']) || $row['payment_terms_days'] < 0)) {
             throw new RuntimeException('payload_field_invalid:charge_terms.payment_terms_days must be non-negative int');
         }
-        $this->assertNonEmptyString($row, 'terms_label', 'charge_terms.terms_label');
+        if ($row['payment_terms_days'] !== null && $row['due_date'] === null) {
+            throw new RuntimeException('payload_account_charge_terms_invalid:charge_terms.due_date required when payment_terms_days is non-null');
+        }
+        if ($row['due_date'] !== null) {
+            $this->assertIsoDate($row, 'due_date', 'charge_terms.due_date');
+        }
+        $this->assertOptionalNullableString($row, 'terms_label', 'charge_terms.terms_label');
     }
 
     private function validateAccountChargeCreditDecision(mixed $decision, string $moneyRegex, int $scale, bool $training): void
@@ -795,6 +803,11 @@ final class FiscalPayloadConstraintValidator
             if (! is_string($warning) || $warning === '') {
                 throw new RuntimeException("payload_field_invalid:credit_decision.warnings[{$index}] must be non-empty string");
             }
+        }
+        $sortedWarnings = $warnings;
+        sort($sortedWarnings, SORT_STRING);
+        if ($warnings !== $sortedWarnings) {
+            throw new RuntimeException('payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes');
         }
         if (! $training && $row['limit_exceeded'] === true) {
             throw new RuntimeException('payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true');
@@ -857,10 +870,19 @@ final class FiscalPayloadConstraintValidator
             return;
         }
         $row = $this->requireAssocObject($references, 'references');
-        $expected = ['external_reference', 'related_sale_receipt_event_id'];
+        $expected = ['external_reference', 'related_sale_receipt_event_id', 'server_customer_alias_id'];
         $this->assertExactObjectKeys($row, $expected, 'references');
         $this->assertOptionalNullableString($row, 'external_reference', 'references.external_reference');
-        $this->assertOptionalNullableString($row, 'related_sale_receipt_event_id', 'references.related_sale_receipt_event_id');
+        if ($row['related_sale_receipt_event_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_charge_reference_forbidden:references.related_sale_receipt_event_id is reserved for post-v1 split-sale links'
+            );
+        }
+        if ($row['server_customer_alias_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_charge_reference_forbidden:references.server_customer_alias_id is reserved for projection state or follow-up events'
+            );
+        }
     }
 
     private function validateAccountChargeLineItem(int|string $index, mixed $row, string $moneyRegex, int $scale): void
@@ -928,6 +950,10 @@ final class FiscalPayloadConstraintValidator
         $subtotal = $this->asNumericString($totals['subtotal'], 'totals.subtotal');
         $vatTotal = $this->asNumericString($totals['vat_total'], 'totals.vat_total');
         $total = $this->asNumericString($totals['total'], 'totals.total');
+        $grandTotalBeforeCharge = $this->asNumericString($totals['grand_total_before_charge'], 'totals.grand_total_before_charge');
+        if (bccomp($grandTotalBeforeCharge, $total, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_amount_mismatch:grand_total_before_charge must equal totals.total');
+        }
         $discount = $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount');
         $lhs = bcadd($subtotal, $vatTotal, $scale);
         $rhs = bcadd($total, $discount, $scale);
@@ -971,6 +997,23 @@ final class FiscalPayloadConstraintValidator
         }
         if (! $isZero && $reason === null) {
             throw new RuntimeException($prefix.':amount='.$amountString.':reason_present=false');
+        }
+    }
+
+    private function rejectAccountChargePaymentsKeyRecursively(mixed $value, string $path = 'payload'): void
+    {
+        if (! is_array($value)) {
+            return;
+        }
+
+        foreach ($value as $key => $child) {
+            $segment = is_int($key) ? "[{$key}]" : ".{$key}";
+            if ($key === 'payments') {
+                throw new RuntimeException(
+                    'payload_account_charge_payments_forbidden:payments is not valid anywhere on ACCOUNT_CHARGE at '.$path.$segment
+                );
+            }
+            $this->rejectAccountChargePaymentsKeyRecursively($child, $path.$segment);
         }
     }
 

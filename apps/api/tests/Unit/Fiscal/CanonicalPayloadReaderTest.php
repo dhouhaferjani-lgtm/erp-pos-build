@@ -50,6 +50,26 @@ final class CanonicalPayloadReaderTest extends TestCase
         self::assertSame('Default Seller', $view->seller->name);
     }
 
+    public function test_for_account_charge_allows_nullable_terms(): void
+    {
+        $event = new FiscalEvent;
+        $event->id = '66666666-6666-4666-8666-666666666666';
+        $event->event_type = FiscalEventType::ACCOUNT_CHARGE;
+        $event->payload = array_replace_recursive($this->accountChargePayload(), [
+            'charge_terms' => [
+                'due_date' => null,
+                'payment_terms_days' => null,
+                'terms_label' => null,
+            ],
+        ]);
+
+        $view = (new CanonicalPayloadReader)->forAccountCharge($event);
+
+        self::assertNull($view->chargeTerms->dueDate);
+        self::assertNull($view->chargeTerms->paymentTermsDays);
+        self::assertNull($view->chargeTerms->termsLabel);
+    }
+
     public function test_for_account_payment_rejects_wrong_event_type(): void
     {
         $event = new FiscalEvent;

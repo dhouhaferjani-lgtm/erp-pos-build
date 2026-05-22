@@ -296,6 +296,17 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         );
     }
 
+    public function test_account_charge_rejects_nested_payments_key(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'regime_extensions' => [
+                'payments' => [],
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_payments_forbidden/', $payload);
+    }
+
     public function test_account_charge_rejects_missing_product_id(): void
     {
         $payload = $this->canonicalAccountChargePayload();
@@ -334,6 +345,14 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $payload['local_balance_snapshot']['charge_amount'] = '120.000';
 
         $this->expectAccountChargeException('/payload_account_charge_amount_mismatch/', $payload);
+    }
+
+    public function test_account_charge_rejects_grand_total_before_charge_mismatch(): void
+    {
+        $payload = $this->canonicalAccountChargePayload();
+        $payload['totals']['grand_total_before_charge'] = '120.000';
+
+        $this->expectAccountChargeException('/payload_account_charge_amount_mismatch:grand_total_before_charge/', $payload);
     }
 
     public function test_account_charge_rejects_invalid_invoice_classification_for_non_business_customer(): void
@@ -394,6 +413,43 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->assertAccountChargeAccepted($payload);
     }
 
+    public function test_account_charge_accepts_nullable_charge_terms(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'charge_terms' => [
+                'due_date' => null,
+                'payment_terms_days' => null,
+                'terms_label' => null,
+            ],
+        ]);
+
+        $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_rejects_missing_due_date_when_payment_terms_present(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'charge_terms' => [
+                'due_date' => null,
+                'payment_terms_days' => 30,
+                'terms_label' => 'Net 30',
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_terms_invalid/', $payload);
+    }
+
+    public function test_account_charge_rejects_unsorted_credit_decision_warnings(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'warnings' => ['mirror_stale', 'balance_stale'],
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid:warnings/', $payload);
+    }
+
     public function test_account_charge_accepts_discount_present_and_absent_variants(): void
     {
         $this->assertAccountChargeAccepted($this->canonicalAccountChargePayload());
@@ -403,6 +459,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             'transaction_discount_reason' => 'manager discount',
             'totals' => [
                 'amount_charged_to_account' => '114.000',
+                'grand_total_before_charge' => '114.000',
                 'total' => '114.000',
             ],
             'local_balance_snapshot' => [
@@ -432,10 +489,37 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             ],
             'references' => [
                 'external_reference' => 'charge-ref-1',
-                'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+                'related_sale_receipt_event_id' => null,
+                'server_customer_alias_id' => null,
             ],
         ]);
         $this->assertAccountChargeAccepted($payload);
+    }
+
+    public function test_account_charge_rejects_reserved_related_sale_receipt_reference(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'references' => [
+                'external_reference' => null,
+                'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+                'server_customer_alias_id' => null,
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_reference_forbidden:references\\.related_sale_receipt_event_id/', $payload);
+    }
+
+    public function test_account_charge_rejects_reserved_server_customer_alias_reference(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'references' => [
+                'external_reference' => null,
+                'related_sale_receipt_event_id' => null,
+                'server_customer_alias_id' => 'alias-1',
+            ],
+        ]);
+
+        $this->expectAccountChargeException('/payload_account_charge_reference_forbidden:references\\.server_customer_alias_id/', $payload);
     }
 
     public function test_account_charge_accepts_nullable_non_collected_subtype(): void
