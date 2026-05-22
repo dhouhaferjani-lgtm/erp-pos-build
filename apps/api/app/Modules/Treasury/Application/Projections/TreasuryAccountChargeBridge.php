@@ -1,0 +1,223 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Treasury\Application\Projections;
+
+use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeView;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
+use App\Modules\Fiscal\Domain\Exceptions\ProjectionInvariantViolationException;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Domain\PosCustomerAlias;
+use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Treasury-operational bridge for device-authored ACCOUNT_CHARGE events.
+ *
+ * POS-core owns the printable receipt in every deployment; this bridge is
+ * gated behind Treasury and posts the AR journal entry from sealed canonical
+ * bytes when the receivables module is active.
+ */
+final class TreasuryAccountChargeBridge implements FiscalEventProjector
+{
+    public function __construct(
+        private readonly CanonicalPayloadReader $canonicalReader,
+        private readonly GeneralLedgerService $ledgerService,
+    ) {}
+
+    public function name(): string
+    {
+        return 'treasury_account_charge_bridge';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::ACCOUNT_CHARGE;
+    }
+
+    public function requiresModule(): string
+    {
+        return 'Treasury';
+    }
+
+    public function priority(): int
+    {
+        return 150;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        $view = $this->canonicalReader->forAccountCharge($event);
+
+        DB::transaction(function () use ($event, $view): void {
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement(
+                    'SELECT pg_advisory_xact_lock(hashtext(?))',
+                    [$event->id.':treasury_account_charge_bridge'],
+                );
+            }
+
+            $partner = $this->resolveCustomer($event, $view);
+
+            $existing = $this->existingJournalEntryForEvent($event);
+            if ($existing instanceof JournalEntry) {
+                $this->assertExistingJournalEntryMatches($event, $existing, $view);
+
+                return;
+            }
+
+            $this->ledgerService->createPOSChargeEntry(new CreatePOSChargeJournalEntryCommand(
+                tenantId: $event->tenant_id,
+                companyId: $event->company_id,
+                partnerId: $partner->id,
+                fiscalEventId: $event->id,
+                accountChargeUuid: $view->payload->accountChargeUuid,
+                businessDate: $view->payload->businessDate,
+                currencyCode: $view->payload->currencyCode,
+                currencyScale: $view->payload->currencyScale,
+                subtotal: $this->numericString($event, 'totals.subtotal', $view->totals->subtotal),
+                vatTotal: $this->numericString($event, 'totals.vat_total', $view->totals->vatTotal),
+                total: $this->numericString($event, 'totals.total', $view->totals->total),
+                transactionDiscountAmount: $this->numericString(
+                    $event,
+                    'transaction_discount_amount',
+                    $view->payload->transactionDiscountAmount,
+                ),
+                vatBreakdown: $view->vatBreakdown,
+                lineVatSummary: $view->lineItems,
+                actorUserId: $view->payload->cashierId,
+            ));
+        });
+    }
+
+    private function resolveCustomer(FiscalEvent $event, AccountChargeView $view): Partner
+    {
+        $customerId = $view->customer->customerId;
+
+        if ($view->customer->customerSyncStatus === 'pending_create') {
+            $alias = PosCustomerAlias::query()
+                ->where('tenant_id', $event->tenant_id)
+                ->where('company_id', $event->company_id)
+                ->where('client_customer_uuid', $customerId)
+                ->first();
+
+            if (! $alias instanceof PosCustomerAlias) {
+                $foreignCompanyAlias = PosCustomerAlias::query()
+                    ->where('tenant_id', $event->tenant_id)
+                    ->where('client_customer_uuid', $customerId)
+                    ->first();
+
+                if ($foreignCompanyAlias instanceof PosCustomerAlias) {
+                    throw $this->invariant(
+                        $event,
+                        'customer_alias_cross_company:client_customer_uuid='.
+                            $customerId.
+                            ':alias_company_id='.
+                            $foreignCompanyAlias->company_id,
+                    );
+                }
+
+                throw new ProjectionDependencyMissingException(
+                    projectorName: $this->name(),
+                    fiscalEventId: $event->id,
+                    missingDependency: 'pos_customer_aliases row for client_customer_uuid='.$customerId,
+                );
+            }
+
+            $customerId = $alias->server_partner_id;
+        } elseif ($view->customer->customerSyncStatus !== 'synced') {
+            throw $this->invariant($event, 'customer_sync_status_unsupported:'.$view->customer->customerSyncStatus);
+        }
+
+        $partner = Partner::query()
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->whereIn('type', [PartnerType::Customer, PartnerType::Both])
+            ->whereKey($customerId)
+            ->first();
+
+        if (! $partner instanceof Partner) {
+            throw $this->invariant($event, 'customer_not_found:customer_id='.$customerId);
+        }
+
+        return $partner;
+    }
+
+    private function existingJournalEntryForEvent(FiscalEvent $event): ?JournalEntry
+    {
+        $entries = JournalEntry::query()
+            ->where('source_type', 'pos_account_charge')
+            ->where('source_id', $event->id)
+            ->get();
+
+        if ($entries->count() > 1) {
+            throw $this->invariant($event, 'idempotency_conflict:multiple_journal_entries_for_event');
+        }
+
+        $entry = $entries->first();
+
+        return $entry instanceof JournalEntry ? $entry : null;
+    }
+
+    private function assertExistingJournalEntryMatches(
+        FiscalEvent $event,
+        JournalEntry $existing,
+        AccountChargeView $view,
+    ): void {
+        $mismatches = [];
+
+        $expected = [
+            'tenant_id' => $event->tenant_id,
+            'company_id' => $event->company_id,
+            'entry_date' => $view->payload->businessDate,
+            'description' => 'POS Account Charge '.$view->payload->accountChargeUuid,
+            'status' => JournalEntryStatus::Draft->value,
+        ];
+
+        foreach ($expected as $field => $value) {
+            $actual = match ($field) {
+                'entry_date' => $existing->entry_date->toDateString(),
+                'status' => $existing->status->value,
+                default => $existing->{$field},
+            };
+
+            if ($actual !== $value) {
+                $mismatches[] = $field;
+            }
+        }
+
+        if ($mismatches !== []) {
+            throw $this->invariant($event, 'idempotency_conflict:'.implode(',', $mismatches));
+        }
+    }
+
+    private function invariant(FiscalEvent $event, string $reason): ProjectionInvariantViolationException
+    {
+        return new ProjectionInvariantViolationException(
+            projectorName: $this->name(),
+            fiscalEventId: $event->id,
+            reason: $reason,
+        );
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function numericString(FiscalEvent $event, string $field, string $value): string
+    {
+        if (! is_numeric($value)) {
+            throw $this->invariant($event, 'non_numeric_money_field:'.$field);
+        }
+
+        return $value;
+    }
+}

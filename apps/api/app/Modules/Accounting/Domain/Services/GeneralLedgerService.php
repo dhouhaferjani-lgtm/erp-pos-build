@@ -1346,10 +1346,10 @@ final class GeneralLedgerService
                 ]);
             }
 
+            $this->partnerBalanceService->refreshPartnerBalance($command->companyId, $command->partnerId);
+
             return $entry->load('lines.account');
         });
-
-        $this->partnerBalanceService->refreshPartnerBalance($command->companyId, $command->partnerId);
 
         return $entry;
     }
