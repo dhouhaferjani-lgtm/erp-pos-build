@@ -20,13 +20,26 @@ final class POSAccountChargeDraftService
     {
         return DB::transaction(function () use ($command): Document {
             $reference = 'POS-ACCOUNT-CHARGE:'.$command->fiscalEventId;
-            $existing = Document::query()
+
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement(
+                    'SELECT pg_advisory_xact_lock(hashtext(?))',
+                    [$command->tenantId.':'.$command->companyId.':'.$reference.':pos_account_charge_draft'],
+                );
+            }
+
+            $existingDocuments = Document::query()
                 ->with('lines')
                 ->where('tenant_id', $command->tenantId)
                 ->where('company_id', $command->companyId)
                 ->where('reference', $reference)
-                ->first();
+                ->get();
 
+            if ($existingDocuments->count() > 1) {
+                throw new RuntimeException('pos_account_charge_draft_conflict:multiple_documents_for_event');
+            }
+
+            $existing = $existingDocuments->first();
             if ($existing instanceof Document) {
                 $this->assertExistingDraftMatches($existing, $command);
 
@@ -105,8 +118,45 @@ final class POSAccountChargeDraftService
             $mismatches[] = 'fiscal_status';
         }
 
+        if ($existing->fiscal_category !== FiscalCategory::TaxInvoice) {
+            $mismatches[] = 'fiscal_category';
+        }
+
+        if ($existing->getAttribute('document_number') !== null) {
+            $mismatches[] = 'document_number';
+        }
+
+        if ($existing->source_document_id !== null) {
+            $mismatches[] = 'source_document_id';
+        }
+
         if ($existing->document_date->toDateString() !== $command->businessDate) {
             $mismatches[] = 'document_date';
+        }
+
+        if ($existing->due_date?->toDateString() !== $command->dueDate) {
+            $mismatches[] = 'due_date';
+        }
+
+        if ($existing->currency !== $command->currencyCode) {
+            $mismatches[] = 'currency';
+        }
+
+        $payload = $existing->payload;
+        if (! is_array($payload)) {
+            $mismatches[] = 'payload';
+        } else {
+            if (($payload['fiscal_event_id'] ?? null) !== $command->fiscalEventId) {
+                $mismatches[] = 'payload.fiscal_event_id';
+            }
+
+            if (($payload['account_charge_uuid'] ?? null) !== $command->accountChargeUuid) {
+                $mismatches[] = 'payload.account_charge_uuid';
+            }
+
+            if (($payload['canonical_payload'] ?? null) !== $command->payloadSnapshot) {
+                $mismatches[] = 'payload.canonical_payload';
+            }
         }
 
         foreach ([

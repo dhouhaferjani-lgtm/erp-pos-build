@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -137,6 +138,57 @@ final class DocumentAccountChargeFactureBridgeTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('pos_account_charge_draft_conflict:line_1_description');
+
+        $bridge->apply($event);
+    }
+
+    public function test_document_bridge_replay_fails_loud_when_duplicate_same_reference_drafts_exist(): void
+    {
+        $event = $this->storeAccountChargeFiscalEvent($this->businessFacturePayload());
+        $bridge = $this->bridge();
+
+        $bridge->apply($event);
+
+        $document = Document::query()->firstOrFail();
+        Document::query()->create([
+            'tenant_id' => $document->tenant_id,
+            'company_id' => $document->company_id,
+            'partner_id' => $document->partner_id,
+            'type' => $document->type,
+            'fiscal_category' => $document->fiscal_category,
+            'fiscal_status' => $document->fiscal_status,
+            'status' => $document->status,
+            'document_number' => null,
+            'document_date' => $document->document_date,
+            'due_date' => $document->due_date,
+            'currency' => $document->currency,
+            'subtotal' => $document->subtotal,
+            'discount_amount' => $document->discount_amount,
+            'tax_amount' => $document->tax_amount,
+            'total' => $document->total,
+            'balance_due' => $document->balance_due,
+            'source_document_id' => null,
+            'reference' => $document->reference,
+            'payload' => $document->payload,
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('pos_account_charge_draft_conflict:multiple_documents_for_event');
+
+        $bridge->apply($event);
+    }
+
+    public function test_document_bridge_replay_fails_loud_when_existing_draft_header_does_not_match_contract(): void
+    {
+        $event = $this->storeAccountChargeFiscalEvent($this->businessFacturePayload());
+        $bridge = $this->bridge();
+
+        $bridge->apply($event);
+
+        Document::query()->update(['fiscal_category' => FiscalCategory::NonFiscal]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('pos_account_charge_draft_conflict:fiscal_category');
 
         $bridge->apply($event);
     }
