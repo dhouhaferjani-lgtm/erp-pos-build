@@ -16,6 +16,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\CreatePOSChargeJournalEntryCommand;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Tests\TestCase;
@@ -149,6 +150,63 @@ final class POSAccountChargeJournalEntryTest extends TestCase
             $this->assertDatabaseCount('journal_entries', 0);
             $this->assertDatabaseCount('journal_lines', 0);
         }
+    }
+
+    public function test_pos_charge_rejects_customer_from_another_company_before_journal_write(): void
+    {
+        $otherTenant = Tenant::factory()->create();
+        $otherCompany = Company::factory()->create([
+            'tenant_id' => $otherTenant->id,
+        ]);
+        $otherCustomer = Partner::factory()->customer()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $otherCompany->id,
+        ]);
+
+        $balanceService = $this->createMock(PartnerBalanceService::class);
+        $balanceService->expects($this->never())->method('refreshPartnerBalance');
+
+        $this->expectException(ModelNotFoundException::class);
+
+        try {
+            $this->service($balanceService)->createPOSChargeEntry($this->command([
+                'partnerId' => $otherCustomer->id,
+            ]));
+        } finally {
+            $this->assertDatabaseCount('journal_entries', 0);
+            $this->assertDatabaseCount('journal_lines', 0);
+        }
+    }
+
+    public function test_zero_vat_pos_charge_does_not_require_vat_collected_account(): void
+    {
+        Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::VatCollected->value)
+            ->delete();
+
+        $entry = $this->service($this->mockPartnerBalanceRefreshOnce())->createPOSChargeEntry($this->command([
+            'subtotal' => '100.000',
+            'vatTotal' => '0.000',
+            'total' => '100.000',
+            'vatBreakdown' => [],
+            'lineVatSummary' => [
+                [
+                    'line_id' => 'line-001',
+                    'vat_rate' => '0.000',
+                    'vat_amount' => '0.000',
+                    'taxable_amount' => '100.000',
+                ],
+            ],
+        ]));
+
+        $entry->load('lines.account');
+        $this->assertCount(2, $entry->lines);
+        $this->lineForPurpose($entry, SystemAccountPurpose::CustomerReceivable);
+        $this->lineForPurpose($entry, SystemAccountPurpose::ProductRevenue);
+        $this->assertFalse($entry->lines->contains(
+            fn (JournalLine $line): bool => $line->account->system_purpose === SystemAccountPurpose::VatCollected
+        ));
     }
 
     public function test_pos_charge_command_receives_canonical_vat_breakdown_and_line_summary(): void
