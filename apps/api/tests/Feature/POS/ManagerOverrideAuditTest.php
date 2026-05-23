@@ -43,6 +43,10 @@ final class ManagerOverrideAuditTest extends TestCase
 
     private const PIN = '9876';
 
+    private const TERMINAL_ID = '33333333-3333-4333-8333-333333333333';
+
+    private const TARGET_REFERENCE_ID = '44444444-4444-4444-8444-444444444444';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -107,7 +111,7 @@ final class ManagerOverrideAuditTest extends TestCase
             'role' => 'manager',
         ]);
 
-        RateLimiter::clear('verify-manager-pin:127.0.0.1:'.$this->manager->id);
+        RateLimiter::clear($this->rateLimitKey($this->manager->id));
     }
 
     public function test_manager_override_authorized_event_is_persisted_by_subscriber(): void
@@ -144,10 +148,10 @@ final class ManagerOverrideAuditTest extends TestCase
     public function test_successful_pin_verification_persists_audit_event_end_to_end(): void
     {
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => self::PIN,
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', true);
 
@@ -172,10 +176,10 @@ final class ManagerOverrideAuditTest extends TestCase
     public function test_wrong_pin_leaves_no_audit_event(): void
     {
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => '0000',
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', false);
 
@@ -203,10 +207,10 @@ final class ManagerOverrideAuditTest extends TestCase
         ]);
 
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $noPermManager->id,
                 'pin' => self::PIN,
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', false);
 
@@ -215,5 +219,26 @@ final class ManagerOverrideAuditTest extends TestCase
             AuditEvent::where('event_type', 'pos.manager_override.authorized')->count(),
             'A verification rejected on the permission check must not leave an audit_events row.',
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function approvalPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'company_id' => $this->company->id,
+            'terminal_id' => self::TERMINAL_ID,
+            'approval_scope' => 'close_shift_variance',
+            'target_event_type' => 'Z_REPORT',
+            'target_reference_id' => self::TARGET_REFERENCE_ID,
+            'reason' => 'Variance approval',
+        ], $overrides);
+    }
+
+    private function rateLimitKey(string $userId): string
+    {
+        return 'verify-manager-pin:'.$this->tenant->id.':'.self::TERMINAL_ID.':'.$userId.':close_shift_variance';
     }
 }

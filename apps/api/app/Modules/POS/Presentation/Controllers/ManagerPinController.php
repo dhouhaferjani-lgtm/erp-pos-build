@@ -42,16 +42,18 @@ final class ManagerPinController extends Controller
     {
         $userId = $request->string('user_id')->toString();
         $pin = $request->string('pin')->toString();
-        $companyId = $request->string('company_id')->toString();
-        $terminalId = $request->string('terminal_id')->toString();
-        $approvalScope = ApprovalScope::from($request->string('approval_scope')->toString());
         $caller = $request->user();
 
         if (! $caller instanceof User) {
             return response()->json(['data' => ['valid' => false]]);
         }
 
-        // Rate limiting: 3 attempts per 30 seconds per (tenant + terminal + user + approval scope).
+        $company = $this->companyContext->requireCompany();
+        $companyId = $request->string('company_id')->toString();
+        $terminalId = $request->string('terminal_id')->toString();
+        $approvalScope = ApprovalScope::from($request->string('approval_scope')->toString());
+
+        // Rate limiting: 3 attempts per 30 seconds per approval target context.
         $key = 'verify-manager-pin:'.$caller->tenant_id.':'.$terminalId.':'.$userId.':'.$approvalScope->value;
         if (RateLimiter::tooManyAttempts($key, 3)) {
             $seconds = RateLimiter::availableIn($key);
@@ -109,7 +111,7 @@ final class ManagerPinController extends Controller
         event(new ManagerOverrideAuthorized(
             managerId: $userId,
             callerId: $caller->id,
-            companyId: $this->companyContext->requireCompany()->id,
+            companyId: $company->id,
             verifiedAt: now()->toIso8601String(),
         ));
 
