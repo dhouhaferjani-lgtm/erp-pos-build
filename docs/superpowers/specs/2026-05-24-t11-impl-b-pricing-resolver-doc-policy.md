@@ -14,15 +14,26 @@
 
 Two pieces of B2B/B2C cohabitation are *behavioural*, not schema:
 
-1. **One pricing brain, two callers.** Today web sales documents price through
-   `PricingService::getPrice` (partner price list → default price list → base
-   price). POS does **not** apply partner price lists at all. When a B2B account
-   is recognised at the counter, the cart must get the *same* price the web
-   would give. We introduce a `PricingStrategyResolver` that is the single
-   resolution path for both surfaces, **delegating to the existing
-   `PricingService` so the in-store result is byte-for-byte identical to today**,
-   and adding one new, more-specific step at the front (a channel-level override)
-   for future online-channel orders.
+1. **One pricing brain, made the authoritative entry point.** `PricingService::getPrice`
+   already encodes the right resolution order (partner price list → default
+   price list → base `sale_price`), but **today almost nothing calls it for
+   document/cart pricing** (round-1 Codex BLOCKER-1, verified): the web document
+   line editor uses `product.sale_price` directly (`DocumentLineEditor.tsx:187`),
+   the invoice/sales-order/quote controllers persist the **submitted**
+   `unit_price` (`InvoiceController.php:192-200`, `SalesOrderController.php:177-185`,
+   `QuoteController.php:177-185`), and POS does not apply partner price lists at
+   all. The **only** current caller of `getPrice` is the pricing operation
+   endpoint (`PricingController.php:332-364`). So there is **no existing
+   document price to "preserve"** by rewiring controllers. We therefore introduce
+   `PricingStrategyResolver` as the **single authoritative pricing service**,
+   **delegating to `PricingService::getPrice` so its output is byte-for-byte
+   identical to that engine**, prepending one more-specific step (a channel
+   override) for future online orders, and **exposing it through a read endpoint**
+   that POS (impl-C) and the existing pricing endpoint consume. **Auto-pricing the
+   document controllers (making them call the resolver instead of trusting
+   submitted prices) is a deliberate behaviour change and is OUT OF SCOPE here
+   (§9)** — this track ships the engine + endpoint + policy, not a silent
+   repricing of the document write path.
 
 2. **The B2C/B2B document line, made explicit policy.** Today separation is an
    architectural accident: POS only ever writes a fiscal `Receipt`, never a
@@ -40,16 +51,18 @@ T3 lands its `channel_product_mappings` table.
 
 ## 2. Architecture grounding (verified file paths + state)
 
+> **Path convention:** all paths are relative to the monorepo root `/Users/houssamr/Projects/syneriva` (production code under `apps/erp/apps/api/…`), matching the sibling T-track specs. A reviewer rooted at `apps/erp` sees the same files under `apps/api/…`.
+
 Read in this order:
 
 1. `apps/erp/apps/api/app/Modules/Pricing/Domain/Services/PricingService.php` (lines 32–78: `getPrice()` — the **exact resolution order to preserve**: (1) partner-specific price list, (2) default price list for currency, (3) product base `sale_price`). Returns `array{price: string, source: string, price_list_id: string|null}` with `source` ∈ `partner_price_list | default_price_list | base_price`. Note the tenant/company scoping already baked into every branch (lines 68–71, 108–109, 164–165).
 2. `apps/erp/apps/api/app/Modules/Pricing/Domain/PartnerPriceList.php` (lines 12–65) — per-partner list with `priority` + `isValidForDate()`.
 3. `apps/erp/apps/api/app/Modules/Partner/Domain/Partner.php` — `customer_category` + `isB2B()` (lines 188–191), `payment_terms_days` (property line 37, fillable line 95, cast `integer` line 139), `PaymentTerms` cast (line 132). **`payment_terms_days` is the credit-terms signal.**
 4. `apps/erp/apps/api/app/Modules/Partner/Domain/Enums/PaymentTerms.php` (lines 7–42) — `days()` maps `Immediate => 0`, `Net30 => 30`, etc.; `Custom => null`.
-5. `apps/erp/apps/api/app/Modules/Treasury/Domain/PaymentMethod.php` — **the verified immediate-vs-deferred discriminator is `has_maturity`** (property line 26, fillable line 67, cast `boolean` line 89, `scopeWithMaturity()` line 200). `has_maturity = true` ⇒ the instrument matures later (TRAITE / LCR / bill-of-exchange = settled-later). `has_maturity = false` ⇒ tendered-at-counter (cash, card, wallet, voucher, loyalty). **This replaces the design spec's hand-named "TRAITE is deferred" prose with a code-grounded flag.**
+5. `apps/erp/apps/api/app/Modules/Treasury/Domain/PaymentMethod.php` — **the verified immediate-vs-deferred discriminator is `has_maturity`** (property line 26, fillable line **66**, cast `boolean` line 89, `scopeWithMaturity()` line 200). `has_maturity = true` ⇒ the instrument matures later (TRAITE / LCR / bill-of-exchange = settled-later). `has_maturity = false` ⇒ tendered-at-counter (cash, card, wallet, voucher, loyalty). **This replaces the design spec's hand-named "TRAITE is deferred" prose with a code-grounded flag.**
 6. `apps/erp/apps/api/app/Modules/Document/Domain/Enums/DocumentType.php` (lines 7–17) — the **actual** document types: `Quote, SalesOrder, PurchaseOrder, Invoice, CreditNote, DeliveryNote, ReturnNote, Expense`. **`Receipt` is NOT a `DocumentType`** — see §2.1.
 7. `apps/erp/apps/api/app/Modules/Document/Domain/Document.php` — unified Document aggregate (the thing the policy governs).
-8. `apps/erp/apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (lines 65–95: constructor + `create()` signature; it writes a `Receipt`, never a `Document`). The policy is a guardrail wired here and at any future "emit fiscal invoice from POS" path.
+8. `apps/erp/apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (constructor lines 65–75; the entry method is **`createReceipt()` at lines 112–125**, NOT `create()`; it creates/saves a `Receipt` at lines 565–603 — **never a `Document`**). ⚠️ **The policy is NOT wired into this service** (round-1 Codex BLOCKER-2): `Receipt` is not a `DocumentType`, so `DocumentEmissionPolicy::canEmit(DocumentType, …)` has nothing to assert here. The receipt flow is untouched by this track. The policy lives only on `Document`-creation paths (§4.3 / integration point 3).
 9. `apps/erp/apps/api/app/Modules/POS/Domain/Receipt.php` — the POS fiscal entity, **separate** from `Document`.
 10. `apps/erp/apps/api/app/Modules/Company/Services/CompanyContext.php` — `requireCompany()` for tenant/company scoping (used by `PricingService`).
 
@@ -123,6 +136,16 @@ final class ConfigurableDocumentEmissionPolicy implements DocumentEmissionPolicy
 
 **`EmissionSurface`** (enum): `Pos = 'pos'`, `Web = 'web'`, `Api = 'api'`.
 
+**Surface derivation (resolves round-1 Codex P1-1 — no `Api` bypass):** the surface is
+**derived server-side** by an `EmissionSurfaceResolver` from the authenticated
+request's client-type (the POS client already sends `X-Client-Type`; web sends its
+own). Callers do **not** self-declare an allowlisted surface in the request body.
+`Api` is **not** a blanket allow-all: an unrecognised/absent client-type resolves to
+the **most-restrictive** surface (treated as `Pos`), so an unknown caller cannot use
+`Api` to emit a credit-terms invoice. `Api` is reserved for trusted server-to-server
+contexts that explicitly set their client-type; it is subject to the same gate as the
+declared surface.
+
 **`EmissionContext`** (DTO): `EmissionSurface $surface`, `?Partner $partner`, `int $paymentTermsDays` *(derived: `$partner?->payment_terms_days ?? 0`)*, `list<PaymentMethod> $tenderMethods` *(the payment methods used / intended; empty for not-yet-paid docs)*, `?User $user`.
 
 **`PolicyResult`** (DTO): `bool $allowed`, `?DocumentEmissionDenialReason $reason` (enum: `CreditTermsAtCounter`, `DeferredTenderAtCounter`, `DocumentTypeNotAllowedOnSurface`), `string $message` (i18n key-able).
@@ -132,7 +155,7 @@ final class ConfigurableDocumentEmissionPolicy implements DocumentEmissionPolicy
 | Surface | DocumentType | Allowed? |
 |---|---|---|
 | `Web` | any | ✅ (subject to existing module RBAC) |
-| `Api` | any | ✅ (subject to RBAC) |
+| `Api` | any | ✅ **only when client-type is explicitly a trusted server context** (unknown/absent → resolved as `Pos`, gated; no bypass) |
 | `Pos` | `Invoice` | ✅ **iff** `paymentTermsDays === 0` **AND** every `tenderMethod->has_maturity === false` |
 | `Pos` | `CreditNote` | ✅ (immediate at-counter refund — resolves design §8 edge case) |
 | `Pos` | `Quote`, `SalesOrder`, `PurchaseOrder` | ❌ `DocumentTypeNotAllowedOnSurface` |
@@ -145,7 +168,24 @@ final class ConfigurableDocumentEmissionPolicy implements DocumentEmissionPolicy
 - *`CreditNote` at POS for a B2B customer:* allowed — an at-counter refund is immediate, not a credit extension.
 - *Partner is `null` (walk-in):* `paymentTermsDays` defaults to `0`; gate reduces to the maturity check.
 
-**Surface allowlists are config-driven** (`config/documents.php` → `emission_surfaces`), so a tenant could in principle be granted a different allowlist later **without a migration** (per design §6 "configurable per tenant if needed"). Per-tenant override is **out of scope** for this track (§9); the default config is shipped and read.
+**Surface allowlists are config-driven via a NEW config file** `apps/erp/apps/api/config/documents.php` (does not exist today — round-1 Codex P2-2; create it). Expected shape:
+
+```php
+return [
+    'emission_surfaces' => [
+        'pos' => [
+            'allowed_types' => ['invoice', 'credit_note'], // gated further by the §3.2 rules
+            'invoice_requires_immediate_settlement' => true,
+        ],
+        'web' => ['allowed_types' => '*'],
+        'api' => ['allowed_types' => '*'], // only reachable with an explicit trusted client-type
+    ],
+];
+```
+
+A tenant could be granted a different allowlist later **without a migration**. Per-tenant override is **out of scope** for this track (§9); the default config is shipped and read.
+
+**Denial → HTTP mapping (resolves round-1 Codex P2-3):** a disallowed emission raises `DocumentEmissionNotAllowedException` carrying the `DocumentEmissionDenialReason` + message. It implements Laravel's `render()` to return **HTTP 422** with `{ reason, message }` (the deterministic TDD target). No global Handler change required; the exception self-renders.
 
 ---
 
@@ -161,13 +201,13 @@ ChannelPriceOverrideResolver::override(ResolveContext): ?ResolvedPrice    // nul
 
 ### Integration points (the only behavioural changes to existing code)
 
-1. **Web sales-document line pricing** — wherever a sales `Document` line currently calls `PricingService::getPrice` directly, route it through `PricingStrategyResolver::resolve` with `channelId` from the document's channel (null for in-store/manual web docs). Behaviour is unchanged for `channelId === null` (parity).
-2. **POS pricing on B2B customer selection** — exposed via a read endpoint (below) consumed by impl-C; `PricingStrategyResolver` is the source. POS itself does not change in this track (Tauri deltas are impl-C, logged to the POS coordination log).
-3. **Document-emission guardrail** — `DocumentEmissionPolicy::canEmit` is asserted at every `Document` creation entry point that can run on the POS surface. Today that set is **empty** (POS writes only `Receipt`), so wiring is a guard placed at the `Document` creation service used by POS-originating flows (the impl-C draft-order endpoint creates a `SalesOrder` on the **Web** surface — allowed — never on the POS surface). The guard throws `DocumentEmissionNotAllowedException` (→ 422 with `reason` + message) when `allowed === false`.
+1. **Existing pricing endpoint delegates to the resolver** — refactor `PricingController`'s `getPrice` operation (`PricingController.php:332-364`, the *only* current `PricingService::getPrice` caller) to call `PricingStrategyResolver::resolve` instead. For `channelId === null` this is byte-for-byte identical to `PricingService::getPrice` (parity), so the existing pricing-endpoint behaviour is preserved. **The document write path (invoice/sales-order/quote controllers) is NOT touched** — those still persist submitted `unit_price` today; auto-pricing them is a separate behaviour change (§9).
+2. **POS pricing on B2B customer selection** — exposed via the read endpoint (below) consumed by impl-C; `PricingStrategyResolver` is the source. POS itself does not change in this track (Tauri deltas are impl-C, logged to the POS coordination log).
+3. **Document-emission guardrail** — `DocumentEmissionPolicy::canEmit` is asserted inside `Document`-creation services, with `EmissionSurface` derived by `EmissionSurfaceResolver` (§3.2), not self-declared. **Today no POS→`Document` path exists** (POS writes only `Receipt`), so the *practical* enforcement point introduced by the sprint is the **impl-C draft-order hand-off**, which creates a `SalesOrder` on the **`Api`/`Web`** surface (allowed) — never on `Pos`. This track delivers the policy + `EmissionSurfaceResolver` + `DocumentEmissionNotAllowedException` and wires the guard at that hand-off path. **Retro-fitting the guard into the other existing document-creation sites** (`InvoiceController:216`, `SalesOrderController:201`, `QuoteController:201`, `CartConversionService:89`, `MarketplaceOrderService:269`, `DraftPersistenceService:102`) **is a follow-on hardening, listed in §9** — but because unknown client-type resolves to `Pos`, none of those can be abused to bypass the gate once the resolver is in place. The guard raises `DocumentEmissionNotAllowedException` (→ 422) when `allowed === false`.
 
 ### REST endpoint (new, read-only — consumed by impl-C POS)
 
-- `POST /api/v1/pricing/resolve` — body `{ product_id, variant_id?, partner_id?, location_id?, channel_id?, quantity?, currency }` → `ResolvedPrice` JSON. Behind `['api', 'auth:sanctum', SetPermissionsTeam::class]`, RBAC `pricing.resolve`. Validates UUIDs with `Str::isUuid()`. Tenant/company scoping inherited from `PricingService`'s `CompanyContext`.
+- `POST /api/v1/pricing/resolve` — body `{ product_id, variant_id?, partner_id?, location_id?, channel_id?, quantity?, currency }` → `ResolvedPrice` JSON. **Add inside the existing Pricing route group** (inherits its middleware stack). **RBAC `can:pricing.view`** — reuse the existing pricing permission; do **NOT** invent `pricing.resolve` (round-1 Codex P1-2: it is absent from `PermissionSeeder.php:133-142`, and the existing pricing read routes already gate on `can:pricing.view`). **FormRequest validation mirrors `PricingController::getPrice` (`PricingController.php:337-345`):** validate `product_id` and `partner_id` (and future `channel_id`/`location_id`) with tenant/company **`ScopedExists`** rules, not just `Str::isUuid()` format (round-1 Codex P1-3). Tenant/company scoping is also enforced inside `PricingService` via `CompanyContext`.
 
 ### Events
 
@@ -177,7 +217,7 @@ None. Pricing and policy are synchronous query/decision services with no state c
 
 ## 5. User-visible surface
 
-- **Pricing is invisible** — same numbers, one code path. The only user-observable change is that a B2B account selected at POS (impl-C) now gets its negotiated price; this track supplies the engine, impl-C the UI.
+- **Pricing is invisible at the existing web document write path** — that path is unchanged (it still persists submitted prices). The user-observable change is that the pricing endpoint now answers from the resolver, and a B2B account selected at POS (impl-C) gets its negotiated price via the new resolve endpoint; this track supplies the engine + endpoint, impl-C the UI.
 - **Policy denials are user-visible only as guard errors** — if any code path attempts a disallowed POS document emission, the user sees a clear `t()` message ("Credit-terms invoices can't be issued at the counter — save as a draft order for the office to finalise"). The message points the cashier at the impl-C hand-off.
 - **No new admin screen** in this track. (A future "document emission rules" settings page is out of scope.)
 
@@ -209,7 +249,7 @@ None. Pricing and policy are synchronous query/decision services with no state c
 - [ ] **Policy — CreditNote at POS allowed** (immediate refund)
 - [ ] **Policy — split tender (voucher + cash), high amount, terms = 0:** POS `Invoice` allowed
 - [ ] `POST /api/v1/pricing/resolve` returns `ResolvedPrice`; rejects malformed UUIDs with 422; cross-tenant `product_id` resolves nothing / is scoped out (no leak)
-- [ ] Backward compat: every existing Pricing test passes; web sales-document pricing output unchanged after the resolver is wired in
+- [ ] Backward compat: every existing Pricing test passes; the **pricing endpoint** (`PricingController::getPrice`) returns identical output after it is refactored to delegate to the resolver; the **document write path is untouched** (invoice/SO/quote still persist submitted prices)
 - [ ] Any disallowed POS `Document` emission attempt raises `DocumentEmissionNotAllowedException` → 422 (not 500), with `reason` + message
 
 ### Tests (write first — TDD)
@@ -235,7 +275,9 @@ None. Pricing and policy are synchronous query/decision services with no state c
 - [ ] `variant_id` pass-through is documented (not silently dropped); flagged as T2-completed later
 - [ ] `DocumentEmissionNotAllowedException` maps to 422 with reason + message, not 500
 - [ ] Endpoint: UUID guard, RBAC, tenant/company scope inherited from `PricingService`
-- [ ] Backward compat: existing Pricing tests untouched and passing; web pricing output identical
+- [ ] Backward compat: existing Pricing tests untouched and passing; the pricing endpoint output is identical after delegating; the document write path is NOT rewired (verify invoice/SO/quote controllers untouched)
+- [ ] Policy is NOT wired into `ReceiptCreationService` (`createReceipt()` makes a `Receipt`, not a `Document`); `EmissionSurface` is server-derived and unknown→`Pos` (no `Api` bypass)
+- [ ] `pricing.resolve` is NOT introduced; endpoint reuses `can:pricing.view`; FormRequest uses `ScopedExists` for `product_id`/`partner_id`
 - [ ] No money via float; `CurrencyScale`/bcmath only
 - [ ] Spec drift: every cited path still says what the spec claims
 
@@ -243,6 +285,8 @@ None. Pricing and policy are synchronous query/decision services with no state c
 
 ## 9. Out of scope
 
+- **Auto-pricing the document write path** — rewiring the invoice/sales-order/quote controllers (and `DocumentLineEditor`) to call the resolver instead of persisting submitted `unit_price`. That is a deliberate behaviour change (today they trust submitted prices), tracked separately; this track does not touch the document write path.
+- **Retro-fitting the emission guard into all existing document-creation sites** (`InvoiceController`, `SalesOrderController`, `QuoteController`, `CartConversionService`, `MarketplaceOrderService`, `DraftPersistenceService`) — follow-on hardening. This track wires the guard at the impl-C hand-off path; the unknown→`Pos` default prevents bypass meanwhile.
 - Concrete channel override data (T3 owns `channels` / `channel_product_mappings`); this track only wires the *guarded hook*
 - Variant-level pricing (T2 owns `product_variants`); resolver passes `variant_id` through and resolves at product level until T2 completes the wiring
 - Per-tenant document-emission allowlist overrides (config default only)
@@ -271,7 +315,7 @@ None. Pricing and policy are synchronous query/decision services with no state c
 
 **Phase 2 (Opus, ~1.5 PD) — policy:** `EmissionSurface`, `DocumentEmissionDenialReason` enums; `EmissionContext` / `PolicyResult` DTOs; `ConfigurableDocumentEmissionPolicy` + `config/documents.php` allowlist; `DocumentEmissionNotAllowedException`. TDD: the §3.2 truth table as tests first.
 
-**Phase 3 (Codex, ~1.5 PD) — integration + endpoint + tests:** route web sales-document pricing through the resolver (verify output unchanged); place the policy guard at POS-originating `Document` creation; `POST /api/v1/pricing/resolve` endpoint + permission + FormRequest; backward-compat sweep (grep all `PricingService::getPrice` callsites, list each, confirm parity).
+**Phase 3 (Codex, ~1.5 PD) — integration + endpoint + tests:** refactor `PricingController::getPrice` to delegate to the resolver (verify endpoint output unchanged); add `EmissionSurfaceResolver` + wire the policy guard at the impl-C hand-off `Document` creation; `POST /api/v1/pricing/resolve` endpoint (`can:pricing.view` + `ScopedExists` FormRequest); backward-compat sweep (grep all `PricingService::getPrice` callsites — verified today the only one is `PricingController:332-364` — list each, confirm parity; confirm the document write path is untouched).
 
 Adversarial review: Codex headless against §8 after each Opus phase ideally, minimally once at the end.
 
