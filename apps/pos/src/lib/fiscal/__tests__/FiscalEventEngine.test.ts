@@ -89,7 +89,7 @@ async function seedTerminalState(
 }
 
 /**
- * A canonical-spec-correct SALE_RECEIPT payload — 27-key Candidate C-v3
+ * A canonical-spec-correct SALE_RECEIPT payload — 28-key Candidate C-v3
  * shape per synthesis v5 §3 (Task 27B Pass 2A.TS). Every monetary /
  * quantity field is a bcformat decimal string at the relevant scale;
  * `currency_scale` is an integer in the {0, 2, 3} allowlist; nested
@@ -107,6 +107,7 @@ const SR_RECEIPT_UUID = '44444444-4444-4444-4444-444444444444';
 
 function validSaleReceiptPayload(): Record<string, unknown> {
   return {
+    approval_references: [],
     business_date: '2026-05-16',
     buyer: null,
     cashier_id: SR_CASHIER_UUID,
@@ -894,7 +895,7 @@ d('FiscalEventEngine.append', () => {
   });
 
   // -------------------------------------------------------------------
-  // Task 27B Pass 2A.TS — 27-key SALE_RECEIPT canonical contract.
+  // Task 27B Pass 2A.TS — 28-key SALE_RECEIPT canonical contract.
   //
   // Mirrors the PHP `FiscalPayloadConstraintValidator::validateSaleReceiptPayload`
   // STRUCTURAL conformance set (key set + types + regex + enums +
@@ -909,7 +910,7 @@ d('FiscalEventEngine.append', () => {
   // matching.
   // -------------------------------------------------------------------
 
-  it('Pass 2A.TS — happy path: 27-key SALE_RECEIPT payload validates and seals', async () => {
+  it('Pass 2A.TS — happy path: 28-key SALE_RECEIPT payload validates and seals', async () => {
     const event = await engine.append(adapter, saleReceiptRequest());
     expect(event.sequence_number).toBe(1);
     expect(event.current_hash).toMatch(/^[0-9a-f]{64}$/);

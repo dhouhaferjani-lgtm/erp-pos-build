@@ -7,6 +7,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Presentation\Requests\RecordDepositRequest;
@@ -63,13 +64,27 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
-        /** @var User $user */
-        $user = $request->user();
+        $existingOperation = CashDrawerOperation::query()
+            ->where('shift_id', $shift->id)
+            ->where('idempotency_key', $request->validated('idempotency_key'))
+            ->first();
+
+        if ($existingOperation !== null) {
+            return response()->json([
+                'data' => CashDrawerOperationResource::make($existingOperation),
+            ]);
+        }
+
+        /** @var User $operator */
+        $operator = User::query()
+            ->where('id', $request->validated('operator_id'))
+            ->where('tenant_id', $shift->terminal->tenant_id)
+            ->firstOrFail();
 
         $operation = $this->cashDrawerService->recordDeposit(
             $shift,
             $request->validated('amount'),
-            $user,
+            $operator,
             $request->validated('reason'),
             $request->safe()->only([
                 'approval_id',
@@ -78,6 +93,7 @@ final class CashDrawerController extends Controller
                 'approval_supervisor_user_id',
                 'approval_target_hash',
             ]),
+            $request->validated('idempotency_key'),
         );
 
         return response()->json([
@@ -117,13 +133,27 @@ final class CashDrawerController extends Controller
             ], 409);
         }
 
-        /** @var User $user */
-        $user = $request->user();
+        $existingOperation = CashDrawerOperation::query()
+            ->where('shift_id', $shift->id)
+            ->where('idempotency_key', $request->validated('idempotency_key'))
+            ->first();
+
+        if ($existingOperation !== null) {
+            return response()->json([
+                'data' => CashDrawerOperationResource::make($existingOperation),
+            ]);
+        }
+
+        /** @var User $operator */
+        $operator = User::query()
+            ->where('id', $request->validated('operator_id'))
+            ->where('tenant_id', $shift->terminal->tenant_id)
+            ->firstOrFail();
 
         $operation = $this->cashDrawerService->recordPayout(
             $shift,
             $request->validated('amount'),
-            $user,
+            $operator,
             $request->validated('reason'),
             $request->safe()->only([
                 'approval_id',
@@ -132,6 +162,7 @@ final class CashDrawerController extends Controller
                 'approval_supervisor_user_id',
                 'approval_target_hash',
             ]),
+            $request->validated('idempotency_key'),
         );
 
         return response()->json([

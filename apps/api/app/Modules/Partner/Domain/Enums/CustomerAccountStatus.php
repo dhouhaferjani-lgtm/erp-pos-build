@@ -18,9 +18,9 @@ enum CustomerAccountStatus: string
         }
 
         return match ($this) {
-            self::Active => in_array($next, [self::Suspended, self::Closed, self::Disputed], true),
-            self::Suspended => in_array($next, [self::Active, self::Closed, self::Disputed], true),
-            self::Disputed => in_array($next, [self::Active, self::Suspended, self::Closed], true),
+            self::Active => in_array($next, [self::Suspended, self::Disputed], true),
+            self::Suspended => in_array($next, [self::Active, self::Closed], true),
+            self::Disputed => in_array($next, [self::Active, self::Closed], true),
             self::Closed => false,
         };
     }

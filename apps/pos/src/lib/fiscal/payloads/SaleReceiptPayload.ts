@@ -4,6 +4,7 @@ import type {
   AddressInput,
   LineItemInput,
   PaymentInput,
+  SaleReceiptApprovalReferenceInput,
   SaleReceiptPayloadInput,
   SellerBlockInput,
   VatBreakdownInput,
@@ -54,6 +55,7 @@ export interface BuildSaleReceiptPayloadInput {
   tableId?: string | null;
   isTraining: boolean;
   seller: SaleReceiptSellerInput;
+  approvalReferences?: SaleReceiptApprovalReferenceInput[];
 }
 
 interface VatAccumulator {
@@ -89,6 +91,7 @@ export function buildSaleReceiptPayload(
   }
 
   return {
+    approval_references: input.approvalReferences ?? [],
     business_date: input.businessDate,
     buyer: null,
     cashier_id: input.operatorId,

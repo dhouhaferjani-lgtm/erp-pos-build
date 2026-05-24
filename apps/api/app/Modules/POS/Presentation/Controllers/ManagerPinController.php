@@ -25,11 +25,10 @@ use Illuminate\Support\Facades\RateLimiter;
  * before allowing a cashier to close a shift with a variance above the hard threshold.
  *
  * Security design:
- * - Rate-limited to 3 attempts per 30 s per (IP + target user_id).
+ * - Rate-limited to 3 attempts per 30 s per approval target context.
  * - Always returns { valid: false } for any failure reason — no info leak.
- * - Same-tenant guard prevents cross-tenant manager lookups.
- * - Permission check (pos.close_shift_with_variance) happens AFTER rate-limiting to
- *   avoid timing-based enumeration of permission state.
+ * - Same-tenant and company/terminal/scope guards prevent cross-context approvals.
+ * - Permission checks happen AFTER rate-limiting to avoid timing-based enumeration.
  */
 final class ManagerPinController extends Controller
 {

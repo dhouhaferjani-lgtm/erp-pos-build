@@ -24,6 +24,8 @@ final class FiscalEventTypeTest extends TestCase
         $this->assertTrue(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT->isImplemented());
         $this->assertTrue(FiscalEventType::OVERRIDE_TENDER_TOLERANCE->isImplemented());
         $this->assertTrue(FiscalEventType::OVERRIDE_VOID_OR_RETURN->isImplemented());
+        $this->assertTrue(FiscalEventType::CASH_OUT->isImplemented());
+        $this->assertTrue(FiscalEventType::SAFE_DROP->isImplemented());
     }
 
     public function test_reserved_types_are_not_implemented(): void
@@ -33,8 +35,6 @@ final class FiscalEventTypeTest extends TestCase
         $this->assertFalse(FiscalEventType::REFUND_RECEIPT->isImplemented());
         $this->assertFalse(FiscalEventType::OPENING_FLOAT->isImplemented());
         $this->assertFalse(FiscalEventType::CASH_IN->isImplemented());
-        $this->assertFalse(FiscalEventType::CASH_OUT->isImplemented());
-        $this->assertFalse(FiscalEventType::SAFE_DROP->isImplemented());
         $this->assertFalse(FiscalEventType::CASH_CORRECTION->isImplemented());
     }
 

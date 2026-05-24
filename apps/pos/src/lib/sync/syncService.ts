@@ -363,9 +363,8 @@ export async function pushCashDrawerOps(db: Database): Promise<{
   for (const op of pending) {
     try {
       await updateCashDrawerOpStatus(db, op.id, 'syncing');
-      await apiPost('/pos/cash-drawer/sync', {
+      await apiPost(`/pos/cash-drawer/${op.type}`, {
         idempotency_key: op.idempotency_key,
-        type: op.type,
         amount: op.amount,
         reason: op.reason,
         terminal_id: op.terminal_id,

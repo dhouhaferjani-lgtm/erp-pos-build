@@ -44,7 +44,7 @@ final class StrictCanonicalParserTest extends TestCase
 
         $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
         $this->assertNotNull($result->payload);
-        // Pass 2A.PHP.2 — 27-key contract uses `currency_code` (not `currency`).
+        // Pass 2A.PHP.2 — 28-key contract uses `currency_code` (not `currency`).
         $this->assertSame('TND', $result->payload['currency_code']);
         $this->assertSame(3, $result->payload['currency_scale']);
         $this->assertNull($result->failureReason);
@@ -380,7 +380,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_scalar_item_in_sub_array_lines(): void
     {
-        // Pass 2A.PHP.2 — `line_items` is the 27-key list container.
+        // Pass 2A.PHP.2 — `line_items` is the 28-key list container.
         $payload = $this->canonicalSaleReceiptPayloadJson(['line_items' => [1, 2, 3]]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
@@ -484,7 +484,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_empty_voucher_redemptions(): void
     {
-        // Pass 2A.PHP.2 — the 27-key contract renames `voucher_redemptions`
+        // Pass 2A.PHP.2 — the 28-key contract renames `voucher_redemptions`
         // to `vouchers_redeemed`; empty array is still the canonical
         // representation of "no vouchers redeemed".
         $bytes = $this->validSaleReceiptEnvelope();
@@ -657,7 +657,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     private function validSaleReceiptEnvelope(): string
     {
-        // Pass 2A.PHP.2 — emit the 27-key Candidate C-v3 SALE_RECEIPT shape
+        // Pass 2A.PHP.2 — emit the 28-key Candidate C-v3 SALE_RECEIPT shape
         // per synthesis v5 §3. Constant UUIDs + TND currency_scale=3 mirror
         // the GoldenFixtureBuilder convention but stay independent so this
         // unit test can run without the Fixture helper.
@@ -675,10 +675,10 @@ final class StrictCanonicalParserTest extends TestCase
     }
 
     /**
-     * Build a 27-key SALE_RECEIPT payload JSON string with the given
+     * Build a 28-key SALE_RECEIPT payload JSON string with the given
      * overrides applied at the top level. Used by negative tests that need
      * to inject a malformed sub-array shape while keeping the rest of the
-     * payload valid against the 27-key contract.
+     * payload valid against the 28-key contract.
      *
      * @param  array<string, mixed>  $overrides
      */
@@ -690,7 +690,7 @@ final class StrictCanonicalParserTest extends TestCase
     }
 
     /**
-     * Canonical 27-key SALE_RECEIPT payload used by the parser unit tests.
+     * Canonical 28-key SALE_RECEIPT payload used by the parser unit tests.
      * TND (currency_scale=3) to preserve the pre-PHP.2 fixture's currency
      * assertion in `test_parses_valid_sale_receipt_envelope`.
      *
@@ -699,6 +699,7 @@ final class StrictCanonicalParserTest extends TestCase
     private function canonicalSaleReceiptPayload(): array
     {
         return [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
@@ -1304,7 +1305,7 @@ final class StrictCanonicalParserTest extends TestCase
         // Refunds are modeled via invoice_type_code='REFUND' + non-null
         // original_receipt_reference. Negative payload money is now REJECTED
         // (the test contract changes: the OLD payload allowed negatives, the
-        // 27-key payload does not). Keep the test as a regression guard for
+        // 28-key payload does not). Keep the test as a regression guard for
         // the new contract — assert that a negative subtotal is rejected.
         $payload = $this->canonicalSaleReceiptPayloadJson([
             'subtotal' => '-5.000',
@@ -1315,7 +1316,7 @@ final class StrictCanonicalParserTest extends TestCase
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
-        // Negative money is now rejected per the 27-key contract.
+        // Negative money is now rejected per the 28-key contract.
         $this->assertFailed($result);
         $this->assertStringContainsString('money', $result->failureReason ?? '');
     }
@@ -1476,7 +1477,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parses_basic_unicode_escape(): void
     {
-        // é == é. Round-trip via vouchers_redeemed[0].voucher_code per 27-key contract.
+        // é == é. Round-trip via vouchers_redeemed[0].voucher_code per 28-key contract.
         $payload = $this->canonicalSaleReceiptPayloadJson([
             'vouchers_redeemed' => [['redeemed_amount' => '0.000', 'voucher_code' => 'café']],
         ]);
@@ -1656,7 +1657,7 @@ final class StrictCanonicalParserTest extends TestCase
     // Pass 2A.PHP.1 — new forensic prefixes from synthesis v5 §6.E.
     //
     // These exercise the parser → FiscalPayloadConstraintValidator
-    // pipeline via the new 27-key Candidate C-v3 payload (built by
+    // pipeline via the new 28-key Candidate C-v3 payload (built by
     // GoldenFixtureBuilder F-01-baseline-eur) so the failure prefixes
     // surface through the parser's `sub_array_shape:` wrap.
     // =================================================================
@@ -1748,7 +1749,7 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertStringContainsString('sub_array_shape:payload_invoice_type_invalid', $result->failureReason ?? '');
     }
 
-    public function test_pass_2a_accepts_27_key_baseline_through_parser_end_to_end(): void
+    public function test_pass_2a_accepts_28_key_baseline_through_parser_end_to_end(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
         $bytes = $this->envelope('SALE_RECEIPT', $payload);

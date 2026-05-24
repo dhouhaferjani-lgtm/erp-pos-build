@@ -6,6 +6,7 @@ namespace App\Modules\Fiscal\Application\Services;
 
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
+use App\Modules\Fiscal\Domain\DTOs\CashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
@@ -26,12 +27,12 @@ use RuntimeException;
  * (`ParseFailureResolutionService::resolve()`).
  *
  * **Pass 2A.PHP.1 rewrite** — SALE_RECEIPT now validates the
- * 27-key Candidate C-v3 canonical contract (synthesis v5 §3 + §6).
+ * 28-key Candidate C-v3 canonical contract (synthesis v5 §3 + §6 + Phase 4 approval references).
  * The 10-key v1 shape is REJECTED. Pass 2A.PHP.2 migrates the
  * consumer-side projection + Nf525 sub-method bifurcation.
  *
  * **Per-event clauses (Phase 1):**
- *   - SALE_RECEIPT — 27-key nested shape per Candidate C-v3 §3:
+ *   - SALE_RECEIPT — 28-key nested shape per Candidate C-v3 §3:
  *     * Top-level money fields (subtotal, vat_total, total,
  *       transaction_discount_amount) at currency_scale, NON-NEGATIVE.
  *     * Total arithmetic cross-check (§6.D): subtotal + vat_total ==
@@ -209,12 +210,13 @@ final class FiscalPayloadConstraintValidator
      * `StrictCanonicalParser::PAYLOAD_KEYS` — extracted here so the
      * resolver enforces the SAME extras-rejection rule.
      *
-     * SALE_RECEIPT: 27-key sorted-lex Candidate C-v3 list (synthesis v5 §3).
+     * SALE_RECEIPT: 28-key sorted-lex Candidate C-v3 list (synthesis v5 §3 + Phase 4).
      *
      * @var array<value-of<FiscalEventType>, list<string>>
      */
     public const PAYLOAD_KEYS = [
         'SALE_RECEIPT' => [
+            'approval_references',
             'business_date',
             'buyer',
             'cashier_id',
@@ -284,6 +286,8 @@ final class FiscalPayloadConstraintValidator
         'OVERRIDE_DISCOUNT_LIMIT' => OverrideDiscountLimitPayload::PAYLOAD_KEYS,
         'OVERRIDE_TENDER_TOLERANCE' => OverrideTenderTolerancePayload::PAYLOAD_KEYS,
         'OVERRIDE_VOID_OR_RETURN' => OverrideVoidOrReturnPayload::PAYLOAD_KEYS,
+        'CASH_OUT' => CashDrawerMovementPayload::PAYLOAD_KEYS,
+        'SAFE_DROP' => CashDrawerMovementPayload::PAYLOAD_KEYS,
     ];
 
     /**
@@ -338,13 +342,15 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT => $this->validateTerminalRegistrySnapshotPayload($payload),
             FiscalEventType::ACCOUNT_PAYMENT => $this->validateAccountPaymentPayload($payload),
             FiscalEventType::ACCOUNT_CHARGE => $this->validateAccountChargePayload($payload),
-            FiscalEventType::ACCOUNT_STATUS_CHANGED => $this->validatePhase4Payload($payload),
-            FiscalEventType::OPERATOR_APPROVAL_GRANTED => $this->validatePhase4Payload($payload),
-            FiscalEventType::OVERRIDE_CREDIT_LIMIT => $this->validatePhase4Payload($payload),
-            FiscalEventType::OVERRIDE_ACCOUNT_STATUS => $this->validatePhase4Payload($payload),
-            FiscalEventType::OVERRIDE_DISCOUNT_LIMIT => $this->validatePhase4Payload($payload),
-            FiscalEventType::OVERRIDE_TENDER_TOLERANCE => $this->validatePhase4Payload($payload),
-            FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validatePhase4Payload($payload),
+            FiscalEventType::ACCOUNT_STATUS_CHANGED => $this->validateAccountStatusChangedPayload($payload),
+            FiscalEventType::OPERATOR_APPROVAL_GRANTED => $this->validateOperatorApprovalGrantedPayload($payload),
+            FiscalEventType::OVERRIDE_CREDIT_LIMIT,
+            FiscalEventType::OVERRIDE_ACCOUNT_STATUS,
+            FiscalEventType::OVERRIDE_DISCOUNT_LIMIT,
+            FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
+            FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validateOverridePayload($payload),
+            FiscalEventType::CASH_OUT,
+            FiscalEventType::SAFE_DROP => $this->validateCashDrawerMovementPayload($payload),
             default => throw new LogicException(
                 'FiscalPayloadConstraintValidator missing per-event clause for FiscalEventType::'.$type->name
             ),
@@ -358,17 +364,166 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  array<string, mixed>  $payload
      */
-    private function validatePhase4Payload(array $payload): void
+    private function validatePhase4Common(array $payload): void
     {
-        foreach (['tenant_id', 'company_id', 'terminal_id', 'event_time_device', 'training_flag'] as $key) {
-            if (! array_key_exists($key, $payload)) {
-                throw new RuntimeException('payload_phase4_missing_required:'.$key);
+        $this->assertUuid($payload, 'tenant_id');
+        $this->assertUuid($payload, 'company_id');
+        $this->assertUuid($payload, 'terminal_id');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertBool($payload, 'training_flag');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateAccountStatusChangedPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'actor_user_id');
+        $this->assertUuid($payload, 'partner_id');
+        $this->assertEnum($payload, 'old_status', ['active', 'suspended', 'closed', 'disputed']);
+        $this->assertEnum($payload, 'new_status', ['active', 'suspended', 'closed', 'disputed']);
+        $this->assertNonEmptyString($payload, 'reason');
+
+        if (! is_int($payload['status_version'] ?? null) || $payload['status_version'] < 1) {
+            throw new RuntimeException('payload_integer_format_mismatch:status_version');
+        }
+
+        if (! is_array($payload['partner_snapshot'] ?? null) || $payload['partner_snapshot'] === []) {
+            throw new RuntimeException('payload_object_required:partner_snapshot');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOperatorApprovalGrantedPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', [
+            'close_shift_variance',
+            'credit_limit_override',
+            'account_status_override',
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+            'cash_drawer_control',
+        ]);
+        $this->assertUuid($payload, 'cashier_user_id');
+        $this->assertUuid($payload, 'supervisor_user_id');
+        $this->assertNonEmptyString($payload, 'policy_version');
+        $this->assertNonEmptyString($payload, 'reason_code');
+        $this->assertOptionalNullableString($payload, 'reason_text');
+        $this->assertIsoDateTimeWithMs($payload, 'requested_at_device');
+        $this->assertIsoDateTimeWithMs($payload, 'resolved_at_device');
+
+        $this->validateSupervisorUserSnapshot($payload);
+        $this->validatePhase4TargetObject($payload);
+
+        if (($payload['regime_extensions'] ?? null) !== null && ! is_array($payload['regime_extensions'])) {
+            throw new RuntimeException('payload_nullable_object_required:regime_extensions');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOverridePayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_event_id');
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', [
+            'credit_limit_override',
+            'account_status_override',
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+        ]);
+        $this->assertNonEmptyString($payload, 'policy_version');
+        $this->assertNonEmptyString($payload, 'reason_code');
+        $this->assertOptionalNullableString($payload, 'reason_text');
+        $this->assertUuid($payload, 'supervisor_user_id');
+
+        $this->validateOverrideContext($payload);
+        $this->validatePhase4TargetObject($payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateCashDrawerMovementPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_event_id');
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', ['cash_drawer_control']);
+        $this->assertMoneyString($payload, 'amount', $this->moneyRegex(3), 3);
+        $this->assertEnum($payload, 'operation_type', ['DEPOSIT', 'PAYOUT']);
+        $this->assertNonEmptyString($payload, 'reason');
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertUuid($payload, 'supervisor_user_id');
+        $this->assertUuid($payload, 'target_reference_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateSupervisorUserSnapshot(array $payload): void
+    {
+        $snapshot = $payload['supervisor_user_snapshot'] ?? null;
+        if (! is_array($snapshot) || $snapshot === []) {
+            throw new RuntimeException('payload_object_required:supervisor_user_snapshot');
+        }
+
+        $this->assertNonEmptyString($snapshot, 'name', 'supervisor_user_snapshot.name');
+
+        $roles = $snapshot['roles'] ?? null;
+        if (! is_array($roles)) {
+            throw new RuntimeException('payload_array_required:supervisor_user_snapshot.roles');
+        }
+
+        foreach ($roles as $index => $role) {
+            if (! is_string($role) || $role === '') {
+                throw new RuntimeException('payload_field_invalid:supervisor_user_snapshot.roles.'.$index);
             }
         }
     }
 
     /**
-     * SALE_RECEIPT — 27-key canonical Candidate C-v3 validator (synthesis v5).
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOverrideContext(array $payload): void
+    {
+        $context = $payload['override_context'] ?? null;
+        if (! is_array($context) || $context === []) {
+            throw new RuntimeException('payload_object_required:override_context');
+        }
+
+        $this->assertNonEmptyString($context, 'target_event_type', 'override_context.target_event_type');
+        $this->assertNonEmptyString($context, 'target_reference_id', 'override_context.target_reference_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validatePhase4TargetObject(array $payload): void
+    {
+        $target = $payload['target'] ?? null;
+        if (! is_array($target) || $target === []) {
+            throw new RuntimeException('payload_object_required:target');
+        }
+
+        foreach (['tenant_id', 'company_id', 'terminal_id'] as $scopeField) {
+            if (array_key_exists($scopeField, $target) && $target[$scopeField] !== $payload[$scopeField]) {
+                throw new RuntimeException('payload_scope_mismatch:target.'.$scopeField);
+            }
+        }
+    }
+
+    /**
+     * SALE_RECEIPT — 28-key canonical Candidate C-v3 validator (synthesis v5 + Phase 4).
      *
      * @param  array<string, mixed>  $payload
      */
@@ -480,6 +635,11 @@ final class FiscalPayloadConstraintValidator
 
         // ---- 7. list containers — line_items, payments, vat_breakdown,
         // ----    vouchers_redeemed. List-ness checked before per-row validation. ----
+        $approvalReferences = $this->requireList($payload, 'approval_references');
+        foreach ($approvalReferences as $index => $row) {
+            $this->validateSaleReceiptApprovalReference($index, $row);
+        }
+
         $lineItems = $this->requireList($payload, 'line_items');
         if (count($lineItems) === 0) {
             throw new RuntimeException('payload_line_items_empty:line_items must have >= 1 row');
@@ -513,6 +673,44 @@ final class FiscalPayloadConstraintValidator
         // ----    amount equality via BCMath at currency_scale. ----
         // @phpstan-ignore-next-line argument.type — validated as list above
         $this->validateVatPartition($lineItems, $vatBreakdown, $scale);
+    }
+
+    private function validateSaleReceiptApprovalReference(int $index, mixed $row): void
+    {
+        if (! is_array($row) || array_is_list($row)) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_invalid:must be object');
+        }
+
+        $expected = [
+            'approval_event_id',
+            'approval_id',
+            'approval_scope',
+            'override_event_id',
+            'policy_version',
+            'supervisor_user_id',
+            'target_reference_id',
+        ];
+        $actual = array_keys($row);
+        $missing = array_values(array_diff($expected, $actual));
+        if ($missing !== []) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_missing_keys:'.implode(',', $missing));
+        }
+        $extra = array_values(array_diff($actual, $expected));
+        if ($extra !== []) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_extra_keys:'.implode(',', $extra));
+        }
+
+        $this->assertUuid($row, 'approval_event_id', 'approval_references.'.$index.'.approval_event_id');
+        $this->assertUuid($row, 'approval_id', 'approval_references.'.$index.'.approval_id');
+        $this->assertEnum($row, 'approval_scope', [
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+        ]);
+        $this->assertUuid($row, 'override_event_id', 'approval_references.'.$index.'.override_event_id');
+        $this->assertNonEmptyString($row, 'policy_version', 'approval_references.'.$index.'.policy_version');
+        $this->assertUuid($row, 'supervisor_user_id', 'approval_references.'.$index.'.supervisor_user_id');
+        $this->assertNonEmptyString($row, 'target_reference_id', 'approval_references.'.$index.'.target_reference_id');
     }
 
     /**

@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ApprovalScope;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Presentation\Requests\VerifyPinRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 final class PosAuthController extends Controller
@@ -127,11 +130,27 @@ final class PosAuthController extends Controller
         /** @var User $currentUser */
         $currentUser = $request->user();
         $company = $this->companyContext->requireCompany();
-        $terminalId = $request->query('terminal_id');
+        $validated = $request->validate([
+            'terminal_id' => [
+                'nullable', 'uuid',
+                Rule::exists('pos_terminals', 'id')
+                    ->where(fn ($query) => $query
+                        ->where('tenant_id', $company->tenant_id)
+                        ->where('company_id', $company->id)
+                        ->where('is_active', true)
+                        ->where('type', '!=', TerminalType::VirtualAdmin->value)),
+            ],
+        ]);
+        $terminalId = $validated['terminal_id'] ?? null;
         $terminalIds = is_string($terminalId) && $terminalId !== '' ? [$terminalId] : [];
         $serverTime = now()->toIso8601String();
 
+        $companyUserIds = UserCompanyMembership::query()
+            ->where('company_id', $company->id)
+            ->pluck('user_id');
+
         $operators = User::where('tenant_id', $currentUser->tenant_id)
+            ->whereIn('id', $companyUserIds)
             ->whereNotNull('pos_pin')
             ->get();
 

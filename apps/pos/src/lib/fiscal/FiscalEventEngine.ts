@@ -209,7 +209,7 @@ export interface FiscalEventAppendRequest {
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
-// Task 27B Pass 2A.TS — 27-key canonical SALE_RECEIPT shape (Candidate
+// Task 27B Pass 2A.TS — 28-key canonical SALE_RECEIPT shape (Candidate
 // C-v3) per synthesis v5 §3. Mirrors the PHP DTO triad in
 // `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/*.php`. Every
 // monetary / quantity field is `string` (bcformat at the relevant
@@ -337,6 +337,7 @@ export interface VoucherRedeemedInput {
  * (the PHP `FiscalPayloadConstraintValidator` is authoritative there).
  */
 export interface SaleReceiptPayloadInput {
+  readonly approval_references: ReadonlyArray<SaleReceiptApprovalReferenceInput>;
   /** `YYYY-MM-DD`. */
   readonly business_date: string;
   readonly buyer: BuyerBlockInput | null;
@@ -380,6 +381,16 @@ export interface SaleReceiptPayloadInput {
   /** Money at `currency_scale`. */
   readonly vat_total: string;
   readonly vouchers_redeemed: ReadonlyArray<VoucherRedeemedInput>;
+}
+
+export interface SaleReceiptApprovalReferenceInput {
+  readonly approval_event_id: string;
+  readonly approval_id: string;
+  readonly approval_scope: 'discount_limit_override' | 'tender_tolerance_override' | 'void_or_return_override';
+  readonly override_event_id: string;
+  readonly policy_version: string;
+  readonly supervisor_user_id: string;
+  readonly target_reference_id: string;
 }
 
 export interface ChainBreakDetectedPayloadInput {
@@ -723,7 +734,7 @@ export class FiscalEventEngine {
    * datetimes, out-of-domain enum values, etc. Closes Task 15 round-2
    * Codex BLOCKER + P1-1.
    *
-   * **Task 27B Pass 2A.TS:** SALE_RECEIPT now validates the full 27-key
+   * **Task 27B Pass 2A.TS:** SALE_RECEIPT now validates the full 28-key
    * Candidate C-v3 shape (synthesis v5 §3) — including nested seller /
    * buyer / line_items / payments / vat_breakdown blocks, the
    * training-flag invariant, discount-reason consistency, and
@@ -762,6 +773,23 @@ export class FiscalEventEngine {
         return;
       case 'CHAIN_RESTART':
         validateChainRestartPayload(request.payload);
+        return;
+      case 'ACCOUNT_STATUS_CHANGED':
+        validateAccountStatusChangedPayload(request.payload);
+        return;
+      case 'OPERATOR_APPROVAL_GRANTED':
+        validateOperatorApprovalGrantedPayload(request.payload);
+        return;
+      case 'OVERRIDE_CREDIT_LIMIT':
+      case 'OVERRIDE_ACCOUNT_STATUS':
+      case 'OVERRIDE_DISCOUNT_LIMIT':
+      case 'OVERRIDE_TENDER_TOLERANCE':
+      case 'OVERRIDE_VOID_OR_RETURN':
+        validatePhase4OverridePayload(request.payload);
+        return;
+      case 'CASH_OUT':
+      case 'SAFE_DROP':
+        validateCashDrawerMovementPayload(request.payload);
         return;
       default:
         // Server-only types (§11.0) are rejected at Step -1.
@@ -844,6 +872,7 @@ export class FiscalEventEngine {
  * equality without re-implementing the key list.
  */
 export const SALE_RECEIPT_PAYLOAD_KEYS = [
+  'approval_references',
   'business_date',
   'buyer',
   'cashier_id',
@@ -885,6 +914,75 @@ export const CHAIN_RESTART_PAYLOAD_KEYS = [
   'new_genesis_reference',
   'operator_authorization_evidence',
   'provenance_link',
+] as const;
+
+const ACCOUNT_STATUS_CHANGED_PAYLOAD_KEYS = [
+  'actor_user_id',
+  'company_id',
+  'event_time_device',
+  'new_status',
+  'old_status',
+  'partner_id',
+  'partner_snapshot',
+  'reason',
+  'status_version',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const OPERATOR_APPROVAL_GRANTED_PAYLOAD_KEYS = [
+  'approval_id',
+  'approval_scope',
+  'cashier_user_id',
+  'company_id',
+  'event_time_device',
+  'policy_version',
+  'reason_code',
+  'reason_text',
+  'regime_extensions',
+  'requested_at_device',
+  'resolved_at_device',
+  'supervisor_user_id',
+  'supervisor_user_snapshot',
+  'target',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const PHASE4_OVERRIDE_PAYLOAD_KEYS = [
+  'approval_event_id',
+  'approval_id',
+  'approval_scope',
+  'company_id',
+  'event_time_device',
+  'override_context',
+  'policy_version',
+  'reason_code',
+  'reason_text',
+  'supervisor_user_id',
+  'target',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS = [
+  'approval_event_id',
+  'approval_id',
+  'approval_scope',
+  'amount',
+  'company_id',
+  'event_time_device',
+  'operation_type',
+  'reason',
+  'shift_id',
+  'supervisor_user_id',
+  'target_reference_id',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
 ] as const;
 
 // -------------------------------------------------------------------
@@ -997,7 +1095,7 @@ function isZeroMoney(value: string): boolean {
 }
 
 // -------------------------------------------------------------------
-// SALE_RECEIPT validator — 27-key canonical Candidate C-v3 per
+// SALE_RECEIPT validator — 28-key canonical Candidate C-v3 per
 // synthesis v5 §3. STRUCTURAL conformance only: key set + types +
 // regex + enums + foreign-currency pairing + training-flag invariant
 // + discount-reason consistency. The VAT partition algorithm +
@@ -1099,6 +1197,9 @@ function validateSaleReceiptPayload(payload: unknown): void {
   validateOriginalReceiptReference(p, invoiceTypeCode);
 
   // -- 7. list containers --
+  const approvalReferences = requireList(p, 'approval_references');
+  approvalReferences.forEach((row, idx) => validateSaleReceiptApprovalReference(idx, row));
+
   const lineItems = requireList(p, 'line_items');
   if (lineItems.length === 0) {
     throw new FiscalEventPayloadValidationError(
@@ -1132,6 +1233,36 @@ function validateSaleReceiptPayload(payload: unknown): void {
   // total-arithmetic cross-check are the authoritative enforcement
   // points; the TS validator deliberately stops at structural
   // conformance to avoid duplicating BCMath behavior in JS.
+}
+
+function validateSaleReceiptApprovalReference(index: number, row: unknown): void {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_approval_references_${String(index)}_invalid:must be object`,
+    );
+  }
+  const r = row as Record<string, unknown>;
+  const path = `approval_references.${String(index)}`;
+  assertExactKeySetWithPath(r, [
+    'approval_event_id',
+    'approval_id',
+    'approval_scope',
+    'override_event_id',
+    'policy_version',
+    'supervisor_user_id',
+    'target_reference_id',
+  ], path);
+  assertUuidAt(r, 'approval_event_id', `${path}.approval_event_id`);
+  assertUuidAt(r, 'approval_id', `${path}.approval_id`);
+  assertEnum(r, 'approval_scope', [
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+  ]);
+  assertUuidAt(r, 'override_event_id', `${path}.override_event_id`);
+  assertNonEmptyStringAt(r, 'policy_version', `${path}.policy_version`);
+  assertUuidAt(r, 'supervisor_user_id', `${path}.supervisor_user_id`);
+  assertNonEmptyStringAt(r, 'target_reference_id', `${path}.target_reference_id`);
 }
 
 function validateAccountPaymentPayload(payload: unknown): void {
@@ -2764,6 +2895,138 @@ function validateChainRestartPayload(payload: unknown): void {
   const anchor = p['last_good_anchor'] as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(anchor, 'hash')) {
     assertHashField(anchor, 'hash', 'CHAIN_RESTART.last_good_anchor.hash');
+  }
+}
+
+function validatePhase4Common(p: Record<string, unknown>, label: string): void {
+  assertUuid(p, 'tenant_id');
+  assertUuid(p, 'company_id');
+  assertUuid(p, 'terminal_id');
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertBoolAt(p, 'training_flag', `${label}.training_flag`);
+}
+
+function validateAccountStatusChangedPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('ACCOUNT_STATUS_CHANGED payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, ACCOUNT_STATUS_CHANGED_PAYLOAD_KEYS, 'ACCOUNT_STATUS_CHANGED');
+  validatePhase4Common(p, 'ACCOUNT_STATUS_CHANGED');
+  assertUuid(p, 'actor_user_id');
+  assertUuid(p, 'partner_id');
+  assertEnum(p, 'old_status', ['active', 'suspended', 'closed', 'disputed']);
+  assertEnum(p, 'new_status', ['active', 'suspended', 'closed', 'disputed']);
+  assertNonEmptyString(p, 'reason');
+  if (typeof p['status_version'] !== 'number' || !Number.isInteger(p['status_version']) || p['status_version'] < 1) {
+    throw new FiscalEventPayloadValidationError('payload_field_invalid:status_version must be positive integer');
+  }
+  assertNonEmptyAssoc(p, 'partner_snapshot', 'ACCOUNT_STATUS_CHANGED.partner_snapshot');
+}
+
+function validateOperatorApprovalGrantedPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('OPERATOR_APPROVAL_GRANTED payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, OPERATOR_APPROVAL_GRANTED_PAYLOAD_KEYS, 'OPERATOR_APPROVAL_GRANTED');
+  validatePhase4Common(p, 'OPERATOR_APPROVAL_GRANTED');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', [
+    'close_shift_variance',
+    'credit_limit_override',
+    'account_status_override',
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+    'cash_drawer_control',
+  ]);
+  assertUuid(p, 'cashier_user_id');
+  assertUuid(p, 'supervisor_user_id');
+  assertNonEmptyString(p, 'policy_version');
+  assertNonEmptyString(p, 'reason_code');
+  assertOptionalNonEmptyString(p, 'reason_text');
+  assertIsoDateTimeMs(p, 'requested_at_device');
+  assertIsoDateTimeMs(p, 'resolved_at_device');
+  validateSupervisorUserSnapshot(p, 'OPERATOR_APPROVAL_GRANTED.supervisor_user_snapshot');
+  validatePhase4TargetObject(p, 'OPERATOR_APPROVAL_GRANTED.target');
+  const regimeExtensions = p['regime_extensions'];
+  if (regimeExtensions !== null && (typeof regimeExtensions !== 'object' || Array.isArray(regimeExtensions))) {
+    throw new FiscalEventPayloadValidationError('payload_field_invalid:regime_extensions must be object or null');
+  }
+}
+
+function validatePhase4OverridePayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('OVERRIDE payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, PHASE4_OVERRIDE_PAYLOAD_KEYS, 'OVERRIDE');
+  validatePhase4Common(p, 'OVERRIDE');
+  assertUuid(p, 'approval_event_id');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', [
+    'credit_limit_override',
+    'account_status_override',
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+  ]);
+  assertNonEmptyString(p, 'policy_version');
+  assertNonEmptyString(p, 'reason_code');
+  assertOptionalNonEmptyString(p, 'reason_text');
+  assertUuid(p, 'supervisor_user_id');
+  validateOverrideContext(p, 'OVERRIDE.override_context');
+  validatePhase4TargetObject(p, 'OVERRIDE.target');
+}
+
+function validateCashDrawerMovementPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('Cash drawer movement payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS, 'CASH_DRAWER_MOVEMENT');
+  validatePhase4Common(p, 'CASH_DRAWER_MOVEMENT');
+  assertUuid(p, 'approval_event_id');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', ['cash_drawer_control']);
+  assertMoneyString(p, 'amount', moneyRegex(3), 3);
+  assertEnum(p, 'operation_type', ['DEPOSIT', 'PAYOUT']);
+  assertNonEmptyString(p, 'reason');
+  assertUuid(p, 'shift_id');
+  assertUuid(p, 'supervisor_user_id');
+  assertUuid(p, 'target_reference_id');
+}
+
+function validateSupervisorUserSnapshot(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'supervisor_user_snapshot', path);
+  const snapshot = payload['supervisor_user_snapshot'] as Record<string, unknown>;
+  assertNonEmptyStringAt(snapshot, 'name', `${path}.name`);
+  const roles = snapshot['roles'];
+  if (!Array.isArray(roles)) {
+    throw new FiscalEventPayloadValidationError(`payload_field_invalid:${path}.roles must be array`);
+  }
+  roles.forEach((role, index) => {
+    if (typeof role !== 'string' || role === '') {
+      throw new FiscalEventPayloadValidationError(`payload_field_invalid:${path}.roles.${String(index)}`);
+    }
+  });
+}
+
+function validateOverrideContext(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'override_context', path);
+  const context = payload['override_context'] as Record<string, unknown>;
+  assertNonEmptyStringAt(context, 'target_event_type', `${path}.target_event_type`);
+  assertNonEmptyStringAt(context, 'target_reference_id', `${path}.target_reference_id`);
+}
+
+function validatePhase4TargetObject(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'target', path);
+  const target = payload['target'] as Record<string, unknown>;
+  for (const scopeField of ['tenant_id', 'company_id', 'terminal_id'] as const) {
+    if (scopeField in target && target[scopeField] !== payload[scopeField]) {
+      throw new FiscalEventPayloadValidationError(`payload_scope_mismatch:${path}.${scopeField}`);
+    }
   }
 }
 

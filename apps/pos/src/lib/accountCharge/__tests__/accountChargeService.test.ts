@@ -191,6 +191,28 @@ describe('accountChargeService', () => {
     expect(triggerSyncSpy).toHaveBeenCalledOnce();
   });
 
+  it('rejects externally supplied override evidence without local approval authoring', async () => {
+    const db = makeMockDb();
+
+    await expect(authorAccountCharge(db, makeAccountChargeInput({
+      customer: {
+        ...makeAttachedCustomer(),
+        receivable_balance: '450.000',
+      },
+      overrideEvidence: {
+        approval_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        approval_scope: 'credit_limit_override',
+        override_event_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        policy_version: 'phase3-default-v1',
+        target_account_status: 'active',
+        target_amount: '119.000',
+        target_customer_id: '77777777-7777-4777-8777-777777777777',
+      },
+    }))).rejects.toThrow(AccountChargeInputError);
+
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
   it('authors approval, override, and account charge events atomically for a credit-limit override', async () => {
     const db = makeMockDb();
     const approvalEvent = makeAppendResult(

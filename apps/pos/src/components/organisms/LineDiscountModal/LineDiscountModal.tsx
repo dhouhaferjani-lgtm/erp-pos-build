@@ -1,15 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
-import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import type { Operator } from '@/stores/operatorStore';
 import {
   authorPosOverride,
   type PosOverrideContext,
   type PosOverrideEvidence,
 } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 
 type DiscountType = 'percentage' | 'fixed';
 
@@ -144,26 +143,21 @@ export function LineDiscountModal({
     setManagerError(null);
     setVerifyingPin(true);
     try {
-      const manager = await apiPost<Operator>('/pos/auth/verify-pin', { pin: managerPin });
-
-      if (!manager.can_discount) {
-        setManagerError(t('discount.managerDenied'));
-        return;
-      }
-
-      const managerLimit = manager.max_discount_percent ?? terminalMaxDiscountPercent;
-      const managerMax = Math.min(managerLimit, terminalMaxDiscountPercent);
-      if (discountType === 'percentage' && parseFloat(value) > managerMax) {
-        setManagerError(t('discount.managerDenied'));
-        return;
-      }
-
       if (approvalContext === undefined) {
         setManagerError(t('discount.approvalEvidenceRequired'));
         return;
       }
 
       const targetReferenceId = lineReferenceId ?? fallbackReferenceIdRef.current;
+      const reasonText = reason.trim();
+      const manager = await verifyScopedManagerPin({
+        pin: managerPin,
+        context: approvalContext,
+        approvalScope: 'discount_limit_override',
+        targetEventType: 'LINE_DISCOUNT_LIMIT_OVERRIDE',
+        targetReferenceId,
+        reason: reasonText || 'Line discount limit override',
+      });
       const approvalEvidence = await authorPosOverride({
         context: approvalContext,
         supervisor: {
@@ -178,12 +172,12 @@ export function LineDiscountModal({
           discount_type: discountType,
           discount_value: value,
           item_name: itemName,
-          reason: reason.trim(),
+          reason: reasonText,
           target_reference_id: targetReferenceId,
         },
         policyVersion: 'pos-discount-policy-v1',
-        reasonCode: reason.trim() === '' ? 'discount_limit_override' : 'manager_reason',
-        reasonText: reason.trim() || null,
+        reasonCode: reasonText === '' ? 'discount_limit_override' : 'manager_reason',
+        reasonText: reasonText || null,
       });
 
       onApply({

@@ -48,12 +48,12 @@ final class AccountStatusChangedConcurrencyTest extends TestCase
             tenantId: $tenant->id,
             companyId: $company->id,
             partnerId: $partner->id,
-            newStatus: CustomerAccountStatus::Disputed,
+            newStatus: CustomerAccountStatus::Active,
             actorUserId: $actor->id,
-            reason: 'Customer disputes receivable',
+            reason: 'Credit control hold cleared',
         );
 
-        $this->assertSame(CustomerAccountStatus::Disputed, $changed->account_status);
+        $this->assertSame(CustomerAccountStatus::Active, $changed->account_status);
         $this->assertSame(3, $changed->account_status_version);
 
         $events = FiscalEvent::query()

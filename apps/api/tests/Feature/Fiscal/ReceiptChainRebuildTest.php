@@ -296,7 +296,7 @@ final class ReceiptChainRebuildTest extends TestCase
 
     public function test_build_export_snapshot_hydrates_dto_from_canonical_payload_for_fiscal_event_backed_receipts(): void
     {
-        // Pass 2A.PHP.2 — emit 27-key Candidate C-v3 payload per
+        // Pass 2A.PHP.2 — emit 28-key Candidate C-v3 payload per
         // synthesis v5 §3. The Nf525DataProvider now reads via
         // CanonicalPayloadReader (mapSaleReceiptFromCanonical) and sources
         // monetary fields directly from the canonical payload — same

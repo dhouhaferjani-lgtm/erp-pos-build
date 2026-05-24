@@ -548,7 +548,10 @@
     "confirmReturn": "Confirmer le retour",
     "receiptNotFound": "Ticket non trouvé",
     "offlineNoReceipt": "Aucun ticket non synchronisé trouvé. L'annulation des tickets synchronisés nécessite une connexion Internet.",
-    "localReceipt": "Ce ticket est enregistré localement et n'a pas encore été synchronisé."
+    "localReceipt": "Ce ticket est enregistré localement et n'a pas encore été synchronisé.",
+    "syncBeforeVoid": "Synchronisez ce ticket avant de l'annuler.",
+    "managerPin": "PIN responsable",
+    "approvalRequired": "L'approbation d'un responsable est requise pour les annulations et retours."
   },
   "cashDrawer": {
     "title": "Tiroir-caisse",
@@ -556,7 +559,9 @@
     "payout": "Retrait",
     "balance": "Solde",
     "reason": "Raison",
-    "amount": "Montant"
+    "amount": "Montant",
+    "managerPin": "PIN responsable",
+    "approvalRequired": "L'approbation d'un responsable est requise pour les opérations du tiroir-caisse."
   },
   "display": {
     "inStockOnly": "En stock",
@@ -582,6 +587,7 @@
     "completeTransaction": "Valider la transaction",
     "processing": "Traitement...",
     "insufficientPayment": "Le total des paiements doit couvrir le montant dû",
+    "tenderTolerancePinLabel": "PIN manager pour tolérance d'encaissement",
     "selectRepository": "Sélectionner un compte",
     "amountRequired": "Saisissez un montant supérieur à zéro",
     "methodRequired": "Sélectionnez un mode de paiement",

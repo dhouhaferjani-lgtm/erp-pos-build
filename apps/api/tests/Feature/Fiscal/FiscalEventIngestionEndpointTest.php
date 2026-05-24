@@ -483,7 +483,7 @@ final class FiscalEventIngestionEndpointTest extends TestCase
      * @return array<string, mixed>
      */
     /**
-     * Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+     * Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
      * synthesis v5 §3. Hand-balanced totals: subtotal 10.00 + vat_total
      * 0.00 = total 10.00 + transaction_discount_amount 0.00.
      *

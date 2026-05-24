@@ -443,6 +443,11 @@ export async function authorAccountCharge(
   assertSupportedScale(scale, input.currency);
   const total = bcformat(input.total, scale);
   const hasOverrideApproval = input.overrideApproval !== null && input.overrideApproval !== undefined;
+  if (!hasOverrideApproval && input.overrideEvidence !== null && input.overrideEvidence !== undefined) {
+    throw new AccountChargeInputError(
+      'account_charge_override_evidence_requires_approval_authoring',
+    );
+  }
   const prebuiltPayload = hasOverrideApproval
     ? null
     : buildAccountChargePayload({
@@ -505,8 +510,8 @@ export async function authorAccountCharge(
         company_id: input.companyId,
         event_time_device: eventTimeDevice.toISOString(),
         override_context: {
-          account_charge_uuid: accountChargeUuid,
-          override_event_type: overrideEventType,
+          target_event_type: 'ACCOUNT_CHARGE',
+          target_reference_id: accountChargeUuid,
         },
         policy_version: policyVersion,
         reason_code: input.overrideApproval.reasonCode,

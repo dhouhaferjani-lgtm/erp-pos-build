@@ -664,7 +664,7 @@ final class TreasuryReceiptBridgeTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        // Pass 2A.PHP.2 — emit 27-key Candidate C-v3 SALE_RECEIPT payload.
+        // Pass 2A.PHP.2 — emit 28-key Candidate C-v3 SALE_RECEIPT payload.
         // Old-shape overrides translated to canonical {method_code, amount,
         // instrument_*} per payment. `payment_method_id` + `repository_id`
         // no longer in canonical — resolved by the bridge via the

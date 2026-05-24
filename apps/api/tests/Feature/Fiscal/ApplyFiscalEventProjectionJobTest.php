@@ -1234,7 +1234,7 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        // Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+        // Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
         // synthesis v5 §3.
         $payload = [
             'business_date' => $businessDate->toDateString(),

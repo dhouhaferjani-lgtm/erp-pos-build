@@ -78,6 +78,25 @@ final class PartnerAccountStatusTest extends TestCase
         );
     }
 
+    public function test_account_status_lifecycle_matches_locked_phase_four_matrix(): void
+    {
+        $this->assertTrue(CustomerAccountStatus::Active->canTransitionTo(CustomerAccountStatus::Suspended));
+        $this->assertTrue(CustomerAccountStatus::Active->canTransitionTo(CustomerAccountStatus::Disputed));
+        $this->assertFalse(CustomerAccountStatus::Active->canTransitionTo(CustomerAccountStatus::Closed));
+
+        $this->assertTrue(CustomerAccountStatus::Suspended->canTransitionTo(CustomerAccountStatus::Active));
+        $this->assertTrue(CustomerAccountStatus::Suspended->canTransitionTo(CustomerAccountStatus::Closed));
+        $this->assertFalse(CustomerAccountStatus::Suspended->canTransitionTo(CustomerAccountStatus::Disputed));
+
+        $this->assertTrue(CustomerAccountStatus::Disputed->canTransitionTo(CustomerAccountStatus::Active));
+        $this->assertTrue(CustomerAccountStatus::Disputed->canTransitionTo(CustomerAccountStatus::Closed));
+        $this->assertFalse(CustomerAccountStatus::Disputed->canTransitionTo(CustomerAccountStatus::Suspended));
+
+        $this->assertFalse(CustomerAccountStatus::Closed->canTransitionTo(CustomerAccountStatus::Active));
+        $this->assertFalse(CustomerAccountStatus::Closed->canTransitionTo(CustomerAccountStatus::Suspended));
+        $this->assertFalse(CustomerAccountStatus::Closed->canTransitionTo(CustomerAccountStatus::Disputed));
+    }
+
     public function test_status_mutation_rolls_back_when_fiscal_append_fails(): void
     {
         [$tenant, $company] = $this->tenantAndCompany();

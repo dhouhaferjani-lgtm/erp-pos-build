@@ -22,6 +22,8 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isImplemented('OVERRIDE_DISCOUNT_LIMIT')).toBe(true);
     expect(registry.isImplemented('OVERRIDE_TENDER_TOLERANCE')).toBe(true);
     expect(registry.isImplemented('OVERRIDE_VOID_OR_RETURN')).toBe(true);
+    expect(registry.isImplemented('CASH_OUT')).toBe(true);
+    expect(registry.isImplemented('SAFE_DROP')).toBe(true);
   });
 
   it('marks reserved-not-implemented types as unimplemented', () => {
@@ -34,8 +36,6 @@ describe('FiscalEventPayloadRegistry', () => {
       'RETURN_WITHOUT_RECEIPT',
       'OPENING_FLOAT',
       'CASH_IN',
-      'CASH_OUT',
-      'SAFE_DROP',
       'CASH_CORRECTION',
       'SESSION_OPEN',
       'SESSION_CLOSE',
@@ -69,6 +69,8 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.eventVersionFor('OVERRIDE_DISCOUNT_LIMIT')).toBe(1);
     expect(registry.eventVersionFor('OVERRIDE_TENDER_TOLERANCE')).toBe(1);
     expect(registry.eventVersionFor('OVERRIDE_VOID_OR_RETURN')).toBe(1);
+    expect(registry.eventVersionFor('CASH_OUT')).toBe(1);
+    expect(registry.eventVersionFor('SAFE_DROP')).toBe(1);
   });
 
   it('implements ACCOUNT_PAYMENT at version 1 without changing server-only types', () => {
@@ -126,6 +128,8 @@ describe('FiscalEventPayloadRegistry', () => {
         'OVERRIDE_DISCOUNT_LIMIT',
         'OVERRIDE_TENDER_TOLERANCE',
         'OVERRIDE_VOID_OR_RETURN',
+        'CASH_OUT',
+        'SAFE_DROP',
       ]),
     );
   });

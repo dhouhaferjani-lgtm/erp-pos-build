@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -43,8 +46,6 @@ final class ManagerOverrideAuditTest extends TestCase
 
     private const PIN = '9876';
 
-    private const TERMINAL_ID = '33333333-3333-4333-8333-333333333333';
-
     private const TARGET_REFERENCE_ID = '44444444-4444-4444-8444-444444444444';
 
     private Tenant $tenant;
@@ -56,6 +57,8 @@ final class ManagerOverrideAuditTest extends TestCase
 
     /** Manager with the variance permission and a known PIN. */
     private User $manager;
+
+    private Terminal $terminal;
 
     protected function setUp(): void
     {
@@ -77,6 +80,14 @@ final class ManagerOverrideAuditTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
+        ]);
+
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'type' => TerminalType::Physical,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -229,7 +240,7 @@ final class ManagerOverrideAuditTest extends TestCase
     {
         return array_merge([
             'company_id' => $this->company->id,
-            'terminal_id' => self::TERMINAL_ID,
+            'terminal_id' => $this->terminal->id,
             'approval_scope' => 'close_shift_variance',
             'target_event_type' => 'Z_REPORT',
             'target_reference_id' => self::TARGET_REFERENCE_ID,
@@ -239,6 +250,6 @@ final class ManagerOverrideAuditTest extends TestCase
 
     private function rateLimitKey(string $userId): string
     {
-        return 'verify-manager-pin:'.$this->tenant->id.':'.self::TERMINAL_ID.':'.$userId.':close_shift_variance';
+        return 'verify-manager-pin:'.$this->tenant->id.':'.$this->terminal->id.':'.$userId.':close_shift_variance';
     }
 }

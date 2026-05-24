@@ -805,7 +805,7 @@ final class OutboxIngestorTest extends TestCase
     }
 
     /**
-     * Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+     * Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
      * synthesis v5 §3. Hand-balanced totals: subtotal + vat_total ==
      * total + transaction_discount_amount.
      *

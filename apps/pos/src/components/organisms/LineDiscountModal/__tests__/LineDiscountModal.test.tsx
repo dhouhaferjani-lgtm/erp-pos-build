@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LineDiscountModal } from '../LineDiscountModal';
-import { apiPost } from '@/lib/api';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 import { authorPosOverride } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
 
-vi.mock('@/lib/api', () => ({
-  apiPost: vi.fn(),
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: vi.fn(),
 }));
 
 vi.mock('@/lib/operatorApproval/posOverrideAuthoring', () => ({
@@ -86,12 +86,10 @@ describe('LineDiscountModal', () => {
       supervisor_user_id: 'manager-1',
       target_reference_id: 'line-1',
     } as const;
-    vi.mocked(apiPost).mockResolvedValue({
+    vi.mocked(verifyScopedManagerPin).mockResolvedValue({
       id: 'manager-1',
       name: 'Manager',
       roles: ['manager'],
-      can_discount: true,
-      max_discount_percent: 50,
     });
     vi.mocked(authorPosOverride).mockResolvedValue(evidence);
     const onApply = vi.fn();

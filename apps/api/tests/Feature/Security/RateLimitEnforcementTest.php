@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -226,6 +229,14 @@ final class RateLimitEnforcementTest extends TestCase
             'currency' => 'TND',
         ]);
 
+        $location = Location::factory()->create(['company_id' => $company->id]);
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'type' => TerminalType::Physical,
+        ]);
+
         $caller = User::factory()->create([
             'tenant_id' => $tenant->id,
             'status' => UserStatus::Active,
@@ -247,7 +258,7 @@ final class RateLimitEnforcementTest extends TestCase
             'status' => UserStatus::Active,
         ]);
         $targetUserId = $target->id;
-        $terminalId = '33333333-3333-4333-8333-333333333333';
+        $terminalId = $terminal->id;
         $payload = [
             'company_id' => $company->id,
             'terminal_id' => $terminalId,

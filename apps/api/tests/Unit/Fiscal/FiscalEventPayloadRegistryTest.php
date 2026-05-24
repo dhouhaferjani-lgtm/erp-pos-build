@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
-use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\CompanyDayClosureManifestPayload;
@@ -104,12 +104,12 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
         $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
         $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
+        $this->assertTrue($r->isImplemented(FiscalEventType::CASH_OUT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::SAFE_DROP));
 
         $this->assertFalse($r->isImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST));
         $this->assertFalse($r->isImplemented(FiscalEventType::SALE_VOID));
         $this->assertFalse($r->isImplemented(FiscalEventType::Z_REPORT));
-        $this->assertFalse($r->isImplemented(FiscalEventType::CASH_OUT));
-        $this->assertFalse($r->isImplemented(FiscalEventType::SAFE_DROP));
     }
 
     public function test_account_charge_is_implemented_at_version_one(): void
@@ -139,7 +139,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_from_array_to_array_roundtrip(): void
     {
-        // Pass 2A.PHP.2 — 27-key Candidate C-v3 round-trip.
+        // Pass 2A.PHP.2 — 28-key Candidate C-v3 round-trip.
         $data = $this->canonicalSaleReceiptArray();
 
         $dto = SaleReceiptPayload::fromArray($data);
@@ -243,7 +243,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // message instead.
     public function test_from_array_rejects_missing_required_keys_on_every_implemented_dto(): void
     {
-        // Pass 2A.PHP.2 — `currency_code` replaces `currency` in the 27-key
+        // Pass 2A.PHP.2 — `currency_code` replaces `currency` in the 28-key
         // contract; first required key (alphabetical) is `business_date`.
         // The DTO's fromArray() validates via FiscalPayloadArrayGuards which
         // throws "missing required key: <key>" for the first one it hits.
@@ -261,7 +261,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // is_string() and rejects floats outright.
     public function test_sale_receipt_payload_rejects_float_monetary_fields(): void
     {
-        // Pass 2A.PHP.2 — 27-key contract; money fields renamed per
+        // Pass 2A.PHP.2 — 28-key contract; money fields renamed per
         // synthesis v5 §3 (tax_total → vat_total, discount_total →
         // transaction_discount_amount).
         $base = $this->canonicalSaleReceiptArray();
@@ -282,7 +282,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_int_currency_scale(): void
     {
-        // Pass 2A.PHP.2 — 27-key contract; currency_scale must be int.
+        // Pass 2A.PHP.2 — 28-key contract; currency_scale must be int.
         $base = $this->canonicalSaleReceiptArray();
         $base['currency_scale'] = '3'; // string instead of int — must reject
 
@@ -303,7 +303,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_array_lines(): void
     {
-        // Pass 2A.PHP.2 — 27-key list container renamed to `line_items`.
+        // Pass 2A.PHP.2 — 28-key list container renamed to `line_items`.
         $base = $this->canonicalSaleReceiptArray();
         $base['line_items'] = 'not an array';
 
@@ -380,7 +380,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     }
 
     /**
-     * Pass 2A.PHP.2 — 27-key canonical SALE_RECEIPT array used by DTO
+     * Pass 2A.PHP.2 — 28-key canonical SALE_RECEIPT array used by DTO
      * round-trip + negative tests. Mirrors GoldenFixtureBuilder F-01 in
      * structure but kept local to avoid coupling unit-test scope to the
      * Helpers/Fiscal/ directory.
@@ -390,6 +390,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     private function canonicalSaleReceiptArray(): array
     {
         return [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',

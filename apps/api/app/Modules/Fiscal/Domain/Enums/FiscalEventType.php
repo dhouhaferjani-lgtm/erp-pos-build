@@ -58,6 +58,8 @@ enum FiscalEventType: string
             self::OVERRIDE_DISCOUNT_LIMIT,
             self::OVERRIDE_TENDER_TOLERANCE,
             self::OVERRIDE_VOID_OR_RETURN,
+            self::CASH_OUT,
+            self::SAFE_DROP,
         ], true);
     }
 

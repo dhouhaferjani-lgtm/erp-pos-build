@@ -395,6 +395,7 @@ final class GoldenFixtureBuilder
     private static function baseEnvelope(array $overrides): array
     {
         $defaults = [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',

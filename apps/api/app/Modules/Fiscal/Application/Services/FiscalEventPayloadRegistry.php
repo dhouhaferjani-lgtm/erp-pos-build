@@ -7,6 +7,7 @@ namespace App\Modules\Fiscal\Application\Services;
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
+use App\Modules\Fiscal\Domain\DTOs\CashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
@@ -57,6 +58,8 @@ final class FiscalEventPayloadRegistry
         FiscalEventType::OVERRIDE_DISCOUNT_LIMIT->value => [OverrideDiscountLimitPayload::class, 1],
         FiscalEventType::OVERRIDE_TENDER_TOLERANCE->value => [OverrideTenderTolerancePayload::class, 1],
         FiscalEventType::OVERRIDE_VOID_OR_RETURN->value => [OverrideVoidOrReturnPayload::class, 1],
+        FiscalEventType::CASH_OUT->value => [CashDrawerMovementPayload::class, 1],
+        FiscalEventType::SAFE_DROP->value => [CashDrawerMovementPayload::class, 1],
     ];
 
     /**

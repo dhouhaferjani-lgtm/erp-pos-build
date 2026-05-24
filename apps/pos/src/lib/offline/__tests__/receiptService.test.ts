@@ -33,6 +33,7 @@ import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import { insertOfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { makeCartItem } from '@/test/helpers';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 function makeMockDb() {
   return {
@@ -62,6 +63,19 @@ const seller = {
   city: 'Tunis',
   postalCode: '1000',
 };
+
+function evidence(overrides: Partial<PosOverrideEvidence> = {}): PosOverrideEvidence {
+  return {
+    approval_id: '77777777-7777-4777-8777-777777777777',
+    approval_event_id: '88888888-8888-4888-8888-888888888888',
+    approval_scope: 'discount_limit_override',
+    override_event_id: '99999999-9999-4999-8999-999999999999',
+    policy_version: 'pos-phase-4-v1',
+    supervisor_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    target_reference_id: 'cart-item-1',
+    ...overrides,
+  };
+}
 
 describe('receiptService — fiscal-event engine wiring', () => {
   beforeEach(() => {
@@ -138,5 +152,95 @@ describe('receiptService — fiscal-event engine wiring', () => {
     expect(inserted.hash_sequence).toBe(6);
     expect(inserted.canonical_bytes).toBe('{"business_date":"2026-05-20"}');
     expect(result.fiscalHash).toBe('c'.repeat(64));
+  });
+
+  it('carries every discount and tender tolerance approval reference in SALE_RECEIPT payload', async () => {
+    const db = makeMockDb();
+    const transactionEvidence = evidence({
+      approval_id: '10000000-0000-4000-8000-000000000001',
+      approval_event_id: '10000000-0000-4000-8000-000000000002',
+      override_event_id: '10000000-0000-4000-8000-000000000003',
+      target_reference_id: 'cart-transaction-discount',
+    });
+    const lineEvidence = evidence({
+      approval_id: '20000000-0000-4000-8000-000000000001',
+      approval_event_id: '20000000-0000-4000-8000-000000000002',
+      override_event_id: '20000000-0000-4000-8000-000000000003',
+      target_reference_id: 'cart-item-1',
+    });
+    const tenderToleranceEvidence = evidence({
+      approval_id: '30000000-0000-4000-8000-000000000001',
+      approval_event_id: '30000000-0000-4000-8000-000000000002',
+      approval_scope: 'tender_tolerance_override',
+      override_event_id: '30000000-0000-4000-8000-000000000003',
+      target_reference_id: '66666666-6666-4666-8666-666666666666',
+    });
+
+    await createOfflineReceipt(db, {
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      companyId: '22222222-2222-4222-8222-222222222222',
+      terminalId: terminalState.terminal_id,
+      operatorId: '33333333-3333-4333-8333-333333333333',
+      operatorName: 'Cashier',
+      shiftId: '55555555-5555-4555-8555-555555555555',
+      cartItems: [
+        makeCartItem({
+          tax_rate: '0.00',
+          discount_type: 'fixed',
+          discount_amount: '1.00',
+          discount_reason: 'Line approval',
+          discount_approval_evidence: lineEvidence,
+        }),
+      ],
+      currency: 'EUR',
+      seller,
+      paymentMethodId: 'pm-1',
+      paymentRepositoryId: 'repo-1',
+      tenderedAmount: 8,
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+      transactionDiscount: {
+        type: 'fixed',
+        value: '1.00',
+        reason: 'Transaction approval',
+        approvalEvidence: transactionEvidence,
+      },
+      tenderToleranceEvidence,
+      payments: [{ methodCode: 'CASH', amount: '8.00' }],
+    });
+
+    const engine = await vi.mocked(getFiscalEventEngine).mock.results[0]!.value;
+    const appendRequest = vi.mocked(engine.append).mock.calls[0]![1];
+    expect(appendRequest.reference_event_id).toBe(transactionEvidence.override_event_id);
+    expect(appendRequest.payload).toEqual(expect.objectContaining({
+      approval_references: [
+        {
+          approval_event_id: transactionEvidence.approval_event_id,
+          approval_id: transactionEvidence.approval_id,
+          approval_scope: 'discount_limit_override',
+          override_event_id: transactionEvidence.override_event_id,
+          policy_version: transactionEvidence.policy_version,
+          supervisor_user_id: transactionEvidence.supervisor_user_id,
+          target_reference_id: transactionEvidence.target_reference_id,
+        },
+        {
+          approval_event_id: lineEvidence.approval_event_id,
+          approval_id: lineEvidence.approval_id,
+          approval_scope: 'discount_limit_override',
+          override_event_id: lineEvidence.override_event_id,
+          policy_version: lineEvidence.policy_version,
+          supervisor_user_id: lineEvidence.supervisor_user_id,
+          target_reference_id: lineEvidence.target_reference_id,
+        },
+        {
+          approval_event_id: tenderToleranceEvidence.approval_event_id,
+          approval_id: tenderToleranceEvidence.approval_id,
+          approval_scope: 'tender_tolerance_override',
+          override_event_id: tenderToleranceEvidence.override_event_id,
+          policy_version: tenderToleranceEvidence.policy_version,
+          supervisor_user_id: tenderToleranceEvidence.supervisor_user_id,
+          target_reference_id: tenderToleranceEvidence.target_reference_id,
+        },
+      ],
+    }));
   });
 });

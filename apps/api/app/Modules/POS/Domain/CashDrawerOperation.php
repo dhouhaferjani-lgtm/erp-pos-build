@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string $user_id User who performed the operation
  * @property string|null $reason Description of the operation
  * @property string|null $receipt_id Receipt reference (for SALE/REFUND)
+ * @property string|null $idempotency_key Client idempotency key for deposit/payout retries
  * @property Carbon $created_at Immutable timestamp
  * @property-read Shift $shift
  * @property-read User $user
@@ -51,6 +52,7 @@ class CashDrawerOperation extends Model
         'user_id',
         'reason',
         'receipt_id',
+        'idempotency_key',
         'approval_id',
         'approval_fiscal_event_id',
         'approval_scope',

@@ -95,6 +95,8 @@ const IMPLEMENTED_EVENT_TYPES = [
   'OVERRIDE_DISCOUNT_LIMIT',
   'OVERRIDE_TENDER_TOLERANCE',
   'OVERRIDE_VOID_OR_RETURN',
+  'CASH_OUT',
+  'SAFE_DROP',
 ] as const satisfies readonly FiscalEventTypeValue[];
 
 type ImplementedEventType = (typeof IMPLEMENTED_EVENT_TYPES)[number];

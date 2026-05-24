@@ -53,6 +53,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 /**
  * Look up the receipt's signed QR token from the local SQLite index.
@@ -840,7 +841,10 @@ export function HomePage() {
   }, [cartItems.length]);
 
   const handleAdvancedComplete = useCallback(
-    async (payments: Parameters<typeof processAdvancedCheckout>[2]) => {
+    async (
+      payments: Parameters<typeof processAdvancedCheckout>[2],
+      options?: Parameters<typeof processAdvancedCheckout>[6],
+    ) => {
       if (!terminal) return;
       try {
         await processAdvancedCheckout(
@@ -850,6 +854,7 @@ export function HomePage() {
           transactionDiscount,
           isFnB ? consumptionMode : undefined,
           isFnB ? selectedTableId : undefined,
+          options,
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
@@ -892,11 +897,12 @@ export function HomePage() {
   );
 
   const handleApplyTransactionDiscount = useCallback(
-    (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
+    (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       useCartStore.getState().setTransactionDiscount({
         type: data.type,
         value: data.value,
         reason: data.reason || undefined,
+        approvalEvidence: data.approvalEvidence,
       });
     },
     [],
@@ -919,17 +925,18 @@ export function HomePage() {
           ...item,
           discount_type: undefined,
           discount_percent: undefined,
-          discount_amount: undefined,
-          discount_reason: undefined,
-          line_total: grossTotal.toFixed(currencyDecimals),
-          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
-        };
+	          discount_amount: undefined,
+	          discount_reason: undefined,
+	          discount_approval_evidence: undefined,
+	          line_total: grossTotal.toFixed(currencyDecimals),
+	          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
+	        };
       }),
     }));
   }, [currencyDecimals]);
 
   const handleApplyLineDiscount = useCallback(
-    (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
+    (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       if (!discountItemId) return;
 
       useCartStore.setState((state) => ({
@@ -947,9 +954,10 @@ export function HomePage() {
             ...item,
             discount_type: data.type,
             discount_percent: data.type === 'percentage' ? data.value : undefined,
-            discount_amount: discountAmount.toFixed(currencyDecimals),
-            discount_reason: data.reason || undefined,
-            line_total: lineTotal.toFixed(currencyDecimals),
+	            discount_amount: discountAmount.toFixed(currencyDecimals),
+	            discount_reason: data.reason || undefined,
+	            discount_approval_evidence: data.approvalEvidence,
+	            line_total: lineTotal.toFixed(currencyDecimals),
             tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
           };
         }),
@@ -1247,6 +1255,7 @@ export function HomePage() {
       <VoidReturnModal
         isOpen={showVoidReturnModal}
         onClose={() => setShowVoidReturnModal(false)}
+        approvalContext={approvalContext}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan
