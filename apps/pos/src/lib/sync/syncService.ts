@@ -363,14 +363,18 @@ export async function pushCashDrawerOps(db: Database): Promise<{
   for (const op of pending) {
     try {
       await updateCashDrawerOpStatus(db, op.id, 'syncing');
-      await apiPost('/pos/cash-drawer/sync', {
+      await apiPost(`/pos/cash-drawer/${op.type}`, {
         idempotency_key: op.idempotency_key,
-        type: op.type,
         amount: op.amount,
         reason: op.reason,
         terminal_id: op.terminal_id,
         shift_id: op.shift_id,
         operator_id: op.operator_id,
+        approval_id: op.approval_id,
+        approval_fiscal_event_id: op.approval_fiscal_event_id,
+        approval_scope: op.approval_scope,
+        approval_supervisor_user_id: op.approval_supervisor_user_id,
+        approval_target_hash: op.approval_target_hash,
         created_at: op.created_at,
       });
       await updateCashDrawerOpStatus(db, op.id, 'synced');

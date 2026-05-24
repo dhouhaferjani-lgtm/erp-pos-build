@@ -6,6 +6,7 @@ namespace App\Modules\Document\Application\Projections;
 
 use App\Modules\Document\Application\DTOs\CreatePOSAccountChargeDraftCommand;
 use App\Modules\Document\Application\Services\POSAccountChargeDraftService;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -13,7 +14,6 @@ use App\Modules\Fiscal\Domain\Exceptions\ProjectionInvariantViolationException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 
 final class DocumentAccountChargeFactureBridge implements FiscalEventProjector
 {

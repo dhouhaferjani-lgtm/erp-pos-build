@@ -49,6 +49,13 @@ export const FISCAL_EVENT_TYPES = [
   'COMPANY_DAY_CLOSURE_MANIFEST',
   'ACCOUNT_PAYMENT',
   'ACCOUNT_CHARGE',
+  'ACCOUNT_STATUS_CHANGED',
+  'OPERATOR_APPROVAL_GRANTED',
+  'OVERRIDE_CREDIT_LIMIT',
+  'OVERRIDE_ACCOUNT_STATUS',
+  'OVERRIDE_DISCOUNT_LIMIT',
+  'OVERRIDE_TENDER_TOLERANCE',
+  'OVERRIDE_VOID_OR_RETURN',
   'ACCOUNT_REFUND',
   'ACCOUNT_PAYMENT_RECONCILED',
   'ACCOUNT_CREDIT_ISSUE',
@@ -74,16 +81,25 @@ export const FISCAL_EVENT_TYPES = [
 
 export type FiscalEventTypeValue = (typeof FISCAL_EVENT_TYPES)[number];
 
-const PHASE_1_IMPLEMENTED = [
+const IMPLEMENTED_EVENT_TYPES = [
   'SALE_RECEIPT',
   'CHAIN_BREAK_DETECTED',
   'CHAIN_RESTART',
   'TERMINAL_REGISTRY_SNAPSHOT',
   'ACCOUNT_PAYMENT',
   'ACCOUNT_CHARGE',
+  'ACCOUNT_STATUS_CHANGED',
+  'OPERATOR_APPROVAL_GRANTED',
+  'OVERRIDE_CREDIT_LIMIT',
+  'OVERRIDE_ACCOUNT_STATUS',
+  'OVERRIDE_DISCOUNT_LIMIT',
+  'OVERRIDE_TENDER_TOLERANCE',
+  'OVERRIDE_VOID_OR_RETURN',
+  'CASH_OUT',
+  'SAFE_DROP',
 ] as const satisfies readonly FiscalEventTypeValue[];
 
-type Phase1ImplementedType = (typeof PHASE_1_IMPLEMENTED)[number];
+type ImplementedEventType = (typeof IMPLEMENTED_EVENT_TYPES)[number];
 
 /**
  * Spec v7 §11.0 server-only set. Device-side `append()` MUST reject
@@ -96,12 +112,13 @@ type Phase1ImplementedType = (typeof PHASE_1_IMPLEMENTED)[number];
  * type lands — when the closure phase ships, no device-side code path
  * exists that could author it.
  */
-const SPEC_11_0_SERVER_ONLY = [
+const SERVER_ONLY_EVENT_TYPES = [
   'TERMINAL_REGISTRY_SNAPSHOT',
   'COMPANY_DAY_CLOSURE_MANIFEST',
+  'ACCOUNT_STATUS_CHANGED',
 ] as const satisfies readonly FiscalEventTypeValue[];
 
-type ServerOnlyType = (typeof SPEC_11_0_SERVER_ONLY)[number];
+type ServerOnlyType = (typeof SERVER_ONLY_EVENT_TYPES)[number];
 
 export class FiscalEventTypeNotImplementedError extends Error {
   constructor(public readonly type: FiscalEventTypeValue) {
@@ -113,12 +130,12 @@ export class FiscalEventTypeNotImplementedError extends Error {
 }
 
 export class FiscalEventPayloadRegistry {
-  private readonly implemented = new Set<Phase1ImplementedType>(PHASE_1_IMPLEMENTED);
+  private readonly implemented = new Set<ImplementedEventType>(IMPLEMENTED_EVENT_TYPES);
 
-  private readonly serverOnly = new Set<ServerOnlyType>(SPEC_11_0_SERVER_ONLY);
+  private readonly serverOnly = new Set<ServerOnlyType>(SERVER_ONLY_EVENT_TYPES);
 
   isImplemented(type: FiscalEventTypeValue): boolean {
-    return this.implemented.has(type as Phase1ImplementedType);
+    return this.implemented.has(type as ImplementedEventType);
   }
 
   /**
@@ -136,17 +153,17 @@ export class FiscalEventPayloadRegistry {
    *         has no Phase 1 payload handler.
    */
   eventVersionFor(type: FiscalEventTypeValue): number {
-    if (!this.implemented.has(type as Phase1ImplementedType)) {
+    if (!this.implemented.has(type as ImplementedEventType)) {
       throw new FiscalEventTypeNotImplementedError(type);
     }
     return 1;
   }
 
   implementedTypes(): readonly FiscalEventTypeValue[] {
-    return PHASE_1_IMPLEMENTED;
+    return IMPLEMENTED_EVENT_TYPES;
   }
 
   serverOnlyTypes(): readonly FiscalEventTypeValue[] {
-    return SPEC_11_0_SERVER_ONLY;
+    return SERVER_ONLY_EVENT_TYPES;
   }
 }

@@ -51,6 +51,13 @@ final class StoreReturnRequest extends FormRequest
             'lines.*.line_id' => 'required|uuid',
             'lines.*.quantity' => 'required|numeric|min:0.001',
             'notes' => 'nullable|string|max:1000',
+            'approval_id' => ['required', 'uuid'],
+            'approval_fiscal_event_id' => ['required', 'uuid'],
+            'approval_scope' => ['required', 'in:void_or_return_override'],
+            'approval_supervisor_user_id' => ['required', 'uuid'],
+            'approval_override_event_id' => ['required', 'uuid'],
+            'authorized_by_user_id' => ['required', 'uuid', 'same:approval_supervisor_user_id'],
+            'override_reason' => ['nullable', 'string', 'max:255'],
         ];
     }
 

@@ -15,8 +15,15 @@ import { useSyncStore } from '@/stores/syncStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { CartItem } from '@/types/cart';
+import type { CartTransactionDiscount } from '@/stores/cartStore';
 import type { CreateReceiptResponse } from '@/types/receipt';
+import type { CustomerAccountStatus } from '@/lib/customer/customerTypes';
 import type { ReceiptData } from '@/lib/printing';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
+import {
+  authorPosOverride,
+  type PosOverrideEvidence,
+} from '@/lib/operatorApproval/posOverrideAuthoring';
 
 export class ActiveTerminalRequiredError extends Error {
   constructor() {
@@ -141,6 +148,10 @@ export interface AttachedCheckoutCustomer {
   payment_terms_days: number | null;
   charge_account_enabled: boolean | 0 | 1;
   charge_policy_version: string | null;
+  account_status: CustomerAccountStatus;
+  account_status_changed_at: string | null;
+  account_status_reason: string | null;
+  account_status_version: number;
   balance_updated_at: string | null;
   is_active: boolean | 0 | 1;
   customer_sync_status: CustomerSyncStatus;
@@ -213,31 +224,36 @@ export interface AdvancedPaymentLine {
   instrument_serial?: string;
 }
 
+export interface AdvancedCheckoutOptions {
+  tenderTolerancePin?: string;
+}
+
 interface PaymentActions {
   fetchPaymentConfig: () => Promise<void>;
-  processCashCheckout: (
-    terminalId: string,
-    cartItems: CartItem[],
-    tenderedAmount: number,
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
+	processCashCheckout: (
+	  terminalId: string,
+	  cartItems: CartItem[],
+	  tenderedAmount: number,
+	  transactionDiscount?: CartTransactionDiscount,
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
-  processCardCheckout: (
-    terminalId: string,
-    cartItems: CartItem[],
-    cardData?: { lastFour?: string; reference?: string },
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
+	processCardCheckout: (
+	  terminalId: string,
+	  cartItems: CartItem[],
+	  cardData?: { lastFour?: string; reference?: string },
+	  transactionDiscount?: CartTransactionDiscount,
     consumptionMode?: string,
     tableId?: string | null,
   ) => Promise<void>;
-  processAdvancedCheckout: (
-    terminalId: string,
-    cartItems: CartItem[],
-    payments: AdvancedPaymentLine[],
-    transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
+	processAdvancedCheckout: (
+	  terminalId: string,
+	  cartItems: CartItem[],
+	  payments: AdvancedPaymentLine[],
+	  transactionDiscount?: CartTransactionDiscount,
     consumptionMode?: string,
     tableId?: string | null,
+    options?: AdvancedCheckoutOptions,
   ) => Promise<void>;
   processAccountPayment: (
     terminalId: string,
@@ -368,6 +384,27 @@ function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
   }
 }
 
+function estimateCartTotal(
+  cartItems: CartItem[],
+  transactionDiscount?: CartTransactionDiscount,
+): number {
+  const subtotal = cartItems.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
+  if (transactionDiscount === undefined) {
+    return subtotal;
+  }
+
+  const discountValue = parseFloat(transactionDiscount.value);
+  if (!Number.isFinite(discountValue) || discountValue <= 0) {
+    return subtotal;
+  }
+
+  const discountAmount = transactionDiscount.type === 'percentage'
+    ? subtotal * (discountValue / 100)
+    : discountValue;
+
+  return Math.max(0, subtotal - Math.min(discountAmount, subtotal));
+}
+
 
 interface LocalFirstPaymentLine {
   methodCode: string;
@@ -433,9 +470,10 @@ async function createReceiptLocalFirst(
    * `pendingIdempotencyKey` on PaymentState for the lifecycle.
    */
   idempotencyKey: string,
-  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string },
+  transactionDiscount?: CartTransactionDiscount,
   consumptionMode?: string,
   tableId?: string | null,
+  tenderToleranceEvidence?: PosOverrideEvidence,
 ): Promise<OfflineReceiptResult> {
   const authState = useAuthStore.getState();
   const operatorState = useOperatorStore.getState();
@@ -505,6 +543,7 @@ async function createReceiptLocalFirst(
         tenderedAmount,
         idempotencyKey,
         transactionDiscount,
+        tenderToleranceEvidence,
         payments: payments.map((p) => ({
           methodCode: p.methodCode,
           amount: p.amount,
@@ -708,6 +747,13 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       throw new Error(msg);
     }
 
+    const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+    if (tenderedAmount + 0.000001 < totalEstimate) {
+      const msg = 'Cash tender tolerance requires a manager-authored tender tolerance override and is not available from quick cash checkout.';
+      set({ error: msg });
+      throw new Error(msg);
+    }
+
     // T0.2: atomically allocate the idempotency key AND gate concurrent
     // entry. Same set() call flips isProcessing, allocates pendingIdempotencyKey
     // if null, and detects a concurrent call (Codex round-2 finding F-1
@@ -743,7 +789,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
     try {
       const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const companyId = authState.companyId;
+      const company = authState.companies.find((c) => c.id === companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
 
@@ -847,7 +894,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
     try {
       const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const companyId = authState.companyId;
+      const company = authState.companies.find((c) => c.id === companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
       const totalEstimate = cartItems.reduce((sum, i) => sum + parseFloat(i.line_total), 0);
@@ -895,6 +943,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     transactionDiscount,
     consumptionMode,
     tableId,
+    options,
   ) => {
     // T0.2: atomic key allocation + concurrent-call gate (see
     // processCashCheckout for rationale).
@@ -916,7 +965,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
 
     try {
       const authState = useAuthStore.getState();
-      const company = authState.companies.find((c) => c.id === authState.companyId);
+      const companyId = authState.companyId;
+      const company = authState.companies.find((c) => c.id === companyId);
       const currency = company?.currency ?? 'EUR';
       const decimals = getCurrencyDecimals(currency);
 
@@ -941,6 +991,73 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       });
 
       const tenderedAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+      const totalEstimate = estimateCartTotal(cartItems, transactionDiscount);
+      let tenderToleranceEvidence: PosOverrideEvidence | undefined;
+
+      if (tenderedAmount + 0.000001 < totalEstimate) {
+        const pin = options?.tenderTolerancePin?.trim() ?? '';
+        if (pin === '') {
+          const msg = 'Tender tolerance requires a manager PIN.';
+          set({ error: msg });
+          throw new Error(msg);
+        }
+
+        const operatorState = useOperatorStore.getState();
+        const terminalState = useTerminalStore.getState();
+        const operator = operatorState.operator;
+        const operatorId = operator?.id ?? authState.user?.id;
+        if (!operatorId || !authState.user?.tenantId || !companyId || !terminalState.terminal) {
+          throw new Error(i18n.t('errors.noOperatorIdentified', { ns: 'pos' }));
+        }
+
+        const businessDate = new Date().toISOString().slice(0, 10);
+        const shortfall = Math.max(0, totalEstimate - tenderedAmount).toFixed(decimals);
+        const target = {
+          tenant_id: authState.user.tenantId,
+          company_id: companyId,
+          terminal_id: terminalId,
+          target_event_type: 'SALE_RECEIPT',
+          target_reference_id: idempotencyKey,
+          total_amount: totalEstimate.toFixed(decimals),
+          tendered_amount: tenderedAmount.toFixed(decimals),
+          shortfall_amount: shortfall,
+          currency,
+        };
+        const supervisor = await verifyScopedManagerPin({
+          pin,
+          context: {
+            tenantId: authState.user.tenantId,
+            companyId,
+            terminalId,
+            cashierUserId: operatorId,
+            businessDate,
+            isTraining: terminalState.terminal.is_training_mode === true,
+          },
+          approvalScope: 'tender_tolerance_override',
+          targetEventType: 'SALE_RECEIPT',
+          targetReferenceId: idempotencyKey,
+          reason: 'Tender tolerance override',
+        });
+
+        tenderToleranceEvidence = await authorPosOverride({
+          context: {
+            tenantId: authState.user.tenantId,
+            companyId,
+            terminalId,
+            cashierUserId: operatorId,
+            businessDate,
+            isTraining: terminalState.terminal.is_training_mode === true,
+          },
+          supervisor,
+          approvalScope: 'tender_tolerance_override',
+          targetEventType: 'SALE_RECEIPT',
+          targetReferenceId: idempotencyKey,
+          target,
+          policyVersion: 'pos-phase-4-v1',
+          reasonCode: 'tender_tolerance_shortfall',
+          reasonText: `Tendered ${tenderedAmount.toFixed(decimals)} against ${totalEstimate.toFixed(decimals)}`,
+        });
+      }
 
       const result = await createReceiptLocalFirst(
         set,
@@ -952,6 +1069,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         transactionDiscount,
         consumptionMode,
         tableId,
+        tenderToleranceEvidence,
       );
 
       set({ changeDue: result.changeDue, isProcessing: false });

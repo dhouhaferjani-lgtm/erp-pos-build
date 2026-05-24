@@ -10,7 +10,7 @@ describe('Fiscal payload PHP/TS key drift gates', () => {
     const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS].sort();
 
     expect(tsKeys).toEqual([...phpKeys].sort());
-    expect(tsKeys).toHaveLength(27);
+    expect(tsKeys).toHaveLength(28);
   });
 
   it('Phase 2.7 — ACCOUNT_PAYMENT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {

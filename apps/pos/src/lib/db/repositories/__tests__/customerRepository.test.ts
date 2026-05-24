@@ -53,6 +53,10 @@ function customer(overrides: Partial<CustomerMirrorRow> = {}): CustomerMirrorRow
     payment_terms_days: 15,
     charge_account_enabled: true,
     charge_policy_version: 'phase3-v1',
+    account_status: 'active',
+    account_status_changed_at: null,
+    account_status_reason: null,
+    account_status_version: 1,
     balance_updated_at: '2026-05-21T08:00:00.000Z',
     is_active: 1,
     sync_version: 'sync-v1',
@@ -118,7 +122,11 @@ describe('customerRepository', () => {
       credit_limit: '500.000',
       payment_terms_days: 15,
       charge_account_enabled: true,
-      charge_policy_version: 'phase3-v1',
+      charge_policy_version: 'phase4-v1',
+      account_status: 'disputed',
+      account_status_changed_at: '2026-05-21T09:30:00.000Z',
+      account_status_reason: 'Invoice dispute',
+      account_status_version: 4,
       balance_updated_at: '2026-05-21T10:10:00.000Z',
       updated_at: '2026-05-21T10:10:00.000Z',
     }));
@@ -135,7 +143,11 @@ describe('customerRepository', () => {
     expect(row?.credit_limit).toBe('500.000');
     expect(row?.payment_terms_days).toBe(15);
     expect(row?.charge_account_enabled).toBe(1);
-    expect(row?.charge_policy_version).toBe('phase3-v1');
+    expect(row?.charge_policy_version).toBe('phase4-v1');
+    expect(row?.account_status).toBe('disputed');
+    expect(row?.account_status_changed_at).toBe('2026-05-21T09:30:00.000Z');
+    expect(row?.account_status_reason).toBe('Invoice dispute');
+    expect(row?.account_status_version).toBe(4);
   });
 
   it('fails closed for existing mirrored customers until phase three policy sync arrives', async () => {
@@ -174,6 +186,52 @@ describe('customerRepository', () => {
       expect(rows).toEqual([{ charge_account_enabled: 0, charge_policy_version: null }]);
     } finally {
       prePolicyAdapter.close();
+    }
+  });
+
+  it('defaults legacy mirrored customers to active account status in migration v42', async () => {
+    const preStatusAdapter = new SqliteTestAdapter();
+    try {
+      await runMigrationsUpTo(preStatusAdapter, 41);
+      await preStatusAdapter.execute(
+        `INSERT INTO customers (
+          id, tenant_id, company_id, name, receivable_balance, credit_balance,
+          balance_updated_at, is_active, updated_at, synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          'legacy-customer',
+          'tenant-1',
+          'company-1',
+          'Legacy Customer',
+          '25.0000',
+          '0.0000',
+          '2026-05-20T10:00:00.000Z',
+          1,
+          '2026-05-20T10:01:00.000Z',
+          '2026-05-20T10:02:00.000Z',
+        ],
+      );
+
+      await runMigrationVersion(preStatusAdapter, 42);
+
+      const rows = await preStatusAdapter.select<Array<{
+        account_status: string;
+        account_status_changed_at: string | null;
+        account_status_reason: string | null;
+        account_status_version: number;
+      }>>(
+        'SELECT account_status, account_status_changed_at, account_status_reason, account_status_version FROM customers WHERE id = $1',
+        ['legacy-customer'],
+      );
+
+      expect(rows).toEqual([{
+        account_status: 'active',
+        account_status_changed_at: null,
+        account_status_reason: null,
+        account_status_version: 1,
+      }]);
+    } finally {
+      preStatusAdapter.close();
     }
   });
 

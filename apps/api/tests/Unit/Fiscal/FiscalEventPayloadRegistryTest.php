@@ -7,9 +7,16 @@ namespace Tests\Unit\Fiscal;
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
 use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
 use App\Modules\Fiscal\Domain\DTOs\AccountPaymentPayload;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainBreakDetectedPayload;
 use App\Modules\Fiscal\Domain\DTOs\ChainRestartPayload;
 use App\Modules\Fiscal\Domain\DTOs\CompanyDayClosureManifestPayload;
+use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
 use App\Modules\Fiscal\Domain\DTOs\TerminalRegistrySnapshotPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -28,6 +35,13 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(TerminalRegistrySnapshotPayload::class, $r->dtoClassFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(AccountPaymentPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertSame(AccountChargePayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(AccountStatusChangedPayload::class, $r->dtoClassFor(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertSame(OperatorApprovalGrantedPayload::class, $r->dtoClassFor(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertSame(OverrideCreditLimitPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertSame(OverrideAccountStatusPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertSame(OverrideDiscountLimitPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertSame(OverrideTenderTolerancePayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertSame(OverrideVoidOrReturnPayload::class, $r->dtoClassFor(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
     }
 
     public function test_returns_event_version_one_for_implemented_types(): void
@@ -40,6 +54,13 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertSame(1, $r->eventVersionFor(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
     }
 
     public function test_reserved_type_company_day_closure_manifest_throws(): void
@@ -76,6 +97,15 @@ final class FiscalEventPayloadRegistryTest extends TestCase
         $this->assertTrue($r->isImplemented(FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT));
         $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_PAYMENT));
         $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_CHARGE));
+        $this->assertTrue($r->isImplemented(FiscalEventType::ACCOUNT_STATUS_CHANGED));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OPERATOR_APPROVAL_GRANTED));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_CREDIT_LIMIT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_ACCOUNT_STATUS));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_TENDER_TOLERANCE));
+        $this->assertTrue($r->isImplemented(FiscalEventType::OVERRIDE_VOID_OR_RETURN));
+        $this->assertTrue($r->isImplemented(FiscalEventType::CASH_OUT));
+        $this->assertTrue($r->isImplemented(FiscalEventType::SAFE_DROP));
 
         $this->assertFalse($r->isImplemented(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST));
         $this->assertFalse($r->isImplemented(FiscalEventType::SALE_VOID));
@@ -109,7 +139,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_from_array_to_array_roundtrip(): void
     {
-        // Pass 2A.PHP.2 — 27-key Candidate C-v3 round-trip.
+        // Pass 2A.PHP.2 — 28-key Candidate C-v3 round-trip.
         $data = $this->canonicalSaleReceiptArray();
 
         $dto = SaleReceiptPayload::fromArray($data);
@@ -213,7 +243,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // message instead.
     public function test_from_array_rejects_missing_required_keys_on_every_implemented_dto(): void
     {
-        // Pass 2A.PHP.2 — `currency_code` replaces `currency` in the 27-key
+        // Pass 2A.PHP.2 — `currency_code` replaces `currency` in the 28-key
         // contract; first required key (alphabetical) is `business_date`.
         // The DTO's fromArray() validates via FiscalPayloadArrayGuards which
         // throws "missing required key: <key>" for the first one it hits.
@@ -231,7 +261,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     // is_string() and rejects floats outright.
     public function test_sale_receipt_payload_rejects_float_monetary_fields(): void
     {
-        // Pass 2A.PHP.2 — 27-key contract; money fields renamed per
+        // Pass 2A.PHP.2 — 28-key contract; money fields renamed per
         // synthesis v5 §3 (tax_total → vat_total, discount_total →
         // transaction_discount_amount).
         $base = $this->canonicalSaleReceiptArray();
@@ -252,7 +282,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_int_currency_scale(): void
     {
-        // Pass 2A.PHP.2 — 27-key contract; currency_scale must be int.
+        // Pass 2A.PHP.2 — 28-key contract; currency_scale must be int.
         $base = $this->canonicalSaleReceiptArray();
         $base['currency_scale'] = '3'; // string instead of int — must reject
 
@@ -273,7 +303,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
 
     public function test_sale_receipt_payload_rejects_non_array_lines(): void
     {
-        // Pass 2A.PHP.2 — 27-key list container renamed to `line_items`.
+        // Pass 2A.PHP.2 — 28-key list container renamed to `line_items`.
         $base = $this->canonicalSaleReceiptArray();
         $base['line_items'] = 'not an array';
 
@@ -350,7 +380,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     }
 
     /**
-     * Pass 2A.PHP.2 — 27-key canonical SALE_RECEIPT array used by DTO
+     * Pass 2A.PHP.2 — 28-key canonical SALE_RECEIPT array used by DTO
      * round-trip + negative tests. Mirrors GoldenFixtureBuilder F-01 in
      * structure but kept local to avoid coupling unit-test scope to the
      * Helpers/Fiscal/ directory.
@@ -360,6 +390,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
     private function canonicalSaleReceiptArray(): array
     {
         return [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
@@ -510,6 +541,7 @@ final class FiscalEventPayloadRegistryTest extends TestCase
                 'decision' => 'approved',
                 'limit_exceeded' => false,
                 'mirror_stale_at_authoring' => false,
+                'override_evidence' => null,
                 'policy_version' => 'phase3-default-v1',
                 'stale_policy_action' => 'allow',
                 'warnings' => [],

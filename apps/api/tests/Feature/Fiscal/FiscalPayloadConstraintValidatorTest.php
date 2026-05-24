@@ -24,7 +24,7 @@ use Tests\TestCase;
 
 /**
  * Tests for `FiscalPayloadConstraintValidator::validateSaleReceiptPayload`
- * under the Pass 2A.PHP.1 27-key Candidate C-v3 contract (synthesis v5 §6).
+ * under the Pass 2A.PHP.1 28-key Candidate C-v3 contract (synthesis v5 §6).
  *
  * Covers the 12 negative cases from §6.E + positive invariants from spec
  * v7 §11.2 (PAYLOAD_KEYS equality / partition rule / scale invariant /
@@ -50,7 +50,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     // PAYLOAD_KEYS set equality (synthesis v5 §6.A + spec v7 §11.2)
     // =================================================================
 
-    public function test_baseline_27_key_payload_is_accepted(): void
+    public function test_baseline_28_key_payload_is_accepted(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
 
@@ -135,6 +135,30 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
         $this->addToAssertionCount(1);
+    }
+
+    public function test_phase_four_operator_approval_payload_rejects_malformed_timestamp(): void
+    {
+        $payload = $this->phaseFourApprovalPayload([
+            'resolved_at_device' => '2026-05-22T10:00:00Z',
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('payload_datetime_format_mismatch:field=resolved_at_device');
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::OPERATOR_APPROVAL_GRANTED, $payload);
+    }
+
+    public function test_phase_four_override_payload_rejects_unknown_scope(): void
+    {
+        $payload = $this->phaseFourOverridePayload([
+            'approval_scope' => 'cash_drawer_control',
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('payload_field_invalid:approval_scope');
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT, $payload);
     }
 
     public function test_account_payment_populated_references_payload_is_accepted_when_alias_is_null(): void
@@ -337,6 +361,30 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $payload['credit_decision']['limit_exceeded'] = true;
 
         $this->expectAccountChargeException('/payload_account_charge_credit_decision_invalid/', $payload);
+    }
+
+    public function test_account_charge_accepts_production_credit_limit_override_evidence(): void
+    {
+        $payload = $this->canonicalAccountChargePayload([
+            'credit_decision' => [
+                'credit_available_after' => '0.000',
+                'decision' => 'approved_with_override',
+                'limit_exceeded' => true,
+                'override_evidence' => [
+                    'approval_event_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                    'approval_scope' => 'credit_limit_override',
+                    'override_event_id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                    'policy_version' => 'phase3-default-v1',
+                    'target_account_status' => 'active',
+                    'target_amount' => '119.000',
+                    'target_customer_id' => '55555555-5555-4555-8555-555555555555',
+                ],
+            ],
+        ]);
+
+        self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload));
+        $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
+        $this->addToAssertionCount(1);
     }
 
     public function test_account_charge_rejects_amount_balance_mismatch(): void
@@ -716,7 +764,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_PAYMENT, $payload);
     }
 
-    public function test_payload_with_extra_28th_key_is_rejected_with_extra_field_prefix(): void
+    public function test_payload_with_extra_29th_key_is_rejected_with_extra_field_prefix(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
         $payload['unknown_extra_field'] = 'rogue';
@@ -1158,7 +1206,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         $start = hrtime(true);
         $error = $this->validator->validatePayloadKeySet(FiscalEventType::SALE_RECEIPT, $payload);
-        self::assertNull($error, 'F-15 key set must be exactly 27');
+        self::assertNull($error, 'F-15 key set must be exactly 28');
 
         $this->validator->validatePerEventConstraints(FiscalEventType::SALE_RECEIPT, $payload);
         $durationMs = (hrtime(true) - $start) / 1_000_000;
@@ -1513,6 +1561,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
                 'decision' => 'approved',
                 'limit_exceeded' => false,
                 'mirror_stale_at_authoring' => false,
+                'override_evidence' => null,
                 'policy_version' => 'phase3-default-v1',
                 'stale_policy_action' => 'allow',
                 'warnings' => [],
@@ -1607,6 +1656,60 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         self::assertNull($this->validator->validatePayloadKeySet(FiscalEventType::ACCOUNT_CHARGE, $payload));
         $this->validator->validatePerEventConstraints(FiscalEventType::ACCOUNT_CHARGE, $payload);
         $this->addToAssertionCount(1);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function phaseFourApprovalPayload(array $overrides = []): array
+    {
+        return array_replace_recursive([
+            'approval_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'approval_scope' => 'discount_limit_override',
+            'cashier_user_id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            'company_id' => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            'event_time_device' => '2026-05-22T10:00:00.000Z',
+            'policy_version' => 'pos-discount-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => 'Approved',
+            'regime_extensions' => null,
+            'requested_at_device' => '2026-05-22T09:59:58.000Z',
+            'resolved_at_device' => '2026-05-22T10:00:00.000Z',
+            'supervisor_user_id' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            'supervisor_user_snapshot' => ['name' => 'Manager', 'roles' => ['manager']],
+            'target' => ['target_reference_id' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'],
+            'tenant_id' => 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            'terminal_id' => '99999999-9999-4999-8999-999999999999',
+            'training_flag' => false,
+        ], $overrides);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function phaseFourOverridePayload(array $overrides = []): array
+    {
+        return array_replace_recursive([
+            'approval_event_id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'approval_id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            'approval_scope' => 'discount_limit_override',
+            'company_id' => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            'event_time_device' => '2026-05-22T10:00:00.000Z',
+            'override_context' => [
+                'target_event_type' => 'DISCOUNT_LIMIT_OVERRIDE',
+                'target_reference_id' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            ],
+            'policy_version' => 'pos-discount-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => 'Approved',
+            'supervisor_user_id' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+            'target' => ['discount_value' => '20'],
+            'tenant_id' => 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+            'terminal_id' => '99999999-9999-4999-8999-999999999999',
+            'training_flag' => false,
+        ], $overrides);
     }
 
     /**

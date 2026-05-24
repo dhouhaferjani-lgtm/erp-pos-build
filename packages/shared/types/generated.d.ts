@@ -508,6 +508,17 @@ export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'n
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
 }
+declare namespace App.Modules.Fiscal.Domain.Enums {
+export type DeviceLossIncidentStatus = 'reported' | 'recovering' | 'resolved' | 'unrecoverable';
+export type FiscalEventType = 'SALE_RECEIPT' | 'CHAIN_BREAK_DETECTED' | 'CHAIN_RESTART' | 'TERMINAL_REGISTRY_SNAPSHOT' | 'COMPANY_DAY_CLOSURE_MANIFEST' | 'ACCOUNT_PAYMENT' | 'ACCOUNT_CHARGE' | 'ACCOUNT_STATUS_CHANGED' | 'OPERATOR_APPROVAL_GRANTED' | 'OVERRIDE_CREDIT_LIMIT' | 'OVERRIDE_ACCOUNT_STATUS' | 'OVERRIDE_DISCOUNT_LIMIT' | 'OVERRIDE_TENDER_TOLERANCE' | 'OVERRIDE_VOID_OR_RETURN' | 'ACCOUNT_REFUND' | 'ACCOUNT_PAYMENT_RECONCILED' | 'ACCOUNT_CREDIT_ISSUE' | 'ACCOUNT_CREDIT_USAGE' | 'DEPOSIT_RECEIPT' | 'IDENTITY_ALIAS_RECONCILED' | 'SALE_VOID' | 'SALE_CORRECTION' | 'REFUND_RECEIPT' | 'PARTIAL_REFUND' | 'RETURN_WITHOUT_RECEIPT' | 'OPENING_FLOAT' | 'CASH_IN' | 'CASH_OUT' | 'SAFE_DROP' | 'CASH_CORRECTION' | 'SESSION_OPEN' | 'SESSION_CLOSE' | 'X_REPORT' | 'Z_REPORT' | 'REPRINT_COPY';
+export type FiscalIntegrityAnomaly = 'canonical_hash_mismatch' | 'canonical_parse_failure' | 'device_time_anomaly' | 'sequence_gap' | 'signature_invalid';
+export type FiscalIntegrityPolicyAction = 'accept_and_quarantine' | 'require_acknowledgment' | 'inactive';
+export type IntegrityExceptionClass = 'canonical_hash_mismatch' | 'canonical_parse_failure' | 'time_anomaly' | 'sequence_gap' | 'sequence_conflict' | 'malformed_envelope';
+export type IntegrityStatus = 'verified' | 'quarantined';
+export type PayloadParseStatus = 'pending' | 'parsed' | 'failed';
+export type ProjectionStatus = 'pending' | 'running' | 'applied' | 'dead_lettered';
+export type SignatureStatus = 'not_required' | 'pending' | 'signed' | 'failed';
+}
 declare namespace App.Modules.Identity.Application.DTOs {
 export type AuthUserData = {
 id: string;
@@ -995,11 +1006,13 @@ actualAmount: string;
 };
 }
 declare namespace App.Modules.POS.Domain.Enums {
+export type ApprovalScope = 'close_shift_variance' | 'credit_limit_override' | 'account_status_override' | 'discount_limit_override' | 'tender_tolerance_override' | 'void_or_return_override' | 'cash_drawer_control';
 export type ConsumptionMode = 'SUR_PLACE' | 'A_EMPORTER';
 export type DiscountSource = 'manual' | 'promotion' | 'coupon' | 'loyalty';
 export type ExchangeRequestStatus = 'pending' | 'completed' | 'failed';
 export type FiscalStatus = 'pending_seal' | 'fiscalized' | 'voided' | 'pending_sync' | 'synced' | 'sync_failed';
 export type HeldOrderStatus = 'held' | 'recalled' | 'expired';
+export type OperatorApprovalDecision = 'approved' | 'invalid_pin' | 'scope_mismatch' | 'permission_denied';
 export type OrderLineStatus = 'pending' | 'sent' | 'preparing' | 'ready' | 'served' | 'cancelled';
 export type OrderStatus = 'open' | 'sent_to_kitchen' | 'ready' | 'closed' | 'cancelled';
 export type PaymentInstrumentKind = 'store_voucher' | 'restaurant_voucher' | 'gift_card' | 'none';
@@ -1012,7 +1025,7 @@ export type ShiftStatus = 'OPEN' | 'CLOSED';
 export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
 export type TableShape = 'rectangle' | 'circle' | 'square';
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
-export type TerminalType = 'web' | 'physical';
+export type TerminalType = 'web' | 'physical' | 'virtual_admin';
 }
 declare namespace App.Modules.Partner.Application.DTOs {
 export type PartnerData = {
@@ -1044,6 +1057,11 @@ state: string | null;
 postal_code: string | null;
 country: string | null;
 is_active: boolean;
+account_status: App.Modules.Partner.Domain.Enums.CustomerAccountStatus;
+account_status_version: number;
+account_status_changed_at: string | null;
+account_status_changed_by: string | null;
+account_status_reason: string | null;
 contacts_count: number;
 primary_contact_name: string | null;
 created_at: string;
@@ -1052,6 +1070,7 @@ updated_at: string | null;
 }
 declare namespace App.Modules.Partner.Domain.Enums {
 export type ConsolidationFrequency = 'weekly' | 'monthly';
+export type CustomerAccountStatus = 'active' | 'suspended' | 'closed' | 'disputed';
 export type CustomerCategory = 'individual' | 'business';
 export type PartnerType = 'customer' | 'supplier' | 'both';
 export type PaymentTerms = 'immediate' | 'net_15' | 'net_30' | 'net_60' | 'net_90' | 'custom';
@@ -1466,6 +1485,7 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
+export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';

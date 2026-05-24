@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Providers;
 
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Application\Projections\AccountPaymentReceiptProjection;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\ServiceProvider;
 
 /**

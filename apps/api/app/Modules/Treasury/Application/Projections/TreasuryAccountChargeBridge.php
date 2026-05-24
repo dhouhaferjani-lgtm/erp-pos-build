@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountChargeView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -19,7 +20,6 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\PosCustomerAlias;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\Facades\DB;
 
 /**

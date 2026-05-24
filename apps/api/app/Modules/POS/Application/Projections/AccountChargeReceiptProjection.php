@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Projections;
 
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\AccountChargeReceipt;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

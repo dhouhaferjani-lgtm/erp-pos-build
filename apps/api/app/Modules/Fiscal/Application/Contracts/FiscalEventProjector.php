@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Shared\Contracts\Fiscal;
+namespace App\Modules\Fiscal\Application\Contracts;
 
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;

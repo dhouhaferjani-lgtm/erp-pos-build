@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Partner\Application\DTOs;
 
 use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
@@ -44,6 +45,11 @@ class PartnerData extends Data
         public ?string $postal_code,
         public ?string $country,
         public bool $is_active,
+        public CustomerAccountStatus $account_status,
+        public int $account_status_version,
+        public ?string $account_status_changed_at,
+        public ?string $account_status_changed_by,
+        public ?string $account_status_reason,
         public int $contacts_count,
         public ?string $primary_contact_name,
         public string $created_at,
@@ -81,6 +87,11 @@ class PartnerData extends Data
             postal_code: $partner->postal_code,
             country: $partner->country,
             is_active: (bool) $partner->is_active,
+            account_status: $partner->account_status,
+            account_status_version: $partner->account_status_version,
+            account_status_changed_at: $partner->account_status_changed_at?->toIso8601String(),
+            account_status_changed_by: $partner->account_status_changed_by,
+            account_status_reason: $partner->account_status_reason,
             contacts_count: $partner->relationLoaded('partyContacts')
                 ? $partner->partyContacts->count()
                 : ($partner->party_contacts_count ?? 0),

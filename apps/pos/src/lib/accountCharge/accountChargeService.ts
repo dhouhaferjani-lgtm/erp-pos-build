@@ -4,6 +4,7 @@ import { bcadd, bccomp, bcformat, bcsub } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
 import type {
+  AccountChargeOverrideEvidence,
   AccountChargePayload,
   AccountChargeSeller,
 } from '@/lib/fiscal/payloads/AccountChargePayload';
@@ -50,6 +51,18 @@ export interface AccountChargeVatBreakdownInput {
   taxCategoryCode: string;
 }
 
+export interface AccountChargeOverrideApprovalInput {
+  approvalId: string;
+  approvalScope: AccountChargeOverrideEvidence['approval_scope'];
+  cashierUserId: string;
+  reasonCode: string;
+  reasonText: string | null;
+  requestedAtDevice: Date;
+  resolvedAtDevice: Date;
+  supervisorUserId: string;
+  supervisorUserSnapshot: Record<string, unknown>;
+}
+
 export interface AuthorAccountChargeInput {
   tenantId: string;
   companyId: string;
@@ -81,6 +94,8 @@ export interface AuthorAccountChargeInput {
   stalenessReason?: 'never_synced' | 'older_than_threshold' | 'server_conflict_pending' | null;
   aliasCandidates?: string[];
   hardStaleAfterMinutes?: number;
+  overrideApproval?: AccountChargeOverrideApprovalInput | null;
+  overrideEvidence?: AccountChargeOverrideEvidence | null;
 }
 
 export interface AccountChargeResult {
@@ -219,6 +234,7 @@ function buildCreditDecision(
     customer_sync_status: input.customer.customer_sync_status,
     alias_candidates: input.aliasCandidates ?? [],
     is_active: input.customer.is_active,
+    account_status: input.customer.account_status,
     charge_account_enabled: input.customer.charge_account_enabled,
     charge_policy_version: input.customer.charge_policy_version,
     receivable_balance: bcformat(input.customer.receivable_balance, input.scale),
@@ -231,6 +247,7 @@ function buildCreditDecision(
     balance_updated_at: input.customer.balance_updated_at,
     now: input.eventTimeDevice,
     hard_stale_after_minutes: input.hardStaleAfterMinutes ?? 240,
+    override_evidence: input.overrideEvidence ?? null,
   };
 
   const result = evaluateAccountChargeCreditDecision(decisionInput);
@@ -241,6 +258,38 @@ function buildCreditDecision(
   }
 
   return result.decision;
+}
+
+function buildOverrideTarget(input: {
+  customer: AttachedCheckoutCustomer;
+  policyVersion: string;
+  total: string;
+}): Record<string, unknown> {
+  return {
+    account_status: input.customer.account_status,
+    amount: input.total,
+    customer_id: input.customer.id,
+    policy_version: input.policyVersion,
+  };
+}
+
+function overrideEventTypeFor(
+  approvalScope: AccountChargeOverrideApprovalInput['approvalScope'],
+): 'OVERRIDE_CREDIT_LIMIT' | 'OVERRIDE_ACCOUNT_STATUS' {
+  return approvalScope === 'credit_limit_override'
+    ? 'OVERRIDE_CREDIT_LIMIT'
+    : 'OVERRIDE_ACCOUNT_STATUS';
+}
+
+function requirePolicyVersion(customer: AttachedCheckoutCustomer): string {
+  const policyVersion = customer.charge_policy_version?.trim() ?? '';
+  if (policyVersion === '') {
+    throw new AccountChargeInputError(
+      'charge_policy_missing: customer.charge_policy_version is required for account-charge override authoring.',
+    );
+  }
+
+  return policyVersion;
 }
 
 function buildStaleness(
@@ -385,21 +434,126 @@ export async function authorAccountCharge(
   input: AuthorAccountChargeInput,
 ): Promise<AccountChargeResult> {
   assertNoPaymentLines(input);
+  assertCustomerSelected(input.customer);
 
   const accountChargeUuid = input.accountChargeUuid ?? crypto.randomUUID();
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
   const businessDate = input.businessDate ?? eventTimeDevice.toISOString().slice(0, 10);
-  const payload = buildAccountChargePayload({
-    ...input,
-    accountChargeUuid,
-    eventTimeDevice,
-    businessDate,
-  });
+  const scale = getCurrencyDecimals(input.currency);
+  assertSupportedScale(scale, input.currency);
+  const total = bcformat(input.total, scale);
+  const hasOverrideApproval = input.overrideApproval !== null && input.overrideApproval !== undefined;
+  if (!hasOverrideApproval && input.overrideEvidence !== null && input.overrideEvidence !== undefined) {
+    throw new AccountChargeInputError(
+      'account_charge_override_evidence_requires_approval_authoring',
+    );
+  }
+  const prebuiltPayload = hasOverrideApproval
+    ? null
+    : buildAccountChargePayload({
+      ...input,
+      accountChargeUuid,
+      eventTimeDevice,
+      businessDate,
+    });
 
   let appendResult: FiscalEventAppendResult | null = null;
+  let payload: AccountChargePayload | null = null;
   await db.execute('BEGIN TRANSACTION');
   try {
     const engine = await getFiscalEventEngine(input.companyId, db);
+    let overrideEvidence = input.overrideEvidence ?? null;
+    if (hasOverrideApproval && input.overrideApproval !== null && input.overrideApproval !== undefined) {
+      const policyVersion = requirePolicyVersion(input.customer);
+      const target = buildOverrideTarget({
+        customer: input.customer,
+        policyVersion,
+        total,
+      });
+      const approvalPayload = {
+        approval_id: input.overrideApproval.approvalId,
+        approval_scope: input.overrideApproval.approvalScope,
+        cashier_user_id: input.overrideApproval.cashierUserId,
+        company_id: input.companyId,
+        event_time_device: eventTimeDevice.toISOString(),
+        policy_version: policyVersion,
+        reason_code: input.overrideApproval.reasonCode,
+        reason_text: input.overrideApproval.reasonText,
+        regime_extensions: null,
+        requested_at_device: input.overrideApproval.requestedAtDevice.toISOString(),
+        resolved_at_device: input.overrideApproval.resolvedAtDevice.toISOString(),
+        supervisor_user_id: input.overrideApproval.supervisorUserId,
+        supervisor_user_snapshot: input.overrideApproval.supervisorUserSnapshot,
+        target,
+        tenant_id: input.tenantId,
+        terminal_id: input.terminalId,
+        training_flag: input.isTraining === true,
+      };
+      const approvalEvent = await engine.append(db, {
+        event_type: 'OPERATOR_APPROVAL_GRANTED',
+        tenant_id: input.tenantId,
+        company_id: input.companyId,
+        terminal_id: input.terminalId,
+        operator_id: input.overrideApproval.supervisorUserId,
+        event_time_device: isoSecondsUtc(eventTimeDevice),
+        business_date: businessDate,
+        payload: approvalPayload,
+        source_event_class: 'operator_approval',
+        source_event_id: input.overrideApproval.approvalId,
+      });
+
+      const overrideEventType = overrideEventTypeFor(input.overrideApproval.approvalScope);
+      const overridePayload = {
+        approval_event_id: approvalEvent.id,
+        approval_id: input.overrideApproval.approvalId,
+        approval_scope: input.overrideApproval.approvalScope,
+        company_id: input.companyId,
+        event_time_device: eventTimeDevice.toISOString(),
+        override_context: {
+          target_event_type: 'ACCOUNT_CHARGE',
+          target_reference_id: accountChargeUuid,
+        },
+        policy_version: policyVersion,
+        reason_code: input.overrideApproval.reasonCode,
+        reason_text: input.overrideApproval.reasonText,
+        supervisor_user_id: input.overrideApproval.supervisorUserId,
+        target,
+        tenant_id: input.tenantId,
+        terminal_id: input.terminalId,
+        training_flag: input.isTraining === true,
+      };
+      const overrideEvent = await engine.append(db, {
+        event_type: overrideEventType,
+        tenant_id: input.tenantId,
+        company_id: input.companyId,
+        terminal_id: input.terminalId,
+        operator_id: input.overrideApproval.supervisorUserId,
+        event_time_device: isoSecondsUtc(eventTimeDevice),
+        business_date: businessDate,
+        payload: overridePayload,
+        reference_event_id: approvalEvent.id,
+        source_event_class: 'account_charge_override',
+        source_event_id: `${input.overrideApproval.approvalId}:${input.overrideApproval.approvalScope}`,
+      });
+
+      overrideEvidence = {
+        approval_event_id: approvalEvent.id,
+        approval_scope: input.overrideApproval.approvalScope,
+        override_event_id: overrideEvent.id,
+        policy_version: policyVersion,
+        target_account_status: input.customer.account_status,
+        target_amount: total,
+        target_customer_id: input.customer.id,
+      };
+    }
+
+    payload = prebuiltPayload ?? buildAccountChargePayload({
+      ...input,
+      accountChargeUuid,
+      businessDate,
+      eventTimeDevice,
+      overrideEvidence,
+    });
     appendResult = await engine.append(db, {
       event_type: 'ACCOUNT_CHARGE',
       tenant_id: input.tenantId,
@@ -409,6 +563,7 @@ export async function authorAccountCharge(
       event_time_device: isoSecondsUtc(eventTimeDevice),
       business_date: businessDate,
       payload,
+      reference_event_id: overrideEvidence?.override_event_id,
       source_event_class: 'account_charge',
       source_event_id: accountChargeUuid,
     });
@@ -420,6 +575,9 @@ export async function authorAccountCharge(
 
   if (appendResult === null) {
     throw new Error('Fiscal event append did not return a result.');
+  }
+  if (payload === null) {
+    throw new Error('Account charge payload was not built.');
   }
 
   useSyncStore.getState().incrementPendingCount();

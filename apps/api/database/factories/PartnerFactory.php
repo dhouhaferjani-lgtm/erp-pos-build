@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -41,6 +42,8 @@ class PartnerFactory extends Factory
             'country_code' => 'FR',
             'notes' => $this->faker->optional(0.3)->paragraph(),
             'is_active' => $this->faker->boolean(95),
+            'account_status' => CustomerAccountStatus::Active,
+            'account_status_version' => 1,
             'tax_status' => PartnerTaxStatus::REGISTERED,
             'withholding_exempt' => false,
         ];

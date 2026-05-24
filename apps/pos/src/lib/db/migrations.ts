@@ -1212,4 +1212,82 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Phase 4 Task 6 — account-status mirror for account-charge fail-closed rules.
+    version: 42,
+    name: 'add_account_status_to_customers_mirror',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE customers ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended', 'closed', 'disputed'))",
+        'ALTER TABLE customers ADD COLUMN account_status_changed_at TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_reason TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_version INTEGER NOT NULL DEFAULT 1',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 7 — scoped approval metadata for offline supervisor PIN checks.
+    version: 43,
+    name: 'add_scoped_approval_metadata_to_operator_pins',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE operator_pins ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE operator_pins ADD COLUMN company_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN approval_scopes TEXT NOT NULL DEFAULT '[]'",
+        'ALTER TABLE operator_pins ADD COLUMN approval_scope_permissions_fetched_at TEXT',
+        "ALTER TABLE operator_pins ADD COLUMN approval_mirror_status TEXT NOT NULL DEFAULT 'fresh' CHECK (approval_mirror_status IN ('fresh', 'server_quarantined'))",
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 10 — approval evidence for legacy cash drawer DEPOSIT/PAYOUT queue rows.
+    version: 44,
+    name: 'add_cash_drawer_approval_evidence',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_fiscal_event_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_scope TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_supervisor_user_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_target_hash TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

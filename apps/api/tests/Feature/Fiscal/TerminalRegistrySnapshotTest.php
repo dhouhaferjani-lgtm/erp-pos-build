@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\DefaultModuleActivationResolver;
 use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
@@ -22,7 +23,6 @@ use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;

@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -289,7 +290,29 @@ final class PosCustomerSyncControllerTest extends TestCase
             ->assertJsonPath('data.customers.0.credit_limit', '500.0000')
             ->assertJsonPath('data.customers.0.payment_terms_days', 15)
             ->assertJsonPath('data.customers.0.charge_account_enabled', true)
-            ->assertJsonPath('data.customers.0.charge_policy_version', 'phase3-v1');
+            ->assertJsonPath('data.customers.0.charge_policy_version', 'phase4-v1');
+    }
+
+    public function test_pos_customer_sync_includes_account_status_fields(): void
+    {
+        $customer = $this->createCustomer([
+            'name' => 'Suspended Customer',
+            'account_status' => CustomerAccountStatus::Suspended,
+            'account_status_version' => 3,
+            'account_status_reason' => 'Credit control hold',
+        ]);
+
+        $response = $this
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/customers/sync');
+
+        $response->assertOk()
+            ->assertJsonPath('data.customers.0.id', $customer->id)
+            ->assertJsonPath('data.customers.0.account_status', 'suspended')
+            ->assertJsonPath('data.customers.0.account_status_version', 3)
+            ->assertJsonPath('data.customers.0.account_status_reason', 'Credit control hold')
+            ->assertJsonPath('data.customers.0.charge_account_enabled', false)
+            ->assertJsonPath('data.customers.0.charge_policy_version', 'phase4-v1');
     }
 
     /**

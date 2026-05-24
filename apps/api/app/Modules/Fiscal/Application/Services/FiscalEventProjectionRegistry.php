@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Support\Facades\Log;
 use LogicException;
