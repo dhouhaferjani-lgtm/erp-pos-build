@@ -34,6 +34,8 @@ No data migration. Every existing Partner/Contact test continues to pass.
 
 ## 2. Architecture grounding (verified file paths + state)
 
+> **Path convention:** all paths are relative to the monorepo root `/Users/houssamr/Projects/syneriva` (so production code is under `apps/erp/apps/api/…`), matching the sibling T-track specs and the topology contract. A reviewer rooted at `apps/erp` will see the same files under `apps/api/…`.
+
 Read in this order:
 
 1. `apps/erp/apps/api/app/Modules/Partner/Domain/Partner.php` (lines 1–377) — the Customer aggregate root. Note the existing `contacts()` BelongsToMany (lines 363–368), `partyContacts()` HasMany (lines 355–358), and `primaryContact()` helper (lines 373–376). `customer_category` discriminator + `isB2B()` (lines 188–191) already exist.
@@ -43,7 +45,7 @@ Read in this order:
 5. `apps/erp/apps/api/database/migrations/2026_03_11_600001_add_contact_role_fields_to_party_contacts.php` — confirms the role concept today is just two added booleans, **not** an enum.
 6. `apps/erp/apps/api/app/Modules/Contact/Domain/Enums/Gender.php` — the **only** enum in the Contact module today (verified: no `ContactRole` / `CustomerContactRole` exists yet — this track creates one).
 7. `apps/erp/apps/api/app/Modules/Partner/Domain/Enums/CustomerCategory.php` (lines 7–19) — pattern to mirror for the new enum (`values()` helper).
-8. `apps/erp/apps/api/app/Modules/Contact/Application/Services/ContactService.php` — service style to mirror (constructor injection, DTO inputs).
+8. `apps/erp/apps/api/app/Modules/Pricing/Domain/Services/PricingService.php` (lines 17–20) — the **constructor-injection style to mirror** (`private readonly` deps). ⚠️ **Do NOT mirror** `apps/erp/apps/api/app/Modules/Contact/Application/Services/ContactService.php` for DI/DTO style (round-1 Codex P1-1): it predates the convention — no constructor, `array<string,mixed>` inputs (`ContactService.php:16–28`), scalar params in `linkToParty()` (`ContactService.php:41–47`). Follow the typed DTO + constructor-injection contract in §4 of this spec, not that legacy service.
 
 **Constraints from `apps/erp/CLAUDE.md`:** hexagonal (Domain / Application / Infrastructure / Presentation), constructor injection only (`private readonly`, never `app()`), strict typing (no `mixed`; JSONB → DTO), enums for every status/type column, TDD, PHPStan level 8, Pint, route middleware `['api', 'auth:sanctum', SetPermissionsTeam::class]`, types flow from backend DTOs (`php artisan typescript:transform`), all user-facing strings via `t()`.
 
@@ -110,7 +112,7 @@ case Technical = 'technical';   // technical / operational contact
 case Other     = 'other';       // catch-all; pair with `label`
 ```
 
-- `label(): string` and `static values(): array` helpers mirroring `CustomerCategory`.
+- `label(): string` and `static values(): array` helpers. **Mirror `PaymentTerms` (`Partner/Domain/Enums/PaymentTerms.php:16–50`) for the `label()` + `values()` pair** — `CustomerCategory` only has `values()`, no `label()` (round-1 Codex P2-2).
 - Generic across all verticals — no automotive/retail-specific roles. `Other` + the free-text `label` column absorb tenant-specific role names without code changes.
 - **Placement rationale:** the enum lives under `Partner/Domain/Enums` because the relationship is owned by the Customer (Partner) aggregate — the partner *grants* a contact a role on its account. The `contacts` table is the cross-module entity; the join and its role semantics belong to Partner.
 
@@ -162,7 +164,7 @@ final class CustomerContactService
 
 **Tenant-isolation contract (service-layer, per topology contract Pattern C/D):** every method resolves the current company via `CompanyContext::requireCompany()` and asserts both `partner_id` and `contact_id` resolve to rows in the current tenant/company before mutating — never trusting the request body. The DB boundary is the tenant; the service is the second line. Cross-tenant `attach` throws `ModelNotFoundException` (404), never a leak.
 
-**`setPrimary` atomicity:** wrap demote-old-primary + promote-new in `DB::transaction()`. The PG partial unique index is the backstop; the transaction is the intent. Validate with a concurrent-promotion test.
+**`setPrimary` atomicity:** wrap demote-old-primary + promote-new in `DB::transaction()`. The PG partial unique index is the backstop; the transaction is the intent. **Concurrent-promotion contract (resolves round-1 Codex SUGGESTION-1):** under two simultaneous `setPrimary` calls for the same partner, the index guarantees the invariant "exactly one primary"; the *losing* transaction catches the unique violation and **retries once** (re-demote + promote) so the API returns `200` for both callers rather than surfacing a raw `409`. The concurrent-promotion test asserts: end state has exactly one primary AND neither call returns a 5xx.
 
 ### Events emitted (immutable — CLAUDE.md rule 8)
 
@@ -174,7 +176,7 @@ Emit via `DB::afterCommit(fn () => event(...))` to match the codebase's post-com
 
 ### REST endpoints (nested under partners)
 
-All behind `['api', 'auth:sanctum', SetPermissionsTeam::class]` and RBAC-gated.
+**Add these routes inside the existing Partner route group** so they inherit its full middleware stack `['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class]` (verified at `apps/erp/apps/api/app/Modules/Partner/routes.php:19` — the group already includes `EnforceTokenTenantClaim`, which the bare CLAUDE.md trio omits; round-1 Codex P2-1). RBAC-gated per endpoint.
 
 - `GET    /api/v1/partners/{partner}/customer-contacts` — list (with role filter)
 - `POST   /api/v1/partners/{partner}/customer-contacts` — attach
@@ -238,7 +240,7 @@ customer contact name. **No Tauri code in this track.** See §12.
 - [ ] Unit: `CustomerContactRole::values()`/`label()`
 - [ ] Unit: `CustomerContact::isCurrentlyValid()` across start/end-date edges
 - [ ] Feature: each service method (`attach`, `changeRole`, `setPrimary` atomic demote, `detach`, `listForPartner`) with `RefreshDatabase` + real models + `RolesAndPermissionsSeeder`
-- [ ] Feature: tenant-isolation (cross-tenant attach → 404)
+- [ ] Feature: **tenant/company isolation for EVERY mutator** (round-1 Codex P1-2) — `attach`, `changeRole`, `setPrimary`, `detach`, AND `listForPartner` each tested where the target `customer_contacts` row / `partner_id` / `contact_id` belongs to a different company/tenant context → resolves nothing, returns 404, leaks nothing. Both `Partner` and `Contact` are `company_id`-scoped (`Partner.php:29–30`, `Contact.php:25–26`); `CompanyContext::requireCompany()` (`CompanyContext.php:99–108`) is the scoping source.
 - [ ] Feature: each endpoint behind RBAC (unauthorized → 403)
 - [ ] Feature: unique-role-per-partner-contact violation → 422
 
@@ -252,7 +254,7 @@ customer contact name. **No Tauri code in this track.** See §12.
 - [ ] Migration is in `database/migrations/tenant/`; `tenant_id` has no `->constrained()`; partner/contact FKs are intra-tenant `cascadeOnDelete`
 - [ ] PG-only constraints (`idx_customer_contacts_primary` partial unique, date-range CHECK) are guarded by `DB::getDriverName() === 'pgsql'` so the SQLite test suite runs
 - [ ] `setPrimary` wraps demote+promote in a transaction; concurrent-promotion test proves single-primary invariant holds
-- [ ] Cross-tenant `attach`/`changeRole`/`detach` resolves nothing → 404; no foreign `partner_id`/`contact_id` accepted from the body
+- [ ] Cross-tenant `attach`/`changeRole`/`setPrimary`/`detach`/`listForPartner` resolves nothing → 404; no foreign `partner_id`/`contact_id` accepted from the body (every mutator + the list read, per P1-2)
 - [ ] Unique `(partner_id, contact_id, role)` violation surfaces as 422, not an unhandled 500
 - [ ] UUID path params validated with `Str::isUuid()` before any UUID-column query
 - [ ] All three events are new immutable classes (no reuse/rename of existing events)
@@ -278,7 +280,7 @@ customer contact name. **No Tauri code in this track.** See §12.
 1. This spec
 2. Parent design [2026-05-24-t11-b2b-b2c-separation.md](2026-05-24-t11-b2b-b2c-separation.md) §4.1
 3. [2026-05-24-migration-topology-contract.md](../coordination/2026-05-24-migration-topology-contract.md) §2 (table classification), §4 Pattern C + Pattern D
-4. `apps/erp/CLAUDE.md` + `apps/erp/apps/api/app/Modules/Partner/.claude` conventions
+4. `apps/erp/CLAUDE.md` + `apps/erp/docs/conventions/` (the Partner module has no `.claude` file — round-1 Codex P2-4; use the repo-level conventions, verified at `apps/erp/docs/conventions/`)
 5. The 8 file paths in §2
 6. Existing tests at `apps/erp/apps/api/tests/Feature/Partner/` and `.../Contact/` to mirror style
 7. Memory: `feedback_sweep_audit_trail_anchoring.md` (tenant-isolation patterns)
