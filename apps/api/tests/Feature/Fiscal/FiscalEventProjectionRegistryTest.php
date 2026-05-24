@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -271,6 +271,7 @@ final class FiscalEventProjectionRegistryTest extends TestCase
         );
 
         $this->assertContains('pos_core_receipt', $names);
+        $this->assertContains('pos_core_account_payment_receipt', $names);
         $this->assertContains('treasury_receipt_bridge', $names);
     }
 

@@ -1,7 +1,7 @@
 # POS Customer Accounts + Fiscal Event Engine — Phased Plan (Roadmap v2)
 
 **Created:** 2026-05-14
-**Status:** Active. Phase 1 foundation implementation is complete through Task 33 full-flow verification (2026-05-20); Phase 1.5 cleanup remains before any Phase 2 customer-facing deployment. Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
+**Status:** Active. Phase 1 foundation implementation complete through Task 33 full-flow verification + merged to `dev` (PR #124, 2026-05-21). Phase 1.5.2 + Phase 1.5.3 merged to `dev` (PR #127 + #128, 2026-05-21). Phase 2 implementation complete through Task 11 + merged to `dev` (PR #125, 2026-05-21). Phase 3 implementation complete through Task 11 closure + merged to `dev` (PR #129, 2026-05-22 at `2bdabd41f`). Tunisia + France soft-launch dry run scheduled 2026-05-25. Phase 4 + Z-Report Chain Clean Rebuild deferred to next Codex-led continuation (handover brief at `docs/superpowers/coordination/2026-05-22-codex-handover-phase-4-and-z-report.md`). Supersedes roadmap v1 (`2026-05-14-pos-customer-accounts-roadmap.md`). Codex assessment 2026-05-14: MAJOR-REVISION-NEEDED (0 CRITICAL / 3 MAJOR / 3 MINOR); all 6 findings are corrected in this revision — off-device durability given a Phase 1 home, `Payment.origin`/`fiscal_event_id` moved to Phase 1, Phase 2 balance-snapshot scope added, and the 3 MINOR wording/naming fixes applied.
 **Grounding (all locked / done):**
 - Source-of-truth v3 — `2026-05-14-offline-first-fiscal-source-of-truth-v3.md` (Codex: SOUND-WITH-CORRECTIONS, corrections applied, LOCKED)
 - Codebase reality audit — `2026-05-14-pos-fiscal-codebase-reality.md`
@@ -58,15 +58,17 @@ These tasks land **after Phase 1 Pass 2A + 2B merge to dev** and **before any Ph
 
 - **Phase-2 mirror-column audit + drop** — audit every SQL/code consumer of `pos_receipts.{fiscal_hash, previous_hash, chain_sequence, vat_breakdown_hash, payment_methods_hash}` (server-side mirror columns Task 21 R2 populated for read-compat through Phase 1) and `terminal_state.{last_hash, hash_sequence}` (device-side legacy chain columns retained briefly post-Pass-2B). Drop columns with no remaining consumer via a new migration. Remove projector mirror writes for any dropped column. Goal: "no dead code at go-live" per owner directive 2026-05-20.
 
-- **Per-country tax-number strict validation** — Pass 2A ships universal `seller.tax_number` validation (`^[A-Za-z0-9 \-/.]{4,40}$`) to avoid blocking sellers on a wrong country-specific regex. After accountant confirmation per country (immediate: TN matricule fiscal + FR SIRET; later: SA VAT 15-digit, DE USt-IdNr, IT P.IVA), land the per-country regex table + per-country positive/negative test fixtures + a validator branch keyed on `seller.tax_jurisdiction_country_code`. **Pre-Tunisia-launch gate.**
+- **Per-country tax-number strict validation — Phase 1.5.2 COMPLETE, merged to `dev` in `2b4f9b78c`** — Replaces the universal-only placeholder with a country-keyed table for FR SIREN/SIRET, TN compact/slash-normalized matricule fiscal, SA VAT, DE USt-IdNr, and IT P.IVA. Buyer FR TVA intracommunautaire is accepted; IT codice fiscale is validated separately at `buyer.codice_fiscale`. PHP and TS validators share the same forensic mismatch prefixes and fixture matrix. **Pre-Tunisia-launch gate closed.**
 
-- **ParseFailureResolution operator UX — pre-fill from best-effort parse** — Pass 2A's `ParseFailureResolutionService::resolve()` requires operators to hand-craft a full 27-key corrected payload, which is brutal UX. Build an admin tool that reads `fiscal_event_quarantine.raw_envelope`, attempts best-effort parse, pre-fills the structurally-valid 27 keys, lets the operator amend only broken fields, and submits via the existing resolve service. Phase-2-prep work.
+- **ParseFailureResolution operator UX — pre-fill from best-effort parse — Phase 1.5.3 COMPLETE, merged to `dev` in `aebbefeda`** — Pass 2A's `ParseFailureResolutionService::resolve()` previously required operators to hand-craft a full corrected payload. The admin resolution surface now reads `fiscal_event_quarantine.raw_envelope`, attempts best-effort parse, pre-fills structurally-valid fields, lets the operator amend broken fields, and submits through the existing resolution service.
 
 ---
 
 ## Phase 2 — On-Account Payment + Customer Attach (first customer-facing slice)
 
 The first slice that delivers customer value — the para-pharmacy use case.
+
+**Implementation status (2026-05-21):** Complete through Task 11. Phase 2 shipped the ACCOUNT_PAYMENT canonical contract, POS customer mirror/search/create/attach flow, device-side account-payment authoring, POS-core printable projection, Treasury-gated Payment + FIFO allocation bridge, and closure verification for both Treasury-active and POS-only deployments. The prior Phase 1.5 customer-facing deployment gate was closed after Phase 1.5.2 and Phase 1.5.3 merged to `dev` in `2b4f9b78c` and `aebbefeda`.
 
 **Scope:**
 - **POS customer mirror** — a local SQLite customer table (the codebase audit confirmed the POS has **no** customer mirror today). Synced from the server `Partner` model. The mirror **must include the balance projection the `ACCOUNT_PAYMENT_RECEIPT` requires**: `receivable_balance`, `credit_balance` (or an equivalent account-balance snapshot), `balance_updated_at`, plus local receipt fields for previous / projected-remaining balance at seal time and a staleness marker. Open-document detail is not mirrored — FIFO allocation happens server-side after sync, and the printed remaining balance is the local snapshot, later reconciled (`server_reconciles`).
@@ -88,6 +90,8 @@ Letting a customer leave owing — the AR-creating side.
 **Scope:** `ACCOUNT_CHARGE` event type (POS-core: the device authors + seals it); the settlement-vs-payment-line split; the **AR GL posting path that does not exist today** (`createPOSPaymentEntry` is cash→revenue only — codebase audit §2.2) — **(Treasury-module integration, D16: the AR GL posting is a Treasury bridge on the projector seam, not POS-core; the `ACCOUNT_CHARGE` event is published by the engine and the Treasury bridge consumes it)**; B2B `Facture` routing (identified B2B charge-to-account routes through the invoice flow, not the POS ticket path — B2B-sales-module integration); the rules engine (credit limits, terms).
 
 **Key constraint:** this is where the GL genuinely changes — it must be designed with the accounting model explicit, not bolted onto the cash-revenue path. And the GL change lands in the **Treasury bridge**, never in POS-core — a POS-only deployment without Treasury still authors `ACCOUNT_CHARGE` events; it just has no AR GL projection.
+
+**Implementation status (2026-05-22):** Complete through Task 11 closure + merged to `dev` (PR #129, `2bdabd41f`). Phase 3 shipped the `ACCOUNT_CHARGE` canonical contract and PHP/TS drift gates; POS customer mirror credit fields; device credit rules; device-side ACCOUNT_CHARGE authoring and printable; POS-core ACCOUNT_CHARGE receipt projection; AR GL command and `GeneralLedgerService` entry path; Treasury-gated AR bridge; Document/Sales-gated B2B Facture draft bridge; and closure verification for POS-only, Treasury-active, and B2B-active deployments. The full-flow matrix posts sealed device-authored `ACCOUNT_CHARGE` envelopes through `/api/v1/pos/sync/fiscal-events`, asserts exact canonical byte preservation, POS-core printable projection, AR journal projection, draft facture creation for business customers, and no legacy `/pos/receipts` server-authoring path.
 
 ---
 
@@ -135,7 +139,7 @@ Each phase follows the same loop:
 
 ## Immediate next action
 
-Complete the Phase 1.5 cleanup list before opening Phase 2 customer-facing work.
+Open and merge the Phase 3 `ACCOUNT_CHARGE` PR to `dev` once CI is green. After the Phase 3 merge, Phase 4 is the next roadmap phase; any remaining cleanup/audit work is tracked as deferred hardening, not as a blocker to opening Phase 2 or Phase 3 work.
 
 ---
 

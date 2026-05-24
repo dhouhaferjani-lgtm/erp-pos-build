@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Domain\Services;
 
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
@@ -15,6 +16,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
@@ -1253,6 +1255,106 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create journal entry for a POS account charge.
+     *
+     * ACCOUNT_CHARGE is customer credit: it increases AR and recognizes sale
+     * revenue/VAT without creating Treasury payment rows.
+     */
+    public function createPOSChargeEntry(CreatePOSChargeJournalEntryCommand $command): JournalEntry
+    {
+        Company::query()
+            ->where('tenant_id', $command->tenantId)
+            ->whereKey($command->companyId)
+            ->firstOrFail();
+
+        Partner::query()
+            ->where('tenant_id', $command->tenantId)
+            ->where('company_id', $command->companyId)
+            ->whereKey($command->partnerId)
+            ->firstOrFail();
+
+        $receivableAccount = $this->getAccountByPurpose($command->companyId, SystemAccountPurpose::CustomerReceivable);
+        $revenueAccount = $this->getAccountByPurpose($command->companyId, SystemAccountPurpose::ProductRevenue);
+        $vatAccount = $this->isPositive($command->vatTotal, $command->currencyScale)
+            ? $this->getAccountByPurpose($command->companyId, SystemAccountPurpose::VatCollected)
+            : null;
+        $discountAccount = $this->isPositive($command->transactionDiscountAmount, $command->currencyScale)
+            ? $this->getAccountByPurpose($command->companyId, SystemAccountPurpose::SalesDiscount)
+            : null;
+
+        $entry = DB::transaction(function () use (
+            $command,
+            $receivableAccount,
+            $revenueAccount,
+            $vatAccount,
+            $discountAccount,
+        ): JournalEntry {
+            $entry = JournalEntry::create([
+                'tenant_id' => $command->tenantId,
+                'company_id' => $command->companyId,
+                'entry_number' => $this->generateEntryNumber($command->companyId),
+                'entry_date' => $command->businessDate,
+                'description' => "POS Account Charge {$command->accountChargeUuid}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_account_charge',
+                'source_id' => $command->fiscalEventId,
+            ]);
+
+            $lineOrder = 0;
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $command->partnerId,
+                'debit' => $command->total,
+                'credit' => '0',
+                'description' => 'POS account charge receivable',
+                'line_order' => $lineOrder++,
+            ]);
+
+            if ($discountAccount !== null) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $discountAccount->id,
+                    'partner_id' => null,
+                    'debit' => $command->transactionDiscountAmount,
+                    'credit' => '0',
+                    'description' => 'POS account charge sales discount',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $command->subtotal,
+                'description' => 'POS account charge sales revenue',
+                'line_order' => $lineOrder++,
+            ]);
+
+            if ($vatAccount !== null) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $vatAccount->id,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $command->vatTotal,
+                    'description' => 'POS account charge VAT collected',
+                    'line_order' => $lineOrder,
+                ]);
+            }
+
+            $this->partnerBalanceService->refreshPartnerBalance($command->companyId, $command->partnerId);
+
+            return $entry->load('lines.account');
+        });
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry from a posted expense.
      *
      * Expenses are typically non-fiscal operational documents.
@@ -1428,6 +1530,14 @@ final class GeneralLedgerService
         }
 
         return sprintf('JE-%s-%06d', $year, $nextNumber);
+    }
+
+    /**
+     * @param  numeric-string  $amount
+     */
+    private function isPositive(string $amount, int $scale): bool
+    {
+        return bccomp($amount, '0', $scale) > 0;
     }
 
     private function calculateHash(JournalEntry $entry, string $previousHash): string

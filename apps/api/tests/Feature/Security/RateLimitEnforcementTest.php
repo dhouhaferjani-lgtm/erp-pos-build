@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -204,8 +207,8 @@ final class RateLimitEnforcementTest extends TestCase
 
     public function test_verify_manager_pin_returns_429_after_three_attempts(): void
     {
-        // Manager-PIN uses a hand-rolled limiter keyed on
-        // 'verify-manager-pin:'.$ip.':'.$userId with 3 attempts / 30s.
+        // Manager-PIN uses a hand-rolled limiter keyed on tenant, terminal,
+        // supervisor, and approval scope with 3 attempts / 30s.
         // We pre-clear the key to guarantee a fresh counter even if the
         // cache state has been touched elsewhere.
         $tenant = Tenant::create([
@@ -224,6 +227,14 @@ final class RateLimitEnforcementTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
+        ]);
+
+        $location = Location::factory()->create(['company_id' => $company->id]);
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+            'type' => TerminalType::Physical,
         ]);
 
         $caller = User::factory()->create([
@@ -247,16 +258,24 @@ final class RateLimitEnforcementTest extends TestCase
             'status' => UserStatus::Active,
         ]);
         $targetUserId = $target->id;
+        $terminalId = $terminal->id;
+        $payload = [
+            'company_id' => $company->id,
+            'terminal_id' => $terminalId,
+            'user_id' => $targetUserId,
+            'pin' => '0000',
+            'approval_scope' => 'close_shift_variance',
+            'target_event_type' => 'Z_REPORT',
+            'target_reference_id' => '44444444-4444-4444-8444-444444444444',
+            'reason' => 'Variance approval',
+        ];
 
-        RateLimiter::clear('verify-manager-pin:127.0.0.1:'.$targetUserId);
+        RateLimiter::clear('verify-manager-pin:'.$tenant->id.':'.$terminalId.':'.$targetUserId.':close_shift_variance');
 
         Sanctum::actingAs($caller, ['tenant:'.$tenant->id, '*']);
 
         for ($i = 1; $i <= 3; $i++) {
-            $response = $this->postJson('/api/v1/pos/verify-manager-pin', [
-                'user_id' => $targetUserId,
-                'pin' => '0000',
-            ]);
+            $response = $this->postJson('/api/v1/pos/verify-manager-pin', $payload);
 
             $this->assertNotEquals(
                 429,
@@ -265,10 +284,7 @@ final class RateLimitEnforcementTest extends TestCase
             );
         }
 
-        $response = $this->postJson('/api/v1/pos/verify-manager-pin', [
-            'user_id' => $targetUserId,
-            'pin' => '0000',
-        ]);
+        $response = $this->postJson('/api/v1/pos/verify-manager-pin', $payload);
 
         $response->assertStatus(429)
             ->assertJsonPath('error.code', 'TOO_MANY_ATTEMPTS');

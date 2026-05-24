@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Domain\DTOs\AccountChargePayload;
+use App\Modules\Fiscal\Domain\DTOs\AccountStatusChangedPayload;
+use App\Modules\Fiscal\Domain\DTOs\CashDrawerMovementPayload;
+use App\Modules\Fiscal\Domain\DTOs\OperatorApprovalGrantedPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideAccountStatusPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
+use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use LogicException;
 use RuntimeException;
@@ -18,12 +27,12 @@ use RuntimeException;
  * (`ParseFailureResolutionService::resolve()`).
  *
  * **Pass 2A.PHP.1 rewrite** — SALE_RECEIPT now validates the
- * 27-key Candidate C-v3 canonical contract (synthesis v5 §3 + §6).
+ * 28-key Candidate C-v3 canonical contract (synthesis v5 §3 + §6 + Phase 4 approval references).
  * The 10-key v1 shape is REJECTED. Pass 2A.PHP.2 migrates the
  * consumer-side projection + Nf525 sub-method bifurcation.
  *
  * **Per-event clauses (Phase 1):**
- *   - SALE_RECEIPT — 27-key nested shape per Candidate C-v3 §3:
+ *   - SALE_RECEIPT — 28-key nested shape per Candidate C-v3 §3:
  *     * Top-level money fields (subtotal, vat_total, total,
  *       transaction_discount_amount) at currency_scale, NON-NEGATIVE.
  *     * Total arithmetic cross-check (§6.D): subtotal + vat_total ==
@@ -53,8 +62,9 @@ use RuntimeException;
  *       - N-03: TRAINING-flag coupling invariant —
  *         `(invoice_type_code === 'TRAINING') ⟺ training_flag`
  *         (`payload_training_flag_mismatch`).
- *     * Tax-number universal pattern: `^[A-Za-z0-9 \-/.]{4,40}$` + non-empty
- *       + no control chars + trimmed. Per-country strict regex DEFERRED.
+ *     * Tax-number validation: universal baseline
+ *       `^[A-Za-z0-9 \-/.]{4,40}$` + country-specific strict regex
+ *       for FR / TN / SA / DE / IT (Phase 1.5.2).
  *     * tax_jurisdiction_country_code: ISO 3166-1 alpha-2 (`^[A-Z]{2}$`).
  *   - CHAIN_BREAK_DETECTED — unchanged from v1.
  *   - CHAIN_RESTART — unchanged from v1.
@@ -115,13 +125,36 @@ final class FiscalPayloadConstraintValidator
     private const ISO_4217 = '/^[A-Z]{3}$/D';
 
     /**
-     * Universal tax-number regex (synthesis v5 §7 — per-country strict
-     * regex deferred to Phase 1.5).
+     * Universal tax-number baseline (synthesis v5 §7).
      *
      * Length 4-40, characters [A-Za-z0-9 \-/.]. The validator additionally
-     * rejects empty / control-char / untrimmed values.
+     * rejects empty / control-char / untrimmed values before applying the
+     * country-specific Phase 1.5.2 regex table below.
      */
     private const TAX_NUMBER_UNIVERSAL = '/^[A-Za-z0-9 \-\/.]{4,40}$/D';
+
+    /**
+     * Phase 1.5.2 seller/customer tax-number regex table.
+     *
+     * TN accepts slash-separated input after compact normalization
+     * (`1234567/A/M/000` -> `1234567AM000`) but the canonical producer
+     * emits the compact form.
+     *
+     * @var array<string, string>
+     */
+    private const TAX_NUMBER_PATTERNS = [
+        'FR' => '/^([0-9]{9}|[0-9]{14})$/D',
+        'TN' => '/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/D',
+        'SA' => '/^3[0-9]{12}03$/D',
+        'DE' => '/^DE[0-9]{9}$/D',
+        'IT' => '/^[0-9]{11}$/D',
+    ];
+
+    /** FR buyer TVA intracommunautaire extension. */
+    private const FR_BUYER_TVA_INTRACOM = '/^FR[0-9]{11}$/D';
+
+    /** IT codice fiscale belongs in `buyer.codice_fiscale`, not `tax_number`. */
+    private const IT_BUYER_CODICE_FISCALE = '/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/D';
 
     /** Phase-1 fixed quantity scale per synthesis v5 §6.B. */
     private const QUANTITY_SCALE = 3;
@@ -152,6 +185,16 @@ final class FiscalPayloadConstraintValidator
     /** non_collected_subtype domain (synthesis v5 §3 — IT future). */
     private const NON_COLLECTED_SUBTYPES = ['servizi', 'beni', 'omaggio', 'successiva'];
 
+    private const ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES = ['synced', 'pending_create'];
+
+    private const ACCOUNT_PAYMENT_ALLOCATION_POLICIES = ['FIFO'];
+
+    private const ACCOUNT_PAYMENT_STALENESS_REASONS = ['never_synced', 'older_than_threshold', 'server_conflict_pending'];
+
+    private const ACCOUNT_CHARGE_INVOICE_CLASSIFICATIONS = ['b2c_charge_receipt', 'b2b_facture_draft_requested'];
+
+    private const ACCOUNT_CHARGE_STALE_POLICY_ACTIONS = ['allow', 'warn', 'block'];
+
     /** Foreign-currency scale lookup (synthesis v5 §6.B). */
     private const CURRENCY_SCALES = [
         'EUR' => 2,
@@ -167,12 +210,13 @@ final class FiscalPayloadConstraintValidator
      * `StrictCanonicalParser::PAYLOAD_KEYS` — extracted here so the
      * resolver enforces the SAME extras-rejection rule.
      *
-     * SALE_RECEIPT: 27-key sorted-lex Candidate C-v3 list (synthesis v5 §3).
+     * SALE_RECEIPT: 28-key sorted-lex Candidate C-v3 list (synthesis v5 §3 + Phase 4).
      *
      * @var array<value-of<FiscalEventType>, list<string>>
      */
     public const PAYLOAD_KEYS = [
         'SALE_RECEIPT' => [
+            'approval_references',
             'business_date',
             'buyer',
             'cashier_id',
@@ -212,6 +256,38 @@ final class FiscalPayloadConstraintValidator
         'TERMINAL_REGISTRY_SNAPSHOT' => [
             'prior_snapshot_link', 'snapshot_hash', 'terminals',
         ],
+        'ACCOUNT_PAYMENT' => [
+            'account_payment_uuid',
+            'business_date',
+            'cashier_id',
+            'cashier_name',
+            'currency_code',
+            'currency_scale',
+            'customer',
+            'event_time_device',
+            'local_balance_snapshot',
+            'notes',
+            'payment',
+            'receipt_type_code',
+            'references',
+            'regime_extensions',
+            'seller',
+            'shift_id',
+            'staleness',
+            'terminal_id',
+            'training_flag',
+            'treasury_allocation_policy',
+        ],
+        'ACCOUNT_CHARGE' => AccountChargePayload::PAYLOAD_KEYS,
+        'ACCOUNT_STATUS_CHANGED' => AccountStatusChangedPayload::PAYLOAD_KEYS,
+        'OPERATOR_APPROVAL_GRANTED' => OperatorApprovalGrantedPayload::PAYLOAD_KEYS,
+        'OVERRIDE_CREDIT_LIMIT' => OverrideCreditLimitPayload::PAYLOAD_KEYS,
+        'OVERRIDE_ACCOUNT_STATUS' => OverrideAccountStatusPayload::PAYLOAD_KEYS,
+        'OVERRIDE_DISCOUNT_LIMIT' => OverrideDiscountLimitPayload::PAYLOAD_KEYS,
+        'OVERRIDE_TENDER_TOLERANCE' => OverrideTenderTolerancePayload::PAYLOAD_KEYS,
+        'OVERRIDE_VOID_OR_RETURN' => OverrideVoidOrReturnPayload::PAYLOAD_KEYS,
+        'CASH_OUT' => CashDrawerMovementPayload::PAYLOAD_KEYS,
+        'SAFE_DROP' => CashDrawerMovementPayload::PAYLOAD_KEYS,
     ];
 
     /**
@@ -226,6 +302,10 @@ final class FiscalPayloadConstraintValidator
         $expected = self::PAYLOAD_KEYS[$type->value] ?? null;
         if ($expected === null) {
             return 'event_type_unimplemented:'.$type->value;
+        }
+
+        if ($type === FiscalEventType::ACCOUNT_CHARGE && array_key_exists('payments', $payload)) {
+            return 'payload_account_charge_payments_forbidden:payments is not valid on ACCOUNT_CHARGE';
         }
 
         $actual = array_keys($payload);
@@ -260,6 +340,17 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::CHAIN_BREAK_DETECTED => $this->validateChainBreakDetectedPayload($payload),
             FiscalEventType::CHAIN_RESTART => $this->validateChainRestartPayload($payload),
             FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT => $this->validateTerminalRegistrySnapshotPayload($payload),
+            FiscalEventType::ACCOUNT_PAYMENT => $this->validateAccountPaymentPayload($payload),
+            FiscalEventType::ACCOUNT_CHARGE => $this->validateAccountChargePayload($payload),
+            FiscalEventType::ACCOUNT_STATUS_CHANGED => $this->validateAccountStatusChangedPayload($payload),
+            FiscalEventType::OPERATOR_APPROVAL_GRANTED => $this->validateOperatorApprovalGrantedPayload($payload),
+            FiscalEventType::OVERRIDE_CREDIT_LIMIT,
+            FiscalEventType::OVERRIDE_ACCOUNT_STATUS,
+            FiscalEventType::OVERRIDE_DISCOUNT_LIMIT,
+            FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
+            FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validateOverridePayload($payload),
+            FiscalEventType::CASH_OUT,
+            FiscalEventType::SAFE_DROP => $this->validateCashDrawerMovementPayload($payload),
             default => throw new LogicException(
                 'FiscalPayloadConstraintValidator missing per-event clause for FiscalEventType::'.$type->name
             ),
@@ -267,7 +358,172 @@ final class FiscalPayloadConstraintValidator
     }
 
     /**
-     * SALE_RECEIPT — 27-key canonical Candidate C-v3 validator (synthesis v5).
+     * Phase 4 payloads share the strict key-set gate above; nested business
+     * invariants are enforced by their authoring services before canonical
+     * bytes are sealed.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function validatePhase4Common(array $payload): void
+    {
+        $this->assertUuid($payload, 'tenant_id');
+        $this->assertUuid($payload, 'company_id');
+        $this->assertUuid($payload, 'terminal_id');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertBool($payload, 'training_flag');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateAccountStatusChangedPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'actor_user_id');
+        $this->assertUuid($payload, 'partner_id');
+        $this->assertEnum($payload, 'old_status', ['active', 'suspended', 'closed', 'disputed']);
+        $this->assertEnum($payload, 'new_status', ['active', 'suspended', 'closed', 'disputed']);
+        $this->assertNonEmptyString($payload, 'reason');
+
+        if (! is_int($payload['status_version'] ?? null) || $payload['status_version'] < 1) {
+            throw new RuntimeException('payload_integer_format_mismatch:status_version');
+        }
+
+        if (! is_array($payload['partner_snapshot'] ?? null) || $payload['partner_snapshot'] === []) {
+            throw new RuntimeException('payload_object_required:partner_snapshot');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOperatorApprovalGrantedPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', [
+            'close_shift_variance',
+            'credit_limit_override',
+            'account_status_override',
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+            'cash_drawer_control',
+        ]);
+        $this->assertUuid($payload, 'cashier_user_id');
+        $this->assertUuid($payload, 'supervisor_user_id');
+        $this->assertNonEmptyString($payload, 'policy_version');
+        $this->assertNonEmptyString($payload, 'reason_code');
+        $this->assertOptionalNullableString($payload, 'reason_text');
+        $this->assertIsoDateTimeWithMs($payload, 'requested_at_device');
+        $this->assertIsoDateTimeWithMs($payload, 'resolved_at_device');
+
+        $this->validateSupervisorUserSnapshot($payload);
+        $this->validatePhase4TargetObject($payload);
+
+        if (($payload['regime_extensions'] ?? null) !== null && ! is_array($payload['regime_extensions'])) {
+            throw new RuntimeException('payload_nullable_object_required:regime_extensions');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOverridePayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_event_id');
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', [
+            'credit_limit_override',
+            'account_status_override',
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+        ]);
+        $this->assertNonEmptyString($payload, 'policy_version');
+        $this->assertNonEmptyString($payload, 'reason_code');
+        $this->assertOptionalNullableString($payload, 'reason_text');
+        $this->assertUuid($payload, 'supervisor_user_id');
+
+        $this->validateOverrideContext($payload);
+        $this->validatePhase4TargetObject($payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateCashDrawerMovementPayload(array $payload): void
+    {
+        $this->validatePhase4Common($payload);
+        $this->assertUuid($payload, 'approval_event_id');
+        $this->assertUuid($payload, 'approval_id');
+        $this->assertEnum($payload, 'approval_scope', ['cash_drawer_control']);
+        $this->assertMoneyString($payload, 'amount', $this->moneyRegex(3), 3);
+        $this->assertEnum($payload, 'operation_type', ['DEPOSIT', 'PAYOUT']);
+        $this->assertNonEmptyString($payload, 'reason');
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertUuid($payload, 'supervisor_user_id');
+        $this->assertUuid($payload, 'target_reference_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateSupervisorUserSnapshot(array $payload): void
+    {
+        $snapshot = $payload['supervisor_user_snapshot'] ?? null;
+        if (! is_array($snapshot) || $snapshot === []) {
+            throw new RuntimeException('payload_object_required:supervisor_user_snapshot');
+        }
+
+        $this->assertNonEmptyString($snapshot, 'name', 'supervisor_user_snapshot.name');
+
+        $roles = $snapshot['roles'] ?? null;
+        if (! is_array($roles)) {
+            throw new RuntimeException('payload_array_required:supervisor_user_snapshot.roles');
+        }
+
+        foreach ($roles as $index => $role) {
+            if (! is_string($role) || $role === '') {
+                throw new RuntimeException('payload_field_invalid:supervisor_user_snapshot.roles.'.$index);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateOverrideContext(array $payload): void
+    {
+        $context = $payload['override_context'] ?? null;
+        if (! is_array($context) || $context === []) {
+            throw new RuntimeException('payload_object_required:override_context');
+        }
+
+        $this->assertNonEmptyString($context, 'target_event_type', 'override_context.target_event_type');
+        $this->assertNonEmptyString($context, 'target_reference_id', 'override_context.target_reference_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validatePhase4TargetObject(array $payload): void
+    {
+        $target = $payload['target'] ?? null;
+        if (! is_array($target) || $target === []) {
+            throw new RuntimeException('payload_object_required:target');
+        }
+
+        foreach (['tenant_id', 'company_id', 'terminal_id'] as $scopeField) {
+            if (array_key_exists($scopeField, $target) && $target[$scopeField] !== $payload[$scopeField]) {
+                throw new RuntimeException('payload_scope_mismatch:target.'.$scopeField);
+            }
+        }
+    }
+
+    /**
+     * SALE_RECEIPT — 28-key canonical Candidate C-v3 validator (synthesis v5 + Phase 4).
      *
      * @param  array<string, mixed>  $payload
      */
@@ -379,6 +635,11 @@ final class FiscalPayloadConstraintValidator
 
         // ---- 7. list containers — line_items, payments, vat_breakdown,
         // ----    vouchers_redeemed. List-ness checked before per-row validation. ----
+        $approvalReferences = $this->requireList($payload, 'approval_references');
+        foreach ($approvalReferences as $index => $row) {
+            $this->validateSaleReceiptApprovalReference($index, $row);
+        }
+
         $lineItems = $this->requireList($payload, 'line_items');
         if (count($lineItems) === 0) {
             throw new RuntimeException('payload_line_items_empty:line_items must have >= 1 row');
@@ -414,10 +675,626 @@ final class FiscalPayloadConstraintValidator
         $this->validateVatPartition($lineItems, $vatBreakdown, $scale);
     }
 
+    private function validateSaleReceiptApprovalReference(int $index, mixed $row): void
+    {
+        if (! is_array($row) || array_is_list($row)) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_invalid:must be object');
+        }
+
+        $expected = [
+            'approval_event_id',
+            'approval_id',
+            'approval_scope',
+            'override_event_id',
+            'policy_version',
+            'supervisor_user_id',
+            'target_reference_id',
+        ];
+        $actual = array_keys($row);
+        $missing = array_values(array_diff($expected, $actual));
+        if ($missing !== []) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_missing_keys:'.implode(',', $missing));
+        }
+        $extra = array_values(array_diff($actual, $expected));
+        if ($extra !== []) {
+            throw new RuntimeException('payload_approval_references_'.$index.'_extra_keys:'.implode(',', $extra));
+        }
+
+        $this->assertUuid($row, 'approval_event_id', 'approval_references.'.$index.'.approval_event_id');
+        $this->assertUuid($row, 'approval_id', 'approval_references.'.$index.'.approval_id');
+        $this->assertEnum($row, 'approval_scope', [
+            'discount_limit_override',
+            'tender_tolerance_override',
+            'void_or_return_override',
+        ]);
+        $this->assertUuid($row, 'override_event_id', 'approval_references.'.$index.'.override_event_id');
+        $this->assertNonEmptyString($row, 'policy_version', 'approval_references.'.$index.'.policy_version');
+        $this->assertUuid($row, 'supervisor_user_id', 'approval_references.'.$index.'.supervisor_user_id');
+        $this->assertNonEmptyString($row, 'target_reference_id', 'approval_references.'.$index.'.target_reference_id');
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function validateSeller(array $payload): void
+    private function validateAccountPaymentPayload(array $payload): void
+    {
+        $scale = $payload['currency_scale'] ?? null;
+        if (! is_int($scale)) {
+            throw new RuntimeException('payload_currency_scale_invalid:must be int; got '.var_export($scale, true));
+        }
+        if (! in_array($scale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException(
+                'payload_currency_scale_unsupported:value='.$scale.':allowed='.implode(',', self::SUPPORTED_CURRENCY_SCALES)
+            );
+        }
+        $moneyRegex = $this->moneyRegex($scale);
+
+        $currencyCode = $payload['currency_code'] ?? null;
+        if (! is_string($currencyCode) || preg_match(self::ISO_4217, $currencyCode) !== 1) {
+            throw new RuntimeException('payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got '.var_export($currencyCode, true));
+        }
+
+        $this->assertUuid($payload, 'account_payment_uuid');
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertUuid($payload, 'cashier_id');
+        $this->assertNonEmptyString($payload, 'cashier_name');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertOptionalNullableString($payload, 'notes');
+        $this->assertEnum($payload, 'receipt_type_code', ['ACCOUNT_PAYMENT']);
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertUuid($payload, 'terminal_id');
+        $this->assertBool($payload, 'training_flag');
+        $this->assertEnum($payload, 'treasury_allocation_policy', self::ACCOUNT_PAYMENT_ALLOCATION_POLICIES);
+
+        $sellerCountryCode = $this->validateSeller($payload);
+        $this->validateAccountPaymentCustomer($payload['customer'] ?? null, $sellerCountryCode);
+        $this->validateAccountPaymentPayment($payload['payment'] ?? null, $moneyRegex, $scale, (bool) $payload['training_flag']);
+        $this->validateAccountPaymentBalanceSnapshot($payload['local_balance_snapshot'] ?? null, $moneyRegex, $scale);
+        $this->validateAccountPaymentStaleness($payload['staleness'] ?? null);
+        $this->validateAccountPaymentReferences($payload['references'] ?? null);
+        $this->validateNullableAssoc($payload['regime_extensions'] ?? null, 'regime_extensions');
+    }
+
+    private function validateAccountPaymentCustomer(mixed $customer, string $sellerCountryCode): void
+    {
+        $row = $this->requireAssocObject($customer, 'customer');
+        $expected = ['address', 'customer_category', 'customer_id', 'customer_sync_status', 'email', 'name', 'phone', 'tax_number'];
+        $this->assertExactObjectKeys($row, $expected, 'customer');
+        $this->assertUuid($row, 'customer_id', 'customer.customer_id');
+        $this->assertEnum($row, 'customer_sync_status', self::ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES, 'customer.customer_sync_status');
+        $this->assertNonEmptyString($row, 'name', 'customer.name');
+        $this->assertOptionalNullableString($row, 'phone', 'customer.phone');
+        $this->assertOptionalNullableString($row, 'email', 'customer.email');
+        $this->assertOptionalNullableString($row, 'customer_category', 'customer.customer_category');
+        $this->validateAddress($row['address'] ?? null, 'customer.address', required: false);
+        if (($row['tax_number'] ?? null) !== null) {
+            $this->assertTaxNumberForCountry(
+                $row['tax_number'],
+                $this->countryCodeFromAddress($row['address'] ?? null) ?? $sellerCountryCode,
+                'customer.tax_number',
+                buyer: true,
+            );
+        }
+    }
+
+    private function validateAccountPaymentPayment(mixed $payment, string $moneyRegex, int $scale, bool $training): void
+    {
+        $row = $this->requireAssocObject($payment, 'payment');
+        $expected = ['amount', 'foreign_currency_amount', 'foreign_currency_code', 'instrument_serial', 'instrument_type', 'method_code', 'repository_id'];
+        $this->assertExactObjectKeys($row, $expected, 'payment');
+        $this->assertMoneyString($row, 'amount', $moneyRegex, $scale, 'payment.amount');
+        if (! $training && bccomp($this->asNumericString($row['amount'], 'payment.amount'), '0', $scale) === 0) {
+            throw new RuntimeException('payload_account_payment_amount_zero:payment.amount must be greater than zero unless training_flag=true');
+        }
+        $this->assertNonEmptyString($row, 'method_code', 'payment.method_code');
+        $this->assertOptionalNullableString($row, 'repository_id', 'payment.repository_id');
+        $this->assertOptionalNullableString($row, 'instrument_serial', 'payment.instrument_serial');
+        $this->assertOptionalNullableString($row, 'instrument_type', 'payment.instrument_type');
+
+        $foreignAmount = $row['foreign_currency_amount'];
+        $foreignCode = $row['foreign_currency_code'];
+        if ($foreignAmount === null && $foreignCode === null) {
+            return;
+        }
+        if ($foreignAmount === null || $foreignCode === null) {
+            throw new RuntimeException('payload_account_payment_foreign_currency_pair_invalid:payment foreign_currency_amount and foreign_currency_code must both be null or both non-null');
+        }
+        if (! is_string($foreignCode) || preg_match(self::ISO_4217, $foreignCode) !== 1) {
+            throw new RuntimeException('payload_account_payment_foreign_currency_code_invalid:payment.foreign_currency_code must be ISO 4217 alpha-3 uppercase; got '.var_export($foreignCode, true));
+        }
+        $foreignScale = self::CURRENCY_SCALES[$foreignCode] ?? null;
+        if ($foreignScale === null) {
+            throw new RuntimeException('payload_account_payment_foreign_currency_unknown:payment.foreign_currency_code='.$foreignCode.' has no registered scale');
+        }
+        $this->assertMoneyString($row, 'foreign_currency_amount', $this->moneyRegex($foreignScale), $foreignScale, 'payment.foreign_currency_amount');
+    }
+
+    private function validateAccountPaymentBalanceSnapshot(mixed $snapshot, string $moneyRegex, int $scale): void
+    {
+        $row = $this->requireAssocObject($snapshot, 'local_balance_snapshot');
+        $expected = [
+            'balance_updated_at',
+            'credit_balance_before',
+            'net_balance_before',
+            'payment_amount',
+            'projected_credit_balance_after',
+            'projected_net_balance_after',
+            'projected_receivable_balance_after',
+            'receivable_balance_before',
+        ];
+        $this->assertExactObjectKeys($row, $expected, 'local_balance_snapshot');
+        foreach ([
+            'credit_balance_before',
+            'net_balance_before',
+            'payment_amount',
+            'projected_credit_balance_after',
+            'projected_net_balance_after',
+            'projected_receivable_balance_after',
+            'receivable_balance_before',
+        ] as $field) {
+            $this->assertMoneyString($row, $field, $moneyRegex, $scale, 'local_balance_snapshot.'.$field);
+        }
+        $this->assertIsoDateTimeWithMs($row, 'balance_updated_at', 'local_balance_snapshot.balance_updated_at');
+    }
+
+    private function validateAccountPaymentStaleness(mixed $staleness): void
+    {
+        $row = $this->requireAssocObject($staleness, 'staleness');
+        $expected = ['balance_snapshot_stale', 'customer_snapshot_stale', 'mirror_last_synced_at', 'staleness_reason'];
+        $this->assertExactObjectKeys($row, $expected, 'staleness');
+        $this->assertBool($row, 'customer_snapshot_stale', 'staleness.customer_snapshot_stale');
+        $this->assertBool($row, 'balance_snapshot_stale', 'staleness.balance_snapshot_stale');
+        if (($row['mirror_last_synced_at'] ?? null) !== null) {
+            $this->assertIsoDateTimeWithMs($row, 'mirror_last_synced_at', 'staleness.mirror_last_synced_at');
+        }
+        $this->assertOptionalEnum($row, 'staleness_reason', self::ACCOUNT_PAYMENT_STALENESS_REASONS, 'staleness.staleness_reason');
+        $stale = $row['customer_snapshot_stale'] === true || $row['balance_snapshot_stale'] === true;
+        if ($stale && $row['staleness_reason'] === null) {
+            throw new RuntimeException('payload_account_payment_staleness_reason_required:staleness_reason required when any stale flag is true');
+        }
+        if (! $stale && $row['staleness_reason'] !== null) {
+            throw new RuntimeException('payload_account_payment_staleness_reason_mismatch:staleness_reason must be null when stale flags are false');
+        }
+    }
+
+    private function validateAccountPaymentReferences(mixed $references): void
+    {
+        if ($references === null) {
+            return;
+        }
+        $row = $this->requireAssocObject($references, 'references');
+        $expected = ['external_reference', 'related_sale_receipt_event_id', 'server_customer_alias_id'];
+        $this->assertExactObjectKeys($row, $expected, 'references');
+        $this->assertOptionalNullableString($row, 'external_reference', 'references.external_reference');
+        $this->assertOptionalNullableString($row, 'related_sale_receipt_event_id', 'references.related_sale_receipt_event_id');
+        if ($row['server_customer_alias_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_payment_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for ACCOUNT_PAYMENT_RECONCILED'
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateAccountChargePayload(array $payload): void
+    {
+        $this->rejectAccountChargePaymentsKeyRecursively($payload);
+
+        $scale = $payload['currency_scale'] ?? null;
+        if (! is_int($scale)) {
+            throw new RuntimeException('payload_currency_scale_invalid:must be int; got '.var_export($scale, true));
+        }
+        if (! in_array($scale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException(
+                'payload_currency_scale_unsupported:value='.$scale.':allowed='.implode(',', self::SUPPORTED_CURRENCY_SCALES)
+            );
+        }
+        $moneyRegex = $this->moneyRegex($scale);
+
+        $currencyCode = $payload['currency_code'] ?? null;
+        if (! is_string($currencyCode) || preg_match(self::ISO_4217, $currencyCode) !== 1) {
+            throw new RuntimeException('payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got '.var_export($currencyCode, true));
+        }
+
+        $this->assertUuid($payload, 'account_charge_uuid');
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertUuid($payload, 'cashier_id');
+        $this->assertNonEmptyString($payload, 'cashier_name');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertEnum($payload, 'invoice_classification', self::ACCOUNT_CHARGE_INVOICE_CLASSIFICATIONS);
+        $this->assertOptionalNullableString($payload, 'notes');
+        $this->assertEnum($payload, 'print_profile', ['ACCOUNT_CHARGE_RECEIPT']);
+        $this->assertEnum($payload, 'receipt_type_code', ['ACCOUNT_CHARGE']);
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertUuid($payload, 'terminal_id');
+        $this->assertBool($payload, 'training_flag');
+
+        foreach (['transaction_discount_amount'] as $field) {
+            $this->assertMoneyString($payload, $field, $moneyRegex, $scale);
+        }
+        $this->validateDiscountReasonPair(
+            $payload['transaction_discount_amount'],
+            $payload['transaction_discount_reason'] ?? null,
+            $scale,
+            'payload_discount_reason_mismatch',
+        );
+
+        $sellerCountryCode = $this->validateSeller($payload);
+        $customerCategory = $this->validateAccountChargeCustomer($payload['customer'] ?? null, $sellerCountryCode);
+        $this->validateBuyer($payload);
+        $this->validateAccountChargeTerms($payload['charge_terms'] ?? null);
+        $this->validateAccountChargeCreditDecision(
+            $payload['credit_decision'] ?? null,
+            $moneyRegex,
+            $scale,
+            (bool) $payload['training_flag'],
+        );
+        $this->validateAccountChargeTotals($payload['totals'] ?? null, $moneyRegex, $scale);
+        $this->validateAccountChargeBalanceSnapshot($payload['local_balance_snapshot'] ?? null, $moneyRegex, $scale);
+        $this->validateAccountChargeStaleness($payload['staleness'] ?? null);
+        $this->validateAccountChargeReferences($payload['references'] ?? null);
+        $this->validateNullableAssoc($payload['regime_extensions'] ?? null, 'regime_extensions');
+
+        $lineItems = $this->requireList($payload, 'line_items');
+        if (count($lineItems) === 0) {
+            throw new RuntimeException('payload_line_items_empty:line_items must have >= 1 row');
+        }
+        foreach ($lineItems as $index => $row) {
+            $this->validateAccountChargeLineItem($index, $row, $moneyRegex, $scale);
+        }
+
+        $vatBreakdown = $this->requireList($payload, 'vat_breakdown');
+        if (count($vatBreakdown) === 0) {
+            throw new RuntimeException('payload_vat_breakdown_empty:vat_breakdown must have >= 1 row');
+        }
+        foreach ($vatBreakdown as $index => $row) {
+            $this->validateVatBreakdownRow($index, $row, $moneyRegex, $scale);
+        }
+
+        $this->validateVatPartition($lineItems, $vatBreakdown, $scale);
+        $this->validateAccountChargeArithmetic($payload, $scale);
+
+        if (($payload['invoice_classification'] ?? null) === 'b2b_facture_draft_requested' && $customerCategory !== 'business') {
+            throw new RuntimeException(
+                'payload_account_charge_invoice_classification_mismatch:b2b_facture_draft_requested requires customer.customer_category=business'
+            );
+        }
+    }
+
+    private function validateAccountChargeCustomer(mixed $customer, string $sellerCountryCode): ?string
+    {
+        $row = $this->requireAssocObject($customer, 'customer');
+        $expected = ['account_identifier', 'address', 'customer_category', 'customer_id', 'customer_sync_status', 'email', 'name', 'phone', 'tax_number'];
+        $this->assertExactObjectKeys($row, $expected, 'customer');
+        $this->assertUuid($row, 'customer_id', 'customer.customer_id');
+        $this->assertEnum($row, 'customer_sync_status', self::ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES, 'customer.customer_sync_status');
+        $this->assertNonEmptyString($row, 'name', 'customer.name');
+        $this->assertOptionalNullableString($row, 'phone', 'customer.phone');
+        $this->assertOptionalNullableString($row, 'email', 'customer.email');
+        $this->assertOptionalNullableString($row, 'customer_category', 'customer.customer_category');
+        $this->assertOptionalNullableString($row, 'account_identifier', 'customer.account_identifier');
+        $this->validateAddress($row['address'] ?? null, 'customer.address', required: false);
+        if (($row['tax_number'] ?? null) !== null) {
+            $this->assertTaxNumberForCountry(
+                $row['tax_number'],
+                $this->countryCodeFromAddress($row['address'] ?? null) ?? $sellerCountryCode,
+                'customer.tax_number',
+                buyer: true,
+            );
+        }
+
+        return is_string($row['customer_category']) ? $row['customer_category'] : null;
+    }
+
+    private function validateAccountChargeTerms(mixed $terms): void
+    {
+        $row = $this->requireAssocObject($terms, 'charge_terms');
+        $expected = ['due_date', 'payment_terms_days', 'terms_label'];
+        $this->assertExactObjectKeys($row, $expected, 'charge_terms');
+
+        if ($row['payment_terms_days'] !== null && (! is_int($row['payment_terms_days']) || $row['payment_terms_days'] < 0)) {
+            throw new RuntimeException('payload_field_invalid:charge_terms.payment_terms_days must be non-negative int');
+        }
+        if ($row['payment_terms_days'] !== null && $row['due_date'] === null) {
+            throw new RuntimeException('payload_account_charge_terms_invalid:charge_terms.due_date required when payment_terms_days is non-null');
+        }
+        if ($row['due_date'] !== null) {
+            $this->assertIsoDate($row, 'due_date', 'charge_terms.due_date');
+        }
+        $this->assertOptionalNullableString($row, 'terms_label', 'charge_terms.terms_label');
+    }
+
+    private function validateAccountChargeCreditDecision(mixed $decision, string $moneyRegex, int $scale, bool $training): void
+    {
+        $row = $this->requireAssocObject($decision, 'credit_decision');
+        $expected = [
+            'credit_available_after',
+            'credit_available_before',
+            'credit_limit',
+            'decision',
+            'limit_exceeded',
+            'mirror_stale_at_authoring',
+            'override_evidence',
+            'policy_version',
+            'stale_policy_action',
+            'warnings',
+        ];
+        $this->assertExactObjectKeys($row, $expected, 'credit_decision');
+        $this->assertEnum($row, 'decision', ['approved', 'approved_with_override'], 'credit_decision.decision');
+        $decision = $row['decision'];
+        $this->assertBool($row, 'limit_exceeded', 'credit_decision.limit_exceeded');
+        $this->assertBool($row, 'mirror_stale_at_authoring', 'credit_decision.mirror_stale_at_authoring');
+        $this->assertNonEmptyString($row, 'policy_version', 'credit_decision.policy_version');
+        $this->assertEnum($row, 'stale_policy_action', self::ACCOUNT_CHARGE_STALE_POLICY_ACTIONS, 'credit_decision.stale_policy_action');
+        $this->validateAccountChargeOverrideEvidence($row['override_evidence'], $decision, $moneyRegex, $scale);
+        foreach (['credit_available_after', 'credit_available_before', 'credit_limit'] as $field) {
+            if ($row[$field] !== null) {
+                $this->assertMoneyString($row, $field, $moneyRegex, $scale, 'credit_decision.'.$field);
+            }
+        }
+        $warnings = $row['warnings'];
+        if (! is_array($warnings) || ! array_is_list($warnings)) {
+            throw new RuntimeException('payload_object_invalid:credit_decision.warnings must be list');
+        }
+        foreach ($warnings as $index => $warning) {
+            if (! is_string($warning) || $warning === '') {
+                throw new RuntimeException("payload_field_invalid:credit_decision.warnings[{$index}] must be non-empty string");
+            }
+            if (preg_match('/^[a-z][a-z0-9_]*$/D', $warning) !== 1) {
+                throw new RuntimeException("payload_account_charge_credit_decision_invalid:warnings[{$index}] must be a stable lower_snake_case code");
+            }
+        }
+        $sortedWarnings = $warnings;
+        sort($sortedWarnings, SORT_STRING);
+        if ($warnings !== $sortedWarnings) {
+            throw new RuntimeException('payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes');
+        }
+        if (! $training && $row['limit_exceeded'] === true && $decision !== 'approved_with_override') {
+            throw new RuntimeException('payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true');
+        }
+    }
+
+    private function validateAccountChargeOverrideEvidence(mixed $evidence, string $decision, string $moneyRegex, int $scale): void
+    {
+        if ($decision === 'approved') {
+            if ($evidence !== null) {
+                throw new RuntimeException('payload_account_charge_credit_decision_invalid:override_evidence must be null for approved decisions');
+            }
+
+            return;
+        }
+
+        $row = $this->requireAssocObject($evidence, 'credit_decision.override_evidence');
+        $expected = [
+            'approval_event_id',
+            'approval_scope',
+            'override_event_id',
+            'policy_version',
+            'target_account_status',
+            'target_amount',
+            'target_customer_id',
+        ];
+        $this->assertExactObjectKeys($row, $expected, 'credit_decision.override_evidence');
+        $this->assertUuid($row, 'approval_event_id', 'credit_decision.override_evidence.approval_event_id');
+        $this->assertEnum($row, 'approval_scope', ['credit_limit_override', 'account_status_override'], 'credit_decision.override_evidence.approval_scope');
+        $this->assertUuid($row, 'override_event_id', 'credit_decision.override_evidence.override_event_id');
+        $this->assertNonEmptyString($row, 'policy_version', 'credit_decision.override_evidence.policy_version');
+        $this->assertEnum($row, 'target_account_status', ['active', 'suspended', 'closed', 'disputed'], 'credit_decision.override_evidence.target_account_status');
+        $this->assertMoneyString($row, 'target_amount', $moneyRegex, $scale, 'credit_decision.override_evidence.target_amount');
+        $this->assertUuid($row, 'target_customer_id', 'credit_decision.override_evidence.target_customer_id');
+    }
+
+    private function validateAccountChargeTotals(mixed $totals, string $moneyRegex, int $scale): void
+    {
+        $row = $this->requireAssocObject($totals, 'totals');
+        $expected = ['amount_charged_to_account', 'grand_total_before_charge', 'subtotal', 'total', 'vat_total'];
+        $this->assertExactObjectKeys($row, $expected, 'totals');
+        foreach ($expected as $field) {
+            $this->assertMoneyString($row, $field, $moneyRegex, $scale, 'totals.'.$field);
+        }
+    }
+
+    private function validateAccountChargeBalanceSnapshot(mixed $snapshot, string $moneyRegex, int $scale): void
+    {
+        $row = $this->requireAssocObject($snapshot, 'local_balance_snapshot');
+        $expected = [
+            'balance_updated_at',
+            'charge_amount',
+            'credit_balance_before',
+            'net_balance_before',
+            'projected_credit_balance_after',
+            'projected_net_balance_after',
+            'projected_receivable_balance_after',
+            'receivable_balance_before',
+        ];
+        $this->assertExactObjectKeys($row, $expected, 'local_balance_snapshot');
+        foreach (array_slice($expected, 1) as $field) {
+            $this->assertMoneyString($row, $field, $moneyRegex, $scale, 'local_balance_snapshot.'.$field);
+        }
+        $this->assertIsoDateTimeWithMs($row, 'balance_updated_at', 'local_balance_snapshot.balance_updated_at');
+    }
+
+    private function validateAccountChargeStaleness(mixed $staleness): void
+    {
+        $row = $this->requireAssocObject($staleness, 'staleness');
+        $expected = ['balance_snapshot_stale', 'customer_snapshot_stale', 'mirror_last_synced_at', 'staleness_reason'];
+        $this->assertExactObjectKeys($row, $expected, 'staleness');
+        $this->assertBool($row, 'customer_snapshot_stale', 'staleness.customer_snapshot_stale');
+        $this->assertBool($row, 'balance_snapshot_stale', 'staleness.balance_snapshot_stale');
+        if (($row['mirror_last_synced_at'] ?? null) !== null) {
+            $this->assertIsoDateTimeWithMs($row, 'mirror_last_synced_at', 'staleness.mirror_last_synced_at');
+        }
+        $this->assertOptionalEnum($row, 'staleness_reason', self::ACCOUNT_PAYMENT_STALENESS_REASONS, 'staleness.staleness_reason');
+        $stale = $row['customer_snapshot_stale'] === true || $row['balance_snapshot_stale'] === true;
+        if ($stale && $row['staleness_reason'] === null) {
+            throw new RuntimeException('payload_account_charge_staleness_reason_required:staleness_reason required when any stale flag is true');
+        }
+        if (! $stale && $row['staleness_reason'] !== null) {
+            throw new RuntimeException('payload_account_charge_staleness_reason_mismatch:staleness_reason must be null when stale flags are false');
+        }
+    }
+
+    private function validateAccountChargeReferences(mixed $references): void
+    {
+        if ($references === null) {
+            return;
+        }
+        $row = $this->requireAssocObject($references, 'references');
+        $expected = ['external_reference', 'related_sale_receipt_event_id', 'server_customer_alias_id'];
+        $this->assertExactObjectKeys($row, $expected, 'references');
+        $this->assertOptionalNullableString($row, 'external_reference', 'references.external_reference');
+        if ($row['related_sale_receipt_event_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_charge_reference_forbidden:references.related_sale_receipt_event_id is reserved for post-v1 split-sale links'
+            );
+        }
+        if ($row['server_customer_alias_id'] !== null) {
+            throw new RuntimeException(
+                'payload_account_charge_reference_forbidden:references.server_customer_alias_id is reserved for projection state or follow-up events'
+            );
+        }
+    }
+
+    private function validateAccountChargeLineItem(int|string $index, mixed $row, string $moneyRegex, int $scale): void
+    {
+        if (! is_array($row) || (count($row) > 0 && array_is_list($row))) {
+            throw new RuntimeException("payload_line_item_invalid:line_items[{$index}] must be object; got ".get_debug_type($row));
+        }
+        /** @var array<string, mixed> $row */
+        $expected = [
+            'gtin', 'line_discount_amount', 'line_discount_reason', 'line_subtotal',
+            'line_uuid', 'line_vat', 'name', 'non_collected_subtype', 'product_id',
+            'quantity', 'sku', 'tax_category_code', 'unit_price', 'vat_rate',
+        ];
+        $missing = array_diff($expected, array_keys($row));
+        if (count($missing) > 0) {
+            sort($missing);
+            throw new RuntimeException("payload_line_item_missing_keys:line_items[{$index}]:".implode(',', $missing));
+        }
+        $extras = array_diff(array_keys($row), $expected);
+        if (count($extras) > 0) {
+            sort($extras);
+            throw new RuntimeException("payload_line_item_extra_keys:line_items[{$index}]:".implode(',', $extras));
+        }
+        $path = "line_items[{$index}]";
+
+        foreach (['unit_price', 'line_subtotal', 'line_vat', 'line_discount_amount'] as $field) {
+            $this->assertMoneyString($row, $field, $moneyRegex, $scale, "{$path}.{$field}");
+        }
+        $this->assertMoneyString($row, 'quantity', $this->moneyRegex(self::QUANTITY_SCALE), self::QUANTITY_SCALE, "{$path}.quantity");
+        $this->assertMoneyString($row, 'vat_rate', $this->moneyRegex(self::VAT_RATE_SCALE), self::VAT_RATE_SCALE, "{$path}.vat_rate");
+        $this->assertUuid($row, 'line_uuid', "{$path}.line_uuid");
+        $this->assertNonEmptyString($row, 'name', "{$path}.name");
+        $this->assertNonEmptyString($row, 'product_id', "{$path}.product_id");
+        $this->assertOptionalNullableString($row, 'sku', "{$path}.sku");
+
+        $tcc = $row['tax_category_code'];
+        if ($tcc !== null && ! is_string($tcc)) {
+            throw new RuntimeException("payload_line_item_tax_category_invalid:{$path}.tax_category_code must be string or null; got ".get_debug_type($tcc));
+        }
+        if (is_string($tcc) && $tcc !== '' && preg_match('/^[A-Z0-9_\-]+$/D', $tcc) !== 1) {
+            throw new RuntimeException("payload_line_item_tax_category_invalid:{$path}.tax_category_code must match ^[A-Z0-9_-]+$; got ".var_export($tcc, true));
+        }
+        foreach (['gtin', 'line_discount_reason'] as $field) {
+            $this->assertOptionalNullableString($row, $field, "{$path}.{$field}");
+        }
+        $this->assertOptionalEnum($row, 'non_collected_subtype', self::NON_COLLECTED_SUBTYPES, "{$path}.non_collected_subtype");
+        $this->validateDiscountReasonPair(
+            $row['line_discount_amount'],
+            $row['line_discount_reason'],
+            $scale,
+            "payload_line_discount_reason_mismatch:{$path}",
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateAccountChargeArithmetic(array $payload, int $scale): void
+    {
+        /** @var array<string, mixed> $totals */
+        $totals = $payload['totals'];
+        /** @var array<string, mixed> $snapshot */
+        $snapshot = $payload['local_balance_snapshot'];
+
+        $subtotal = $this->asNumericString($totals['subtotal'], 'totals.subtotal');
+        $vatTotal = $this->asNumericString($totals['vat_total'], 'totals.vat_total');
+        $total = $this->asNumericString($totals['total'], 'totals.total');
+        $grandTotalBeforeCharge = $this->asNumericString($totals['grand_total_before_charge'], 'totals.grand_total_before_charge');
+        if (bccomp($grandTotalBeforeCharge, $total, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_amount_mismatch:grand_total_before_charge must equal totals.total');
+        }
+        $discount = $this->asNumericString($payload['transaction_discount_amount'], 'transaction_discount_amount');
+        $lhs = bcadd($subtotal, $vatTotal, $scale);
+        $rhs = bcadd($total, $discount, $scale);
+        if (bccomp($lhs, $rhs, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_amount_mismatch:subtotal_plus_vat='.$lhs.':total_plus_discount='.$rhs);
+        }
+
+        $amountCharged = $this->asNumericString($totals['amount_charged_to_account'], 'totals.amount_charged_to_account');
+        if (bccomp($amountCharged, $total, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_amount_mismatch:amount_charged_to_account must equal totals.total');
+        }
+        $chargeAmount = $this->asNumericString($snapshot['charge_amount'], 'local_balance_snapshot.charge_amount');
+        if (bccomp($chargeAmount, $amountCharged, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_amount_mismatch:local_balance_snapshot.charge_amount must equal totals.amount_charged_to_account');
+        }
+
+        $receivableBefore = $this->asNumericString($snapshot['receivable_balance_before'], 'local_balance_snapshot.receivable_balance_before');
+        $projectedReceivable = $this->asNumericString($snapshot['projected_receivable_balance_after'], 'local_balance_snapshot.projected_receivable_balance_after');
+        $expectedReceivable = bcadd($receivableBefore, $chargeAmount, $scale);
+        if (bccomp($expectedReceivable, $projectedReceivable, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_balance_mismatch:projected_receivable_balance_after expected '.$expectedReceivable.' got '.$projectedReceivable);
+        }
+
+        $projectedCredit = $this->asNumericString($snapshot['projected_credit_balance_after'], 'local_balance_snapshot.projected_credit_balance_after');
+        $projectedNet = $this->asNumericString($snapshot['projected_net_balance_after'], 'local_balance_snapshot.projected_net_balance_after');
+        $expectedNet = bcsub($projectedReceivable, $projectedCredit, $scale);
+        if (bccomp($expectedNet, '0', $scale) < 0) {
+            $expectedNet = bcadd('0', '0', $scale);
+        }
+        if (bccomp($expectedNet, $projectedNet, $scale) !== 0) {
+            throw new RuntimeException('payload_account_charge_balance_mismatch:projected_net_balance_after expected '.$expectedNet.' got '.$projectedNet);
+        }
+    }
+
+    private function validateDiscountReasonPair(mixed $amount, mixed $reason, int $scale, string $prefix): void
+    {
+        $amountString = $this->asNumericString($amount, 'discount_amount');
+        if ($reason !== null && (! is_string($reason) || $reason === '')) {
+            throw new RuntimeException($prefix.':reason must be non-empty string or null');
+        }
+        $isZero = bccomp($amountString, '0', $scale) === 0;
+        if ($isZero && $reason !== null) {
+            throw new RuntimeException($prefix.':amount='.$amountString.':reason_present=true');
+        }
+        if (! $isZero && $reason === null) {
+            throw new RuntimeException($prefix.':amount='.$amountString.':reason_present=false');
+        }
+    }
+
+    private function rejectAccountChargePaymentsKeyRecursively(mixed $value, string $path = 'payload'): void
+    {
+        if (! is_array($value)) {
+            return;
+        }
+
+        foreach ($value as $key => $child) {
+            $segment = is_int($key) ? "[{$key}]" : ".{$key}";
+            if ($key === 'payments') {
+                throw new RuntimeException(
+                    'payload_account_charge_payments_forbidden:payments is not valid anywhere on ACCOUNT_CHARGE at '.$path.$segment
+                );
+            }
+            $this->rejectAccountChargePaymentsKeyRecursively($child, $path.$segment);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateSeller(array $payload): string
     {
         $seller = $payload['seller'] ?? null;
         if (! is_array($seller) || (count($seller) > 0 && array_is_list($seller))) {
@@ -443,9 +1320,11 @@ final class FiscalPayloadConstraintValidator
             throw new RuntimeException('payload_seller_tax_jurisdiction_invalid:must be ISO 3166-1 alpha-2; got '.var_export($jurisdiction, true));
         }
 
-        $this->assertTaxNumber($seller['tax_number'] ?? null, 'seller.tax_number');
+        $this->assertTaxNumberForCountry($seller['tax_number'] ?? null, $jurisdiction, 'seller.tax_number');
 
         $this->validateAddress($seller['address'] ?? null, 'seller.address', required: true);
+
+        return $jurisdiction;
     }
 
     /**
@@ -480,11 +1359,17 @@ final class FiscalPayloadConstraintValidator
             }
         }
 
-        if (($buyer['tax_number'] ?? null) !== null) {
-            $this->assertTaxNumber($buyer['tax_number'], 'buyer.tax_number');
+        $this->validateAddress($buyer['address'] ?? null, 'buyer.address', required: false);
+        $buyerCountryCode = $this->countryCodeFromAddress($buyer['address'] ?? null)
+            ?? $this->sellerCountryCodeFromPayload($payload);
+
+        if (($buyer['codice_fiscale'] ?? null) !== null) {
+            $this->assertBuyerCodiceFiscale($buyer['codice_fiscale']);
         }
 
-        $this->validateAddress($buyer['address'] ?? null, 'buyer.address', required: false);
+        if (($buyer['tax_number'] ?? null) !== null) {
+            $this->assertTaxNumberForCountry($buyer['tax_number'], $buyerCountryCode, 'buyer.tax_number', buyer: true);
+        }
     }
 
     /**
@@ -1175,11 +2060,87 @@ final class FiscalPayloadConstraintValidator
         }
     }
 
+    private function assertTaxNumberForCountry(mixed $value, string $countryCode, string $path, bool $buyer = false): void
+    {
+        $taxNumber = $this->assertTaxNumberBaseline($value, $path);
+        $normalized = $this->normalizeTaxNumberForCountry($taxNumber, $countryCode);
+
+        $patterns = [];
+        $countryPattern = self::TAX_NUMBER_PATTERNS[$countryCode] ?? null;
+        if ($countryPattern !== null) {
+            $patterns[] = $countryPattern;
+        }
+        if ($buyer && $countryCode === 'FR') {
+            $patterns[] = self::FR_BUYER_TVA_INTRACOM;
+        }
+
+        if ($patterns === []) {
+            return;
+        }
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $normalized) === 1) {
+                return;
+            }
+        }
+
+        throw new RuntimeException(sprintf(
+            'payload_tax_number_format_mismatch:field=%s:country=%s:value=%s',
+            $path,
+            $countryCode,
+            $taxNumber,
+        ));
+    }
+
+    private function assertBuyerCodiceFiscale(mixed $value): void
+    {
+        if (! is_string($value) || $value === '') {
+            throw new RuntimeException('payload_buyer_codice_fiscale_invalid:must be non-empty string or null; got '.var_export($value, true));
+        }
+        if (preg_match(self::IT_BUYER_CODICE_FISCALE, $value) !== 1) {
+            throw new RuntimeException(
+                'payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value='.$value
+            );
+        }
+    }
+
+    private function normalizeTaxNumberForCountry(string $value, string $countryCode): string
+    {
+        if ($countryCode === 'TN') {
+            return str_replace('/', '', $value);
+        }
+
+        return $value;
+    }
+
     /**
-     * Universal tax_number validator (synthesis v5 §7) — per-country
-     * strict regex DEFERRED to Phase 1.5.
+     * @param  array<string, mixed>  $payload
      */
-    private function assertTaxNumber(mixed $value, string $path): void
+    private function sellerCountryCodeFromPayload(array $payload): string
+    {
+        $seller = $payload['seller'] ?? null;
+        if (is_array($seller) && is_string($seller['tax_jurisdiction_country_code'] ?? null)) {
+            return $seller['tax_jurisdiction_country_code'];
+        }
+
+        return '';
+    }
+
+    private function countryCodeFromAddress(mixed $address): ?string
+    {
+        if (is_array($address) && is_string($address['country_code'] ?? null)) {
+            return $address['country_code'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Universal tax_number baseline validator (synthesis v5 §7).
+     *
+     * @return non-empty-string
+     */
+    private function assertTaxNumberBaseline(mixed $value, string $path): string
     {
         if (! is_string($value)) {
             throw new RuntimeException(sprintf(
@@ -1221,6 +2182,8 @@ final class FiscalPayloadConstraintValidator
                 var_export($value, true),
             ));
         }
+
+        return $value;
     }
 
     /**
@@ -1244,6 +2207,45 @@ final class FiscalPayloadConstraintValidator
         }
 
         return $value;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requireAssocObject(mixed $value, string $path): array
+    {
+        if (! is_array($value) || (count($value) > 0 && array_is_list($value))) {
+            throw new RuntimeException('payload_object_invalid:'.$path.' must be object; got '.get_debug_type($value));
+        }
+
+        /** @var array<string, mixed> $value */
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $expected
+     */
+    private function assertExactObjectKeys(array $row, array $expected, string $path): void
+    {
+        $missing = array_diff($expected, array_keys($row));
+        if (count($missing) > 0) {
+            sort($missing);
+            throw new RuntimeException('payload_object_missing_keys:'.$path.':'.implode(',', $missing));
+        }
+        $extras = array_diff(array_keys($row), $expected);
+        if (count($extras) > 0) {
+            sort($extras);
+            throw new RuntimeException('payload_object_extra_keys:'.$path.':'.implode(',', $extras));
+        }
+    }
+
+    private function validateNullableAssoc(mixed $value, string $path): void
+    {
+        if ($value === null) {
+            return;
+        }
+        $this->requireAssocObject($value, $path);
     }
 
     /**

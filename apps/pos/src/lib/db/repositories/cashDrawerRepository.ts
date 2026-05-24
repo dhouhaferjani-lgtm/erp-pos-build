@@ -16,6 +16,11 @@ export interface OfflineCashDrawerOp {
   created_at: string;
   synced_at: string | null;
   sync_error: string | null;
+  approval_id: string | null;
+  approval_fiscal_event_id: string | null;
+  approval_scope: 'cash_drawer_control' | null;
+  approval_supervisor_user_id: string | null;
+  approval_target_hash: string | null;
 }
 
 export async function insertCashDrawerOp(
@@ -26,11 +31,15 @@ export async function insertCashDrawerOp(
     db,
     `INSERT INTO offline_cash_drawer_ops (
       id, idempotency_key, type, amount, reason,
-      operator_id, operator_name, terminal_id, shift_id, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      operator_id, operator_name, terminal_id, shift_id, status,
+      approval_id, approval_fiscal_event_id, approval_scope,
+      approval_supervisor_user_id, approval_target_hash
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
     [
       op.id, op.idempotency_key, op.type, op.amount, op.reason,
       op.operator_id, op.operator_name, op.terminal_id, op.shift_id, op.status,
+      op.approval_id, op.approval_fiscal_event_id, op.approval_scope,
+      op.approval_supervisor_user_id, op.approval_target_hash,
     ],
   );
 }

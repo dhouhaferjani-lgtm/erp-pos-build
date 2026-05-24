@@ -80,6 +80,8 @@ use Throwable;
  * the command logs critical, skips that row, and continues — never
  * crashes mid-batch. This mirrors the Task 18 F1 standing pattern.
  *
+ * @cross-tenant-by-design Fleet recovery command that can scan unresolved fiscal projection rows across tenants; per-row work remains anchored on each fiscal event's tenant/company context.
+ *
  * **Exit codes (per Task 24 brief):**
  *   - 0 — success (including no-op when nothing to enqueue)
  *   - 1 — permission denied OR validation error (unknown user, missing

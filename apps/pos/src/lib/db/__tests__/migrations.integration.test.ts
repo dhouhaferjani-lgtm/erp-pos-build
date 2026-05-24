@@ -472,3 +472,28 @@ d('Monetary precision — round-trip for multi-decimal currencies (TND)', () => 
     expect(termCols.find((c) => c.name === 'perpetual_grand_total')?.type).toBe('TEXT');
   });
 });
+
+d('Customer mirror schema — account status fields', () => {
+  let adapter: SqliteTestAdapter;
+
+  beforeEach(async () => {
+    adapter = new SqliteTestAdapter();
+    await runAllMigrations(adapter);
+  });
+
+  afterEach(() => {
+    adapter.close();
+  });
+
+  it('adds the phase four account-status columns to customers', async () => {
+    const cols = await adapter.select<Array<{ name: string; type: string }>>(
+      'PRAGMA table_info(customers)',
+    );
+    const columnTypes = Object.fromEntries(cols.map((col) => [col.name, col.type]));
+
+    expect(columnTypes.account_status).toBe('TEXT');
+    expect(columnTypes.account_status_changed_at).toBe('TEXT');
+    expect(columnTypes.account_status_reason).toBe('TEXT');
+    expect(columnTypes.account_status_version).toBe('INTEGER');
+  });
+});

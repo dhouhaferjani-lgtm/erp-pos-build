@@ -3,10 +3,15 @@ import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
+import type {
+  SaleReceiptApprovalReferenceInput,
+} from '@/lib/fiscal/FiscalEventEngine';
 import {
   buildSaleReceiptPayload,
   type SaleReceiptSellerInput,
 } from '@/lib/fiscal/payloads/SaleReceiptPayload';
+import type { CartTransactionDiscount } from '@/stores/cartStore';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
@@ -49,7 +54,8 @@ interface OfflineReceiptInput {
    * a duplicate and returns the existing receipt instead of creating a new one.
    */
   idempotencyKey?: string;
-  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
+  transactionDiscount?: CartTransactionDiscount;
+  tenderToleranceEvidence?: PosOverrideEvidence;
   /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
   payments: Array<{
     methodCode: string;
@@ -144,6 +150,39 @@ function collectStoreVoucherPayments(
     }
   }
   return out;
+}
+
+function approvalReferenceFromEvidence(
+  evidence: PosOverrideEvidence,
+): SaleReceiptApprovalReferenceInput {
+  return {
+    approval_event_id: evidence.approval_event_id,
+    approval_id: evidence.approval_id,
+    approval_scope: evidence.approval_scope,
+    override_event_id: evidence.override_event_id,
+    policy_version: evidence.policy_version,
+    supervisor_user_id: evidence.supervisor_user_id,
+    target_reference_id: evidence.target_reference_id,
+  };
+}
+
+function collectApprovalReferences(input: OfflineReceiptInput): SaleReceiptApprovalReferenceInput[] {
+  const references: SaleReceiptApprovalReferenceInput[] = [];
+  const seen = new Set<string>();
+
+  const add = (evidence: PosOverrideEvidence | undefined): void => {
+    if (evidence === undefined || seen.has(evidence.override_event_id)) return;
+    seen.add(evidence.override_event_id);
+    references.push(approvalReferenceFromEvidence(evidence));
+  };
+
+  add(input.transactionDiscount?.approvalEvidence);
+  for (const item of input.cartItems) {
+    add(item.discount_approval_evidence);
+  }
+  add(input.tenderToleranceEvidence);
+
+  return references;
 }
 
 /**
@@ -252,6 +291,7 @@ export async function createOfflineReceipt(
   const postedAt = postedAtDate.toISOString();
   const businessDate = postedAt.slice(0, 10);
   const totalFormatted = bcformat(total, decimals);
+  const approvalReferences = collectApprovalReferences(input);
   const canonicalPayload = buildSaleReceiptPayload({
     receiptId,
     terminalId: input.terminalId,
@@ -277,7 +317,10 @@ export async function createOfflineReceipt(
     tableId: input.tableId ?? null,
     isTraining,
     seller: input.seller,
+    approvalReferences,
   });
+  const primaryApprovalReferenceEventId =
+    approvalReferences[0]?.override_event_id ?? null;
 
   // 5. Store offline receipt
   // T0.2: prefer caller-provided key (paymentStore allocates once per cart
@@ -356,6 +399,7 @@ export async function createOfflineReceipt(
       event_time_device: isoSecondsUtc(postedAtDate),
       business_date: businessDate,
       payload: canonicalPayload,
+      reference_event_id: primaryApprovalReferenceEventId ?? undefined,
       source_event_class: 'offline_receipts',
       source_event_id: receiptId,
     });

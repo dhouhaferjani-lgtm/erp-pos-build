@@ -3,14 +3,18 @@ import type { CartItem, SelectedModifier } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { useAuthStore } from '@/stores/authStore';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+
+export interface CartTransactionDiscount {
+  type: 'percentage' | 'fixed';
+  value: string;
+  reason?: string;
+  approvalEvidence?: PosOverrideEvidence;
+}
 
 interface CartState {
   items: CartItem[];
-  transactionDiscount?: {
-    type: 'percentage' | 'fixed';
-    value: string;
-    reason?: string;
-  };
+  transactionDiscount?: CartTransactionDiscount;
 }
 
 interface CartActions {
@@ -20,10 +24,10 @@ interface CartActions {
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => void;
   removeItem: (itemId: string) => void;
   clearCart: () => void;
-  setTransactionDiscount: (discount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined) => void;
+  setTransactionDiscount: (discount: CartTransactionDiscount | undefined) => void;
   replaceCart: (
     items: CartItem[],
-    transactionDiscount: { type: 'percentage' | 'fixed'; value: string; reason?: string } | undefined,
+    transactionDiscount: CartTransactionDiscount | undefined,
   ) => void;
   /**
    * Atomically replace ALL return-kind items with `newReturnItems`.

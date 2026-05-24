@@ -109,10 +109,10 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
         Sanctum::actingAs($this->user);
 
         $eventId = Str::uuid()->toString();
-        $deviceTime = Carbon::now('UTC')->setMilliseconds(0);
-        $eventTimeDevice = $deviceTime->format('Y-m-d\TH:i:s\Z');
-        $payloadEventTimeDevice = $deviceTime->format('Y-m-d\TH:i:s.v\Z');
-        $businessDate = $deviceTime->toDateString();
+        $eventTime = Carbon::now('UTC')->subSeconds(30);
+        $eventTimeDevice = $eventTime->format('Y-m-d\TH:i:s\Z');
+        $payloadEventTimeDevice = $eventTime->format('Y-m-d\TH:i:s.000\Z');
+        $businessDate = $eventTime->toDateString();
         $payload = $this->saleReceiptPayload($eventId, $payloadEventTimeDevice, $businessDate);
         $envelope = $this->sealedEnvelope(
             eventId: $eventId,
@@ -204,6 +204,7 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
     }
 
     /**
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function sealedEnvelope(
@@ -269,6 +270,7 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
     {
         return [
             'business_date' => $businessDate,
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name,
