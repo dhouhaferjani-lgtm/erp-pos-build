@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, LogOut, Minimize2, Settings } from 'lucide-react';
@@ -53,6 +53,8 @@ export function Header() {
   const clearOperator = useOperatorStore((s) => s.clearOperator);
 
   const companyId = useAuthStore((s) => s.companyId);
+  const tenantId = useAuthStore((s) => s.user?.tenantId ?? null);
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   const fullscreen = useSettingsStore((s) => s.fullscreen);
 
   const isOnline = useConnectivityStore((s) => s.isOnline);
@@ -86,6 +88,20 @@ export function Header() {
   const isManager = operator?.roles?.some((r) =>
     ['manager', 'admin', 'owner'].includes(r),
   ) ?? false;
+  const approvalContext = useMemo(() => {
+    if (!tenantId || !companyId || !terminal) return undefined;
+    const cashierUserId = operator?.id ?? userId;
+    if (!cashierUserId) return undefined;
+
+    return {
+      tenantId,
+      companyId,
+      terminalId: terminal.id,
+      cashierUserId,
+      businessDate: new Date().toISOString().slice(0, 10),
+      isTraining: terminal.is_training_mode === true,
+    };
+  }, [tenantId, companyId, terminal, operator?.id, userId]);
 
   // Load fraud settings + authorized managers + local throttle when EOD modal opens
   useEffect(() => {
@@ -521,6 +537,7 @@ export function Header() {
           isOpen={showCashDrawerModal}
           onClose={() => setShowCashDrawerModal(false)}
           shiftId={shift.id}
+          approvalContext={approvalContext}
         />
       )}
 

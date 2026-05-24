@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-20
 **Author:** Controller
-**Status:** DRAFT — pending Codex round-5 → owner final sign-off → plan amendment.
+**Status:** LOCKED. Phase 1.5.2 amended §7 with the landed per-country tax-number table.
 **Supersedes:** v1, v2, v3, v4. All prior versions in `docs/superpowers/research/`.
 
 ---
@@ -154,9 +154,28 @@ TS-side validator (`FiscalEventEngine.validateRequestPayload`) validates STRUCTU
 
 ---
 
-## 7. Per-country tax-number patterns — universal validation only
+## 7. Per-country tax-number patterns — LANDED in Phase 1.5.2
 
-`See v4 §7.` Unchanged in v5.
+Pass 2A originally used a universal tax-number baseline
+`^[A-Za-z0-9 \-/.]{4,40}$` so an incorrect country regex would not block
+the receipt-chain rebuild. Phase 1.5.2 replaces that placeholder with the
+country-keyed table below while retaining the universal baseline for unknown
+countries.
+
+Seller / customer `tax_number` patterns:
+
+| Country | Pattern | Notes |
+| --- | --- | --- |
+| FR | `^([0-9]{9}|[0-9]{14})$` | SIREN or SIRET for seller/customer tax number. Buyer TVA intracommunautaire also accepts `^FR[0-9]{11}$`. |
+| TN | `^[0-9]{7,8}[A-Z]{2}[0-9]{3}$` | Slash input such as `1234567/A/M/000` normalizes to compact `1234567AM000`; canonical producers emit compact. |
+| SA | `^3[0-9]{12}03$` | Saudi VAT number shape retained for future ZATCA axis. |
+| DE | `^DE[0-9]{9}$` | USt-IdNr shape retained for future DSFinV-K / TSE axis. |
+| IT | `^[0-9]{11}$` | Partita IVA. Individual codice fiscale belongs in `buyer.codice_fiscale`, validated separately as `^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$`. |
+
+Forensic mismatch prefixes:
+
+- `payload_tax_number_format_mismatch:field=<path>:country=<country>:value=<actual>`
+- `payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value=<actual>`
 
 ---
 
@@ -342,7 +361,7 @@ After Pass 2B merges: `check-pass-2b-pending.sh` passes (marker file deleted; `r
 `See v4 §11.` All amendments carry to v5 with these v5 refinements:
 
 **Amended A4 — Canonical SALE_RECEIPT payload shape:**
-- `seller.tax_number` / `buyer.tax_number`: universal pattern per v4 §7 (no v5 change).
+- `seller.tax_number` / `buyer.tax_number`: universal baseline plus Phase 1.5.2 per-country table per §7.
 - VAT partition + total arithmetic: per v5 §6 algorithm (replaces v4 §6).
 - Scale invariant: per v5 §6.B explicit field table.
 - Discount fields: `transaction_discount_amount` non-negative; `transaction_discount_reason` null-iff-zero invariant.
@@ -371,7 +390,7 @@ All other Amended A1/A2/A3/A6 unchanged.
 ## 16. Status
 
 - v1, v2, v3, v4: superseded.
-- v5 (this doc): pending Codex round-5 → owner sign-off → plan amendment.
+- v5 (this doc): locked as the Phase 1 SALE_RECEIPT canonical contract; §7 amended by Phase 1.5.2 to replace the universal-only placeholder with the landed per-country tax-number table.
 
 ---
 

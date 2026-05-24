@@ -44,7 +44,7 @@ final class StrictCanonicalParserTest extends TestCase
 
         $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
         $this->assertNotNull($result->payload);
-        // Pass 2A.PHP.2 — 27-key contract uses `currency_code` (not `currency`).
+        // Pass 2A.PHP.2 — 28-key contract uses `currency_code` (not `currency`).
         $this->assertSame('TND', $result->payload['currency_code']);
         $this->assertSame(3, $result->payload['currency_scale']);
         $this->assertNull($result->failureReason);
@@ -77,6 +77,76 @@ final class StrictCanonicalParserTest extends TestCase
         $result = $this->parser()->parse($bytes, FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT);
 
         $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+    }
+
+    public function test_strict_parser_accepts_account_payment_canonical_envelope(): void
+    {
+        $bytes = $this->validAccountPaymentEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame('ACCOUNT_PAYMENT', $result->payload['receipt_type_code']);
+        $this->assertSame('synced', $result->payload['customer']['customer_sync_status']);
+    }
+
+    public function test_strict_parser_accepts_account_charge_canonical_envelope(): void
+    {
+        $bytes = $this->validAccountChargeEnvelope();
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_CHARGE);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame('ACCOUNT_CHARGE', $result->payload['receipt_type_code']);
+        $this->assertSame('b2c_charge_receipt', $result->payload['invoice_classification']);
+        $this->assertSame('119.000', $result->payload['totals']['amount_charged_to_account']);
+    }
+
+    public function test_strict_parser_rejects_account_payment_extra_payload_key(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['unexpected_extra'] = 'rogue';
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('payload_extra_field', $result->failureReason ?? '');
+        $this->assertStringContainsString('unexpected_extra', $result->failureReason ?? '');
+    }
+
+    public function test_strict_parser_accepts_account_payment_populated_references_with_null_alias(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['references'] = [
+            'external_reference' => 'counter-payment-42',
+            'related_sale_receipt_event_id' => '88888888-8888-4888-8888-888888888888',
+            'server_customer_alias_id' => null,
+        ];
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertSame('counter-payment-42', $result->payload['references']['external_reference'] ?? null);
+    }
+
+    public function test_strict_parser_rejects_account_payment_non_null_server_customer_alias(): void
+    {
+        $payload = $this->canonicalAccountPaymentPayload();
+        $payload['references'] = [
+            'external_reference' => null,
+            'related_sale_receipt_event_id' => null,
+            'server_customer_alias_id' => '99999999-9999-4999-8999-999999999999',
+        ];
+        $bytes = $this->envelope('ACCOUNT_PAYMENT', $payload);
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::ACCOUNT_PAYMENT);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('server_customer_alias_id', $result->failureReason ?? '');
     }
 
     // -----------------------------------------------------------------
@@ -310,7 +380,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_rejects_scalar_item_in_sub_array_lines(): void
     {
-        // Pass 2A.PHP.2 — `line_items` is the 27-key list container.
+        // Pass 2A.PHP.2 — `line_items` is the 28-key list container.
         $payload = $this->canonicalSaleReceiptPayloadJson(['line_items' => [1, 2, 3]]);
         $bytes = $this->envelopeWithRawPayload('SALE_RECEIPT', $payload);
 
@@ -414,7 +484,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_accepts_empty_voucher_redemptions(): void
     {
-        // Pass 2A.PHP.2 — the 27-key contract renames `voucher_redemptions`
+        // Pass 2A.PHP.2 — the 28-key contract renames `voucher_redemptions`
         // to `vouchers_redeemed`; empty array is still the canonical
         // representation of "no vouchers redeemed".
         $bytes = $this->validSaleReceiptEnvelope();
@@ -579,24 +649,36 @@ final class StrictCanonicalParserTest extends TestCase
             'CHAIN_BREAK_DETECTED' => $this->validChainBreakDetectedEnvelope(),
             'CHAIN_RESTART' => $this->validChainRestartEnvelope(),
             'TERMINAL_REGISTRY_SNAPSHOT' => $this->validTerminalRegistrySnapshotEnvelope(),
+            'ACCOUNT_PAYMENT' => $this->validAccountPaymentEnvelope(),
+            'ACCOUNT_CHARGE' => $this->validAccountChargeEnvelope(),
             default => throw new \LogicException('unsupported event type for helper: '.$eventType),
         };
     }
 
     private function validSaleReceiptEnvelope(): string
     {
-        // Pass 2A.PHP.2 — emit the 27-key Candidate C-v3 SALE_RECEIPT shape
+        // Pass 2A.PHP.2 — emit the 28-key Candidate C-v3 SALE_RECEIPT shape
         // per synthesis v5 §3. Constant UUIDs + TND currency_scale=3 mirror
         // the GoldenFixtureBuilder convention but stay independent so this
         // unit test can run without the Fixture helper.
         return $this->envelope('SALE_RECEIPT', $this->canonicalSaleReceiptPayload());
     }
 
+    private function validAccountPaymentEnvelope(): string
+    {
+        return $this->envelope('ACCOUNT_PAYMENT', $this->canonicalAccountPaymentPayload());
+    }
+
+    private function validAccountChargeEnvelope(): string
+    {
+        return $this->envelope('ACCOUNT_CHARGE', $this->canonicalAccountChargePayload());
+    }
+
     /**
-     * Build a 27-key SALE_RECEIPT payload JSON string with the given
+     * Build a 28-key SALE_RECEIPT payload JSON string with the given
      * overrides applied at the top level. Used by negative tests that need
      * to inject a malformed sub-array shape while keeping the rest of the
-     * payload valid against the 27-key contract.
+     * payload valid against the 28-key contract.
      *
      * @param  array<string, mixed>  $overrides
      */
@@ -608,7 +690,7 @@ final class StrictCanonicalParserTest extends TestCase
     }
 
     /**
-     * Canonical 27-key SALE_RECEIPT payload used by the parser unit tests.
+     * Canonical 28-key SALE_RECEIPT payload used by the parser unit tests.
      * TND (currency_scale=3) to preserve the pre-PHP.2 fixture's currency
      * assertion in `test_parses_valid_sale_receipt_envelope`.
      *
@@ -617,6 +699,7 @@ final class StrictCanonicalParserTest extends TestCase
     private function canonicalSaleReceiptPayload(): array
     {
         return [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
@@ -657,7 +740,7 @@ final class StrictCanonicalParserTest extends TestCase
                 'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
                 'name' => 'Default Seller',
                 'tax_jurisdiction_country_code' => 'TN',
-                'tax_number' => '1234567A/A/A/000',
+                'tax_number' => '1234567AM000',
             ],
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'subtotal' => '5.000',
@@ -676,6 +759,175 @@ final class StrictCanonicalParserTest extends TestCase
             ]],
             'vat_total' => '0.350',
             'vouchers_redeemed' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountChargePayload(): array
+    {
+        return [
+            'account_charge_uuid' => '66666666-6666-4666-8666-666666666666',
+            'business_date' => '2026-05-21',
+            'buyer' => null,
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'charge_terms' => ['due_date' => '2026-06-20', 'payment_terms_days' => 30, 'terms_label' => 'Net 30'],
+            'credit_decision' => [
+                'credit_available_after' => '81.000',
+                'credit_available_before' => '200.000',
+                'credit_limit' => '500.000',
+                'decision' => 'approved',
+                'limit_exceeded' => false,
+                'mirror_stale_at_authoring' => false,
+                'override_evidence' => null,
+                'policy_version' => 'phase3-default-v1',
+                'stale_policy_action' => 'allow',
+                'warnings' => [],
+            ],
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'account_identifier' => 'CUST-0001',
+                'address' => null,
+                'customer_category' => 'individual',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'invoice_classification' => 'b2c_charge_receipt',
+            'line_items' => [[
+                'gtin' => null,
+                'line_discount_amount' => '0.000',
+                'line_discount_reason' => null,
+                'line_subtotal' => '100.000',
+                'line_uuid' => '77777777-7777-4777-8777-777777777777',
+                'line_vat' => '19.000',
+                'name' => 'Default item',
+                'non_collected_subtype' => null,
+                'product_id' => 'prod-default',
+                'quantity' => '1.000',
+                'sku' => 'SKU-DEFAULT',
+                'tax_category_code' => '',
+                'unit_price' => '100.000',
+                'vat_rate' => '19.00',
+            ]],
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'charge_amount' => '119.000',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '419.000',
+                'projected_receivable_balance_after' => '419.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'print_profile' => 'ACCOUNT_CHARGE_RECEIPT',
+            'receipt_type_code' => 'ACCOUNT_CHARGE',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'totals' => [
+                'amount_charged_to_account' => '119.000',
+                'grand_total_before_charge' => '119.000',
+                'subtotal' => '100.000',
+                'total' => '119.000',
+                'vat_total' => '19.000',
+            ],
+            'training_flag' => false,
+            'transaction_discount_amount' => '0.000',
+            'transaction_discount_reason' => null,
+            'vat_breakdown' => [[
+                'gross_amount' => '119.000',
+                'net_amount' => '100.000',
+                'rate' => '19.00',
+                'tax_category_code' => '',
+                'vat_amount' => '19.000',
+            ]],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalAccountPaymentPayload(): array
+    {
+        return [
+            'account_payment_uuid' => '44444444-4444-4444-8444-444444444444',
+            'business_date' => '2026-05-21',
+            'cashier_id' => '11111111-1111-4111-8111-111111111111',
+            'cashier_name' => 'Default Cashier',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null,
+                'customer_category' => 'retail',
+                'customer_id' => '55555555-5555-4555-8555-555555555555',
+                'customer_sync_status' => 'synced',
+                'email' => null,
+                'name' => 'Mariam Ben Ali',
+                'phone' => '+21611111111',
+                'tax_number' => null,
+            ],
+            'event_time_device' => '2026-05-21T10:15:30.000Z',
+            'local_balance_snapshot' => [
+                'balance_updated_at' => '2026-05-21T10:10:00.000Z',
+                'credit_balance_before' => '0.000',
+                'net_balance_before' => '300.000',
+                'payment_amount' => '100.000',
+                'projected_credit_balance_after' => '0.000',
+                'projected_net_balance_after' => '200.000',
+                'projected_receivable_balance_after' => '200.000',
+                'receivable_balance_before' => '300.000',
+            ],
+            'notes' => null,
+            'payment' => [
+                'amount' => '100.000',
+                'foreign_currency_amount' => null,
+                'foreign_currency_code' => null,
+                'instrument_serial' => null,
+                'instrument_type' => null,
+                'method_code' => 'CASH',
+                'repository_id' => null,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT',
+            'references' => null,
+            'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller',
+                'tax_jurisdiction_country_code' => 'TN',
+                'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'staleness' => [
+                'balance_snapshot_stale' => false,
+                'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => '2026-05-21T10:10:00.000Z',
+                'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'training_flag' => false,
+            'treasury_allocation_policy' => 'FIFO',
         ];
     }
 
@@ -1053,7 +1305,7 @@ final class StrictCanonicalParserTest extends TestCase
         // Refunds are modeled via invoice_type_code='REFUND' + non-null
         // original_receipt_reference. Negative payload money is now REJECTED
         // (the test contract changes: the OLD payload allowed negatives, the
-        // 27-key payload does not). Keep the test as a regression guard for
+        // 28-key payload does not). Keep the test as a regression guard for
         // the new contract — assert that a negative subtotal is rejected.
         $payload = $this->canonicalSaleReceiptPayloadJson([
             'subtotal' => '-5.000',
@@ -1064,7 +1316,7 @@ final class StrictCanonicalParserTest extends TestCase
 
         $result = $this->parser()->parse($bytes, FiscalEventType::SALE_RECEIPT);
 
-        // Negative money is now rejected per the 27-key contract.
+        // Negative money is now rejected per the 28-key contract.
         $this->assertFailed($result);
         $this->assertStringContainsString('money', $result->failureReason ?? '');
     }
@@ -1225,7 +1477,7 @@ final class StrictCanonicalParserTest extends TestCase
 
     public function test_parses_basic_unicode_escape(): void
     {
-        // é == é. Round-trip via vouchers_redeemed[0].voucher_code per 27-key contract.
+        // é == é. Round-trip via vouchers_redeemed[0].voucher_code per 28-key contract.
         $payload = $this->canonicalSaleReceiptPayloadJson([
             'vouchers_redeemed' => [['redeemed_amount' => '0.000', 'voucher_code' => 'café']],
         ]);
@@ -1405,7 +1657,7 @@ final class StrictCanonicalParserTest extends TestCase
     // Pass 2A.PHP.1 — new forensic prefixes from synthesis v5 §6.E.
     //
     // These exercise the parser → FiscalPayloadConstraintValidator
-    // pipeline via the new 27-key Candidate C-v3 payload (built by
+    // pipeline via the new 28-key Candidate C-v3 payload (built by
     // GoldenFixtureBuilder F-01-baseline-eur) so the failure prefixes
     // surface through the parser's `sub_array_shape:` wrap.
     // =================================================================
@@ -1497,7 +1749,7 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertStringContainsString('sub_array_shape:payload_invoice_type_invalid', $result->failureReason ?? '');
     }
 
-    public function test_pass_2a_accepts_27_key_baseline_through_parser_end_to_end(): void
+    public function test_pass_2a_accepts_28_key_baseline_through_parser_end_to_end(): void
     {
         $payload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
         $bytes = $this->envelope('SALE_RECEIPT', $payload);

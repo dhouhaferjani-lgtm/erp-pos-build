@@ -73,7 +73,7 @@ describe('paymentStore stress / throughput (offline-first)', () => {
         id: 'c1',
         name: 'X',
         legalName: 'X',
-        tax_id: 'FR123456789',
+        tax_id: '123456789',
         countryCode: 'FR',
         address_street: '1 Rue Test',
         address_city: 'Paris',

@@ -5,11 +5,17 @@ import type { DiscountPermissionStatus } from '@/lib/discountPermissions';
 
 export interface CachedOperator {
   id: string;
+  tenant_id?: string;
   name: string;
   email: string;
   pin_hash: string;
   roles: string[];
   permissions: string[];
+  company_ids?: string[];
+  terminal_ids?: string[];
+  approval_scopes?: string[];
+  approval_scope_permissions_fetched_at?: string | null;
+  approval_mirror_status?: 'fresh' | 'server_quarantined';
   can_discount: boolean;
   can_apply_line_discounts?: boolean;
   can_apply_transaction_discounts?: boolean;
@@ -21,11 +27,17 @@ export interface CachedOperator {
 
 interface OperatorPinRow {
   id: string;
+  tenant_id?: string;
   name: string;
   email: string;
   pin_hash: string;
   roles: string;
   permissions: string;
+  company_ids?: string | null;
+  terminal_ids?: string | null;
+  approval_scopes?: string | null;
+  approval_scope_permissions_fetched_at?: string | null;
+  approval_mirror_status?: 'fresh' | 'server_quarantined' | null;
   can_discount: number;
   max_discount_percent: number | null;
   discount_permissions_fetched_at?: string | null;
@@ -46,11 +58,17 @@ function rowToOperator(row: OperatorPinRow): CachedOperator {
 
   return {
     id: row.id,
+    tenant_id: row.tenant_id ?? '',
     name: row.name,
     email: row.email,
     pin_hash: row.pin_hash,
     roles: JSON.parse(row.roles) as string[],
     permissions: JSON.parse(row.permissions) as string[],
+    company_ids: JSON.parse(row.company_ids ?? '[]') as string[],
+    terminal_ids: JSON.parse(row.terminal_ids ?? '[]') as string[],
+    approval_scopes: JSON.parse(row.approval_scopes ?? '[]') as string[],
+    approval_scope_permissions_fetched_at: row.approval_scope_permissions_fetched_at ?? null,
+    approval_mirror_status: row.approval_mirror_status ?? 'fresh',
     can_discount: row.can_discount === 1,
     can_apply_line_discounts: row.discount_permissions_can_apply_line_discounts === 1,
     can_apply_transaction_discounts: row.discount_permissions_can_apply_transaction_discounts === 1,
@@ -79,11 +97,16 @@ export async function upsertOperators(
   db: Database,
   operators: Array<{
     id: string;
+    tenant_id?: string;
     name: string;
     email: string;
     pin_hash: string;
     roles: string[];
     permissions: string[];
+    company_ids?: string[];
+    terminal_ids?: string[];
+    approval_scopes?: string[];
+    approval_scope_permissions_fetched_at?: string | null;
     can_discount: boolean;
     max_discount_percent: number | null;
   }>,
@@ -91,11 +114,17 @@ export async function upsertOperators(
   for (const op of operators) {
     await execute(
       db,
-      `INSERT INTO operator_pins (id, name, email, pin_hash, roles, permissions, can_discount, max_discount_percent, synced_at, discount_permissions_fetched_at, discount_permissions_terminal_code, discount_permissions_status, discount_permissions_user_can_discount, discount_permissions_user_max_discount_percent, discount_permissions_can_apply_line_discounts, discount_permissions_can_apply_transaction_discounts)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'), NULL, NULL, 'unavailable', NULL, NULL, NULL, NULL)
+      `INSERT INTO operator_pins (id, tenant_id, name, email, pin_hash, roles, permissions, company_ids, terminal_ids, approval_scopes, approval_scope_permissions_fetched_at, approval_mirror_status, can_discount, max_discount_percent, synced_at, discount_permissions_fetched_at, discount_permissions_terminal_code, discount_permissions_status, discount_permissions_user_can_discount, discount_permissions_user_max_discount_percent, discount_permissions_can_apply_line_discounts, discount_permissions_can_apply_transaction_discounts)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'fresh', $12, $13, datetime('now'), NULL, NULL, 'unavailable', NULL, NULL, NULL, NULL)
        ON CONFLICT(id) DO UPDATE SET
+         tenant_id = excluded.tenant_id,
          name = excluded.name, email = excluded.email, pin_hash = excluded.pin_hash,
          roles = excluded.roles, permissions = excluded.permissions,
+         company_ids = excluded.company_ids,
+         terminal_ids = excluded.terminal_ids,
+         approval_scopes = excluded.approval_scopes,
+         approval_scope_permissions_fetched_at = excluded.approval_scope_permissions_fetched_at,
+         approval_mirror_status = 'fresh',
          can_discount = excluded.can_discount,
          max_discount_percent = CASE
            WHEN discount_permissions_fetched_at IS NOT NULL
@@ -179,8 +208,13 @@ export async function upsertOperators(
          END,
          synced_at = datetime('now')`,
       [
-        op.id, op.name, op.email, op.pin_hash,
+        op.id, op.tenant_id ?? '',
+        op.name, op.email, op.pin_hash,
         JSON.stringify(op.roles), JSON.stringify(op.permissions),
+        JSON.stringify(op.company_ids ?? []),
+        JSON.stringify(op.terminal_ids ?? []),
+        JSON.stringify(op.approval_scopes ?? []),
+        op.approval_scope_permissions_fetched_at ?? null,
         op.can_discount ? 1 : 0, op.max_discount_percent,
       ]
     );

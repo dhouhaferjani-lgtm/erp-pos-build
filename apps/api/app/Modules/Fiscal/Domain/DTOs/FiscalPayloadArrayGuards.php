@@ -158,7 +158,7 @@ final class FiscalPayloadArrayGuards
     /**
      * @param  array<string, mixed>  $data
      */
-    private static function assertKey(array $data, string $key): void
+    public static function assertPresent(array $data, string $key): void
     {
         if (! array_key_exists($key, $data)) {
             throw new InvalidArgumentException(sprintf(
@@ -166,5 +166,13 @@ final class FiscalPayloadArrayGuards
                 $key,
             ));
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private static function assertKey(array $data, string $key): void
+    {
+        self::assertPresent($data, $key);
     }
 }

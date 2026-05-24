@@ -13,6 +13,13 @@ enum FiscalEventType: string
     case COMPANY_DAY_CLOSURE_MANIFEST = 'COMPANY_DAY_CLOSURE_MANIFEST';
     case ACCOUNT_PAYMENT = 'ACCOUNT_PAYMENT';
     case ACCOUNT_CHARGE = 'ACCOUNT_CHARGE';
+    case ACCOUNT_STATUS_CHANGED = 'ACCOUNT_STATUS_CHANGED';
+    case OPERATOR_APPROVAL_GRANTED = 'OPERATOR_APPROVAL_GRANTED';
+    case OVERRIDE_CREDIT_LIMIT = 'OVERRIDE_CREDIT_LIMIT';
+    case OVERRIDE_ACCOUNT_STATUS = 'OVERRIDE_ACCOUNT_STATUS';
+    case OVERRIDE_DISCOUNT_LIMIT = 'OVERRIDE_DISCOUNT_LIMIT';
+    case OVERRIDE_TENDER_TOLERANCE = 'OVERRIDE_TENDER_TOLERANCE';
+    case OVERRIDE_VOID_OR_RETURN = 'OVERRIDE_VOID_OR_RETURN';
     case ACCOUNT_REFUND = 'ACCOUNT_REFUND';
     case ACCOUNT_PAYMENT_RECONCILED = 'ACCOUNT_PAYMENT_RECONCILED';
     case ACCOUNT_CREDIT_ISSUE = 'ACCOUNT_CREDIT_ISSUE';
@@ -35,14 +42,39 @@ enum FiscalEventType: string
     case Z_REPORT = 'Z_REPORT';
     case REPRINT_COPY = 'REPRINT_COPY';
 
-    public function isImplementedInPhase1(): bool
+    public function isImplemented(): bool
     {
         return in_array($this, [
             self::SALE_RECEIPT,
             self::CHAIN_BREAK_DETECTED,
             self::CHAIN_RESTART,
             self::TERMINAL_REGISTRY_SNAPSHOT,
+            self::ACCOUNT_PAYMENT,
+            self::ACCOUNT_CHARGE,
+            self::ACCOUNT_STATUS_CHANGED,
+            self::OPERATOR_APPROVAL_GRANTED,
+            self::OVERRIDE_CREDIT_LIMIT,
+            self::OVERRIDE_ACCOUNT_STATUS,
+            self::OVERRIDE_DISCOUNT_LIMIT,
+            self::OVERRIDE_TENDER_TOLERANCE,
+            self::OVERRIDE_VOID_OR_RETURN,
+            self::CASH_OUT,
+            self::SAFE_DROP,
         ], true);
+    }
+
+    public function isServerOnly(): bool
+    {
+        return in_array($this, [
+            self::TERMINAL_REGISTRY_SNAPSHOT,
+            self::COMPANY_DAY_CLOSURE_MANIFEST,
+            self::ACCOUNT_STATUS_CHANGED,
+        ], true);
+    }
+
+    public function isImplementedInPhase1(): bool
+    {
+        return $this->isImplemented();
     }
 
     public static function checkConstraintList(): string
