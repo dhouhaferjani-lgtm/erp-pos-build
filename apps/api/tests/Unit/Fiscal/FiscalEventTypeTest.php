@@ -24,8 +24,15 @@ final class FiscalEventTypeTest extends TestCase
         $this->assertTrue(FiscalEventType::OVERRIDE_DISCOUNT_LIMIT->isImplemented());
         $this->assertTrue(FiscalEventType::OVERRIDE_TENDER_TOLERANCE->isImplemented());
         $this->assertTrue(FiscalEventType::OVERRIDE_VOID_OR_RETURN->isImplemented());
+        $this->assertTrue(FiscalEventType::OPENING_FLOAT->isImplemented());
+        $this->assertTrue(FiscalEventType::CASH_IN->isImplemented());
         $this->assertTrue(FiscalEventType::CASH_OUT->isImplemented());
         $this->assertTrue(FiscalEventType::SAFE_DROP->isImplemented());
+        $this->assertTrue(FiscalEventType::CASH_CORRECTION->isImplemented());
+        $this->assertTrue(FiscalEventType::SESSION_OPEN->isImplemented());
+        $this->assertTrue(FiscalEventType::SESSION_CLOSE->isImplemented());
+        $this->assertTrue(FiscalEventType::X_REPORT->isImplemented());
+        $this->assertTrue(FiscalEventType::Z_REPORT->isImplemented());
     }
 
     public function test_reserved_types_are_not_implemented(): void
@@ -33,9 +40,7 @@ final class FiscalEventTypeTest extends TestCase
         $this->assertFalse(FiscalEventType::COMPANY_DAY_CLOSURE_MANIFEST->isImplemented());
         $this->assertFalse(FiscalEventType::SALE_VOID->isImplemented());
         $this->assertFalse(FiscalEventType::REFUND_RECEIPT->isImplemented());
-        $this->assertFalse(FiscalEventType::OPENING_FLOAT->isImplemented());
-        $this->assertFalse(FiscalEventType::CASH_IN->isImplemented());
-        $this->assertFalse(FiscalEventType::CASH_CORRECTION->isImplemented());
+        $this->assertFalse(FiscalEventType::SALE_CORRECTION->isImplemented());
     }
 
     public function test_server_only_types(): void

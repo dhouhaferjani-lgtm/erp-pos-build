@@ -808,6 +808,23 @@ export class FiscalEventEngine {
       case 'SAFE_DROP':
         validateCashDrawerMovementPayload(request.payload);
         return;
+      case 'OPENING_FLOAT':
+      case 'CASH_IN':
+      case 'CASH_CORRECTION':
+        validateZCashDrawerMovementPayload(request.payload);
+        return;
+      case 'SESSION_OPEN':
+        validateSessionOpenPayload(request.payload);
+        return;
+      case 'SESSION_CLOSE':
+        validateZReportFamilyPayload(request.payload, SESSION_CLOSE_PAYLOAD_KEYS, 'SESSION_CLOSE');
+        return;
+      case 'X_REPORT':
+        validateZReportFamilyPayload(request.payload, X_REPORT_PAYLOAD_KEYS, 'X_REPORT');
+        return;
+      case 'Z_REPORT':
+        validateZReportFamilyPayload(request.payload, Z_REPORT_PAYLOAD_KEYS, 'Z_REPORT');
+        return;
       default:
         // Server-only types (§11.0) are rejected at Step -1.
         // Reserved-not-implemented types are rejected by the registry
@@ -1045,6 +1062,128 @@ const CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS = [
   'tenant_id',
   'terminal_id',
   'training_flag',
+] as const;
+
+const SESSION_OPEN_PAYLOAD_KEYS = [
+  'business_date',
+  'currency_code',
+  'currency_scale',
+  'opened_at_device',
+  'opening_float_amount',
+  'operator_id',
+  'operator_name',
+  'session_id',
+  'shift_id',
+  'terminal_id',
+  'terminal_label',
+  'training_flag',
+] as const;
+
+const Z_CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS = [
+  'amount',
+  'approval',
+  'business_date',
+  'cash_drawer_operation_id',
+  'currency_code',
+  'currency_scale',
+  'event_time_device',
+  'movement_id',
+  'movement_type',
+  'operator_id',
+  'operator_name',
+  'reason_code',
+  'reason_text',
+  'session_id',
+  'shift_id',
+  'training_flag',
+] as const;
+
+const X_REPORT_PAYLOAD_KEYS = [
+  'business_date',
+  'cash_drawer_totals',
+  'generated_at_device',
+  'operational_event_range',
+  'operator_id',
+  'operator_name',
+  'payment_method_totals',
+  'period_end',
+  'period_start',
+  'receipt_count',
+  'refunds_totals',
+  'sales_totals',
+  'session_id',
+  'shift_id',
+  'terminal_id',
+  'training_flag',
+  'vat_breakdown',
+  'voids_totals',
+  'x_report_uuid',
+] as const;
+
+const SESSION_CLOSE_PAYLOAD_KEYS = [
+  'business_date',
+  'cash_count_lines',
+  'cash_drawer_totals',
+  'closure_status',
+  'counted_cash',
+  'expected_cash',
+  'generated_at_device',
+  'manager_approval',
+  'operational_event_range',
+  'operator_id',
+  'operator_name',
+  'payment_method_totals',
+  'period_end',
+  'period_start',
+  'receipt_count',
+  'refunds_totals',
+  'sales_totals',
+  'session_close_uuid',
+  'session_id',
+  'shift_id',
+  'terminal_id',
+  'training_flag',
+  'variance_amount',
+  'variance_direction',
+  'variance_reason',
+  'variance_severity',
+  'vat_breakdown',
+  'voids_totals',
+] as const;
+
+const Z_REPORT_PAYLOAD_KEYS = [
+  'business_date',
+  'cash_count',
+  'cash_drawer_totals',
+  'closed_at_device',
+  'company_snapshot',
+  'currency_code',
+  'currency_scale',
+  'formatted_z_number',
+  'grand_totals_after',
+  'grand_totals_before',
+  'legacy_report_reference',
+  'operational_event_range',
+  'operator_id',
+  'operator_name',
+  'payment_method_totals',
+  'period_end',
+  'period_start',
+  'period_type',
+  'receipt_totals',
+  'refunds_totals',
+  'seller',
+  'session_event_range',
+  'session_id',
+  'shift_id',
+  'terminal_id',
+  'terminal_label',
+  'tolerance_summary',
+  'training_flag',
+  'vat_breakdown',
+  'voids_totals',
+  'z_number',
+  'z_report_uuid',
 ] as const;
 
 // -------------------------------------------------------------------
@@ -2745,6 +2884,33 @@ function assertMoneyStringAt(
   }
 }
 
+function assertCurrency(bag: Record<string, unknown>): number {
+  const currencyCode = bag['currency_code'];
+  if (typeof currencyCode !== 'string' || !ISO_4217.test(currencyCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(currencyCode)}`,
+    );
+  }
+
+  const scale = bag['currency_scale'];
+  if (typeof scale !== 'number' || !Number.isInteger(scale) || !SUPPORTED_CURRENCY_SCALES.includes(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${jsonOrType(scale)}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}`,
+    );
+  }
+
+  return scale;
+}
+
+function assertNullableObject(bag: Record<string, unknown>, field: string): void {
+  const value = bag[field];
+  if (value !== null && (typeof value !== 'object' || Array.isArray(value))) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_or_null_required:${field}`,
+    );
+  }
+}
+
 function assertTaxNumberForCountry(
   value: unknown,
   countryCode: string,
@@ -2883,6 +3049,13 @@ function assertNoExtraTopLevelKeys(
         `Allowed: ${[...allowedSet].sort().join(', ')}.`,
     );
   }
+}
+
+function assertPlainPayload(payload: unknown, label: string): Record<string, unknown> {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(`${label} payload must be an object.`);
+  }
+  return payload as Record<string, unknown>;
 }
 
 /**
@@ -3058,6 +3231,56 @@ function validateCashDrawerMovementPayload(payload: unknown): void {
   assertUuid(p, 'shift_id');
   assertUuid(p, 'supervisor_user_id');
   assertUuid(p, 'target_reference_id');
+}
+
+function validateSessionOpenPayload(payload: unknown): void {
+  const p = assertPlainPayload(payload, 'SESSION_OPEN');
+  assertExactKeySet(p, SESSION_OPEN_PAYLOAD_KEYS, 'SESSION_OPEN');
+  assertUuid(p, 'session_id');
+  assertUuid(p, 'shift_id');
+  assertCalendarDate(p, 'business_date');
+  assertIsoDateTimeMs(p, 'opened_at_device');
+  assertUuid(p, 'operator_id');
+  assertNonEmptyString(p, 'operator_name');
+  assertUuid(p, 'terminal_id');
+  assertNonEmptyString(p, 'terminal_label');
+  const scale = assertCurrency(p);
+  assertMoneyString(p, 'opening_float_amount', moneyRegex(scale), scale);
+  assertBool(p, 'training_flag');
+}
+
+function validateZCashDrawerMovementPayload(payload: unknown): void {
+  const p = assertPlainPayload(payload, 'Z_CASH_DRAWER_MOVEMENT');
+  assertExactKeySet(p, Z_CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS, 'Z_CASH_DRAWER_MOVEMENT');
+  assertUuid(p, 'movement_id');
+  assertUuid(p, 'session_id');
+  assertUuid(p, 'shift_id');
+  assertEnum(p, 'movement_type', ['OPENING_FLOAT', 'CASH_IN', 'CASH_OUT', 'SAFE_DROP', 'CASH_CORRECTION']);
+  assertCalendarDate(p, 'business_date');
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertUuid(p, 'operator_id');
+  assertNonEmptyString(p, 'operator_name');
+  const scale = assertCurrency(p);
+  assertMoneyString(p, 'amount', moneyRegex(scale), scale);
+  assertNonEmptyString(p, 'reason_code');
+  assertOptionalNonEmptyString(p, 'reason_text');
+  assertOptionalNonEmptyString(p, 'cash_drawer_operation_id');
+  assertNullableObject(p, 'approval');
+  assertBool(p, 'training_flag');
+}
+
+function validateZReportFamilyPayload(
+  payload: unknown,
+  keys: ReadonlyArray<string>,
+  label: string,
+): void {
+  const p = assertPlainPayload(payload, label);
+  assertExactKeySet(p, keys, label);
+  for (const field of ['session_id', 'shift_id', 'operator_id', 'terminal_id']) {
+    assertUuid(p, field);
+  }
+  assertCalendarDate(p, 'business_date');
+  assertBool(p, 'training_flag');
 }
 
 function validateSupervisorUserSnapshot(payload: Record<string, unknown>, path: string): void {
