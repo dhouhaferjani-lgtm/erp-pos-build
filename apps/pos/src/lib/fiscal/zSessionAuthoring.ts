@@ -70,6 +70,49 @@ export interface AuthorXReportResult {
   xReportEvent: FiscalEventAppendResult;
 }
 
+export type ZCashDrawerMovementType =
+  | 'OPENING_FLOAT'
+  | 'CASH_IN'
+  | 'CASH_OUT'
+  | 'SAFE_DROP'
+  | 'CASH_CORRECTION';
+
+export interface ZCashDrawerMovementApproval {
+  approval_event_id: string;
+  approval_id: string;
+  supervisor_user_id: string;
+  scope: 'cash_drawer_control';
+  policy_version: string;
+  target_hash: string;
+}
+
+export interface AuthorZCashDrawerMovementInput {
+  tenantId: string;
+  companyId: string;
+  terminalId: string;
+  shiftId: string;
+  sessionId: string;
+  businessDate: string;
+  operatorId: string;
+  operatorName: string;
+  movementType: ZCashDrawerMovementType;
+  amount: string;
+  currencyCode: string;
+  currencyScale: 0 | 2 | 3;
+  reasonCode: string;
+  reasonText: string | null;
+  cashDrawerOperationId: string | null;
+  approval: ZCashDrawerMovementApproval | null;
+  isTraining: boolean;
+  eventTimeDevice?: Date;
+  movementId?: string;
+}
+
+export interface AuthorZCashDrawerMovementResult {
+  movementEvent: FiscalEventAppendResult;
+  movementId: string;
+}
+
 export interface AuthorZSessionCloseInput {
   tenantId: string;
   companyId: string;
@@ -171,6 +214,31 @@ export function buildOpeningFloatPayload(
     operator_name: input.operatorName,
     reason_code: 'opening_float',
     reason_text: null,
+    session_id: input.sessionId,
+    shift_id: input.shiftId,
+    training_flag: input.isTraining,
+  };
+}
+
+export function buildZCashDrawerMovementPayload(
+  input: AuthorZCashDrawerMovementInput,
+  eventTimeDevice: Date,
+  movementId: string,
+): Record<string, unknown> {
+  return {
+    amount: formatMoney(input.amount, input.currencyScale),
+    approval: input.approval,
+    business_date: input.businessDate,
+    cash_drawer_operation_id: input.cashDrawerOperationId,
+    currency_code: input.currencyCode,
+    currency_scale: input.currencyScale,
+    event_time_device: eventTimeDevice.toISOString(),
+    movement_id: movementId,
+    movement_type: input.movementType,
+    operator_id: input.operatorId,
+    operator_name: input.operatorName,
+    reason_code: input.reasonCode,
+    reason_text: input.reasonText,
     session_id: input.sessionId,
     shift_id: input.shiftId,
     training_flag: input.isTraining,
@@ -397,6 +465,31 @@ export async function appendXReport(
   return { xReportEvent };
 }
 
+export async function appendZCashDrawerMovement(
+  db: Database | SqlSurface,
+  engine: ZSessionFiscalEventEngine,
+  input: AuthorZCashDrawerMovementInput,
+): Promise<AuthorZCashDrawerMovementResult> {
+  const eventTimeDevice = input.eventTimeDevice ?? new Date();
+  const movementId = input.movementId ?? crypto.randomUUID();
+  const movementEvent = await engine.append(db, {
+    event_type: input.movementType,
+    tenant_id: input.tenantId,
+    company_id: input.companyId,
+    terminal_id: input.terminalId,
+    operator_id: input.operatorId,
+    event_time_device: isoSecondsUtc(eventTimeDevice),
+    business_date: input.businessDate,
+    chain_context: zChainContext(input.isTraining),
+    payload: buildZCashDrawerMovementPayload(input, eventTimeDevice, movementId),
+    reference_event_id: input.approval?.approval_event_id,
+    source_event_class: 'z_cash_drawer_movement',
+    source_event_id: movementId,
+  });
+
+  return { movementEvent, movementId };
+}
+
 export async function appendZSessionCloseAndZReport(
   db: Database | SqlSurface,
   engine: ZSessionFiscalEventEngine,
@@ -456,5 +549,15 @@ export async function authorZSessionOpenWithOpeningFloat(
   return lockTerminal(input.tenantId, input.terminalId, async () => {
     const engine = await getFiscalEventEngine(input.companyId, db);
     return authorZSessionOpenWithOpeningFloatOnDb(db, engine, input);
+  });
+}
+
+export async function authorZCashDrawerMovement(
+  input: AuthorZCashDrawerMovementInput,
+): Promise<AuthorZCashDrawerMovementResult> {
+  const db = await getDatabase(input.companyId);
+  return lockTerminal(input.tenantId, input.terminalId, async () => {
+    const engine = await getFiscalEventEngine(input.companyId, db);
+    return appendZCashDrawerMovement(db, engine, input);
   });
 }

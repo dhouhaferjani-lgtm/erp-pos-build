@@ -8,14 +8,17 @@ import { FiscalEventPayloadRegistry } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
 import {
   appendXReport,
+  appendZCashDrawerMovement,
   appendZSessionCloseAndZReport,
   authorZSessionOpenWithOpeningFloatOnDb,
   buildXReportPayload,
+  buildZCashDrawerMovementPayload,
   buildZReportPayload,
   buildOpeningFloatPayload,
   buildSessionOpenPayload,
   buildSessionClosePayload,
   type AuthorXReportInput,
+  type AuthorZCashDrawerMovementInput,
   type AuthorZSessionCloseInput,
   type AuthorZSessionOpenInput,
 } from '../zSessionAuthoring';
@@ -165,6 +168,40 @@ function xReportInput(overrides: Partial<AuthorXReportInput> = {}): AuthorXRepor
   };
 }
 
+function movementInput(
+  overrides: Partial<AuthorZCashDrawerMovementInput> = {},
+): AuthorZCashDrawerMovementInput {
+  return {
+    tenantId: TENANT_ID,
+    companyId: COMPANY_ID,
+    terminalId: TERMINAL_ID,
+    shiftId: SHIFT_ID,
+    sessionId: SESSION_ID,
+    businessDate: '2026-05-16',
+    operatorId: OPERATOR_ID,
+    operatorName: 'Alice',
+    movementType: 'CASH_IN',
+    amount: '25.000',
+    currencyCode: 'TND',
+    currencyScale: 3,
+    reasonCode: 'cash_drawer_deposit',
+    reasonText: 'Change refill',
+    cashDrawerOperationId: '99999999-9999-4999-8999-999999999999',
+    approval: {
+      approval_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      approval_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      policy_version: 'pos-cash-drawer-policy-v1',
+      scope: 'cash_drawer_control',
+      supervisor_user_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      target_hash: 'target-hash',
+    },
+    isTraining: false,
+    eventTimeDevice: new Date('2026-05-16T10:30:00.123Z'),
+    movementId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    ...overrides,
+  };
+}
+
 d('zSessionAuthoring', () => {
   let adapter: SqliteTestAdapter;
   let engine: FiscalEventEngine;
@@ -306,6 +343,42 @@ d('zSessionAuthoring', () => {
     });
     expect(payload).not.toHaveProperty('z_number');
     expect(payload).not.toHaveProperty('closure_status');
+  });
+
+  it('builds Z-session cash drawer movement payloads with approval evidence', () => {
+    const payload = buildZCashDrawerMovementPayload(
+      movementInput(),
+      new Date('2026-05-16T10:30:00.123Z'),
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    );
+
+    expect(payload).toMatchObject({
+      amount: '25.000',
+      business_date: '2026-05-16',
+      cash_drawer_operation_id: '99999999-9999-4999-8999-999999999999',
+      event_time_device: '2026-05-16T10:30:00.123Z',
+      movement_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      movement_type: 'CASH_IN',
+      reason_code: 'cash_drawer_deposit',
+      session_id: SESSION_ID,
+      shift_id: SHIFT_ID,
+      training_flag: false,
+    });
+    expect(payload.approval).toMatchObject({
+      approval_event_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      scope: 'cash_drawer_control',
+    });
+  });
+
+  it('authors cash drawer movements on the z_session chain', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    const result = await appendZCashDrawerMovement(adapter, engine, movementInput());
+
+    expect(result.movementEvent.event_type).toBe('CASH_IN');
+    expect(result.movementEvent.chain_context).toBe('z_session');
+    expect(result.movementEvent.sequence_number).toBe(3);
+    expect(result.movementEvent.reference_event_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
   });
 
   it('authors X_REPORT on the z_session chain without closing the session', async () => {

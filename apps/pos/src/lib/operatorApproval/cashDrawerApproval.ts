@@ -32,10 +32,6 @@ function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-function formatCashAmount(amount: string): string {
-  return Number.parseFloat(amount).toFixed(3);
-}
-
 export function buildCashDrawerApprovalTarget(input: {
   operation: CashDrawerApprovalOperation;
   amount: string;
@@ -111,35 +107,6 @@ export async function authorCashDrawerApproval(
         },
         source_event_class: 'operator_approval',
         source_event_id: approvalId,
-      });
-
-      await engine.append(db, {
-        event_type: input.operation === 'deposit' ? 'SAFE_DROP' : 'CASH_OUT',
-        tenant_id: input.context.tenantId,
-        company_id: input.context.companyId,
-        terminal_id: input.context.terminalId,
-        operator_id: input.context.cashierUserId,
-        event_time_device: isoSecondsUtc(eventTimeDevice),
-        business_date: input.context.businessDate,
-        payload: {
-          approval_event_id: approvalEvent.id,
-          approval_id: approvalId,
-          approval_scope: 'cash_drawer_control',
-          amount: formatCashAmount(input.amount),
-          company_id: input.context.companyId,
-          event_time_device: eventTimeDevice.toISOString(),
-          operation_type: input.operation === 'deposit' ? 'DEPOSIT' : 'PAYOUT',
-          reason: input.reason,
-          shift_id: input.shiftId,
-          supervisor_user_id: input.supervisor.id,
-          target_reference_id: input.targetReferenceId,
-          tenant_id: input.context.tenantId,
-          terminal_id: input.context.terminalId,
-          training_flag: input.context.isTraining,
-        },
-        reference_event_id: approvalEvent.id,
-        source_event_class: 'cash_drawer_operation',
-        source_event_id: input.targetReferenceId,
       });
 
       await db.execute('COMMIT');
