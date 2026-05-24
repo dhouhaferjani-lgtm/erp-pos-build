@@ -17,6 +17,7 @@ use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\Shift;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
@@ -40,6 +41,30 @@ use Illuminate\Support\Str;
  * 3. General Ledger entries
  *
  * CRITICAL: POS payments are DIRECT TO REVENUE (no AR account).
+ *
+ * **Task 22 status.** Both the `ReceiptPayment::create` portion (see the
+ * `ReceiptPayment::create([...])` call below in `processReceiptPayments`)
+ * and the Treasury `Payment` + GL portion have been **relocated** for
+ * the device-authored fiscal-event path:
+ *   - `ReceiptPayment` rows → `PosCoreReceiptProjection` (Task 21).
+ *   - Treasury `Payment` row + POS-payment GL entry →
+ *     `TreasuryReceiptBridge` (Task 22).
+ *
+ * The legacy online-POS endpoint that calls this service stays functional
+ * through the rollout window. Per spec v7 §14:
+ *   - §14.1 (receipt sync retirement, Task 27B Pass 2B) retires the
+ *     batch-sync transport.
+ *   - §14.2 (web POS + Tauri-online new-sale authoring disposition,
+ *     Task 29) closes server-side new-sale `SALE_RECEIPT` authoring for
+ *     all callers; the legacy `void` / `processReturn` paths are the
+ *     knowingly-retained server-side carve-out.
+ *   - §14.3 (two-chokepoint CI grep gate, Task 30) installs the
+ *     completeness check that fails CI on any new server-authoring caller.
+ *
+ * New write surfaces MUST go through the projectors — do not extend
+ * the `Payment::create` or `ReceiptPayment::create` branches here.
+ * Treasury writes here stamp `origin = PaymentOrigin::Pos` +
+ * `fiscal_event_id = null` per the legacy-retention contract (spec §13).
  */
 final class ReceiptPaymentService
 {
@@ -249,6 +274,14 @@ final class ReceiptPaymentService
                 }
 
                 // Create Treasury Payment record
+                //
+                // Spec §13 writer-inventory row 1 — `ReceiptPaymentService` (POS receipt
+                // payment lines). Origin = `pos`. `fiscal_event_id` stays NULL on this
+                // legacy code path: it's the server-recompute path retained for
+                // route-disposed web POS payments; no device-authored fiscal event
+                // exists for this Payment row. The device-authored path lands the same
+                // origin via `TreasuryReceiptBridge::apply()` (Task 22) which ALSO
+                // stamps `fiscal_event_id = $event->id`.
                 $treasuryPayment = Payment::create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $receipt->tenant_id,
@@ -261,6 +294,7 @@ final class ReceiptPaymentService
                     'payment_date' => $receipt->posted_at,
                     'status' => PaymentStatus::Completed,
                     'payment_type' => PaymentType::POS,
+                    'origin' => PaymentOrigin::Pos,
                     'reference' => "POS Receipt {$receipt->receipt_number} - Payment ".($index + 1),
                     'notes' => 'POS payment ('.($index + 1).' of '.count($payments).')',
                 ]);

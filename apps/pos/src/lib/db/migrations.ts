@@ -671,15 +671,9 @@ export const migrations: Migration[] = [
   {
     // Codex review B1 (2026-04-30) — wire offline v3 fiscal hashing.
     //
-    // Adds `fiscal_schema_version` to two tables:
-    //   - terminal_state: projection of the server-side Terminal column. The
-    //     receipt-creation path branches on this value to choose v2 (legacy
-    //     `computeFiscalHash`) vs v3 (`buildCanonicalPayload` + SHA-256). The
-    //     value is refreshed every `pullTerminalState` cycle.
-    //   - offline_receipts: stamped at insert time so the sync payload can
-    //     declare the version each row was sealed against. The server's
-    //     `ReceiptSyncService` rejects any payload whose declared version
-    //     does not match the terminal's current version.
+    // Adds `fiscal_schema_version` to two tables for the historical receipt-hash
+    // cutover. Pass 2B retires the legacy receipt-sync authoring path, but the
+    // migration remains part of the upgrade sequence for existing local DBs.
     //
     // Default of 2 mirrors the pre-cutover state: terminals start as v2 and
     // are flipped to v3 by `FiscalSchemaCutoverController`. We have no
@@ -712,10 +706,9 @@ export const migrations: Migration[] = [
     // Default 0 backfills existing rows as production receipts, which is the
     // correct interpretation: every pre-T2.7 row was sealed against a
     // production-mode terminal (the `is_training_mode` flag existed on the
-    // server but the offline-first POS path did not honor it). The wire-shape
-    // builder (`receiptToPayload`) reads this column and emits a boolean
-    // `is_training` field on the sync payload; the server-side T2.7 backend
-    // (PR #103) branches on that flag in `ReceiptSyncService::syncSingleReceipt`.
+    // server but the offline-first POS path did not honor it). Pass 2B keeps
+    // the column for the local receipt mirror while fiscal-event ingestion
+    // projects the canonical training flag on the server.
     version: 29,
     name: 'add_is_training_to_offline_receipts',
     sql: '',
@@ -887,6 +880,407 @@ export const migrations: Migration[] = [
       for (const statement of columns) {
         try {
           await db.execute(statement);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // POS Fiscal Event Engine — Phase 1 (Task 13).
+    //
+    // Device SQLite is the authoritative fiscal source of truth. This
+    // migration brings up the per-device `fiscal_events` chain table,
+    // hardens it with append-only triggers matching the existing
+    // `offline_receipts` discipline, and adds the per-terminal chain
+    // head to `terminal_state` (legacy `last_hash`/`hash_sequence`
+    // columns are retained as a mirror).
+    //
+    // `offline_receipts.canonical_bytes` is added as a nullable column
+    // so projection-only callers continue to work until Task 15 wires
+    // the assembler / fiscal-event seal end-to-end.
+    //
+    // Column shape mirrors Phase 1 spec v7 §3.1 (device); chain
+    // invariants — UNIQUE(tenant_id, terminal_id, sequence_number),
+    // 64-char lowercase hex hashes — mirror the server-side §3.2.
+    version: 37,
+    name: 'create_fiscal_events_and_chain_head',
+    sql: '',
+    async run(db) {
+      // ----- fiscal_events (chain) ----------------------------------------
+      // CHECK constraints:
+      //   - sequence_number > 0 — genesis seed is stored on terminal_state, not as a chain row.
+      //   - length+hex-ish format guards for current_hash / previous_hash
+      //     (lower hex 64 chars). SQLite has no native regex; we lean on
+      //     length + GLOB pattern, which is sufficient as a defense-in-depth
+      //     guard alongside the producer-side encoder.
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS fiscal_events (
+          id                          TEXT PRIMARY KEY,
+          tenant_id                   TEXT NOT NULL,
+          company_id                  TEXT NOT NULL,
+          terminal_id                 TEXT NOT NULL,
+          operator_id                 TEXT NOT NULL,
+          event_type                  TEXT NOT NULL,
+          event_version               INTEGER NOT NULL DEFAULT 1,
+          signature_version           TEXT NOT NULL,
+          sequence_number             INTEGER NOT NULL,
+          event_time_device           TEXT NOT NULL,
+          business_date               TEXT NOT NULL,
+          last_server_time_seen       TEXT,
+          reference_event_id          TEXT,
+          reference_document_id       TEXT,
+          source_event_class          TEXT,
+          source_event_id             TEXT,
+          partner_id                  TEXT,
+          partner_identity_snapshot   TEXT,
+          canonical_bytes             TEXT NOT NULL,
+          previous_hash               TEXT NOT NULL,
+          current_hash                TEXT NOT NULL,
+          signature_status            TEXT NOT NULL DEFAULT 'not_required',
+          signature_algorithm         TEXT,
+          signature_value             TEXT,
+          signature_counter           INTEGER,
+          signature_provider          TEXT,
+          signing_device_id           TEXT,
+          certificate_id              TEXT,
+          signed_payload_ref          TEXT,
+          time_source_value           TEXT,
+          time_format                 TEXT,
+          provider_transaction_id     TEXT,
+          sync_status                 TEXT NOT NULL DEFAULT 'pending',
+          sync_error                  TEXT,
+          created_at                  TEXT NOT NULL,
+          synced_at                   TEXT,
+          CHECK (sequence_number > 0),
+          -- Lowercase-hex 64-char invariant. NOT GLOB '*[^0-9a-f]*' reads as
+          -- "no character anywhere in the string is outside [0-9a-f]" -- the
+          -- canonical SQLite idiom for "every character matches a class"
+          -- (GLOB lacks ^/$ anchors). The earlier GLOB '[0-9a-f]*' only
+          -- validated the FIRST character because * matches any sequence of
+          -- any characters in GLOB; that hole was caught and proven via
+          -- node:sqlite probe in the Task 13 round-2 dual review.
+          CHECK (length(current_hash)  = 64 AND current_hash  NOT GLOB '*[^0-9a-f]*'),
+          CHECK (length(previous_hash) = 64 AND previous_hash NOT GLOB '*[^0-9a-f]*'),
+          CHECK (sync_status IN ('pending', 'syncing', 'synced', 'failed')),
+          CHECK (signature_status IN ('not_required', 'pending', 'signed', 'failed')),
+          CHECK (
+            (source_event_class IS NULL AND source_event_id IS NULL)
+            OR (source_event_class IS NOT NULL AND source_event_id IS NOT NULL)
+          )
+        );
+      `);
+
+      // Chain-integrity UNIQUE — the (tenant_id, terminal_id, sequence_number)
+      // triple is the authoritative chain key. Matches server-side spec §3.2.
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_chain_unique
+          ON fiscal_events(tenant_id, terminal_id, sequence_number);
+      `);
+
+      // Source-event idempotency — partial unique index excludes NULL pairs.
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_source_event_unique
+          ON fiscal_events(source_event_class, source_event_id)
+          WHERE source_event_id IS NOT NULL;
+      `);
+
+      // Sync-lifecycle index — the sync flusher scans pending rows
+      // ordered by sequence.
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_sync_pending
+          ON fiscal_events(sync_status, sequence_number)
+          WHERE sync_status IN ('pending', 'syncing', 'failed');
+      `);
+
+      // Reference-event / reference-document lookups for chain-recovery
+      // events and back-projection queries.
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_reference_event
+          ON fiscal_events(reference_event_id)
+          WHERE reference_event_id IS NOT NULL;
+      `);
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_fiscal_events_reference_document
+          ON fiscal_events(reference_document_id)
+          WHERE reference_document_id IS NOT NULL;
+      `);
+
+      // ----- Immutability triggers ---------------------------------------
+      // BEFORE UPDATE OF <every non-sync column>: RAISE(ABORT).
+      // Allowed columns (sync lifecycle only): sync_status, sync_error, synced_at.
+      //
+      // SQLite's column-level UPDATE OF trigger fires only when one of the
+      // listed columns is in the UPDATE's SET list. By enumerating ALL
+      // non-sync columns we block any attempted mutation of chain content
+      // while still allowing the sync flusher to advance the lifecycle.
+      await db.execute(`
+        CREATE TRIGGER IF NOT EXISTS fiscal_events_block_update
+        BEFORE UPDATE OF
+          id, tenant_id, company_id, terminal_id, operator_id,
+          event_type, event_version, signature_version, sequence_number,
+          event_time_device, business_date, last_server_time_seen,
+          reference_event_id, reference_document_id,
+          source_event_class, source_event_id,
+          partner_id, partner_identity_snapshot,
+          canonical_bytes, previous_hash, current_hash,
+          signature_status, signature_algorithm, signature_value,
+          signature_counter, signature_provider, signing_device_id,
+          certificate_id, signed_payload_ref,
+          time_source_value, time_format, provider_transaction_id,
+          created_at
+        ON fiscal_events
+        BEGIN
+          SELECT RAISE(ABORT, 'fiscal_events is append-only; only sync_status/sync_error/synced_at may be updated');
+        END;
+      `);
+
+      // BEFORE DELETE: RAISE(ABORT) always.
+      await db.execute(`
+        CREATE TRIGGER IF NOT EXISTS fiscal_events_block_delete
+        BEFORE DELETE ON fiscal_events
+        BEGIN
+          SELECT RAISE(ABORT, 'fiscal_events rows are append-only and may not be deleted');
+        END;
+      `);
+
+      // ----- terminal_state chain head -----------------------------------
+      // Three NOT NULL DEFAULT '' columns — populated at terminal init
+      // by the device fiscal-event boot path (Task 15 wires this).
+      // Legacy last_hash/hash_sequence stay; they mirror the receipt-V3
+      // chain head for backward-compatible reads.
+      const terminalStateColumns = [
+        "ALTER TABLE terminal_state ADD COLUMN fiscal_event_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN fiscal_event_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN fiscal_event_sequence INTEGER NOT NULL DEFAULT 0',
+      ];
+      for (const stmt of terminalStateColumns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+
+      // ----- offline_receipts.canonical_bytes ----------------------------
+      // Nullable — projection-only callers continue to function until
+      // Task 15 wires fiscal-event sealing into the assembler path.
+      try {
+        await db.execute('ALTER TABLE offline_receipts ADD COLUMN canonical_bytes TEXT');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    // POS Fiscal Event Engine — Phase 1 (Task 25 round-2).
+    //
+    // Spec v7 §9 requires: "On a local chain break, the terminal continues
+    // operating in a recorded degraded mode." Task 25 round-1 shipped the
+    // recovery emission (CHAIN_BREAK_DETECTED + CHAIN_RESTART) but did NOT
+    // record the degraded-mode flag on `terminal_state`. Codex T25-P1
+    // flagged this as a spec-compliance gap. Round-2 closes it by adding
+    // an enum-shaped column the recovery service flips inside the same
+    // transaction that emits the two recovery events — so a transactional
+    // rollback also rolls back the degraded flag.
+    //
+    // Allowed values: 'healthy' | 'degraded'. Default 'healthy'. The
+    // CHECK constraint enforces the allowed set; we use TEXT (not an
+    // INTEGER enum) so the value reads as the enum tag in any SQLite
+    // shell inspection — forensic legibility per the standing
+    // enum-not-magic-string discipline (CLAUDE.md rule 9).
+    version: 38,
+    name: 'add_fiscal_chain_status_to_terminal_state',
+    sql: '',
+    async run(db) {
+      try {
+        await db.execute(
+          "ALTER TABLE terminal_state ADD COLUMN fiscal_chain_status TEXT NOT NULL DEFAULT 'healthy' CHECK (fiscal_chain_status IN ('healthy', 'degraded'))",
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : '';
+        if (!msg.includes('duplicate column')) {
+          throw error;
+        }
+      }
+    },
+  },
+  {
+    // Customer Accounts Phase 2 (Task 2) — local POS customer mirror.
+    //
+    // This is inbound reference data for cashier search/attach and account
+    // balance display. It is intentionally scoped by tenant_id + company_id
+    // on every key and lookup; account-payment fiscal authoring must never
+    // resolve a customer from another company when the same customer UUID is
+    // present in a different local tenant/company cache.
+    version: 39,
+    name: 'create_customers_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        tax_number TEXT,
+        customer_category TEXT,
+        receivable_balance TEXT NOT NULL DEFAULT '0.0000',
+        credit_balance TEXT NOT NULL DEFAULT '0.0000',
+        balance_updated_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sync_version TEXT,
+        updated_at TEXT,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(tenant_id, company_id, name);
+      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(tenant_id, company_id, phone);
+      CREATE INDEX IF NOT EXISTS idx_customers_tax_number ON customers(tenant_id, company_id, tax_number);
+    `,
+  },
+  {
+    // Customer Accounts Phase 2 (Task 5) — local pending customer create
+    // outbox plus client→server alias mirror. Both tables are scoped by
+    // tenant_id + company_id so fiscal authoring cannot resolve a local
+    // pending UUID through another company's server Partner alias.
+    version: 40,
+    name: 'create_pending_customer_alias_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS pending_customer_outbox (
+        client_customer_uuid TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'failed')),
+        sync_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_customer_outbox_status
+        ON pending_customer_outbox(tenant_id, company_id, status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS customer_aliases (
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        client_customer_uuid TEXT NOT NULL,
+        server_partner_id TEXT NOT NULL,
+        resolved_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_aliases_server_partner
+        ON customer_aliases(tenant_id, company_id, server_partner_id);
+    `,
+  },
+  {
+    // Phase 3 Task 3 — charge-to-account credit controls for offline
+    // account-charge authoring. These remain inbound mirror fields only:
+    // tenant_id + company_id scoping is still enforced by the customers
+    // composite primary key and repository lookups.
+    version: 41,
+    name: 'add_account_charge_credit_controls_to_customers',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE customers ADD COLUMN credit_limit TEXT',
+        'ALTER TABLE customers ADD COLUMN payment_terms_days INTEGER',
+        'ALTER TABLE customers ADD COLUMN charge_account_enabled INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE customers ADD COLUMN charge_policy_version TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 6 — account-status mirror for account-charge fail-closed rules.
+    version: 42,
+    name: 'add_account_status_to_customers_mirror',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE customers ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended', 'closed', 'disputed'))",
+        'ALTER TABLE customers ADD COLUMN account_status_changed_at TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_reason TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_version INTEGER NOT NULL DEFAULT 1',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 7 — scoped approval metadata for offline supervisor PIN checks.
+    version: 43,
+    name: 'add_scoped_approval_metadata_to_operator_pins',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE operator_pins ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE operator_pins ADD COLUMN company_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN approval_scopes TEXT NOT NULL DEFAULT '[]'",
+        'ALTER TABLE operator_pins ADD COLUMN approval_scope_permissions_fetched_at TEXT',
+        "ALTER TABLE operator_pins ADD COLUMN approval_mirror_status TEXT NOT NULL DEFAULT 'fresh' CHECK (approval_mirror_status IN ('fresh', 'server_quarantined'))",
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 10 — approval evidence for legacy cash drawer DEPOSIT/PAYOUT queue rows.
+    version: 44,
+    name: 'add_cash_drawer_approval_evidence',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_fiscal_event_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_scope TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_supervisor_user_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_target_hash TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
         } catch (error) {
           const msg = error instanceof Error ? error.message : '';
           if (!msg.includes('duplicate column')) {

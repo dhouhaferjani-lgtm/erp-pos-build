@@ -54,8 +54,20 @@ final class FiscalEventProjectionRow extends Model
     public $timestamps = true;
 
     /**
-     * Every field the OutboxIngestor (Task 19) sets on insert plus the worker
-     * loop's mutable surface (status / attempts / error / lifecycle timestamps).
+     * Insert-time identity fields only.
+     *
+     * The lifecycle columns (`projection_status`, `attempts`, `last_error`,
+     * `last_attempted_at`, `applied_at`, `dead_lettered_at`) are intentionally
+     * NOT fillable: the state machine `pending → running → applied|dead_lettered`
+     * (spec §7.5) is owned by `ApplyFiscalEventProjectionJob` (Task 23) and must
+     * mutate through targeted assignment (`$row->projection_status = …; $row->save()`)
+     * or `forceFill()`, never through mass-assignment from external input. This
+     * matches the boundary discipline that Task 8 enforces at the DB layer for
+     * `fiscal_events.integrity_exception_class`.
+     *
+     * On insert, the DB defaults supply `projection_status = 'pending'`,
+     * `attempts = 0`, and the `created_at` / `updated_at` timestamps, so the
+     * OutboxIngestor (Task 19) only needs to fill the three identity columns.
      *
      * @var list<string>
      */
@@ -63,12 +75,6 @@ final class FiscalEventProjectionRow extends Model
         'id',
         'fiscal_event_id',
         'projector_name',
-        'projection_status',
-        'attempts',
-        'last_error',
-        'last_attempted_at',
-        'applied_at',
-        'dead_lettered_at',
     ];
 
     /**

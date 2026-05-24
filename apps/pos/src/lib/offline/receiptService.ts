@@ -1,12 +1,18 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcsub, bcmul, bcdiv, bcformat, bccomp } from '@/lib/decimal';
-import { computeFiscalHash } from '@/lib/fiscal/hashService';
-import { buildCanonicalPayload, type V3CanonicalInput } from '@/lib/fiscal/v3/canonicalPayload';
+import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import type { FiscalEventAppendResult } from '@/lib/fiscal/FiscalEventEngine';
+import type {
+  SaleReceiptApprovalReferenceInput,
+} from '@/lib/fiscal/FiscalEventEngine';
 import {
-  getTerminalState,
-  advanceHashChain,
-} from '@/lib/db/repositories/terminalStateRepository';
+  buildSaleReceiptPayload,
+  type SaleReceiptSellerInput,
+} from '@/lib/fiscal/payloads/SaleReceiptPayload';
+import type { CartTransactionDiscount } from '@/stores/cartStore';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { getTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import {
   insertOfflineReceipt,
   scheduleDebouncedSync,
@@ -24,11 +30,15 @@ import { serializeErrorForLog } from '@/lib/errorLogging';
 import { useSyncStore } from '@/stores/syncStore';
 
 interface OfflineReceiptInput {
+  tenantId: string;
+  companyId: string;
   terminalId: string;
   operatorId: string;
   operatorName: string;
+  shiftId: string;
   cartItems: CartItem[];
   currency: string;
+  seller: SaleReceiptSellerInput;
   /** Primary payment method (first entry in `payments`) — used for the denormalized column on offline_receipts */
   paymentMethodId: string;
   /** Primary payment repository (first entry in `payments`) */
@@ -44,7 +54,8 @@ interface OfflineReceiptInput {
    * a duplicate and returns the existing receipt instead of creating a new one.
    */
   idempotencyKey?: string;
-  transactionDiscount?: { type: 'percentage' | 'fixed'; value: string; reason?: string };
+  transactionDiscount?: CartTransactionDiscount;
+  tenderToleranceEvidence?: PosOverrideEvidence;
   /** Payments breakdown for fiscal hash + sync payload. Required. For single-payment flows, pass one entry. */
   payments: Array<{
     methodCode: string;
@@ -93,11 +104,6 @@ export interface OfflineReceiptResult {
   localId: string;
 }
 
-interface VatBreakdownEntry {
-  rate: string;
-  amount: string;
-}
-
 function computeLineTotals(cartItems: CartItem[]): {
   subtotal: string;
   taxAmount: string;
@@ -113,23 +119,6 @@ function computeLineTotals(cartItems: CartItem[]): {
   return { subtotal, taxAmount };
 }
 
-function computeVatBreakdown(cartItems: CartItem[], decimals: number): VatBreakdownEntry[] {
-  const byRate = new Map<string, string>();
-
-  for (const item of cartItems) {
-    const rate = item.tax_rate;
-    if (bccomp(item.tax_amount, '0') === 0) continue;
-    byRate.set(rate, bcadd(byRate.get(rate) ?? '0', item.tax_amount));
-  }
-
-  const entries: VatBreakdownEntry[] = [];
-  for (const [rate, total] of byRate) {
-    entries.push({ rate, amount: bcformat(total, decimals) });
-  }
-
-  return entries.sort((a, b) => a.rate.localeCompare(b.rate));
-}
-
 function generateReceiptNumber(
   locationCode: string,
   terminalCode: string,
@@ -140,97 +129,8 @@ function generateReceiptNumber(
   return `${locationCode}-${terminalCode}-${year}-${paddedSeq}`;
 }
 
-/**
- * Generate a training receipt number with a TRN- prefix and a UUID-derived
- * 16-hex (64-bit) suffix. We deliberately do NOT share the production
- * `terminal_state.hash_sequence` counter — advancing it would either move
- * the production fiscal chain (wrong) or require a separate counter column
- * (more invasive). Instead, the suffix derives from the receipt's own UUID.
- *
- * 64 bits gives ~18.4 quintillion combinations — collision probability is
- * negligible even across decades of repeated training-mode test runs at a
- * single terminal (Codex review PR #105 round-1 P3 closure: 32-bit suffix
- * was tractable enough to collide on cumulative installations, 64-bit is
- * not).
- */
-function generateTrainingReceiptNumber(
-  locationCode: string,
-  terminalCode: string,
-  receiptId: string,
-): string {
-  const year = new Date().getFullYear();
-  const suffix = receiptId.replace(/-/g, '').slice(0, 16).toLowerCase();
-  return `TRN-${locationCode}-${terminalCode}-${year}-${suffix}`;
-}
-
-/**
- * Compute the SHA-256 hex digest of a UTF-8 string. Mirrors PHP's
- * `hash('sha256', …)`. Used to seal the v3 canonical payload.
- */
-async function sha256Hex(input: string): Promise<string> {
-  const enc = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-interface V3HashInput {
-  previousHash: string;
-  receiptNumber: string;
-  postedAt: string;
-  total: string;
-  currency: string;
-  vatBreakdown: VatBreakdownEntry[];
-  payments: OfflineReceiptInput['payments'];
-  decimals: number;
-}
-
-/**
- * Compute the v3 fiscal hash for an offline receipt.
- *
- * Wraps `buildCanonicalPayload` (already proven to mirror the post-B2 PHP
- * builder byte-for-byte by fixture-08) with the receipt-creator's input.
- *
- * Phase 1 simplifications (all match the v2 path's implicit contract):
- *   - `payment_type = 'pos'` for every row (matches V3ReceiptHashComputer.php's
- *     hardcoded sentinel until the e-commerce / online-ordering channels land).
- *   - `voucher_ledger_entries = []` and `audit = null`. Voucher ledger entries
- *     are populated server-side from the Voucher domain when the receipt is
- *     persisted; offline-issued receipts do not yet wire voucher events into
- *     the canonical hash. This matches the legacy v2 path which never carried
- *     ledger entries either, so cash-only and card-only sales produce
- *     equivalent canonical input shapes between v2 and v3.
- *   - `exchange_group_id = null`. Phase F exchange-pair receipts are
- *     server-finalized; offline receipts are always single-half.
- *
- * `method_code` is `payment.methodCode.toLowerCase()` to match the server's
- * post-B2 normalisation (V3ReceiptHashComputer.php:140).
- */
-async function computeV3FiscalHash(input: V3HashInput): Promise<string> {
-  const canonicalInput: V3CanonicalInput = {
-    receipt_number: input.receiptNumber,
-    posted_at: input.postedAt,
-    previous_hash: input.previousHash || null,
-    total: input.total,
-    currency: input.currency,
-    vat_breakdown: input.vatBreakdown.map((v) => ({
-      rate: v.rate,
-      amount: v.amount,
-    })),
-    payments: input.payments.map((p) => ({
-      method_code: p.methodCode.toLowerCase(),
-      payment_type: 'pos',
-      amount: bcformat(p.amount, input.decimals),
-      instrument_type: p.instrumentType ?? null,
-      instrument_serial: p.instrumentSerial ?? null,
-    })),
-    voucher_ledger_entries: [],
-    exchange_group_id: null,
-    audit: null,
-  };
-  const canonical = await buildCanonicalPayload(canonicalInput);
-  return sha256Hex(canonical);
+function isoSecondsUtc(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /**
@@ -250,6 +150,39 @@ function collectStoreVoucherPayments(
     }
   }
   return out;
+}
+
+function approvalReferenceFromEvidence(
+  evidence: PosOverrideEvidence,
+): SaleReceiptApprovalReferenceInput {
+  return {
+    approval_event_id: evidence.approval_event_id,
+    approval_id: evidence.approval_id,
+    approval_scope: evidence.approval_scope,
+    override_event_id: evidence.override_event_id,
+    policy_version: evidence.policy_version,
+    supervisor_user_id: evidence.supervisor_user_id,
+    target_reference_id: evidence.target_reference_id,
+  };
+}
+
+function collectApprovalReferences(input: OfflineReceiptInput): SaleReceiptApprovalReferenceInput[] {
+  const references: SaleReceiptApprovalReferenceInput[] = [];
+  const seen = new Set<string>();
+
+  const add = (evidence: PosOverrideEvidence | undefined): void => {
+    if (evidence === undefined || seen.has(evidence.override_event_id)) return;
+    seen.add(evidence.override_event_id);
+    references.push(approvalReferenceFromEvidence(evidence));
+  };
+
+  add(input.transactionDiscount?.approvalEvidence);
+  for (const item of input.cartItems) {
+    add(item.discount_approval_evidence);
+  }
+  add(input.tenderToleranceEvidence);
+
+  return references;
 }
 
 /**
@@ -285,13 +218,11 @@ async function resolveLocalVouchers(
 /**
  * T2.7 — offline-first training-aware receipt creator.
  *
- * Branches on `input.isTraining` (default false): training receipts use a
- * TRN- prefixed receipt number with a UUID-derived suffix, skip the local
- * fiscal-hash chain advance, and persist `is_training=1` on the SQLite row.
- * The `receiptToPayload` builder reads the column and emits a boolean
- * `is_training` field on the sync wire shape; the server-side
- * `ReceiptSyncService::syncSingleReceipt` (PR #103) honors the flag and
- * skips chain validation, year roll-over, finalize, and hash mismatch.
+ * Branches on `input.isTraining` (default false): training receipts emit a
+ * fiscal-event-backed SALE_RECEIPT payload with `training_flag=true` and
+ * persist `is_training=1` on the SQLite mirror row. The fiscal-event sync
+ * path carries the canonical bytes to the server; no legacy receipt-sync
+ * payload is built.
  *
  * Caller (paymentStore) reads `useTerminalStore.getState().terminal?.is_training_mode`
  * and forwards the flag here. Receipt-creation is a service layer; we keep
@@ -351,80 +282,45 @@ export async function createOfflineReceipt(
   const rawTotal = bcsub(subtotal, transactionDiscountAmount);
   const total = bccomp(rawTotal, '0') >= 0 ? rawTotal : '0';
 
-  // T2.7 — read training-mode early so the rest of the function can branch.
-  // We pre-allocate `receiptId` to use as the suffix in the training receipt
-  // number (training does NOT share a sequence counter with production).
   const isTraining = input.isTraining === true;
-  const receiptId = crypto.randomUUID();
-
-  // 3. Generate receipt number.
-  // Production: continues to use terminalState.hash_sequence + 1 (advanced
-  // by advanceHashChain inside the transaction).
-  // Training: uses a TRN- prefix with an 8-hex suffix derived from receiptId.
-  // The suffix is unique by construction so two sequential training receipts
-  // never collide on the server's receipt_number UNIQUE index.
-  const newSequence = terminalState.hash_sequence + 1;
-  const receiptNumber = isTraining
-    ? generateTrainingReceiptNumber(
-        terminalState.location_code,
-        terminalState.terminal_code,
-        receiptId,
-      )
-    : generateReceiptNumber(
-        terminalState.location_code,
-        terminalState.terminal_code,
-        newSequence,
-      );
-
-  // 4. Compute fiscal hash with real VAT breakdown.
-  //
-  // Codex review B1 (2026-04-30): branch on the terminal's fiscal_schema_version.
-  //   - v2 → legacy `computeFiscalHash` (pipe-joined string, SHA-256). Bit-for-bit
-  //     unchanged from before B1 — the legacy path must remain stable so v2
-  //     terminals that have not cut over keep producing identical hashes.
-  //   - v3 → `buildCanonicalPayload` (RFC 8785 canonical JSON, mirrors the
-  //     post-B2 PHP builder byte-for-byte) + SHA-256. Fixture-08 in
-  //     `apps/pos/src/lib/fiscal/v3/__fixtures__/v3-golden-hashes/` proves the
-  //     parity; the test in `canonicalPayload.test.ts` runs every CI build.
-  //
-  // T2.7: training receipts skip both hash services and use a deterministic
-  // sha256('TRAINING-' || receiptId) placeholder. This mirrors the server-side
-  // training row (ReceiptCreationService + ReceiptSyncService PR #103). The
-  // local fiscal chain is NOT advanced for training (no advanceHashChain
-  // call below), so the placeholder hash never enters the chain at all.
-  //
-  // posted_at: ISO 8601 UTC with trailing Z (matches the v3 PHP builder's
-  // `Y-m-d\TH:i:s\Z` formatter — bare `toISOString()` already produces this
-  // shape for UTC values).
-  const postedAt = new Date().toISOString();
-  const vatBreakdown = computeVatBreakdown(input.cartItems, decimals);
-  const totalFormatted = bcformat(total, decimals);
-  const fiscalSchemaVersion = terminalState.fiscal_schema_version;
-  let fiscalHash: string;
-  if (isTraining) {
-    fiscalHash = await sha256Hex(`TRAINING-${receiptId}`);
-  } else if (fiscalSchemaVersion === 3) {
-    fiscalHash = await computeV3FiscalHash({
-      previousHash: terminalState.last_hash,
-      receiptNumber,
-      postedAt,
-      total: totalFormatted,
-      currency: input.currency,
-      vatBreakdown,
-      payments: input.payments,
-      decimals,
-    });
-  } else {
-    fiscalHash = await computeFiscalHash({
-      previousHash: terminalState.last_hash,
-      receiptNumber,
-      postedAt,
-      total: totalFormatted,
-      currency: input.currency,
-      vatBreakdown,
-      payments: input.payments.map((p) => ({ methodCode: p.methodCode, amount: p.amount })),
-    });
+  if (!input.tenantId || !input.companyId || !input.shiftId || !input.seller) {
+    throw new Error('tenantId, companyId, shiftId, and seller are required for fiscal-event receipt authoring.');
   }
+  const receiptId = crypto.randomUUID();
+  const postedAtDate = new Date();
+  const postedAt = postedAtDate.toISOString();
+  const businessDate = postedAt.slice(0, 10);
+  const totalFormatted = bcformat(total, decimals);
+  const approvalReferences = collectApprovalReferences(input);
+  const canonicalPayload = buildSaleReceiptPayload({
+    receiptId,
+    terminalId: input.terminalId,
+    operatorId: input.operatorId,
+    operatorName: input.operatorName,
+    shiftId: input.shiftId,
+    currency: input.currency,
+    eventTimeDevice: postedAtDate,
+    businessDate,
+    cartItems: input.cartItems,
+    subtotalGross: subtotal,
+    taxAmount,
+    total: totalFormatted,
+    transactionDiscountAmount,
+    transactionDiscountReason: input.transactionDiscount?.reason ?? null,
+    payments: input.payments.map((payment) => ({
+      methodCode: payment.methodCode,
+      amount: payment.amount,
+      instrumentType: payment.instrumentType ?? null,
+      instrumentSerial: payment.instrumentSerial ?? null,
+    })),
+    consumptionMode: input.consumptionMode ?? null,
+    tableId: input.tableId ?? null,
+    isTraining,
+    seller: input.seller,
+    approvalReferences,
+  });
+  const primaryApprovalReferenceEventId =
+    approvalReferences[0]?.override_event_id ?? null;
 
   // 5. Store offline receipt
   // T0.2: prefer caller-provided key (paymentStore allocates once per cart
@@ -454,55 +350,7 @@ export async function createOfflineReceipt(
     }))
   );
 
-  const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'> = {
-    id: receiptId,
-    idempotency_key: idempotencyKey,
-    receipt_number: receiptNumber,
-    terminal_id: input.terminalId,
-    terminal_code: terminalState.terminal_code,
-    operator_id: input.operatorId,
-    operator_name: input.operatorName,
-    lines: JSON.stringify(
-      input.cartItems.map((item) => ({
-        product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
-        composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
-        name: item.product.name,
-        sku: item.product.sku,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        line_total: item.line_total,
-        tax_rate: item.tax_rate,
-        tax_amount: item.tax_amount,
-        discount_type: item.discount_type ?? null,
-        discount_percent: item.discount_percent ?? null,
-        discount_amount: item.discount_amount ?? null,
-        discount_reason: item.discount_reason ?? null,
-        modifiers: item.product.selectedModifiers ?? [],
-      }))
-    ),
-    subtotal: bcformat(subtotal, decimals),
-    tax_amount: bcformat(taxAmount, decimals),
-    discount_amount: bcformat(transactionDiscountAmount, decimals),
-    total: totalFormatted,
-    currency: input.currency,
-    fiscal_hash: fiscalHash,
-    previous_hash: terminalState.last_hash,
-    hash_sequence: newSequence,
-    transaction_discount_amount: input.transactionDiscount
-      ? bcformat(transactionDiscountAmount, decimals)
-      : null,
-    transaction_discount_reason: input.transactionDiscount?.reason ?? null,
-    tendered_amount: bcformat(String(input.tenderedAmount), decimals),
-    change_due: changeDueFormatted,
-    payment_method_id: input.paymentMethodId,
-    payment_repository_id: input.paymentRepositoryId,
-    status: 'pending',
-    payments_json: paymentsJson,
-    consumption_mode: input.consumptionMode ?? null,
-    table_id: input.tableId ?? null,
-    fiscal_schema_version: fiscalSchemaVersion,
-    is_training: isTraining ? 1 : 0,
-  };
+  const fiscalSchemaVersion = 3 as const;
 
   // 5b. Codex review B5 (2026-05-01): pre-resolve every store_voucher payment
   //     against the local voucher mirror BEFORE entering the transaction. We
@@ -538,22 +386,87 @@ export async function createOfflineReceipt(
   //     fiscal receipt that references a voucher whose local projection
   //     never moved.
   await db.execute('BEGIN TRANSACTION');
+  let fiscalEventResult: FiscalEventAppendResult | null = null;
+  let receiptNumber = '';
   try {
+    const engine = await getFiscalEventEngine(input.companyId, db);
+    fiscalEventResult = await engine.append(db, {
+      event_type: 'SALE_RECEIPT',
+      tenant_id: input.tenantId,
+      company_id: input.companyId,
+      terminal_id: input.terminalId,
+      operator_id: input.operatorId,
+      event_time_device: isoSecondsUtc(postedAtDate),
+      business_date: businessDate,
+      payload: canonicalPayload,
+      reference_event_id: primaryApprovalReferenceEventId ?? undefined,
+      source_event_class: 'offline_receipts',
+      source_event_id: receiptId,
+    });
+    receiptNumber = generateReceiptNumber(
+      terminalState.location_code,
+      terminalState.terminal_code,
+      fiscalEventResult.sequence_number,
+    );
+
+    const offlineReceipt: Omit<OfflineReceipt, 'created_at' | 'synced_at' | 'sync_error' | 'retry_count' | 'server_receipt_id'> = {
+      id: receiptId,
+      idempotency_key: idempotencyKey,
+      receipt_number: receiptNumber,
+      terminal_id: input.terminalId,
+      terminal_code: terminalState.terminal_code,
+      operator_id: input.operatorId,
+      operator_name: input.operatorName,
+      lines: JSON.stringify(
+        input.cartItems.map((item) => ({
+          product_id: item.product.sellableType === 'composite_item' ? undefined : item.product.id,
+          composite_item_id: item.product.sellableType === 'composite_item' ? item.product.id : undefined,
+          name: item.product.name,
+          sku: item.product.sku,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          line_total: item.line_total,
+          tax_rate: item.tax_rate,
+          tax_amount: item.tax_amount,
+          discount_type: item.discount_type ?? null,
+          discount_percent: item.discount_percent ?? null,
+          discount_amount: item.discount_amount ?? null,
+          discount_reason: item.discount_reason ?? null,
+          modifiers: item.product.selectedModifiers ?? [],
+        }))
+      ),
+      subtotal: bcformat(subtotal, decimals),
+      tax_amount: bcformat(taxAmount, decimals),
+      discount_amount: bcformat(transactionDiscountAmount, decimals),
+      total: totalFormatted,
+      currency: input.currency,
+      fiscal_hash: fiscalEventResult.current_hash,
+      previous_hash: fiscalEventResult.previous_hash,
+      hash_sequence: fiscalEventResult.sequence_number,
+      transaction_discount_amount: input.transactionDiscount
+        ? bcformat(transactionDiscountAmount, decimals)
+        : null,
+      transaction_discount_reason: input.transactionDiscount?.reason ?? null,
+      tendered_amount: bcformat(String(input.tenderedAmount), decimals),
+      change_due: changeDueFormatted,
+      payment_method_id: input.paymentMethodId,
+      payment_repository_id: input.paymentRepositoryId,
+      status: 'pending',
+      payments_json: paymentsJson,
+      consumption_mode: input.consumptionMode ?? null,
+      table_id: input.tableId ?? null,
+      fiscal_schema_version: fiscalSchemaVersion,
+      is_training: isTraining ? 1 : 0,
+      canonical_bytes: fiscalEventResult.canonical_bytes,
+    };
+
     await insertOfflineReceipt(db, offlineReceipt);
-    // T2.7 — training receipts never enter the local fiscal hash chain. The
-    // server's training-aware sync path (PR #103) likewise skips chain
-    // validation, so leaving terminal_state untouched is the consistent
-    // shape end-to-end. Production receipts continue to advance the chain.
-    if (!isTraining) {
-      await advanceHashChain(db, input.terminalId, fiscalHash, newSequence);
-    }
 
     // B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
     // writes a local voucher_ledger Redeemed row. The canonical voucher_ledger
-    // entry is server-authored exclusively — `ReceiptSyncService` now invokes
-    // `VoucherRedemptionService::redeem` during sync, which produces the
-    // canonical row tied to the synced receipt with a server-controlled UUID.
-    // The local mirror picks up that row on the next pullVoucherLedger.
+    // entry is server-authored from the fiscal-event projection path and is
+    // tied to the synced receipt with a server-controlled UUID. The local
+    // mirror picks up that row on the next pullVoucherLedger.
     //
     // Why we keep the local balance update:
     //   - The cashier sees the right voucher balance immediately on this
@@ -601,8 +514,8 @@ export async function createOfflineReceipt(
     console.error('[POS][offline][receipt] tx body threw — rolling back', {
       ...serializeErrorForLog(error),
       receiptNumber,
-      hashSequence: newSequence,
-      previousHash: terminalState.last_hash,
+      hashSequence: fiscalEventResult?.sequence_number ?? null,
+      previousHash: fiscalEventResult?.previous_hash ?? null,
       terminalId: input.terminalId,
     });
     try {
@@ -627,6 +540,10 @@ export async function createOfflineReceipt(
   useSyncStore.getState().incrementPendingCount();
   scheduleDebouncedSync();
 
+  if (fiscalEventResult === null) {
+    throw new Error('Fiscal event append did not return a result.');
+  }
+
   return {
     receiptNumber,
     total: totalFormatted,
@@ -634,7 +551,7 @@ export async function createOfflineReceipt(
     taxAmount: bcformat(taxAmount, decimals),
     discountAmount: bcformat(transactionDiscountAmount, decimals),
     changeDue: parseFloat(changeDueFormatted),
-    fiscalHash,
+    fiscalHash: fiscalEventResult.current_hash,
     idempotencyKey,
     localId: receiptId,
   };

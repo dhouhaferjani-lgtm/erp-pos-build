@@ -7,11 +7,13 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { createTestQueryClient, renderWithProviders } from '@/test/renderWithProviders'
 
+// §14.2 — `useCloseOrder` removed as part of the new-sale server-authoring
+// disposition. The order-close → SALE_RECEIPT path is retired; the
+// invalidation contract for the close mutation no longer exists.
 import {
   orderKeys,
   useAddOrderLine,
   useCancelOrder,
-  useCloseOrder,
   useCreateOrder,
   useModifyOrderLine,
   useOrder,
@@ -35,7 +37,8 @@ const mockOrderApi = vi.hoisted(() => ({
   modifyOrderLine: vi.fn(),
   removeOrderLine: vi.fn(),
   sendToKitchen: vi.fn(),
-  closeOrder: vi.fn(),
+  // §14.2 — closeOrder slot removed; the order-close → SALE_RECEIPT path
+  // is retired.
   cancelOrder: vi.fn(),
 }))
 
@@ -166,7 +169,7 @@ beforeEach(() => {
   mockOrderApi.modifyOrderLine.mockResolvedValue({ line: order.lines[0], order })
   mockOrderApi.removeOrderLine.mockResolvedValue(order)
   mockOrderApi.sendToKitchen.mockResolvedValue(order)
-  mockOrderApi.closeOrder.mockResolvedValue(order)
+  // §14.2 — closeOrder mock removed; route returns HTTP 410 server-side.
   mockOrderApi.cancelOrder.mockResolvedValue(order)
 })
 
@@ -225,7 +228,7 @@ describe('POS order mutation invalidation', () => {
     const modify = useModifyOrderLine()
     const remove = useRemoveOrderLine()
     const send = useSendToKitchen()
-    const close = useCloseOrder()
+    // §14.2 — close mutation removed from the harness.
     const cancel = useCancelOrder()
     ;(globalThis as Record<string, unknown>)['__orderMutations'] = {
       create,
@@ -233,7 +236,6 @@ describe('POS order mutation invalidation', () => {
       modify,
       remove,
       send,
-      close,
       cancel,
     }
     return null
@@ -253,7 +255,7 @@ describe('POS order mutation invalidation', () => {
       modify: { mutateAsync: (input: { orderId: string; lineId: string; data: ModifyOrderLineRequest }) => Promise<unknown> }
       remove: { mutateAsync: (input: { orderId: string; lineId: string }) => Promise<unknown> }
       send: { mutateAsync: (id: string) => Promise<unknown> }
-      close: { mutateAsync: (id: string) => Promise<unknown> }
+      // §14.2 — close slot removed; route returns HTTP 410.
       cancel: { mutateAsync: (input: { orderId: string; reason?: string }) => Promise<unknown> }
     }
   }
@@ -300,16 +302,14 @@ describe('POS order mutation invalidation', () => {
       expect(orderCounters().detail()).toBe(5)
     })
 
-    await orderMutations().close.mutateAsync('order-1')
-    await waitFor(() => {
-      expect(orderCounters().list()).toBe(7)
-      expect(orderCounters().detail()).toBe(6)
-    })
+    // §14.2 — close mutation removed: the order-close → SALE_RECEIPT path
+    // is retired; the backend route returns HTTP 410. Cancel remains as
+    // the non-receipt termination path.
 
     await orderMutations().cancel.mutateAsync({ orderId: 'order-1', reason: 'duplicate' })
     await waitFor(() => {
-      expect(orderCounters().list()).toBe(8)
-      expect(orderCounters().detail()).toBe(7)
+      expect(orderCounters().list()).toBe(7)
+      expect(orderCounters().detail()).toBe(6)
     })
     expect(queryClient.getQueryData(['orders', 'list', { status: 'open' }, 'tenant-B', 'company-1'])).toEqual({
       marker: 'tenant-B-list',

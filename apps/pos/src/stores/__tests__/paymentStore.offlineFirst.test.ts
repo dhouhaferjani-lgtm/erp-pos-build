@@ -1,14 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { usePaymentStore } from '@/stores/paymentStore';
+import { ActiveTerminalRequiredError, usePaymentStore } from '@/stores/paymentStore';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
+// Phase 1 Task 27 Pass 1: the server-authoring receipt methods
+// (`createReceipt`, `processReceiptPayments`) have been DELETED from
+// `@/api/receiptApi`. The local-first flow's "must not call server" invariant
+// is now enforced at compile time (the symbols don't exist) plus by the
+// source-level guard in `offlineCheckoutService.test.ts`. The test below at
+// line ~85 ("writes receipt to SQLite first and never calls createReceipt
+// API") was correspondingly rewritten to assert the symbols-are-gone
+// invariant rather than a not-called assertion on a defined-but-unused mock.
 vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(() => { throw new Error('createReceipt API must not be called in offline-first flow'); }),
-  processReceiptPayments: vi.fn(() => { throw new Error('processReceiptPayments API must not be called at checkout time'); }),
   fetchReceipt: vi.fn(),
 }));
 
@@ -42,6 +48,26 @@ vi.mock('@/lib/offline/offlineCheckoutService', () => ({
   executeCheckout: vi.fn(),
 }));
 
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: vi.fn(async () => ({
+    id: 'supervisor-1',
+    name: 'Supervisor',
+    roles: ['manager'],
+  })),
+}));
+
+vi.mock('@/lib/operatorApproval/posOverrideAuthoring', () => ({
+  authorPosOverride: vi.fn(async (input: { targetReferenceId: string }) => ({
+    approval_id: '10000000-0000-4000-8000-000000000001',
+    approval_event_id: '10000000-0000-4000-8000-000000000002',
+    approval_scope: 'tender_tolerance_override',
+    override_event_id: '10000000-0000-4000-8000-000000000003',
+    policy_version: 'pos-phase-4-v1',
+    supervisor_user_id: 'supervisor-1',
+    target_reference_id: input.targetReferenceId,
+  })),
+}));
+
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
     getState: vi.fn().mockReturnValue({
@@ -56,11 +82,25 @@ vi.mock('@/stores/syncStore', () => ({
 describe('paymentStore offline-first cash checkout', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetTerminalLocksForTesting } = await import('@/lib/offline/terminalMutex');
+    __resetTerminalLocksForTesting();
     usePaymentStore.getState().reset();
     useAuthStore.setState({
       user: { id: 'user-1', name: 'Houssem', email: 'h@example.com', tenantId: 't1', phone: null, status: 'active', locale: null, timezone: null, roles: [], permissions: [], emailVerified: true },
       companyId: 'company-1',
-      companies: [{ id: 'company-1', name: 'Test Co', legalName: 'Test SA', countryCode: 'FR', currency: 'EUR', locale: 'fr', timezone: 'Europe/Paris' }],
+      companies: [{
+        id: 'company-1',
+        name: 'Test Co',
+        legalName: 'Test SA',
+        tax_id: '123456789',
+        countryCode: 'FR',
+        address_street: '1 Rue Test',
+        address_city: 'Paris',
+        address_postal_code: '75001',
+        currency: 'EUR',
+        locale: 'fr',
+        timezone: 'Europe/Paris',
+      }],
       token: 'tok',
       serverUrl: 'http://localhost',
       isAuthenticated: true,
@@ -73,6 +113,28 @@ describe('paymentStore offline-first cash checkout', () => {
       lastActivity: Date.now(),
       hasPins: true,
     });
+    useTerminalStore.setState({
+      terminal: {
+        id: 'term-1',
+        code: 'T001',
+        name: 'Counter 1',
+        type: 'fixed',
+        is_active: true,
+        is_training_mode: false,
+        hardware_identifier: null,
+        location: { id: 'loc1', name: 'Main', code: 'MAIN' },
+      },
+      shift: {
+        id: 'shift-1',
+        terminal_id: 'term-1',
+        shift_number: 1,
+        status: 'OPEN',
+        opening_cash: '0.00',
+        opened_at: '2026-05-20T08:00:00Z',
+        user: { id: 'user-1', name: 'Houssem' },
+      },
+      hashChainReady: true,
+    } as never);
     useCartStore.setState({
       items: [makeCartItem({ line_total: '50.00', tax_amount: '0.00' })],
     });
@@ -82,14 +144,20 @@ describe('paymentStore offline-first cash checkout', () => {
     });
   });
 
-  it('writes receipt to SQLite first and never calls createReceipt API', async () => {
+  it('writes receipt to SQLite first; the server-authoring receipt methods are gone (Phase 1 Task 27 Pass 1)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
-    const { createReceipt } = await import('@/api/receiptApi');
 
     await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
 
     expect(createOfflineReceipt).toHaveBeenCalledOnce();
-    expect(createReceipt).not.toHaveBeenCalled();
+
+    // Spec §14.3 chokepoint disposition: the new-sale server-authoring
+    // methods (`createReceipt` / `processReceiptPayments`) are deleted at
+    // compile time from `@/api/receiptApi`. A runtime not-called assertion
+    // would be vacuous (Vitest throws on access to undefined exports of a
+    // mocked module). The stronger invariant — "those identifiers don't
+    // exist anywhere in `offlineCheckoutService.ts`" — is enforced by the
+    // source-level guard in `offlineCheckoutService.test.ts`.
 
     const state = usePaymentStore.getState();
     expect(state.lastReceipt?.receipt_number).toBe('MAIN-T001-2026-00000001');
@@ -166,17 +234,15 @@ describe('paymentStore offline-first cash checkout', () => {
     );
   });
 
-  it('defaults isTraining=false when terminal is null (production fallback) (T2.7)', async () => {
-    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
-
+  it('fails loudly when the active terminal or shift is missing', async () => {
     useTerminalStore.setState({ terminal: null } as never);
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+    await expect(
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+    ).rejects.toBeInstanceOf(ActiveTerminalRequiredError);
 
-    expect(createOfflineReceipt).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ isTraining: false }),
-    );
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    expect(createOfflineReceipt).not.toHaveBeenCalled();
   });
 
   it('surfaces terminal bootstrap error cleanly when chain not initialized', async () => {
@@ -352,17 +418,13 @@ describe('paymentStore offline-first cash checkout', () => {
       100,
     );
 
-    // Let the second call's synchronous prefix run (it should hit the
-    // isProcessing gate and bail synchronously without ever calling
-    // createOfflineReceipt).
-    await Promise.resolve();
-
-    // The first call is still hanging; the second has already returned.
-    // Only one createOfflineReceipt call must have fired.
-    expect(callCount).toBe(1);
-
-    // Now release the first call so the test can clean up.
-    resolveFirst(undefined);
+    try {
+      await vi.waitFor(() => {
+        expect(callCount).toBe(1);
+      });
+    } finally {
+      resolveFirst(undefined);
+    }
     await Promise.all([firstCallPromise, secondCallPromise]);
 
     // Final invariant: exactly one createOfflineReceipt invocation total.
@@ -438,7 +500,19 @@ describe('paymentStore offline-first cash checkout', () => {
 
     // Switch company to TND
     useAuthStore.setState({
-      companies: [{ id: 'company-1', name: 'Test Co', legalName: 'Test SA', countryCode: 'TN', currency: 'TND', locale: 'fr', timezone: 'Africa/Tunis' }],
+      companies: [{
+        id: 'company-1',
+        name: 'Test Co',
+        legalName: 'Test SA',
+        tax_id: 'TN1234567',
+        countryCode: 'TN',
+        address_street: '1 Avenue Test',
+        address_city: 'Tunis',
+        address_postal_code: '1000',
+        currency: 'TND',
+        locale: 'fr',
+        timezone: 'Africa/Tunis',
+      }],
     });
     useCartStore.setState({
       items: [makeCartItem({ line_total: '50.000', tax_amount: '0.000' })],
@@ -515,6 +589,46 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(callArgs.payments[1]).toEqual(expect.objectContaining({ methodCode: 'CARD', amount: '30.00', cardLastFour: '1234' }));
   });
 
+  it('under-tender advanced checkout authors tender tolerance evidence before receipt creation', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    const { verifyScopedManagerPin } = await import('@/lib/operatorApproval/scopedManagerPin');
+    const { authorPosOverride } = await import('@/lib/operatorApproval/posOverrideAuthoring');
+
+    await usePaymentStore.getState().processAdvancedCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      [{ payment_method_id: 'pm-cash', amount: 49, repository_id: 'repo-cash' }],
+      undefined,
+      undefined,
+      undefined,
+      { tenderTolerancePin: '1234' },
+    );
+
+    expect(verifyScopedManagerPin).toHaveBeenCalledWith(expect.objectContaining({
+      pin: '1234',
+      approvalScope: 'tender_tolerance_override',
+      targetEventType: 'SALE_RECEIPT',
+    }));
+    expect(authorPosOverride).toHaveBeenCalledWith(expect.objectContaining({
+      approvalScope: 'tender_tolerance_override',
+      targetEventType: 'SALE_RECEIPT',
+      target: expect.objectContaining({
+        tendered_amount: '49.00',
+        total_amount: '50.00',
+        shortfall_amount: '1.00',
+      }),
+    }));
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenderToleranceEvidence: expect.objectContaining({
+          approval_scope: 'tender_tolerance_override',
+          override_event_id: '10000000-0000-4000-8000-000000000003',
+        }),
+      }),
+    );
+  });
+
   it('advanced checkout throws clearly when a payment method is unknown', async () => {
     usePaymentStore.setState({
       paymentMethods: [makePaymentMethod({ id: 'pm-cash', code: 'CASH' })],
@@ -589,7 +703,19 @@ describe('paymentStore offline-first cash checkout', () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
     useAuthStore.setState({
       ...useAuthStore.getState(),
-      companies: [{ id: 'company-1', name: 'Test Co', legalName: 'Test SA', countryCode: 'TN', currency: 'TND', locale: 'fr', timezone: 'Africa/Tunis' }],
+      companies: [{
+        id: 'company-1',
+        name: 'Test Co',
+        legalName: 'Test SA',
+        tax_id: 'TN1234567',
+        countryCode: 'TN',
+        address_street: '1 Avenue Test',
+        address_city: 'Tunis',
+        address_postal_code: '1000',
+        currency: 'TND',
+        locale: 'fr',
+        timezone: 'Africa/Tunis',
+      }],
     });
     useCartStore.setState({
       items: [makeCartItem({ line_total: '50.000', tax_amount: '0.000' })],

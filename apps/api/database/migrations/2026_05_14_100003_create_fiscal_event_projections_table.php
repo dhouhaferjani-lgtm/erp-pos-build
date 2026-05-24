@@ -66,7 +66,11 @@ return new class extends Migration
         if (DB::connection()->getDriverName() === 'pgsql') {
             // FK → fiscal_events(id). Cascading on delete is intentionally NOT set —
             // fiscal_events is append-only (Task 8 immutability triggers block deletes
-            // anyway). RESTRICT is implicit and correct.
+            // anyway). PG's default ON DELETE NO ACTION is implicit and correct:
+            // delete-blocking is the invariant we want. Note that NO ACTION is
+            // deferrable (checked at statement end) whereas RESTRICT is non-deferrable;
+            // the distinction is immaterial here since Task 8's BEFORE DELETE trigger
+            // on fiscal_events forbids deletes outright upstream of any FK check.
             DB::statement(<<<'SQL'
                 ALTER TABLE fiscal_event_projections
                 ADD CONSTRAINT fiscal_event_projections_fiscal_event_id_fk

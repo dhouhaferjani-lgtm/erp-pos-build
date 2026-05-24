@@ -30,7 +30,13 @@ export interface Company {
   id: string;
   name: string;
   legalName: string;
+  legal_name?: string | null;
+  tax_id?: string | null;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_postal_code?: string | null;
   countryCode: string;
+  country_code?: string | null;
   currency: string;
   locale: string;
   timezone: string;

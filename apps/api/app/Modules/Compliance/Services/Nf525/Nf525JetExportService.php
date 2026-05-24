@@ -61,7 +61,16 @@ final class Nf525JetExportService
             ->addTechnicalEvents($snapshot->shifts)
             ->addTerminalEvents($snapshot->terminalLifecycleEvents)
             ->addTrainingMode($snapshot->trainingCounts)
-            ->addHashChains($snapshot->terminals);
+            ->addHashChains($snapshot->terminals)
+            // Spec §8 quarantine surface — emits only when non-empty so the
+            // existing JET fixture byte-stability is preserved (Task 30
+            // round-2 BLOCKER closure; round-3 extends to UNION
+            // fiscal_event_quarantine + in-table quarantined fiscal_events).
+            ->addQuarantineSection($snapshot->quarantineSection)
+            // Spec §5.0 D1 + §8: receipts whose canonical_bytes failed
+            // the re-hash check are excluded from the regular sections
+            // and surface here for audit visibility (Task 30 round-3).
+            ->addTamperedSection($snapshot->tamperedSection);
 
         return $this->xmlBuilder->toString();
     }

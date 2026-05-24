@@ -71,7 +71,10 @@ export interface AdvancedPaymentsModalProps {
   total: number;
   paymentMethods: PaymentMethod[];
   paymentRepositories: PaymentRepository[];
-  onComplete: (payments: AdvancedPaymentLine[]) => Promise<void>;
+  onComplete: (
+    payments: AdvancedPaymentLine[],
+    options?: { tenderTolerancePin?: string },
+  ) => Promise<void>;
   isProcessing: boolean;
   error: string | null;
   /**
@@ -116,6 +119,7 @@ export function AdvancedPaymentsModal({
   const [repositoryId, setRepositoryId] = useState('');
   const [reference, setReference] = useState('');
   const [cardLastFour, setCardLastFour] = useState('');
+  const [tenderTolerancePin, setTenderTolerancePin] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // B3-followup audit (Finding 1, 2026-05-01): voucher tender rows live in
@@ -202,6 +206,8 @@ export function AdvancedPaymentsModal({
   const remaining = Math.max(0, total - totalPaid);
   const overpayment = Math.max(0, totalPaid - total);
   const isFullyPaid = totalPaid >= total;
+  const canSubmitWithTenderTolerance = remaining > 0 && totalPaid > 0 && tenderTolerancePin.trim() !== '';
+  const canComplete = isFullyPaid || canSubmitWithTenderTolerance;
 
   // Codex review B4 (2026-04-30) UI half: tapping an instrument-bearing
   // payment method tile (store_voucher / restaurant_voucher / gift_card per
@@ -348,7 +354,7 @@ export function AdvancedPaymentsModal({
   }, []);
 
   const handleComplete = useCallback(async () => {
-    if (!isFullyPaid) {
+    if (!isFullyPaid && !canSubmitWithTenderTolerance) {
       setValidationError(t('advancedPayments.insufficientPayment'));
       return;
     }
@@ -392,9 +398,16 @@ export function AdvancedPaymentsModal({
       }))
       : [];
 
-    await onComplete([...cashAndCardPayments, ...voucherPayments]);
+    await onComplete(
+      [...cashAndCardPayments, ...voucherPayments],
+      canSubmitWithTenderTolerance
+        ? { tenderTolerancePin: tenderTolerancePin.trim() }
+        : undefined,
+    );
   }, [
     isFullyPaid,
+    canSubmitWithTenderTolerance,
+    tenderTolerancePin,
     paymentLines,
     onComplete,
     t,
@@ -411,6 +424,7 @@ export function AdvancedPaymentsModal({
     setRepositoryId('');
     setReference('');
     setCardLastFour('');
+    setTenderTolerancePin('');
     setValidationError(null);
     setIsVoucherTenderModalOpen(false);
     onClose();
@@ -740,9 +754,27 @@ export function AdvancedPaymentsModal({
               </div>
             )}
 
+            {remaining > 0 && (
+              <label className="mb-2 block text-sm">
+                <span className="mb-1 block font-medium text-gray-700">
+                  {t('advancedPayments.tenderTolerancePinLabel')}
+                </span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={tenderTolerancePin}
+                  onChange={(event) => {
+                    setTenderTolerancePin(event.target.value);
+                    setValidationError(null);
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                />
+              </label>
+            )}
+
             <button
               onClick={() => void handleComplete()}
-              disabled={!isFullyPaid || isProcessing}
+              disabled={!canComplete || isProcessing}
               className="w-full rounded-xl bg-green-600 px-6 py-3.5 text-lg font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isProcessing

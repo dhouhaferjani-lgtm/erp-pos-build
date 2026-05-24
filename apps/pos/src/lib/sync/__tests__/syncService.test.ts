@@ -9,12 +9,19 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db/repositories/offlineReceiptRepository')>('@/lib/db/repositories/offlineReceiptRepository');
   return {
     ...actual,
-    getPendingReceiptsForSync: vi.fn(),
     updateReceiptStatus: vi.fn().mockResolvedValue(undefined),
-    incrementRetryCount: vi.fn().mockResolvedValue(undefined),
     cleanupSyncedReceipts: vi.fn().mockResolvedValue(undefined),
     cleanupStuckReceipts: vi.fn().mockResolvedValue(undefined),
-    setServerReceiptId: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+vi.mock('@/lib/db/repositories/fiscalEventRepository', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/repositories/fiscalEventRepository')>('@/lib/db/repositories/fiscalEventRepository');
+  return {
+    ...actual,
+    getPendingFiscalEventsForSync: vi.fn(),
+    recoverStrandedSyncingFiscalEvents: vi.fn().mockResolvedValue(0),
+    updateFiscalEventSyncStatus: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -83,7 +90,6 @@ vi.mock('@/stores/authStore', () => ({
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   upsertZChainState: vi.fn().mockResolvedValue(undefined),
-  advanceHashChain: vi.fn().mockResolvedValue(undefined),
   FiscalRegressionError: class FiscalRegressionError extends Error {
     constructor(
       readonly terminalId: string,
@@ -124,49 +130,63 @@ import {
   runFullSync,
 } from '../syncService';
 import { apiGet, apiPost } from '@/lib/api';
+import { updateReceiptStatus } from '@/lib/db/repositories/offlineReceiptRepository';
 import {
-  getPendingReceiptsForSync,
-  updateReceiptStatus,
-  incrementRetryCount,
-  setServerReceiptId,
-} from '@/lib/db/repositories/offlineReceiptRepository';
+  getPendingFiscalEventsForSync,
+  recoverStrandedSyncingFiscalEvents,
+  updateFiscalEventSyncStatus,
+  type LocalFiscalEvent,
+} from '@/lib/db/repositories/fiscalEventRepository';
 import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
 import { upsertTerminalState } from '@/lib/db/repositories/terminalStateRepository';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
-import { makeOfflineReceipt } from '@/test/helpers';
 
 function makeMockDb() {
   return {} as import('@tauri-apps/plugin-sql').default;
 }
 
-/**
- * Helper: build a well-formed batch sync response for one or more results.
- */
-function syncBatchResponse(items: Array<{
-  idempotency_key: string;
-  status: 'synced' | 'duplicate' | 'failed' | 'chain_broken';
-  receipt_id?: string | null;
-  error?: string | null;
-  terminal_last_hash?: string | null;
-  terminal_hash_sequence?: number | null;
+function makeFiscalEvent(overrides: Partial<LocalFiscalEvent> = {}): LocalFiscalEvent {
+  return {
+    id: 'fe-1',
+    tenant_id: 'tenant-1',
+    company_id: 'company-1',
+    terminal_id: 'terminal-1',
+    operator_id: 'operator-1',
+    event_type: 'SALE_RECEIPT',
+    event_version: 1,
+    signature_version: 'v1',
+    sequence_number: 1,
+    event_time_device: '2026-05-20T12:00:00Z',
+    business_date: '2026-05-20',
+    last_server_time_seen: null,
+    reference_event_id: null,
+    reference_document_id: null,
+    source_event_class: 'offline_receipts',
+    source_event_id: 'receipt-1',
+    canonical_bytes: '{"event_type":"SALE_RECEIPT"}',
+    previous_hash: 'previous-hash',
+    current_hash: 'current-hash',
+    sync_status: 'pending',
+    sync_error: null,
+    created_at: '2026-05-20T12:00:00Z',
+    synced_at: null,
+    ...overrides,
+  };
+}
+
+function fiscalEventBatchResponse(items: Array<{
+  fiscal_event_id: string | null;
+  stored?: boolean;
+  sequence_conflict?: boolean;
+  exception_class?: string | null;
 }>) {
-  const synced = items.filter((i) => i.status === 'synced').length;
-  const duplicates = items.filter((i) => i.status === 'duplicate').length;
-  const failed = items.filter((i) => i.status === 'failed' || i.status === 'chain_broken').length;
   return {
     results: items.map((i) => ({
-      idempotency_key: i.idempotency_key,
-      status: i.status,
-      receipt_id: i.receipt_id ?? 'srv-' + i.idempotency_key,
-      server_fiscal_hash: 'hash-' + i.idempotency_key,
-      error: i.error ?? null,
-      terminal_last_hash: i.terminal_last_hash ?? null,
-      terminal_hash_sequence: i.terminal_hash_sequence ?? null,
+      stored: i.stored ?? true,
+      fiscal_event_id: i.fiscal_event_id,
+      sequence_conflict: i.sequence_conflict ?? false,
+      exception_class: i.exception_class ?? null,
     })),
-    total: items.length,
-    synced,
-    duplicates,
-    failed,
   };
 }
 
@@ -179,15 +199,21 @@ describe('syncService', () => {
   });
 
   describe('pushOfflineReceipts', () => {
-    it('pushes all pending receipts successfully', async () => {
-      const receipts = [
-        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
+    it('pushes pending fiscal events through the fiscal-event sync endpoint', async () => {
+      const events = [
+        makeFiscalEvent({ id: 'fe-1', source_event_id: 'receipt-1', sequence_number: 1 }),
+        makeFiscalEvent({
+          id: 'fe-2',
+          source_event_id: 'receipt-2',
+          current_hash: 'current-hash-2',
+          previous_hash: 'current-hash',
+          sequence_number: 2,
+        }),
       ];
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
       vi.mocked(apiPost)
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]))
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'synced' }]));
+        .mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-1' }]))
+        .mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-2' }]));
 
       const result = await pushOfflineReceipts(db);
 
@@ -195,73 +221,40 @@ describe('syncService', () => {
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
-    });
 
-    it('marks receipt as syncing before pushing', async () => {
-      const receipt = makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1' });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]));
-
-      await pushOfflineReceipts(db);
-
-      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'r1', 'syncing');
-      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'r1', 'synced');
-    });
-
-    it('increments retry count on failure', async () => {
-      const receipt = makeOfflineReceipt({ id: 'r1' });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
-      vi.mocked(apiPost).mockRejectedValue(new Error('Network error'));
-
-      const result = await pushOfflineReceipts(db);
-
-      expect(result.failed).toBe(1);
-      expect(incrementRetryCount).toHaveBeenCalledWith(db, 'r1');
-      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'r1', 'failed', 'Network error');
-    });
-
-    it('halts sync on hash chain break error', async () => {
-      const receipts = [
-        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
-        makeOfflineReceipt({ id: 'r3', idempotency_key: 'idem-r3', hash_sequence: 3 }),
-      ];
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
-
-      vi.mocked(apiPost)
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r1', status: 'synced' }]))
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'chain_broken', error: 'hash mismatch' }]));
-
-      const result = await pushOfflineReceipts(db);
-
-      expect(result.pushed).toBe(1);
-      expect(result.failed).toBe(1);
-      expect(result.chainBreak).toBe(true);
       expect(apiPost).toHaveBeenCalledTimes(2);
-      expect(result.errors).toContain('CHAIN_BREAK at receipt ' + receipts[1]!.receipt_number);
-    });
-
-    it('continues pushing after non-chain-break error', async () => {
-      const receipts = [
-        makeOfflineReceipt({ id: 'r1', idempotency_key: 'idem-r1', hash_sequence: 1 }),
-        makeOfflineReceipt({ id: 'r2', idempotency_key: 'idem-r2', hash_sequence: 2 }),
-      ];
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue(receipts);
-
-      vi.mocked(apiPost)
-        .mockRejectedValueOnce(new Error('Timeout'))
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-r2', status: 'synced' }]));
-
-      const result = await pushOfflineReceipts(db);
-
-      expect(result.pushed).toBe(1);
-      expect(result.failed).toBe(1);
-      expect(result.chainBreak).toBe(false);
-      expect(apiPost).toHaveBeenCalledTimes(2);
+      expect(apiPost).toHaveBeenNthCalledWith(
+        1,
+        '/pos/sync/fiscal-events',
+        {
+          envelopes: [
+            expect.objectContaining({
+              envelope_id: 'fe-1',
+              idempotency_key: 'terminal-1:1',
+              payload: expect.objectContaining({
+                canonical_bytes: '{"event_type":"SALE_RECEIPT"}',
+                current_hash: 'current-hash',
+                source_event_class: 'offline_receipts',
+                source_event_id: 'receipt-1',
+              }),
+            }),
+          ],
+        },
+        { timeoutMs: 30_000 },
+      );
+      expect(apiPost).not.toHaveBeenCalledWith(
+        '/pos/receipts/sync',
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-1', 'syncing');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-1', 'synced');
+      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'receipt-1', 'synced');
+      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'receipt-2', 'synced');
     });
 
     it('returns empty results when no pending receipts', async () => {
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([]);
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([]);
 
       const result = await pushOfflineReceipts(db);
 
@@ -271,620 +264,201 @@ describe('syncService', () => {
       expect(result.chainBreak).toBe(false);
     });
 
-    it('T0.3: FetchTimeoutError reverts the receipt to pending without incrementing retry_count', async () => {
-      // T0.3 round-1 Codex BLOCKER fix: a read-timeout means "unknown sync
-      // state" (server may have committed). The push loop must NOT mark
-      // the receipt as failed or bump retry_count — those bumps drive the
-      // dead-letter path at retry_count >= MAX_SYNC_RETRIES (5), which
-      // would saturate even when the server has been accepting the POSTs
-      // and only the responses are being dropped on the wire. The next
-      // sync tick re-pushes with T0.2's stable idempotency key; the
-      // server-side dedup-on-disk returns 'duplicate' (treated as success
-      // upstream) or accepts fresh.
+    it('FetchTimeoutError reverts the fiscal event to pending without marking the source receipt failed', async () => {
       const { FetchTimeoutError } = await import('@/lib/fetchWithTimeout');
 
-      const receipt = makeOfflineReceipt({
-        id: 'r-timeout',
-        idempotency_key: 'idem-timeout',
-        hash_sequence: 1,
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+      const event = makeFiscalEvent({ id: 'fe-timeout', source_event_id: 'receipt-timeout' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
       vi.mocked(apiPost).mockRejectedValueOnce(
-        new FetchTimeoutError('https://x.test/pos/receipts/sync', 30_000, 'POST'),
+        new FetchTimeoutError('https://x.test/pos/sync/fiscal-events', 30_000, 'POST'),
       );
 
       const result = await pushOfflineReceipts(db);
 
-      // Loop result: NOT counted as failed (no banner / error to user).
       expect(result.pushed).toBe(0);
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
-
-      // Receipt status: 'pending' (not 'failed'). Last call to
-      // updateReceiptStatus for this receipt should be 'pending'.
-      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-timeout',
-      );
-      expect(statusCalls.length).toBeGreaterThan(0);
-      const lastStatus = statusCalls[statusCalls.length - 1]![2];
-      expect(lastStatus).toBe('pending');
-
-      // Critical invariant: retry_count NOT bumped (this is what protects
-      // the dead-letter cap from saturating on transient timeouts).
-      const incrementCallsForReceipt = vi.mocked(incrementRetryCount).mock.calls.filter(
-        (c) => c[1] === 'r-timeout',
-      );
-      expect(incrementCallsForReceipt).toHaveLength(0);
-    });
-
-    it('Codex review B3: receiptToPayload preserves method_code, instrument_type, and instrument_serial from payments_json', async () => {
-      const voucherReceipt = makeOfflineReceipt({
-        id: 'r-voucher',
-        idempotency_key: 'idem-voucher',
-        hash_sequence: 1,
-        fiscal_schema_version: 3,
-        payments_json: JSON.stringify([
-          {
-            payment_method_id: 'pm-cash',
-            repository_id: 'repo-cash',
-            amount: '10.00',
-            card_last_four: null,
-            transaction_reference: null,
-            method_code: 'cash',
-            instrument_type: null,
-            instrument_serial: null,
-          },
-          {
-            payment_method_id: 'pm-voucher',
-            repository_id: 'repo-voucher',
-            amount: '15.00',
-            card_last_four: null,
-            transaction_reference: null,
-            method_code: 'store_voucher',
-            instrument_type: 'store_voucher',
-            instrument_serial: 'SV-2026-0042',
-          },
-        ]),
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([voucherReceipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce(
-        syncBatchResponse([{ idempotency_key: 'idem-voucher', status: 'synced' }]),
-      );
-
-      await pushOfflineReceipts(db);
-
-      const calls = vi.mocked(apiPost).mock.calls;
-      expect(calls).toHaveLength(1);
-      type PostBody = {
-        receipts: Array<{
-          payments: Array<{
-            method_code: string;
-            instrument_type: string | null;
-            instrument_serial: string | null;
-          }>;
-        }>;
-      };
-      const body = calls[0]![1] as PostBody;
-      const payments = body.receipts[0]!.payments;
-      expect(payments).toHaveLength(2);
-      expect(payments[0]!.method_code).toBe('cash');
-      expect(payments[0]!.instrument_type).toBeNull();
-      expect(payments[0]!.instrument_serial).toBeNull();
-      expect(payments[1]!.method_code).toBe('store_voucher');
-      expect(payments[1]!.instrument_type).toBe('store_voucher');
-      expect(payments[1]!.instrument_serial).toBe('SV-2026-0042');
-    });
-
-    it('Codex review B1: stamps fiscal_schema_version on every push payload', async () => {
-      const v2Receipt = makeOfflineReceipt({
-        id: 'r-v2',
-        idempotency_key: 'idem-v2',
-        hash_sequence: 1,
-        fiscal_schema_version: 2,
-      });
-      const v3Receipt = makeOfflineReceipt({
-        id: 'r-v3',
-        idempotency_key: 'idem-v3',
-        hash_sequence: 2,
-        fiscal_schema_version: 3,
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([v2Receipt, v3Receipt]);
-      vi.mocked(apiPost)
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v2', status: 'synced' }]))
-        .mockResolvedValueOnce(syncBatchResponse([{ idempotency_key: 'idem-v3', status: 'synced' }]));
-
-      await pushOfflineReceipts(db);
-
-      // Inspect the bodies passed to apiPost; both must carry the field.
-      const calls = vi.mocked(apiPost).mock.calls;
-      expect(calls).toHaveLength(2);
-      const firstBody = calls[0]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
-      const secondBody = calls[1]![1] as { receipts: Array<{ fiscal_schema_version: number }> };
-      expect(firstBody.receipts[0]!.fiscal_schema_version).toBe(2);
-      expect(secondBody.receipts[0]!.fiscal_schema_version).toBe(3);
-    });
-
-    it('captures server_receipt_id from sync response and writes it to SQLite', async () => {
-      const receipt = makeOfflineReceipt({
-        id: 'client-uuid-1',
-        idempotency_key: 'idem-1',
-        status: 'pending',
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-
-      vi.mocked(apiPost).mockResolvedValueOnce({
-        results: [{
-          idempotency_key: 'idem-1',
-          status: 'synced',
-          receipt_id: 'server-uuid-99',
-          server_fiscal_hash: 'hash-99',
-          error: null,
-        }],
-        total: 1,
-        synced: 1,
-        duplicates: 0,
-        failed: 0,
-      });
-
-      const result = await pushOfflineReceipts(db);
-
-      expect(result.pushed).toBe(1);
-      expect(setServerReceiptId).toHaveBeenCalledWith(expect.anything(), 'idem-1', 'server-uuid-99');
-    });
-
-    it('setServerReceiptId failure does not clobber synced status or decrement pushed count', async () => {
-      const receipt = makeOfflineReceipt({
-        id: 'r-writeback',
-        idempotency_key: 'idem-writeback',
-        status: 'pending',
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce({
-        results: [{
-          idempotency_key: 'idem-writeback',
-          status: 'synced',
-          receipt_id: 'server-uuid-wb',
-          server_fiscal_hash: 'hash-wb',
-          error: null,
-        }],
-        total: 1, synced: 1, duplicates: 0, failed: 0,
-      });
-      vi.mocked(setServerReceiptId).mockRejectedValueOnce(new Error('SQLite write error'));
-
-      const result = await pushOfflineReceipts(db);
-
-      // Receipt must be counted as pushed, not failed
-      expect(result.pushed).toBe(1);
-      expect(result.failed).toBe(0);
-      // Status must remain 'synced' — the last call to updateReceiptStatus for this receipt should be 'synced'
-      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-writeback',
-      );
-      const finalStatus = statusCalls[statusCalls.length - 1]![2];
-      expect(finalStatus).toBe('synced');
-    });
-
-    it('malformed payments_json falls back to synthesized entry and warns', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      const receipt = makeOfflineReceipt({
-        idempotency_key: 'idem-corrupt',
-        payments_json: 'not-json',
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce({
-        results: [{ idempotency_key: 'idem-corrupt', status: 'synced', receipt_id: 'srv-c', server_fiscal_hash: 'h', error: null }],
-        total: 1, synced: 1, duplicates: 0, failed: 0,
-      });
-
-      await pushOfflineReceipts(db);
-
-      const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
-      const payload = callArgs['receipts'][0]!;
-      expect(Array.isArray(payload['payments'])).toBe(true);
-      expect((payload['payments'] as unknown[]).length).toBe(1);
-      expect((payload['payments'] as Record<string, unknown>[])[0]!['payment_method_id']).toBe(receipt.payment_method_id);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('malformed payments_json'),
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-timeout', 'syncing');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-timeout', 'pending');
+      expect(updateReceiptStatus).not.toHaveBeenCalledWith(
+        db,
+        'receipt-timeout',
+        'failed',
         expect.anything(),
       );
-
-      warnSpy.mockRestore();
     });
 
-    it('sends payments[], consumption_mode, table_id in sync payload', async () => {
-      const receipt = makeOfflineReceipt({
-        idempotency_key: 'idem-fnb',
-        payments_json: '[{"payment_method_id":"pm-1","repository_id":"repo-1","amount":"30.00"}]',
-        consumption_mode: 'SUR_PLACE',
-        table_id: 'table-5',
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce({
-        results: [{ idempotency_key: 'idem-fnb', status: 'synced', receipt_id: 'srv-1', server_fiscal_hash: 'h', error: null }],
-        total: 1, synced: 1, duplicates: 0, failed: 0,
-      });
-
-      await pushOfflineReceipts(db);
-
-      const callArgs = vi.mocked(apiPost).mock.calls[0]![1] as { receipts: Record<string, unknown>[] };
-      const payload = callArgs['receipts'][0]!;
-      // Codex review B3 (2026-04-30): the legacy `makeOfflineReceipt` helper
-      // emits a payments_json row without method_code / instrument fields
-      // (mimicking pre-B3 queued receipts). The sync layer's defensive
-      // parser coerces method_code to '' and instrument fields to null —
-      // this is the expected shape on the wire.
-      expect(payload['payments']).toEqual([
-        {
-          payment_method_id: 'pm-1',
-          repository_id: 'repo-1',
-          amount: '30.00',
-          card_last_four: null,
-          transaction_reference: null,
-          method_code: '',
-          instrument_type: null,
-          instrument_serial: null,
-        },
-      ]);
-      expect(payload['consumption_mode']).toBe('SUR_PLACE');
-      expect(payload['table_id']).toBe('table-5');
-    });
-
-    it('reconciles local hash_sequence from server terminal_last_hash after each sync', async () => {
-      const receipt = makeOfflineReceipt({
-        idempotency_key: 'key-1',
-        hash_sequence: 7,
-        fiscal_hash: 'client-hash-7',
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([receipt]);
-      vi.mocked(apiPost).mockResolvedValue(
-        syncBatchResponse([
-          {
-            idempotency_key: 'key-1',
-            status: 'synced',
-            receipt_id: 'server-uuid-1',
-            // New fields — the POS must consume them.
-            terminal_last_hash: 'server-hash-7',
-            terminal_hash_sequence: 7,
-          },
-        ]),
-      );
-
-      // Spy on advanceHashChain — used to rewrite local last_hash to match server.
-      const { advanceHashChain } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
-      );
-
-      await pushOfflineReceipts(db);
-
-      expect(advanceHashChain).toHaveBeenCalledWith(
-        expect.anything(),
-        receipt.terminal_id,
-        'server-hash-7',
-        7,
-      );
-    });
-
-    it('T0.4: server-duplicate-with-advance reconciles local chain WITHOUT chain-break alert', async () => {
-      // The post-T0.3 timeout-revert path lands here: a receipt that returned
-      // FetchTimeoutError on the first POST gets reverted to 'pending' (no
-      // retry-count bump), the next sync tick re-pushes it with the same
-      // T0.2-stable idempotency key, and the server's dedup-on-disk responds
-      // status='duplicate' carrying the existing receipt's chain anchor
-      // (`terminal_last_hash` + `terminal_hash_sequence`). The client MUST
-      // (1) advance the local hash chain to match the server's anchor,
-      // (2) flip the local receipt to 'synced',
-      // (3) writeback the server-canonical receipt_id,
-      // (4) NOT raise a chain-break alert and NOT append to errors[].
-      //
-      // The positive equality on `advanceHashChain` arguments is the
-      // load-bearing assertion (Codex Section 6.a/e/f preempt): without it,
-      // a regression where the duplicate branch silently skips the reconcile
-      // would still show `chainBreak === false` and pass vacuously.
-      const receipt = makeOfflineReceipt({
-        id: 'r-dup-advance',
-        idempotency_key: 'idem-dup-advance',
-        terminal_id: 'terminal-1',
-        hash_sequence: 10,
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+    it('treats server idempotent re-delivery as synced after a lost response retry', async () => {
+      const event = makeFiscalEvent({ id: 'fe-idempotent', source_event_id: 'receipt-idempotent' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
       vi.mocked(apiPost).mockResolvedValueOnce(
-        syncBatchResponse([
-          {
-            idempotency_key: 'idem-dup-advance',
-            status: 'duplicate',
-            receipt_id: 'srv-uuid-N+1',
-            terminal_last_hash: 'h-N+1',
-            terminal_hash_sequence: 11,
-          },
+        fiscalEventBatchResponse([
+          { fiscal_event_id: 'fe-idempotent', stored: false },
         ]),
-      );
-
-      const { advanceHashChain } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
       );
 
       const result = await pushOfflineReceipts(db);
 
-      // Loop result: success, no chain-break, no errors.
       expect(result.pushed).toBe(1);
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
       expect(result.chainBreak).toBe(false);
-
-      // Local receipt: 'synced' (not 'failed', not still 'syncing').
-      // The receipt receives 'syncing' first then 'synced'; assert the LAST
-      // status update is 'synced' so a regression that flipped the order
-      // (e.g. set 'failed' after 'synced') would fail the test.
-      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-dup-advance',
-      );
-      expect(statusCalls.length).toBeGreaterThan(0);
-      expect(statusCalls[statusCalls.length - 1]![2]).toBe('synced');
-
-      // Server-canonical receipt id is written back so HomePage can switch
-      // from local SQLite print to the richer API receipt.
-      expect(setServerReceiptId).toHaveBeenCalledWith(
-        expect.anything(),
-        'idem-dup-advance',
-        'srv-uuid-N+1',
-      );
-
-      // The load-bearing positive assertion: local hash chain advanced to
-      // server's anchor. Without this, the cashier's next sale would chain
-      // off a stale local last_hash and break the chain server-side on the
-      // next push.
-      expect(advanceHashChain).toHaveBeenCalledWith(
-        expect.anything(),
-        'terminal-1',
-        'h-N+1',
-        11,
-      );
-
-      // Defense-in-depth: retry_count must NOT bump on a successful
-      // reconcile (analog to T0.3's no-retry-bump-on-timeout discipline).
-      const incrementCalls = vi.mocked(incrementRetryCount).mock.calls.filter(
-        (c) => c[1] === 'r-dup-advance',
-      );
-      expect(incrementCalls).toHaveLength(0);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-idempotent', 'synced');
+      expect(updateReceiptStatus).toHaveBeenCalledWith(db, 'receipt-idempotent', 'synced');
     });
 
-    it('T0.4: server-chain-broken with no reconciliation data still raises chain-break (negative control)', async () => {
-      // The backend's `SyncReceiptResult::chainBroken(...)` factory always
-      // emits `terminal_last_hash = null` and `terminal_hash_sequence = null`.
-      // In this shape the client has no anchor to reconcile against — the
-      // existing alarm path MUST fire so the operator can resolve manually.
-      // T0.4 must NOT regress this defensive behavior while widening the
-      // duplicate-with-advance happy path.
-      const receipt = makeOfflineReceipt({
-        id: 'r-chain-broken',
-        idempotency_key: 'idem-chain-broken',
-        terminal_id: 'terminal-1',
-        hash_sequence: 10,
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
+    it('continues after a non-chain fiscal-event rejection', async () => {
+      const events = [
+        makeFiscalEvent({ id: 'fe-invalid', sequence_number: 1, source_event_id: 'receipt-invalid' }),
+        makeFiscalEvent({ id: 'fe-ok', sequence_number: 2, source_event_id: 'receipt-ok' }),
+      ];
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
+      vi.mocked(apiPost)
+        .mockResolvedValueOnce(fiscalEventBatchResponse([
+          { fiscal_event_id: 'fe-invalid', stored: false, exception_class: 'ValidationException' },
+        ]))
+        .mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-ok' }]));
+
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(1);
+      expect(result.chainBreak).toBe(false);
+      expect(result.errors).toEqual(['Fiscal event fe-invalid: ValidationException']);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-invalid', 'failed', 'ValidationException');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-ok', 'synced');
+    });
+
+    it('halts on sequence conflict without posting later events', async () => {
+      const events = [
+        makeFiscalEvent({ id: 'fe-conflict', sequence_number: 7 }),
+        makeFiscalEvent({ id: 'fe-later', sequence_number: 8 }),
+      ];
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
       vi.mocked(apiPost).mockResolvedValueOnce(
-        syncBatchResponse([
+        fiscalEventBatchResponse([
           {
-            idempotency_key: 'idem-chain-broken',
-            status: 'chain_broken',
-            error: 'genuine divergence',
-            terminal_last_hash: null,
-            terminal_hash_sequence: null,
+            fiscal_event_id: null,
+            stored: false,
+            sequence_conflict: true,
+            exception_class: 'sequence_conflict',
           },
         ]),
       );
 
-      const { advanceHashChain } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(1);
+      expect(result.chainBreak).toBe(true);
+      expect(result.errors).toEqual(['CHAIN_BREAK at fiscal event fe-conflict']);
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-conflict', 'failed', 'sequence_conflict');
+      expect(updateFiscalEventSyncStatus).not.toHaveBeenCalledWith(db, 'fe-later', 'syncing');
+    });
+
+    it('fails loudly when the server returns a null fiscal_event_id without a rejection reason', async () => {
+      const event = makeFiscalEvent({ id: 'fe-null-success', source_event_id: 'receipt-null-success' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        fiscalEventBatchResponse([
+          {
+            fiscal_event_id: null,
+            stored: false,
+            sequence_conflict: false,
+            exception_class: null,
+          },
+        ]),
       );
 
       const result = await pushOfflineReceipts(db);
 
-      // Alarm path: chain-break flag flipped, error in result.errors,
-      // receipt counted as failed, retry_count bumped.
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(1);
+      expect(result.chainBreak).toBe(false);
+      expect(result.errors[0]).toContain('null fiscal_event_id without rejection');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(
+        db,
+        'fe-null-success',
+        'failed',
+        'Sync response returned null fiscal_event_id without rejection for fiscal event fe-null-success',
+      );
+      expect(updateReceiptStatus).not.toHaveBeenCalledWith(db, 'receipt-null-success', 'synced');
+    });
+
+    it('halts on hash-chain exception class without posting later events', async () => {
+      const events = [
+        makeFiscalEvent({ id: 'fe-hash-break', sequence_number: 9 }),
+        makeFiscalEvent({ id: 'fe-later', sequence_number: 10 }),
+      ];
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue(events);
+      vi.mocked(apiPost).mockResolvedValueOnce(
+        fiscalEventBatchResponse([
+          { fiscal_event_id: 'fe-hash-break', stored: false, exception_class: 'hash mismatch' },
+        ]),
+      );
+
+      const result = await pushOfflineReceipts(db);
+
       expect(result.chainBreak).toBe(true);
       expect(result.failed).toBe(1);
       expect(result.pushed).toBe(0);
-      expect(result.errors).toContain(`CHAIN_BREAK at receipt ${receipt.receipt_number}`);
-
-      // Receipt status is 'failed' (the loop halted before any 'synced'
-      // could land).
-      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-chain-broken',
-      );
-      expect(statusCalls.length).toBeGreaterThan(0);
-      expect(statusCalls[statusCalls.length - 1]![2]).toBe('failed');
-      expect(incrementRetryCount).toHaveBeenCalledWith(expect.anything(), 'r-chain-broken');
-
-      // No reconcile attempt — without an anchor the helper cannot run.
-      expect(advanceHashChain).not.toHaveBeenCalled();
+      expect(result.errors).toEqual(['CHAIN_BREAK at fiscal event fe-hash-break']);
+      expect(apiPost).toHaveBeenCalledTimes(1);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-hash-break', 'failed', 'hash mismatch');
+      expect(updateFiscalEventSyncStatus).not.toHaveBeenCalledWith(db, 'fe-later', 'syncing');
     });
 
-    it('T0.4: server returns duplicate with sequence LOWER than local — local is authoritative, do NOT retreat', async () => {
-      // The offline-first invariant: once a terminal's hash_sequence has
-      // been seeded locally, the client never accepts a server-driven
-      // regression (server BEHIND local). The duplicate branch passes the
-      // server's lower anchor to advanceHashChain, which throws
-      // FiscalRegressionError; the catch swallows it with a "reconcile
-      // skipped (local ahead)" log and the loop continues treating the
-      // receipt as success (the duplicate IS a successful sync — local just
-      // doesn't retreat its chain pointer).
-      const { FiscalRegressionError } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
-      );
-      const { advanceHashChain } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
-      );
-      vi.mocked(advanceHashChain).mockRejectedValueOnce(
-        new FiscalRegressionError('terminal-1', 'advanceHashChain', 10, 5),
-      );
-
-      const receipt = makeOfflineReceipt({
-        id: 'r-dup-behind',
-        idempotency_key: 'idem-dup-behind',
-        terminal_id: 'terminal-1',
-        hash_sequence: 10,
-      });
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce(
-        syncBatchResponse([
-          {
-            idempotency_key: 'idem-dup-behind',
-            status: 'duplicate',
-            receipt_id: 'srv-uuid-old',
-            terminal_last_hash: 'h-stale',
-            terminal_hash_sequence: 5,
-          },
-        ]),
-      );
+    it('marks a fiscal event failed when the server omits its result item', async () => {
+      const event = makeFiscalEvent({ id: 'fe-missing-result', source_event_id: 'receipt-missing' });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
+      vi.mocked(apiPost).mockResolvedValueOnce(fiscalEventBatchResponse([]));
 
       const result = await pushOfflineReceipts(db);
 
-      // Loop result: success — duplicate is a valid sync outcome.
-      expect(result.pushed).toBe(1);
-      expect(result.failed).toBe(0);
-      expect(result.errors).toHaveLength(0);
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(1);
       expect(result.chainBreak).toBe(false);
-
-      // Production code DID call advanceHashChain with the server's lower
-      // anchor — the helper's regression guard is what protects us.
-      expect(advanceHashChain).toHaveBeenCalledWith(
-        expect.anything(),
-        'terminal-1',
-        'h-stale',
-        5,
+      expect(result.errors[0]).toContain('Sync response missing result for fiscal event fe-missing-result');
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(
+        db,
+        'fe-missing-result',
+        'failed',
+        'Sync response missing result for fiscal event fe-missing-result',
       );
-
-      // Receipt is still flipped to 'synced' — the duplicate path treats
-      // the receipt as successfully reconciled even when local is ahead.
-      const statusCalls = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-dup-behind',
-      );
-      expect(statusCalls[statusCalls.length - 1]![2]).toBe('synced');
+      expect(updateReceiptStatus).not.toHaveBeenCalledWith(db, 'receipt-missing', 'synced');
     });
 
-    it('T0.4 integration: post-T0.3 timeout-revert → next-tick re-sync → server-duplicate → reconcile', async () => {
-      // The end-to-end chain that motivates T0.4: a transient network drop
-      // on a successful server commit. The first POST commits server-side
-      // but the response is dropped on the wire; FetchTimeoutError fires;
-      // T0.3 reverts the receipt to 'pending' (no retry-count bump). The
-      // next sync tick re-pushes with the SAME idempotency key (T0.2-stable);
-      // the server's dedup-on-disk returns 'duplicate' carrying the existing
-      // receipt's terminal_last_hash + terminal_hash_sequence; T0.4's
-      // reconcile path advances the local chain to match server WITHOUT a
-      // chain-break alert.
-      //
-      // This integration test exercises the REAL syncService composition
-      // across two ticks — not a single mocked branch. It is the canary
-      // that detects regressions where T0.3's pending-revert and T0.4's
-      // duplicate-with-advance ever drift apart.
-      const { FetchTimeoutError } = await import('@/lib/fetchWithTimeout');
-      const { advanceHashChain } = await import(
-        '@/lib/db/repositories/terminalStateRepository'
-      );
-
-      const receipt = makeOfflineReceipt({
-        id: 'r-e2e',
-        idempotency_key: 'idem-e2e',
-        terminal_id: 'terminal-1',
-        hash_sequence: 10,
+    it('does not touch offline_receipts for fiscal events without an offline receipt source', async () => {
+      const event = makeFiscalEvent({
+        id: 'fe-non-receipt',
+        source_event_class: 'cash_drawer_ops',
+        source_event_id: 'cash-op-1',
       });
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([event]);
+      vi.mocked(apiPost).mockResolvedValueOnce(fiscalEventBatchResponse([{ fiscal_event_id: 'fe-non-receipt' }]));
 
-      // ── Tick 1 ──────────────────────────────────────────────────────────
-      // Receipt is pending; server times out (real-world: server committed,
-      // response dropped on wire).
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockRejectedValueOnce(
-        new FetchTimeoutError('https://api.test/pos/receipts/sync', 30_000, 'POST'),
+      const result = await pushOfflineReceipts(db);
+
+      expect(result.pushed).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(updateFiscalEventSyncStatus).toHaveBeenCalledWith(db, 'fe-non-receipt', 'synced');
+      expect(updateReceiptStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runFullSync fiscal-event recovery', () => {
+    it('recovers stranded syncing fiscal events before selecting pending fiscal events', async () => {
+      vi.mocked(recoverStrandedSyncingFiscalEvents).mockResolvedValueOnce(2);
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValueOnce([]);
+
+      await runFullSync(db, 'terminal-1');
+
+      expect(recoverStrandedSyncingFiscalEvents).toHaveBeenCalledWith(db);
+      expect(recoverStrandedSyncingFiscalEvents).toHaveBeenCalledBefore(
+        vi.mocked(getPendingFiscalEventsForSync),
       );
-
-      const tick1 = await pushOfflineReceipts(db);
-
-      // T0.3 contract: tick1 is a no-op to the cashier — no banner, no
-      // chain-break alert.
-      expect(tick1.pushed).toBe(0);
-      expect(tick1.failed).toBe(0);
-      expect(tick1.errors).toHaveLength(0);
-      expect(tick1.chainBreak).toBe(false);
-
-      // Receipt was reverted to 'pending' (NOT 'failed') so the next tick
-      // picks it up.
-      const statusCallsAfterTick1 = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-e2e',
-      );
-      expect(statusCallsAfterTick1.length).toBeGreaterThan(0);
-      expect(statusCallsAfterTick1[statusCallsAfterTick1.length - 1]![2]).toBe('pending');
-
-      // T0.3 invariant: retry_count NOT bumped on a transient timeout (this
-      // is what protects the dead-letter cap from saturating).
-      const incrementCallsAfterTick1 = vi.mocked(incrementRetryCount).mock.calls.filter(
-        (c) => c[1] === 'r-e2e',
-      );
-      expect(incrementCallsAfterTick1).toHaveLength(0);
-
-      // No reconcile yet — server delivered no anchor (response was dropped).
-      expect(advanceHashChain).not.toHaveBeenCalled();
-
-      // ── Tick 2 ──────────────────────────────────────────────────────────
-      // Scheduler re-runs; the same 'pending' receipt re-pushes with the
-      // same idempotency key. Server dedups on the key and returns
-      // 'duplicate' with the existing receipt's chain anchor.
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValueOnce([receipt]);
-      vi.mocked(apiPost).mockResolvedValueOnce(
-        syncBatchResponse([
-          {
-            idempotency_key: 'idem-e2e',
-            status: 'duplicate',
-            receipt_id: 'srv-uuid-from-first-commit',
-            terminal_last_hash: 'h-N+1',
-            terminal_hash_sequence: 11,
-          },
-        ]),
-      );
-
-      const tick2 = await pushOfflineReceipts(db);
-
-      // T0.4 reconcile contract: tick2 is the recovery — receipt flips to
-      // 'synced', local chain advances to server's anchor, no alert.
-      expect(tick2.pushed).toBe(1);
-      expect(tick2.failed).toBe(0);
-      expect(tick2.errors).toHaveLength(0);
-      expect(tick2.chainBreak).toBe(false);
-
-      // Receipt's last status is 'synced' (the late-arriving success).
-      const statusCallsAfterTick2 = vi.mocked(updateReceiptStatus).mock.calls.filter(
-        (c) => c[1] === 'r-e2e',
-      );
-      expect(statusCallsAfterTick2[statusCallsAfterTick2.length - 1]![2]).toBe('synced');
-
-      // server_receipt_id from the first commit is written back so HomePage
-      // can switch from local SQLite print to the richer API receipt.
-      expect(setServerReceiptId).toHaveBeenCalledWith(
-        expect.anything(),
-        'idem-e2e',
-        'srv-uuid-from-first-commit',
-      );
-
-      // The load-bearing positive assertion: local chain advanced to N+1
-      // (10 → 11). Without this, the cashier's next sale would chain off a
-      // stale local last_hash and break the chain server-side on the next
-      // push.
-      expect(advanceHashChain).toHaveBeenCalledWith(
-        expect.anything(),
-        'terminal-1',
-        'h-N+1',
-        11,
-      );
-
-      // Defense-in-depth: retry_count NEVER bumped across both ticks. The
-      // dead-letter cap stays clean — a transient timeout that recovered
-      // via duplicate-dedup must not consume a retry slot.
-      const incrementCallsTotal = vi.mocked(incrementRetryCount).mock.calls.filter(
-        (c) => c[1] === 'r-e2e',
-      );
-      expect(incrementCallsTotal).toHaveLength(0);
     });
   });
 
@@ -1150,7 +724,14 @@ describe('syncService', () => {
 
   describe('runFullSync', () => {
     it('runs push then pull and returns combined results', async () => {
-      vi.mocked(getPendingReceiptsForSync).mockResolvedValue([]);
+      vi.mocked(getPendingFiscalEventsForSync).mockResolvedValue([]);
+      const { useProductStore } = await import('@/stores/productStore');
+      useProductStore.setState({
+        companyConfig: {
+          company_id: 'company-1',
+          all_enabled_modules: ['POS'],
+        } as never,
+      });
       vi.mocked(apiGet)
         .mockResolvedValueOnce([]) // products
         .mockResolvedValueOnce([]) // payment methods
@@ -1651,8 +1232,7 @@ describe('B3-followup audit (Finding 3): receiptToPayload wire-shape parity', ()
 describe('T2.7: is_training wire payload', () => {
   // The offline-first compliance gap from PR #99 round-8 closes only when the
   // SQLite is_training column is forwarded on the wire. Default false stays
-  // backwards-compatible with pre-T2.7 server payloads (the field is
-  // `nullable, boolean` per SyncReceiptsRequest::rules in PR #103).
+  // backwards-compatible with pre-T2.7 server payloads.
 
   it('emits is_training=true when SQLite row has is_training=1', async () => {
     const { __test_receiptToPayload } = await import('@/lib/sync/syncService');

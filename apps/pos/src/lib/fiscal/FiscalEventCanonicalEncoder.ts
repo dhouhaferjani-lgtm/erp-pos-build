@@ -1,13 +1,39 @@
-export class CanonicalEncodingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CanonicalEncodingError';
-  }
-}
+/**
+ * Phase 1 fiscal-event canonical encoder + SHA-256 hash producer.
+ *
+ * The structural JCS rules — sorted object keys, positional array order,
+ * integer-only numbers, JSON.stringify-based string escaping — are shared
+ * with the receipt-V3 hash encoder via `./canonicalCore.ts`. This module
+ * supplies:
+ *
+ *   - The fiscal-event string normalizer: NFC + strip U+2028 / U+2029.
+ *     The producer applies normalization once (SoT v3 §4) so the
+ *     server-side verifier can re-hash the verbatim `canonical_bytes`
+ *     without applying any normalization itself (D2 — server never
+ *     re-serializes).
+ *
+ *   - The hand-rolled synchronous SHA-256 hex digest. Sync rather than
+ *     `crypto.subtle.digest` so the canonical-encoder + hash pair can be
+ *     composed inside a single SQLite transaction without yielding the
+ *     event loop. The implementation is verified at every block-padding
+ *     edge by `__tests__/sha256BoundaryVectors.test.ts` against the
+ *     OpenSSL-backed `node:crypto` digest.
+ */
+
+import {
+  CanonicalEncodingError,
+  encodeCanonicalValue,
+  type StringNormalizer,
+} from './canonicalCore';
+
+export { CanonicalEncodingError } from './canonicalCore';
+
+const fiscalEventStringNormalizer: StringNormalizer = (value) =>
+  value.normalize('NFC').replace(/[\u2028\u2029]/g, '');
 
 export class FiscalEventCanonicalEncoder {
   encode(input: unknown): string {
-    return encodeValue(input);
+    return encodeCanonicalValue(input, fiscalEventStringNormalizer);
   }
 
   sha256Hex(input: string): string {
@@ -15,60 +41,10 @@ export class FiscalEventCanonicalEncoder {
   }
 }
 
-function encodeValue(value: unknown): string {
-  if (value === null) {
-    return 'null';
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false';
-  }
-
-  if (typeof value === 'number') {
-    if (!Number.isInteger(value)) {
-      throw new CanonicalEncodingError(
-        `Non-integer number ${value} is not allowed in fiscal canonical JSON. ` +
-          'Decimal monetary values must be pre-formatted as strings.',
-      );
-    }
-
-    return String(value);
-  }
-
-  if (typeof value === 'string') {
-    return encodeString(value);
-  }
-
-  if (Array.isArray(value)) {
-    return '[' + value.map((item) => encodeValue(item)).join(',') + ']';
-  }
-
-  if (typeof value === 'object') {
-    return encodeObject(value as Record<string, unknown>);
-  }
-
-  throw new CanonicalEncodingError(`Unsupported value type: ${typeof value}`);
-}
-
-function encodeObject(value: Record<string, unknown>): string {
-  const keys = Object.keys(value).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-
-  return (
-    '{' +
-    keys
-      .map((key) => encodeString(key) + ':' + encodeValue(value[key]))
-      .join(',') +
-    '}'
-  );
-}
-
-function encodeString(value: string): string {
-  return JSON.stringify(normalizeFiscalString(value));
-}
-
-function normalizeFiscalString(value: string): string {
-  return value.normalize('NFC').replace(/[\u2028\u2029]/g, '');
-}
+// Re-export so callers don't need to know the error type lives in the core.
+// (The export-statement above already names it; this typedef anchor keeps
+// the symbol locally referenced for ESLint's "no-unused-vars" pass.)
+void CanonicalEncodingError;
 
 function sha256Hex(input: string): string {
   return sha256Bytes(new TextEncoder().encode(input))

@@ -26,8 +26,8 @@ namespace App\Modules\POS\Domain\Enums;
  * Codex review B4 (2026-04-30):
  *   The instrument-bearing payment-method codes are exactly the non-`None`
  *   case values of this enum. {@see self::requiresInstrumentForMethodCode()}
- *   is the single source of truth that validators (StoreReceiptPaymentsRequest,
- *   SyncReceiptsRequest) and writers (ReceiptPaymentService, ReceiptSyncService)
+ *   is the single source of truth that validators (StoreReceiptPaymentsRequest)
+ *   and writers (ReceiptPaymentService, POS receipt projections)
  *   consult to enforce that a `payment_methods.code` such as `store_voucher`
  *   never lands without its `instrument_type` + `instrument_serial` pair —
  *   leaving those fields null is a v3 fiscal-hash integrity violation.

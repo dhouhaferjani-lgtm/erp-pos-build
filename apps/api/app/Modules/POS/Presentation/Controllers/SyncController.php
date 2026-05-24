@@ -9,13 +9,9 @@ use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Catalog\Domain\Entities\ModifierGroup;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
-use App\Modules\POS\Application\DTOs\SyncReceiptPayload;
-use App\Modules\POS\Application\Services\ReceiptSyncService;
-use App\Modules\POS\Domain\Enums\SyncStatus;
 use App\Modules\POS\Domain\Services\ShiftManagementService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
-use App\Modules\POS\Presentation\Requests\SyncReceiptsRequest;
 use App\Modules\POS\Presentation\Requests\SyncShiftCloseRequest;
 use App\Modules\Product\Domain\Category;
 use App\Modules\Product\Domain\Product;
@@ -39,54 +35,8 @@ final class SyncController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
-        private readonly ReceiptSyncService $receiptSyncService,
         private readonly ShiftManagementService $shiftManagementService,
     ) {}
-
-    /**
-     * Batch sync offline receipts.
-     *
-     * POST /api/v1/pos/receipts/sync
-     *
-     * Accepts a single receipt payload or an array of receipts.
-     * Returns per-receipt status (synced, duplicate, failed, chain_broken).
-     */
-    public function syncReceipts(SyncReceiptsRequest $request): JsonResponse
-    {
-        Gate::authorize('pos.operate_terminal');
-
-        $validated = $request->validated();
-
-        /** @var array<int, array<string, mixed>> $receiptsData */
-        $receiptsData = $validated['receipts'];
-
-        $payloads = array_map(
-            static fn (array $data): SyncReceiptPayload => SyncReceiptPayload::fromArray($data),
-            $receiptsData,
-        );
-
-        $results = $this->receiptSyncService->syncBatch($payloads);
-
-        $resultArrays = array_map(
-            static fn ($result) => $result->toArray(),
-            $results,
-        );
-
-        // NF525: Offline print logs should be synced via a dedicated endpoint or
-        // as a batch payload field (e.g., 'print_logs' alongside 'receipts').
-        // Each entry must include receipt_id, terminal_id, user_id, print_method,
-        // print_type, copy_number, and printed_at from the offline timestamp.
-
-        return response()->json([
-            'data' => [
-                'results' => $resultArrays,
-                'total' => count($results),
-                'synced' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Synced)),
-                'duplicates' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Duplicate)),
-                'failed' => count(array_filter($results, fn ($r) => $r->status === SyncStatus::Failed || $r->status === SyncStatus::ChainBroken)),
-            ],
-        ]);
-    }
 
     /**
      * Pull reference data for local cache.

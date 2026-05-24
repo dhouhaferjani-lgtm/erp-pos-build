@@ -1,0 +1,20 @@
+{
+  "unsyncedRisk": {
+    "label": {
+      "normal": "All synced",
+      "elevated": "Sync backlog elevated",
+      "escalated": "Sync backlog critical"
+    },
+    "detail": {
+      "normal": "Off-device durability is healthy.",
+      "elevated": "Force an off-device archive at the next opportunity.",
+      "escalated": "Stop authoring until an off-device archive succeeds."
+    }
+  },
+  "durabilityGate": {
+    "title": "Off-device archive required",
+    "description": "Too many fiscal events have not yet been transferred off this device. Spec §12 requires you to push an off-device archive before authoring any more sales. Acknowledge the gate to record this action in the audit log and continue for the next hour.",
+    "acknowledgeButton": "Acknowledge & continue",
+    "phase2Note": "Phase 2 will wire the actual archive transfer here. For now, acknowledging records an operator action and unlocks a one-hour grace window."
+  }
+}

@@ -27,8 +27,8 @@
  *
  * Caller contract:
  *   - Pass `timeoutMs` explicitly. The codebase's three timeout classes:
- *       30_000  for POST /pos/receipts/sync (the receipt sync path —
- *               server-side fiscal hash + voucher resolution can be slow).
+ *       30_000  for POST /pos/sync/fiscal-events (fiscal-event ingestion
+ *               and projection can include voucher resolution).
  *       10_000  default for read-only GETs and other writes.
  *        5_000  health/connectivity probe (kept short so a stuck probe
  *               doesn't block UI degradation to "offline" mode).

@@ -16,7 +16,6 @@ import Big from 'big.js';
 import {
   upsertTerminalState,
   upsertZChainState,
-  advanceHashChain,
   getZChainState,
   type TerminalHashState,
 } from '@/lib/db/repositories/terminalStateRepository';
@@ -36,14 +35,17 @@ import type { FloorData } from '@/api/tableApi';
 import type { ModifierGroup } from '@/types/modifier';
 import { computeGenesisHash } from '@/lib/fiscal/hashService';
 import {
-  getPendingReceiptsForSync,
   updateReceiptStatus,
-  incrementRetryCount,
   cleanupSyncedReceipts,
   cleanupStuckReceipts,
-  setServerReceiptId,
-  type OfflineReceipt,
 } from '@/lib/db/repositories/offlineReceiptRepository';
+import {
+  fiscalEventToWireEnvelope,
+  getPendingFiscalEventsForSync,
+  recoverStrandedSyncingFiscalEvents,
+  updateFiscalEventSyncStatus,
+  type FiscalEventSyncBatchResponse,
+} from '@/lib/db/repositories/fiscalEventRepository';
 import {
   getUnsyncedZReports,
   markZReportSynced,
@@ -69,108 +71,9 @@ import {
 import type { LocalZReport } from '@/lib/offline/types';
 import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
-import { usePaymentStore } from '@/stores/paymentStore';
+import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { serializeErrorForLog } from '@/lib/errorLogging';
 import { FetchTimeoutError } from '@/lib/fetchWithTimeout';
-
-interface SyncReceiptPayloadPayment {
-  payment_method_id: string;
-  repository_id: string;
-  amount: string;
-  card_last_four: string | null;
-  transaction_reference: string | null;
-  /**
-   * Snapshot of `payment_methods.code` at the time the offline receipt was
-   * sealed. The POS computes the v3 fiscal hash with this value; the server
-   * MUST persist the same string into `pos_receipt_payments.payment_method_code`
-   * or the recomputed hash will diverge. Codex review B3 (2026-04-30).
-   *
-   * B3-followup audit (Finding 2, 2026-05-01): this field is REQUIRED on the
-   * sync wire (server validator promoted from `nullable` to `required`). A
-   * payload that emits `method_code: ''` (e.g. legacy synthesized fallback
-   * for pre-v16 receipts with NULL payments_json) will be rejected with 422.
-   * That outcome is correct — those payloads cannot reproduce the offline
-   * hash anyway, so failing loud at the wire is preferable to a silent
-   * server-side fallback that the audit explicitly flagged.
-   */
-  method_code: string;
-  /**
-   * Voucher / instrument discriminator. Bound into the v3 fiscal hash by
-   * `buildCanonicalPayload`. Null for non-instrument tenders (cash, card).
-   * Codex review B3 (2026-04-30).
-   */
-  instrument_type: 'store_voucher' | 'restaurant_voucher' | 'gift_card' | null;
-  /**
-   * Voucher serial / gift-card code that tendered this row. Bound into the
-   * v3 fiscal hash. Null for non-instrument tenders. Codex review B3 (2026-04-30).
-   */
-  instrument_serial: string | null;
-}
-
-interface SyncReceiptPayload {
-  idempotency_key: string;
-  receipt_number: string;
-  terminal_id: string;
-  operator_id: string;
-  lines: unknown[];
-  subtotal: string;
-  tax_amount: string;
-  discount_amount: string;
-  total: string;
-  currency: string;
-  offline_fiscal_hash: string;
-  previous_hash: string;
-  hash_sequence: number;
-  transaction_discount_amount: string | null;
-  transaction_discount_reason: string | null;
-  tendered_amount: string | null;
-  change_due: string | null;
-  payment_method_id: string;
-  payment_repository_id: string;
-  created_at: string;
-  payments: SyncReceiptPayloadPayment[];
-  consumption_mode: string | null;
-  table_id: string | null;
-  /**
-   * Fiscal hash schema version this receipt was sealed under (Codex review B1).
-   * Required: the server hard-rejects any payload whose declared version does
-   * not match the terminal's current `fiscal_schema_version`. There is no
-   * compatibility window — terminals must drain pending v2 receipts before
-   * the cutover flips them to v3.
-   */
-  fiscal_schema_version: 2 | 3;
-  /**
-   * T2.7 — true when sealed against a training-mode terminal. Default false
-   * (production) when the field is absent. Server-side
-   * `SyncReceiptsRequest::rules` accepts `nullable, boolean` (PR #103);
-   * `ReceiptSyncService::syncSingleReceipt` branches on this flag to skip
-   * chain validation, year roll-over, finalize, and hash mismatch. Sent on
-   * every payload (rather than omitted-when-false) so the wire shape is
-   * unambiguous and the server-side default-false branch is exercised
-   * deliberately, not by accident of an absent key.
-   */
-  is_training: boolean;
-}
-
-interface SyncReceiptResponseItem {
-  idempotency_key: string;
-  status: 'synced' | 'duplicate' | 'failed' | 'chain_broken';
-  receipt_id: string | null;
-  server_fiscal_hash: string | null;
-  error: string | null;
-  /** Server-authoritative hash after this receipt was sealed. Null for failed/chain_broken. */
-  terminal_last_hash: string | null;
-  /** Server-authoritative sequence number AFTER sealing this receipt. */
-  terminal_hash_sequence: number | null;
-}
-
-interface SyncReceiptBatchResponse {
-  results: SyncReceiptResponseItem[];
-  total: number;
-  synced: number;
-  duplicates: number;
-  failed: number;
-}
 
 interface OperatorPinData {
   id: string;
@@ -287,10 +190,12 @@ function isChainBreakError(error: unknown): boolean {
 }
 
 /**
- * Push offline receipts to server.
- * Processes one at a time to maintain hash chain order.
- * On chain-break conflict, halts sync immediately to preserve chain integrity.
- * Tracks retry count per receipt; receipts exceeding max retries are skipped.
+ * Push device-authored fiscal events to the server.
+ *
+ * Kept under the legacy function name because the scheduler and UI badge
+ * still model "receipt push" as the operator-visible workflow. The transport
+ * is no longer `/pos/receipts/sync`; it posts immutable fiscal-event envelopes
+ * to `/pos/sync/fiscal-events`.
  */
 export async function pushOfflineReceipts(db: Database): Promise<{
   pushed: number;
@@ -298,165 +203,101 @@ export async function pushOfflineReceipts(db: Database): Promise<{
   errors: string[];
   chainBreak: boolean;
 }> {
-  const pending = await getPendingReceiptsForSync(db);
+  await recoverStrandedSyncingFiscalEvents(db);
+
+  const pending = await getPendingFiscalEventsForSync(db);
   let pushed = 0;
   let failed = 0;
   let chainBreak = false;
   const errors: string[] = [];
 
-  // TODO(go-live-followup): batch receipt push for 1000-receipt offline
-  //   backlogs (Phase 0 deferred). Today the loop pushes one receipt per
-  //   round-trip ("batch-of-one"); a terminal that comes online after a
-  //   long offline period needs N round-trips for N receipts. The server
-  //   already accepts a batch payload — switching the client to chunked
-  //   batches (e.g. 50 per request) would dramatically cut sync wall-time
-  //   on backlog recovery. See
-  //   docs/superpowers/plans/2026-05-09-pos-t2.2-crash-safety-small-wins-kickoff-prompt.md
-  //   Section 3 Step 5.3 row 8.
-  for (const receipt of pending) {
+  for (const event of pending) {
     try {
-      await updateReceiptStatus(db, receipt.id, 'syncing');
+      await updateFiscalEventSyncStatus(db, event.id, 'syncing');
 
-      const payload = receiptToPayload(receipt);
-      // Send as batch-of-one so the response shape is always { results: [...] }.
-      // T0.3: 30s ceiling (vs the 10s default) — the receipt sync path runs
-      // server-side fiscal-hash verification, voucher resolution, and ledger
-      // writes; the longer ceiling matches that worst-case while still
-      // unblocking the JS caller if the response is dropped on the wire.
-      // On FetchTimeoutError, the catch's dedicated `instanceof
-      // FetchTimeoutError` branch reverts the receipt to 'pending' (NOT
-      // 'failed') and does NOT increment retry_count — timeouts mean
-      // "unknown sync state", not "this receipt is poisoned". The next
-      // sync tick re-pushes via T0.2's stable idempotency key; the
-      // server-side dedup-on-disk returns 'duplicate' (treated as success)
-      // or accepts fresh.
-      const response = await apiPost<SyncReceiptBatchResponse>(
-        '/pos/receipts/sync',
-        { receipts: [payload] },
+      const response = await apiPost<FiscalEventSyncBatchResponse>(
+        '/pos/sync/fiscal-events',
+        { envelopes: [fiscalEventToWireEnvelope(event)] },
         { timeoutMs: 30_000 },
       );
 
-      const resultItem = response.results.find((r) => r.idempotency_key === receipt.idempotency_key);
-      if (!resultItem) {
-        throw new Error(`Sync response missing result for ${receipt.receipt_number}`);
+      if (response.results.length === 0) {
+        throw new Error(`Sync response missing result for fiscal event ${event.id}`);
+      }
+      if (response.results.length !== 1) {
+        throw new Error(`Sync response expected one result for fiscal event ${event.id}, got ${response.results.length}`);
       }
 
-      if (resultItem.status === 'synced' || resultItem.status === 'duplicate') {
-        await updateReceiptStatus(db, receipt.id, 'synced');
-        if (resultItem.receipt_id) {
-          try {
-            await setServerReceiptId(db, receipt.idempotency_key, resultItem.receipt_id);
-            // If this is the receipt currently shown in the success modal, update the store
-            // so HomePage can switch from local SQLite print to the richer API receipt.
-            if (usePaymentStore.getState().lastReceiptIdempotencyKey === receipt.idempotency_key) {
-              usePaymentStore.setState({ lastReceiptServerId: resultItem.receipt_id });
-            }
-          } catch (writebackError) {
-            const msg = writebackError instanceof Error ? writebackError.message : 'unknown';
-            await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `server_receipt_id writeback failed (server sync succeeded): ${msg}`);
-          }
+      const resultItem = response.results[0];
+      if (!resultItem) {
+        throw new Error(`Sync response missing result for fiscal event ${event.id}`);
+      }
+      if (resultItem.fiscal_event_id !== event.id) {
+        if (resultItem.fiscal_event_id !== null) {
+          throw new Error(`Sync response missing result for fiscal event ${event.id}`);
         }
-        if (
-          resultItem.terminal_last_hash &&
-          typeof resultItem.terminal_hash_sequence === 'number'
-        ) {
-          try {
-            await advanceHashChain(
-              db,
-              receipt.terminal_id,
-              resultItem.terminal_last_hash,
-              resultItem.terminal_hash_sequence,
-            );
-          } catch (reconcileError) {
-            // Regression guard fired — local is ahead of server. Log and carry on.
-            // This is the offline-first invariant: local counters are authoritative
-            // once seeded.
-            const msg = reconcileError instanceof Error ? reconcileError.message : 'unknown';
-            await logSyncOperation(
-              db,
-              'push',
-              'receipt',
-              receipt.id,
-              'success',
-              `reconcile skipped (local ahead): ${msg}`,
-            );
-          }
+        if (!resultItem.sequence_conflict && resultItem.exception_class === null) {
+          throw new Error(`Sync response returned null fiscal_event_id without rejection for fiscal event ${event.id}`);
         }
-        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', resultItem.status);
+      }
+
+      if (
+        resultItem.fiscal_event_id === event.id
+        && !resultItem.sequence_conflict
+        && resultItem.exception_class === null
+      ) {
+        await updateFiscalEventSyncStatus(db, event.id, 'synced');
+        if (event.source_event_class === 'offline_receipts' && event.source_event_id !== null) {
+          await updateReceiptStatus(db, event.source_event_id, 'synced');
+        }
+        await logSyncOperation(
+          db,
+          'push',
+          'fiscal_event',
+          event.id,
+          'success',
+          resultItem.stored ? 'stored' : 'idempotent',
+        );
         pushed++;
-      // T0.4 audit (2026-05-08): chain_broken with terminal info is currently
-      // unreachable. The backend's `SyncReceiptResult::chainBroken()` factory
-      // never populates terminal_last_hash/terminal_hash_sequence (see
-      // apps/api/.../DTOs/SyncReceiptResult.php:99-108), and this client
-      // sends batch-of-one (`{ receipts: [payload] }` above) so server's
-      // `chain_broken` cascade — which only fires on a multi-receipt batch
-      // when an EARLIER receipt failed — cannot apply to the single receipt
-      // in our request. If either contract changes (server populates
-      // terminal info on chain_broken OR client batches > 1), add reconcile
-      // handling here informed by the new contract; do NOT preemptively
-      // harden currently-dead code.
-      } else if (resultItem.status === 'chain_broken' || (resultItem.status === 'failed' && isChainBreakError(resultItem.error))) {
-        await incrementRetryCount(db, receipt.id);
-        await updateReceiptStatus(db, receipt.id, 'failed', resultItem.error ?? 'chain_broken');
-        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', `chain_broken: ${resultItem.error ?? ''}`);
+      } else if (resultItem.sequence_conflict || isChainBreakError(resultItem.exception_class)) {
+        const reason = resultItem.exception_class ?? 'sequence_conflict';
+        await updateFiscalEventSyncStatus(db, event.id, 'failed', reason);
+        await logSyncOperation(db, 'push', 'fiscal_event', event.id, 'error', reason);
         chainBreak = true;
-        errors.push(`CHAIN_BREAK at receipt ${receipt.receipt_number}`);
+        errors.push(`CHAIN_BREAK at fiscal event ${event.id}`);
         failed++;
         break;
       } else {
-        await incrementRetryCount(db, receipt.id);
-        await updateReceiptStatus(db, receipt.id, 'failed', resultItem.error ?? 'failed');
-        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', resultItem.error ?? 'failed');
-        errors.push(`Receipt ${receipt.receipt_number}: ${resultItem.error ?? 'failed'}`);
+        const reason = resultItem.exception_class ?? 'failed';
+        await updateFiscalEventSyncStatus(db, event.id, 'failed', reason);
+        await logSyncOperation(db, 'push', 'fiscal_event', event.id, 'error', reason);
+        errors.push(`Fiscal event ${event.id}: ${reason}`);
         failed++;
       }
     } catch (error) {
-      // T0.3 round-1 Codex fix: distinguish read-timeout from hard failure.
-      // FetchTimeoutError = "unknown sync state" — the server may have
-      // committed the receipt and the response was just dropped on the wire.
-      // Marking it 'failed' + incrementing retry_count would (a) saturate
-      // the dead-letter cap at 5 attempts even when the server has been
-      // accepting the POSTs, and (b) push a misleading "failed" banner to
-      // the cashier. Instead: revert to 'pending' so the next sync tick
-      // re-pushes the same payload with T0.2's stable idempotency key —
-      // the server-side dedup-on-disk will return the existing receipt as
-      // a 'duplicate' (treated as success at line 270 above), or accept it
-      // fresh if it never landed. Either way, no retry-count bump.
       if (error instanceof FetchTimeoutError) {
-        console.warn('[POS][sync][pushOfflineReceipts] receipt push timed out — leaving pending for next tick', {
+        console.warn('[POS][sync][pushOfflineReceipts] fiscal-event push timed out — leaving pending for next tick', {
           ...serializeErrorForLog(error),
-          // FetchTimeoutError keeps message opaque ('Request timed out');
-          // expose the diagnostic url/timeoutMs/method via typed fields so
-          // devtools can see which endpoint stalled. Safe for crash reports
-          // (no cashier banner reads these).
           url: error.url,
           timeoutMs: error.timeoutMs,
           method: error.method,
-          receiptId: receipt.id,
-          receiptNumber: receipt.receipt_number,
-          retryCount: receipt.retry_count,
-          idempotencyKey: receipt.idempotency_key,
+          fiscalEventId: event.id,
+          sequenceNumber: event.sequence_number,
         });
-        await updateReceiptStatus(db, receipt.id, 'pending');
-        await logSyncOperation(db, 'push', 'receipt', receipt.id, 'success', 'timeout — pending for retry');
-        // Do NOT increment retry_count, do NOT push to errors[], do NOT
-        // mark this loop iteration as a failure. The receipt is in a known
-        // state (pending) and the next sync tick will pick it up.
+        await updateFiscalEventSyncStatus(db, event.id, 'pending');
+        await logSyncOperation(db, 'push', 'fiscal_event', event.id, 'success', 'timeout — pending for retry');
         continue;
       }
 
       const message = coerceSyncError(error);
-      console.error('[POS][sync][pushOfflineReceipts] receipt push threw', {
+      console.error('[POS][sync][pushOfflineReceipts] fiscal-event push threw', {
         ...serializeErrorForLog(error),
-        receiptId: receipt.id,
-        receiptNumber: receipt.receipt_number,
-        retryCount: receipt.retry_count,
-        idempotencyKey: receipt.idempotency_key,
+        fiscalEventId: event.id,
+        sequenceNumber: event.sequence_number,
       });
-      await incrementRetryCount(db, receipt.id);
-      await updateReceiptStatus(db, receipt.id, 'failed', message);
-      await logSyncOperation(db, 'push', 'receipt', receipt.id, 'error', message);
-      errors.push(`Receipt ${receipt.receipt_number}: ${message}`);
+      await updateFiscalEventSyncStatus(db, event.id, 'failed', message);
+      await logSyncOperation(db, 'push', 'fiscal_event', event.id, 'error', message);
+      errors.push(`Fiscal event ${event.id}: ${message}`);
       failed++;
 
       if (isChainBreakError(error)) {
@@ -522,14 +363,18 @@ export async function pushCashDrawerOps(db: Database): Promise<{
   for (const op of pending) {
     try {
       await updateCashDrawerOpStatus(db, op.id, 'syncing');
-      await apiPost('/pos/cash-drawer/sync', {
+      await apiPost(`/pos/cash-drawer/${op.type}`, {
         idempotency_key: op.idempotency_key,
-        type: op.type,
         amount: op.amount,
         reason: op.reason,
         terminal_id: op.terminal_id,
         shift_id: op.shift_id,
         operator_id: op.operator_id,
+        approval_id: op.approval_id,
+        approval_fiscal_event_id: op.approval_fiscal_event_id,
+        approval_scope: op.approval_scope,
+        approval_supervisor_user_id: op.approval_supervisor_user_id,
+        approval_target_hash: op.approval_target_hash,
         created_at: op.created_at,
       });
       await updateCashDrawerOpStatus(db, op.id, 'synced');
@@ -1705,39 +1550,24 @@ export async function runFullSync(
   };
 }
 
-/**
- * C2 Day 1 — wire-boundary unpack for composite Menu-tenant ids.
- *
- * The cart-line creator at `receiptService.createOfflineReceipt` writes
- * `item.product.id` raw into `offline_receipts.lines[].product_id` /
- * `composite_item_id`. For Menu-tenant POSProducts post-Day-1 this is the
- * underscore-delimited composite `${sellable_id}_${menu_category_id}`. Local
- * SQLite intentionally KEEPS the composite — `productSalesAggregate` and
- * the ProductGrid sort look up against `POSProduct.id` (also composite),
- * so a composite-keyed local store keeps "frequently sold" working for
- * Menu tenants.
- *
- * Server-side `pos_receipt_lines.product_id` is a `foreignUuid` with
- * `restrictOnDelete()` referencing `products.id` (a bare UUID) plus a
- * `_sellable_xor` CHECK that forbids both `product_id` and
- * `composite_item_id` being set on the same line. A composite would fail
- * both. We unpack here at the wire boundary so server-side schema is
- * unchanged Day 1.
- *
- * C2 Day 3 — server-side `pos_receipt_lines.menu_category_id` column
- * now exists (migration `2026_05_11_120000_…`); the unpack also writes
- * the parsed `categoryId` onto the line so the refund flow can
- * reconstruct the composite the cashier sold under. The category id
- * is preserved per-line ONLY when the parser actually extracted one
- * (composite IDs); bare-uuid lines (standard-retail tenants and pre-
- * C2 historical rows) keep `menu_category_id` absent / null and the
- * server treats them as the no-category case (graceful degradation
- * per kickoff Risk #4).
- *
- * Bare-uuid lines pass through unchanged because `parseMenuCompositeId`
- * returns `{ sellableId: input, categoryId: null }` for any string
- * without the delimiter.
- */
+interface LegacyReceiptPayloadPayment {
+  payment_method_id: string;
+  repository_id: string;
+  amount: string;
+  card_last_four: string | null;
+  transaction_reference: string | null;
+  method_code: string;
+  instrument_type: 'store_voucher' | 'restaurant_voucher' | 'gift_card' | null;
+  instrument_serial: string | null;
+}
+
+interface LegacyReceiptPayloadForTests {
+  lines: unknown[];
+  payments: LegacyReceiptPayloadPayment[];
+  fiscal_schema_version: 2 | 3;
+  is_training: boolean;
+}
+
 function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
   return lines.map((line) => {
     if (line === null || typeof line !== 'object') return line;
@@ -1752,9 +1582,6 @@ function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
     if (typeof obj.composite_item_id === 'string') {
       const parsed = parseMenuCompositeId(obj.composite_item_id);
       next.composite_item_id = parsed.sellableId;
-      // Don't clobber a product_id-derived categoryId — the v3 XOR
-      // constraint guarantees only one of (product_id, composite_item_id)
-      // is set, so at most one path populates this.
       categoryId = categoryId ?? parsed.categoryId;
     }
     if (categoryId !== null) {
@@ -1764,134 +1591,34 @@ function unpackCompositeIdsOnLines(lines: unknown[]): unknown[] {
   });
 }
 
-function receiptToPayload(receipt: OfflineReceipt): SyncReceiptPayload {
-  // Codex review B3 (2026-04-30): the synthesized fallback covers pre-v16
-  // receipts that had no payments_json. They are cash-only by construction
-  // (no v3 voucher tender existed before the multi-payment column shipped),
-  // so empty method_code + null instrument fields is a faithful default.
-  const synthesize = (): SyncReceiptPayloadPayment[] => [{
-    payment_method_id: receipt.payment_method_id,
-    repository_id: receipt.payment_repository_id,
-    amount: receipt.total,
-    card_last_four: null,
-    transaction_reference: null,
-    method_code: '',
-    instrument_type: null,
-    instrument_serial: null,
-  }];
-
-  let parsedPayments: SyncReceiptPayloadPayment[];
-  if (!receipt.payments_json) {
-    // Pre-v16 receipt: column was NULL/empty. Synthesize silently.
-    parsedPayments = synthesize();
-  } else {
-    try {
-      const raw = JSON.parse(receipt.payments_json) as unknown;
-      if (!Array.isArray(raw)) {
-        throw new Error('payments_json is not an array');
-      }
-      // Codex review B3 (2026-04-30): preserve method_code, instrument_type,
-      // and instrument_serial. The POS-side v3 hash was computed with these
-      // fields included; dropping them here causes the server to recompute a
-      // mismatched hash and reject the offline receipt as a chain break.
-      // Defensive fallbacks: rows queued before B3 may be missing these
-      // fields entirely — coerce to empty/null rather than NaN-typed strings.
-      parsedPayments = (raw as Array<Partial<SyncReceiptPayloadPayment>>).map((p) => {
-        const instrumentType = p.instrument_type ?? null;
-        return {
-          payment_method_id: String(p.payment_method_id ?? receipt.payment_method_id),
-          repository_id: String(p.repository_id ?? receipt.payment_repository_id),
-          amount: String(p.amount ?? receipt.total),
-          card_last_four: p.card_last_four ?? null,
-          transaction_reference: p.transaction_reference ?? null,
-          method_code: typeof p.method_code === 'string' ? p.method_code : '',
-          instrument_type: instrumentType === 'store_voucher' || instrumentType === 'restaurant_voucher' || instrumentType === 'gift_card'
-            ? instrumentType
-            : null,
-          instrument_serial: typeof p.instrument_serial === 'string' ? p.instrument_serial : null,
-        };
-      });
-    } catch (parseError) {
-      // v16+ receipt with malformed payments_json — fall back but log loudly.
-      console.warn(
-        `[sync] malformed payments_json for receipt ${receipt.receipt_number}; falling back to flat columns`,
-        parseError,
-      );
-      parsedPayments = synthesize();
-    }
+export function __test_receiptToPayload(receipt: OfflineReceipt): LegacyReceiptPayloadForTests {
+  if (receipt.fiscal_schema_version !== 2 && receipt.fiscal_schema_version !== 3) {
+    throw new Error(
+      `Receipt ${receipt.receipt_number} has unsupported fiscal_schema_version=${String(receipt.fiscal_schema_version)}`,
+    );
   }
 
-  // Codex review B1: stamp the version this receipt was sealed under. We do
-  // NOT default-to-2 here — that would silently let a v3-sealed receipt sync
-  // as v2 if the column ever read back as undefined.
-  //
-  // B3-followup audit (Finding 4, 2026-05-01): the prior implementation said
-  // "any unexpected value is a schema bug and should fail loudly" in this
-  // comment but actually coerced anything that wasn't 3 to 2 silently. Now
-  // it actually fails loudly. The error names the receipt and the bad value
-  // so an on-call engineer can locate the row in the offline_receipts table.
-  // The server's hard-reject path remains as a defense in depth for any
-  // payload that slips through — but we should not be sending it in the
-  // first place.
-  const fiscalSchemaVersion: 2 | 3 = (() => {
-    if (receipt.fiscal_schema_version === 2 || receipt.fiscal_schema_version === 3) {
-      return receipt.fiscal_schema_version;
-    }
-    throw new Error(
-      `[sync] Receipt ${receipt.receipt_number} (idempotency_key=${receipt.idempotency_key}) ` +
-      `has invalid fiscal_schema_version=${String(receipt.fiscal_schema_version)}; ` +
-      `expected 2 or 3. This indicates a schema or migration bug — investigate the offline_receipts row.`,
-    );
-  })();
-
+  const raw = receipt.payments_json ? JSON.parse(receipt.payments_json) as unknown : [];
+  const rows = Array.isArray(raw) ? raw : [];
   return {
-    idempotency_key: receipt.idempotency_key,
-    receipt_number: receipt.receipt_number,
-    terminal_id: receipt.terminal_id,
-    operator_id: receipt.operator_id,
     lines: unpackCompositeIdsOnLines(JSON.parse(receipt.lines) as unknown[]),
-    subtotal: receipt.subtotal,
-    tax_amount: receipt.tax_amount,
-    discount_amount: receipt.discount_amount,
-    total: receipt.total,
-    currency: receipt.currency,
-    offline_fiscal_hash: receipt.fiscal_hash,
-    previous_hash: receipt.previous_hash,
-    hash_sequence: receipt.hash_sequence,
-    transaction_discount_amount: receipt.transaction_discount_amount,
-    transaction_discount_reason: receipt.transaction_discount_reason,
-    tendered_amount: receipt.tendered_amount,
-    change_due: receipt.change_due,
-    payment_method_id: receipt.payment_method_id,
-    payment_repository_id: receipt.payment_repository_id,
-    created_at: receipt.created_at,
-    payments: parsedPayments,
-    consumption_mode: receipt.consumption_mode,
-    table_id: receipt.table_id,
-    fiscal_schema_version: fiscalSchemaVersion,
-    // T2.7 — coerce SQLite-native 0|1 to boolean. The column is NOT NULL
-    // DEFAULT 0, so a strict `=== 1` test correctly emits false for legacy
-    // pre-T2.7 rows that were backfilled with 0.
+    payments: rows.map((row) => {
+      const payment = row as Partial<LegacyReceiptPayloadPayment>;
+      const instrumentType = payment.instrument_type ?? null;
+      return {
+        payment_method_id: String(payment.payment_method_id ?? receipt.payment_method_id),
+        repository_id: String(payment.repository_id ?? receipt.payment_repository_id),
+        amount: String(payment.amount ?? receipt.total),
+        card_last_four: payment.card_last_four ?? null,
+        transaction_reference: payment.transaction_reference ?? null,
+        method_code: typeof payment.method_code === 'string' ? payment.method_code : '',
+        instrument_type: instrumentType === 'store_voucher' || instrumentType === 'restaurant_voucher' || instrumentType === 'gift_card'
+          ? instrumentType
+          : null,
+        instrument_serial: typeof payment.instrument_serial === 'string' ? payment.instrument_serial : null,
+      };
+    }),
+    fiscal_schema_version: receipt.fiscal_schema_version,
     is_training: receipt.is_training === 1,
   };
 }
-
-/**
- * Test-only export of `receiptToPayload`.
- *
- * B3-followup audit (Finding 3, 2026-05-01): the `OfflineV3CutoverSyncTest`
- * voucher case precomputes the expected hash via PHP `ReceiptFinalizationService`
- * rather than the TS canonicalizer. That bridge is correct (PHP=PHP) but it
- * does not catch a future TS-only drift in `receiptService.ts:167-173` (canonical
- * input builder) or `syncService.ts:receiptToPayload` (wire payload parser).
- *
- * The TS-side test at `receiptService.test.ts` ("the wire payload produced by
- * receiptToPayload matches the canonical input the hash was sealed against")
- * imports this symbol to assert the production sync code path produces a wire
- * payload from which the server can reproduce the offline-sealed hash. Drift
- * in either mapper will fail that test loudly.
- *
- * Naming: prefixed with `__test_` so it is unmistakable that this is not
- * production API. The implementation it points at IS production code.
- */
-export const __test_receiptToPayload = receiptToPayload;

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 vi.mock('@/stores/connectivityStore', () => ({
   useConnectivityStore: {
@@ -6,9 +8,10 @@ vi.mock('@/stores/connectivityStore', () => ({
   },
 }));
 
-vi.mock('@/api/receiptApi', () => ({
-  createReceipt: vi.fn(),
-  processReceiptPayments: vi.fn(),
+vi.mock('@/stores/syncStore', () => ({
+  useSyncStore: {
+    getState: vi.fn().mockReturnValue({ triggerSync: vi.fn() }),
+  },
 }));
 
 vi.mock('@/lib/offline/receiptService', () => ({
@@ -21,7 +24,6 @@ vi.mock('@/lib/fiscal/hashService', () => ({
 
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   getTerminalState: vi.fn(),
-  advanceHashChain: vi.fn(),
 }));
 
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/lib/db/repositories/offlineReceiptRepository', () => ({
 
 import { executeCheckout, type CheckoutInput } from '../offlineCheckoutService';
 import { useConnectivityStore } from '@/stores/connectivityStore';
-import { createReceipt, processReceiptPayments } from '@/api/receiptApi';
+import { useSyncStore } from '@/stores/syncStore';
 import { createOfflineReceipt } from '@/lib/offline/receiptService';
 import { makeCartItem } from '@/test/helpers';
 
@@ -44,11 +46,22 @@ function makeMockDb() {
 
 function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   return {
+    tenantId: 'tenant-1',
+    companyId: 'company-1',
     terminalId: 'terminal-1',
     operatorId: 'op-1',
     operatorName: 'Test Operator',
+    shiftId: 'shift-1',
     cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '5.00' })],
     currency: 'EUR',
+    seller: {
+      name: 'Test SA',
+      taxNumber: '123456789',
+      countryCode: 'FR',
+      street: '1 Rue Test',
+      city: 'Paris',
+      postalCode: '75001',
+    },
     paymentMethodId: 'pm-1',
     paymentRepositoryId: 'repo-1',
     tenderedAmount: 100,
@@ -57,12 +70,50 @@ function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
   };
 }
 
-describe('offlineCheckoutService - executeCheckout', () => {
+function makeOfflineResult(
+  overrides: Partial<Awaited<ReturnType<typeof createOfflineReceipt>>> = {},
+) {
+  return {
+    receiptNumber: 'MAIN-T001-2026-00000001',
+    total: '50.00',
+    subtotal: '50.00',
+    taxAmount: '5.00',
+    discountAmount: '0.00',
+    changeDue: 50,
+    fiscalHash: 'offline-hash-123',
+    idempotencyKey: 'idem-001',
+    localId: 'local-id-001',
+    ...overrides,
+  } satisfies Awaited<ReturnType<typeof createOfflineReceipt>>;
+}
+
+/**
+ * Phase 1 Task 27 Pass 1 (spec §14.3): `executeCheckout` is now
+ * connectivity-independent. The device ALWAYS authors locally via
+ * `createOfflineReceipt()`; connectivity only decides whether an immediate
+ * sync flush follows. The pre-Pass-1 `onlineCheckout()` branch and its
+ * `createReceipt()` / `processReceiptPayments()` callers are deleted.
+ *
+ * These tests lock the Pass 1 contract:
+ *   1. ONLINE  → local-author + immediate sync-flush kick
+ *   2. OFFLINE → local-author + NO sync-flush kick (scheduler picks up later)
+ *   3. Symmetric authoring shape — `result.fiscalHash` is set in both cases
+ *   4. Source-level guard: the file no longer imports the server-authoring
+ *      receipt methods, and the `onlineCheckout` symbol is gone.
+ */
+describe('offlineCheckoutService - executeCheckout (Phase 1 Task 27 Pass 1)', () => {
   let db: ReturnType<typeof makeMockDb>;
+  let triggerSync: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     db = makeMockDb();
+    triggerSync = vi.fn();
+    vi.mocked(useSyncStore.getState).mockReturnValue({
+      triggerSync,
+      // Other syncStore fields are not exercised by executeCheckout; the
+      // cast keeps TS happy without forcing the full SyncStore shape.
+    } as unknown as ReturnType<typeof useSyncStore.getState>);
     vi.mocked(useConnectivityStore.getState).mockReturnValue({
       isOnline: true,
       serverReachable: true,
@@ -70,119 +121,50 @@ describe('offlineCheckoutService - executeCheckout', () => {
       checkNow: vi.fn(),
       startMonitoring: vi.fn(),
     });
+    vi.mocked(createOfflineReceipt).mockResolvedValue(makeOfflineResult());
   });
 
-  it('uses online path when connected and API succeeds', async () => {
-    vi.mocked(createReceipt).mockResolvedValue({
-      id: 'receipt-online',
-      receipt_number: 'R-001',
-      total: '50.00',
-      subtotal: '50.00',
-      tax_amount: '5.00',
-      discount_amount: '0.00',
-      currency: 'EUR',
-    });
-    vi.mocked(processReceiptPayments).mockResolvedValue({
-      receipt: { id: 'receipt-online', receipt_number: 'R-001', total: '50.00' },
-      receipt_payments: [{ id: 'rp-1', payment_method_id: 'pm-1', amount: '50.00' }],
-      treasury_payments: [{ id: 'tp-1', journal_entry_id: 'je-1' }],
-      change_due: '50.00',
-    });
-
+  it('authors locally via createOfflineReceipt when ONLINE — no server-authoring methods are reachable', async () => {
     const result = await executeCheckout(db, makeInput());
 
-    expect(result.isOffline).toBe(false);
-    expect(result.receiptId).toBe('receipt-online');
-    expect(result.total).toBe('50.00');
-    expect(result.changeDue).toBe(50);
-    expect(createReceipt).toHaveBeenCalled();
-    expect(createOfflineReceipt).not.toHaveBeenCalled();
-  });
-
-  it('uses offline path when disconnected', async () => {
-    vi.mocked(useConnectivityStore.getState).mockReturnValue({
-      isOnline: false,
-      serverReachable: false,
-      lastCheckedAt: Date.now(),
-      checkNow: vi.fn(),
-      startMonitoring: vi.fn(),
-    });
-
-    vi.mocked(createOfflineReceipt).mockResolvedValue({
-      receiptNumber: 'MAIN-T001-2026-00000001',
-      total: '50.00',
-      subtotal: '50.00',
-      taxAmount: '5.00',
-      discountAmount: '0.00',
-      changeDue: 50,
-      fiscalHash: 'offline-hash-123',
-      idempotencyKey: 'idem-001',
-      localId: 'local-id-001',
-    });
-
-    const result = await executeCheckout(db, makeInput());
-
-    expect(result.isOffline).toBe(true);
+    expect(createOfflineReceipt).toHaveBeenCalledOnce();
+    expect(result.receiptId).toBe('local-local-id-001');
     expect(result.receiptNumber).toBe('MAIN-T001-2026-00000001');
-    expect(result.total).toBe('50.00');
-    expect(result.changeDue).toBe(50);
     expect(result.fiscalHash).toBe('offline-hash-123');
-    expect(createReceipt).not.toHaveBeenCalled();
-    expect(createOfflineReceipt).toHaveBeenCalled();
+    // Pass 1: `isOffline` describes sync posture, not authoring posture.
+    // Online connectivity → kick fired → isOffline=false.
+    expect(result.isOffline).toBe(false);
   });
 
-  it('falls back to offline when online but API fails', async () => {
-    vi.mocked(createReceipt).mockRejectedValue(new Error('Server error'));
-    vi.mocked(createOfflineReceipt).mockResolvedValue({
-      receiptNumber: 'MAIN-T001-2026-00000002',
-      total: '50.00',
-      subtotal: '50.00',
-      taxAmount: '5.00',
-      discountAmount: '0.00',
-      changeDue: 50,
-      fiscalHash: 'fallback-hash-456',
-      idempotencyKey: 'idem-002',
-      localId: 'local-id-002',
+  it('authors locally via createOfflineReceipt when OFFLINE (symmetric authoring)', async () => {
+    vi.mocked(useConnectivityStore.getState).mockReturnValue({
+      isOnline: false,
+      serverReachable: false,
+      lastCheckedAt: Date.now(),
+      checkNow: vi.fn(),
+      startMonitoring: vi.fn(),
     });
+    vi.mocked(createOfflineReceipt).mockResolvedValue(
+      makeOfflineResult({
+        receiptNumber: 'MAIN-T001-2026-00000002',
+        fiscalHash: 'offline-hash-offline',
+      }),
+    );
 
     const result = await executeCheckout(db, makeInput());
 
-    expect(result.isOffline).toBe(true);
+    expect(createOfflineReceipt).toHaveBeenCalledOnce();
     expect(result.receiptNumber).toBe('MAIN-T001-2026-00000002');
-    expect(createReceipt).toHaveBeenCalled();
-    expect(createOfflineReceipt).toHaveBeenCalled();
-  });
-
-  it('falls back to offline when payment processing fails after receipt creation', async () => {
-    vi.mocked(createReceipt).mockResolvedValue({
-      id: 'receipt-partial',
-      receipt_number: 'R-002',
-      total: '50.00',
-      subtotal: '50.00',
-      tax_amount: '5.00',
-      discount_amount: '0.00',
-      currency: 'EUR',
-    });
-    vi.mocked(processReceiptPayments).mockRejectedValue(new Error('Payment failed'));
-    vi.mocked(createOfflineReceipt).mockResolvedValue({
-      receiptNumber: 'MAIN-T001-2026-00000003',
-      total: '50.00',
-      subtotal: '50.00',
-      taxAmount: '5.00',
-      discountAmount: '0.00',
-      changeDue: 50,
-      fiscalHash: 'fallback-hash-789',
-      idempotencyKey: 'idem-003',
-      localId: 'local-id-003',
-    });
-
-    const result = await executeCheckout(db, makeInput());
-
+    expect(result.fiscalHash).toBe('offline-hash-offline');
     expect(result.isOffline).toBe(true);
-    expect(createOfflineReceipt).toHaveBeenCalled();
   });
 
-  it('offline result contains all fields needed for success modal', async () => {
+  it('triggers an immediate sync flush when ONLINE', async () => {
+    await executeCheckout(db, makeInput());
+    expect(triggerSync).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT trigger an immediate sync flush when OFFLINE (scheduler picks up later)', async () => {
     vi.mocked(useConnectivityStore.getState).mockReturnValue({
       isOnline: false,
       serverReachable: false,
@@ -191,21 +173,27 @@ describe('offlineCheckoutService - executeCheckout', () => {
       startMonitoring: vi.fn(),
     });
 
-    vi.mocked(createOfflineReceipt).mockResolvedValue({
-      receiptNumber: 'MAIN-T001-2026-00000004',
-      total: '45.00',
-      subtotal: '50.00',
-      taxAmount: '5.00',
-      discountAmount: '5.00',
-      changeDue: 55,
-      fiscalHash: 'hash-abc',
-      idempotencyKey: 'idem-004',
-      localId: 'local-id-004',
-    });
+    await executeCheckout(db, makeInput());
+
+    expect(triggerSync).not.toHaveBeenCalled();
+  });
+
+  it('result contains every field the success modal needs (subtotal / tax / discount / change_due / hash)', async () => {
+    vi.mocked(createOfflineReceipt).mockResolvedValue(
+      makeOfflineResult({
+        receiptNumber: 'MAIN-T001-2026-00000004',
+        total: '45.00',
+        subtotal: '50.00',
+        taxAmount: '5.00',
+        discountAmount: '5.00',
+        changeDue: 55,
+        fiscalHash: 'hash-abc',
+      }),
+    );
 
     const result = await executeCheckout(db, makeInput());
 
-    expect(result.receiptNumber).toBeDefined();
+    expect(result.receiptNumber).toBe('MAIN-T001-2026-00000004');
     expect(result.total).toBe('45.00');
     expect(result.subtotal).toBe('50.00');
     expect(result.taxAmount).toBe('5.00');
@@ -214,33 +202,7 @@ describe('offlineCheckoutService - executeCheckout', () => {
     expect(result.fiscalHash).toBe('hash-abc');
   });
 
-  /**
-   * B3-followup audit (Minor 1, 2026-05-01): `onlineCheckout()` was extended
-   * in commit 9f7874db to forward `input.payments[]` with instrument fields
-   * rather than hardcoding a single-cash payment.  These two cases lock that
-   * branch so a regression (e.g. reverting the conditional spread back to a
-   * hardcoded single-cash row) fails loudly.
-   */
-  it('online path forwards instrument fields to processReceiptPayments when input carries a voucher payment', async () => {
-    vi.mocked(createReceipt).mockResolvedValue({
-      id: 'receipt-voucher',
-      receipt_number: 'R-VCH-001',
-      total: '75.00',
-      subtotal: '75.00',
-      tax_amount: '7.50',
-      discount_amount: '0.00',
-      currency: 'EUR',
-    });
-    vi.mocked(processReceiptPayments).mockResolvedValue({
-      receipt: { id: 'receipt-voucher', receipt_number: 'R-VCH-001', total: '75.00' },
-      receipt_payments: [
-        { id: 'rp-cash', payment_method_id: 'pm-cash', amount: '25.00' },
-        { id: 'rp-vchr', payment_method_id: 'pm-store-voucher', amount: '50.00' },
-      ],
-      treasury_payments: [],
-      change_due: '0.00',
-    });
-
+  it('forwards `input.payments` verbatim into createOfflineReceipt (instrument fields preserved)', async () => {
     const input = makeInput({
       payments: [
         {
@@ -251,7 +213,7 @@ describe('offlineCheckoutService - executeCheckout', () => {
         },
         {
           methodCode: 'store_voucher',
-          amount: '50.00',
+          amount: '25.00',
           paymentMethodId: 'pm-store-voucher',
           repositoryId: 'repo-virtual',
           instrumentType: 'store_voucher',
@@ -260,62 +222,73 @@ describe('offlineCheckoutService - executeCheckout', () => {
       ],
     });
 
-    const result = await executeCheckout(db, input);
+    await executeCheckout(db, input);
 
-    expect(result.isOffline).toBe(false);
-    expect(result.receiptId).toBe('receipt-voucher');
-
-    expect(processReceiptPayments).toHaveBeenCalledOnce();
-    const [, body] = vi.mocked(processReceiptPayments).mock.calls[0]!;
-    expect(body.payments).toHaveLength(2);
-
-    // Cash row must NOT carry instrument fields.
-    const cashRow = body.payments[0]!;
-    expect(cashRow.payment_method_id).toBe('pm-cash');
-    expect(cashRow.amount).toBe(25);
-    expect(cashRow.repository_id).toBe('repo-cash');
-    expect(cashRow.instrument_type).toBeUndefined();
-    expect(cashRow.instrument_serial).toBeUndefined();
-
-    // Voucher row MUST carry instrument fields verbatim.
-    const voucherRow = body.payments[1]!;
-    expect(voucherRow.payment_method_id).toBe('pm-store-voucher');
-    expect(voucherRow.amount).toBe(50);
-    expect(voucherRow.repository_id).toBe('repo-virtual');
-    expect(voucherRow.instrument_type).toBe('store_voucher');
-    expect(voucherRow.instrument_serial).toBe('SV-2026-9999');
+    expect(createOfflineReceipt).toHaveBeenCalledOnce();
+    const [, callInput] = vi.mocked(createOfflineReceipt).mock.calls[0]!;
+    expect(callInput.payments).toHaveLength(2);
+    expect(callInput.payments![0]).toMatchObject({
+      methodCode: 'CASH',
+      amount: '25.00',
+      paymentMethodId: 'pm-cash',
+      repositoryId: 'repo-cash',
+    });
+    expect(callInput.payments![1]).toMatchObject({
+      methodCode: 'store_voucher',
+      amount: '25.00',
+      paymentMethodId: 'pm-store-voucher',
+      repositoryId: 'repo-virtual',
+      instrumentType: 'store_voucher',
+      instrumentSerial: 'SV-2026-9999',
+    });
   });
 
-  it('online path falls back to single-cash payment when input.payments is absent (sanity: conditional spread)', async () => {
-    vi.mocked(createReceipt).mockResolvedValue({
-      id: 'receipt-cash-only',
-      receipt_number: 'R-CASH-001',
-      total: '50.00',
-      subtotal: '50.00',
-      tax_amount: '5.00',
-      discount_amount: '0.00',
-      currency: 'EUR',
+  it('falls back to a single CASH payment when `input.payments` is absent', async () => {
+    // Two items: 50.00 + 25.00 = 75.00 default CASH amount at EUR scale (2dp).
+    const input = makeInput({
+      cartItems: [
+        makeCartItem({ line_total: '50.00', tax_amount: '5.00' }),
+        makeCartItem({ line_total: '25.00', tax_amount: '2.50' }),
+      ],
+      payments: undefined,
     });
-    vi.mocked(processReceiptPayments).mockResolvedValue({
-      receipt: { id: 'receipt-cash-only', receipt_number: 'R-CASH-001', total: '50.00' },
-      receipt_payments: [{ id: 'rp-1', payment_method_id: 'pm-1', amount: '50.00' }],
-      treasury_payments: [],
-      change_due: '0.00',
-    });
-
-    // Explicitly omit `payments` to hit the fallback branch.
-    const input = makeInput({ payments: undefined });
 
     await executeCheckout(db, input);
 
-    expect(processReceiptPayments).toHaveBeenCalledOnce();
-    const [, body] = vi.mocked(processReceiptPayments).mock.calls[0]!;
-    expect(body.payments).toHaveLength(1);
+    const [, callInput] = vi.mocked(createOfflineReceipt).mock.calls[0]!;
+    expect(callInput.payments).toEqual([{ methodCode: 'CASH', amount: '75.00' }]);
+  });
 
-    const singleRow = body.payments[0]!;
-    expect(singleRow.payment_method_id).toBe('pm-1');
-    expect(singleRow.amount).toBe(50);   // parseFloat(receipt.total)
-    expect(singleRow.instrument_type).toBeUndefined();
-    expect(singleRow.instrument_serial).toBeUndefined();
+  /**
+   * Pass 1 source-level guard (spec §14.3 chokepoint disposition).
+   *
+   * Reads the source file of `offlineCheckoutService.ts` and asserts that
+   * the deleted server-authoring identifiers are absent. This is the
+   * regression net the plan calls for — a future re-introduction of either
+   * `createReceipt` / `processReceiptPayments` import OR a fresh
+   * `onlineCheckout()` helper would fail this assertion at unit-test time,
+   * BEFORE the change reaches Codex / Opus review.
+   *
+   * Read the file from the repo path, NOT via `await import('...')` —
+   * the source-level guard must be a string check on disk.
+   */
+  it('offlineCheckoutService.ts no longer imports the server-authoring receipt methods (source-level guard)', () => {
+    const src = readFileSync(
+      resolve(__dirname, '..', 'offlineCheckoutService.ts'),
+      'utf8',
+    );
+
+    // No imports / calls to the deleted server-authoring receipt methods.
+    // The negative-lookbehind excludes `createOfflineReceipt` (the LOCAL
+    // authoring entry point we KEEP); `createReceipt` is the deleted
+    // SERVER-authoring method.
+    expect(src).not.toMatch(/(?<!Offline)createReceipt\b/);
+    expect(src).not.toMatch(/\bprocessReceiptPayments\b/);
+    // The `onlineCheckout` helper is gone (the branch it served is gone).
+    expect(src).not.toMatch(/\bonlineCheckout\b/);
+    // And the receiptApi module itself isn't imported anywhere in this file —
+    // closes the route by which a future commit could re-add server-authoring
+    // via some other name.
+    expect(src).not.toMatch(/from\s+['"]@\/api\/receiptApi['"]/);
   });
 });

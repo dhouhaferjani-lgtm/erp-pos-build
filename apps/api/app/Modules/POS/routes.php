@@ -13,6 +13,8 @@ use App\Modules\POS\Presentation\Controllers\FiscalSchemaCutoverController;
 use App\Modules\POS\Presentation\Controllers\FraudSettingsPosController;
 use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
+use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
+use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
@@ -82,7 +84,6 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/pos/reports/receipts/verify-chain', [ReportController::class, 'verifyReceiptChain']);
 
     // Sync endpoints (offline POS terminal synchronization)
-    Route::post('/pos/receipts/sync', [SyncController::class, 'syncReceipts']);
     Route::get('/pos/sync/pull', [SyncController::class, 'pull']);
     Route::get('/pos/sync/menu', [SyncController::class, 'menu']);
     Route::post('/pos/shifts/{id}/sync-close', [SyncController::class, 'syncCloseShift']);
@@ -92,14 +93,55 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pullVoucherLedger']);
     Route::post('/pos/voucher-ledger/sync', [VoucherSyncController::class, 'pushVoucherLedger']);
     Route::get('/pos/receipts/qr-index', [VoucherSyncController::class, 'pullReceiptQrIndex']);
+    Route::get('/pos/customers/sync', [PosCustomerSyncController::class, 'index'])
+        ->name('pos.customers.sync');
+    Route::post('/pos/customers/pending', [PosPendingCustomerController::class, 'store'])
+        ->name('pos.customers.pending.store');
 
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
-    Route::post('/pos/receipts', [ReceiptController::class, 'store']);
+    // §14.2 — New-sale SALE_RECEIPT server-authoring retired. Routes return
+    // 410 Gone with NEW_SALE_AUTHORING_RETIRED. The route-level closure
+    // short-circuits BEFORE FormRequest validation runs, so callers get the
+    // disposition code regardless of payload shape (the FormRequest would
+    // otherwise convert a missing field into a 422 and mask the retirement).
+    // Knowingly retained per §14.2: `void` and `processReturn` —
+    // SALE_VOID, REFUND_RECEIPT, PARTIAL_REFUND event types are Phase 2+
+    // reserved and both routes are shared with the offline Tauri POS.
+    //
+    // Auth-middleware contract (Opus T29-F2 P2 deferral — round-2): The 410
+    // closures below sit inside the `auth:sanctum` middleware group at
+    // routes.php:29. Anonymous callers receive 401 from auth:sanctum BEFORE
+    // reaching the closure. This is by design: the retired surface is the
+    // authenticated POS/API surface — disposition is returned to in-app
+    // (authenticated) callers, while anon probes get the standard 401 for
+    // an authenticated endpoint. Both Codex r1 and Opus r1 acknowledged
+    // this contract; Codex did not escalate. Tests assert the
+    // authenticated-caller contract via Sanctum::actingAs(). (Task 29 R2)
+    Route::post('/pos/receipts', function () {
+        return response()->json([
+            'error' => [
+                'code' => 'NEW_SALE_AUTHORING_RETIRED',
+                'message' => 'POST /api/v1/pos/receipts is retired for new-sale SALE_RECEIPT authoring per fiscal Phase 1 §14.2. Receipts are now device-authored and ingested via POST /api/v1/pos/sync/fiscal-events.',
+            ],
+        ], 410);
+    });
     Route::get('/pos/receipts/{id}', [ReceiptController::class, 'show']);
     Route::post('/pos/receipts/{id}/void', [ReceiptController::class, 'void']);
     Route::post('/pos/receipts/{id}/return', [ReceiptController::class, 'processReturn']);
-    Route::post('/pos/receipts/{id}/payments', [ReceiptController::class, 'storePayments']);
+    Route::post('/pos/receipts/{id}/payments', function (string $id) {
+        // §14.2 — storePayments is the second new-sale authoring call-site
+        // (the Treasury Payment + GL write chain). Retired in lock-step
+        // with POST /pos/receipts. The device authors the payment lines
+        // inside the SALE_RECEIPT envelope; the Treasury bridge projects
+        // them on ingestion (Task 22).
+        return response()->json([
+            'error' => [
+                'code' => 'NEW_SALE_AUTHORING_RETIRED',
+                'message' => 'POST /api/v1/pos/receipts/{id}/payments is retired for new-sale Treasury payment authoring per fiscal Phase 1 §14.2. Receipts and their payment lines are now device-authored and ingested via POST /api/v1/pos/sync/fiscal-events.',
+            ],
+        ], 410);
+    });
     Route::get('/pos/receipts/{id}/pdf', [ReceiptController::class, 'streamPdf']);
     Route::get('/pos/receipts/{id}/pdf/download', [ReceiptController::class, 'downloadPdf']);
 

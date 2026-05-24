@@ -348,7 +348,17 @@ final class OrderController extends Controller
     /**
      * Close an order and convert to receipt.
      *
-     * POST /api/v1/pos/orders/{id}/close
+     * **§14.2 — NEW-SALE AUTHORING RETIRED.** The
+     * `POST /api/v1/pos/orders/{id}/close` route is dispositioned to return
+     * HTTP 410 Gone with `NEW_SALE_AUTHORING_RETIRED` at the route-level
+     * closure (see `routes_orders.php`). The downstream chain — this
+     * controller method → `OrderManagementService::closeOrder` →
+     * `OrderToReceiptService::convertToReceipt` →
+     * `ReceiptCreationService::createReceipt` — is one of the §14.2
+     * server-authoring paths the device-authority rebuild replaces. The
+     * rest of order CRUD/lines/kitchen/cancel routes in `routes_orders.php`
+     * are untouched. Do not re-wire this method to a route for new-sale
+     * authoring without coordinating with Task 30's CI gate.
      */
     public function close(string $id): JsonResponse
     {

@@ -81,6 +81,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $policy_trigger Machine-readable policy trigger key (e.g. "over_threshold")
  * @property string|null $refund_request_id Client-supplied idempotency UUID
  * @property string|null $exchange_group_id UUID shared by both halves of an exchange transaction (committed in v3 hash)
+ * @property string|null $canonical_bytes Phase 1 §7.5 verbatim canonical encoding from the device (BYTEA on PG, BLOB on SQLite); NULL on rows pre-dating the projection-row rebuild
+ * @property string|null $fiscal_event_id Phase 1 §7.5 UUID FK → fiscal_events.id — the projector idempotency anchor (Task 21); NULL on legacy rows
  * @property Carbon $created_at Server creation time
  * @property Carbon $updated_at
  * @property-read Tenant $tenant
@@ -180,6 +182,22 @@ class Receipt extends Model
         'policy_trigger',
         'refund_request_id',
         'exchange_group_id',
+        // Phase 1 §7.5 — projection-row linkage to `fiscal_events`.
+        // `canonical_bytes` carries the verbatim canonical encoding from the
+        // device; `fiscal_event_id` is the UNIQUE FK to the authoritative
+        // fiscal event and the idempotency anchor for
+        // PosCoreReceiptProjection (Task 21). Both nullable for backward
+        // compatibility with rows that pre-date the rebuild.
+        'canonical_bytes',
+        'fiscal_event_id',
+        // Pass 2A.PHP.1 (synthesis v5 §3) — projector-consumed columns from
+        // the 27-key canonical SALE_RECEIPT payload. `invoice_type_code` ∈
+        // {SALE, REFUND, VOID, TRAINING}; `training_flag` is denormalized
+        // from `invoice_type_code == 'TRAINING'` and the universal report-
+        // filter path. Sealed-at-INSERT; the immutability trigger forbids
+        // subsequent UPDATEs (they sit outside the void-whitelist by design).
+        'invoice_type_code',
+        'training_flag',
     ];
 
     /**
@@ -203,6 +221,7 @@ class Receipt extends Model
             'consumption_mode' => ConsumptionMode::class,
             'is_voided' => 'boolean',
             'is_training' => 'boolean',
+            'training_flag' => 'boolean',
             'voided_at' => 'datetime',
             'synced_at' => 'datetime',
             'discount_breakdown' => 'array',

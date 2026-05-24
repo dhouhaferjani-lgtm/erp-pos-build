@@ -254,9 +254,8 @@ class V2ToV3ChainReplayTest extends TestCase
      * Scenario 4: Mixed-version refusal — a cut-over terminal already at v3
      * should reject any attempt to cut over again.
      *
-     * (The actual same-receipt v2-payload-on-v3-terminal rejection lives in
-     * ReceiptSyncService from Task 8. This test verifies the cutover service
-     * itself throws already_at_v3 for duplicate cutover attempts.)
+     * This test verifies the cutover service itself throws already_at_v3 for
+     * duplicate cutover attempts.
      */
     public function test_scenario_4_cutover_refuses_for_already_v3_terminal(): void
     {

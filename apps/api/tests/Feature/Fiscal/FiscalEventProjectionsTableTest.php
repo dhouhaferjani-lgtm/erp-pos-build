@@ -75,6 +75,50 @@ final class FiscalEventProjectionsTableTest extends TestCase
         $this->assertSame(2, $count);
     }
 
+    public function test_foreign_key_to_fiscal_events_blocks_orphan_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $this->expectException(QueryException::class);
+        // No `fiscal_events` row exists for this id, so the FK must reject the insert.
+        $this->insertProjection(Str::uuid()->toString(), 'pos_core_receipt');
+    }
+
+    public function test_foreign_key_constraint_is_named_per_convention_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            "SELECT conname FROM pg_constraint WHERE conname = ? AND contype = 'f'",
+            ['fiscal_event_projections_fiscal_event_id_fk'],
+        );
+
+        $this->assertNotNull(
+            $row,
+            'FK fiscal_event_projections_fiscal_event_id_fk missing on PostgreSQL',
+        );
+    }
+
+    public function test_partial_index_for_worker_dispatcher_exists_on_postgres(): void
+    {
+        $this->skipUnlessPostgres();
+
+        $row = DB::selectOne(
+            'SELECT indexdef FROM pg_indexes WHERE indexname = ?',
+            ['fiscal_event_projections_status_pending_idx'],
+        );
+
+        $this->assertNotNull(
+            $row,
+            'Partial index fiscal_event_projections_status_pending_idx missing on PostgreSQL',
+        );
+
+        // The predicate must constrain to in-flight rows so the long tail of
+        // `applied` rows stays out of the worker dispatcher's hot-path scan.
+        $this->assertStringContainsString('pending', $row->indexdef);
+        $this->assertStringContainsString('running', $row->indexdef);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -128,5 +172,12 @@ final class FiscalEventProjectionsTableTest extends TestCase
         DB::table('fiscal_event_projections')->insert($row);
 
         return (string) $row['id'];
+    }
+
+    private function skipUnlessPostgres(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('FK + partial-index DDL only enforced on PostgreSQL');
+        }
     }
 }

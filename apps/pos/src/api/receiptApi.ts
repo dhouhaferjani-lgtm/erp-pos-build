@@ -1,28 +1,16 @@
-import { apiGet, apiPost } from '@/lib/api';
-import type {
-  CreateReceiptRequest,
-  CreateReceiptResponse,
-  FullReceiptResponse,
-  ProcessReceiptPaymentsRequest,
-  ProcessReceiptPaymentsResponse,
-} from '@/types/receipt';
+import { apiGet } from '@/lib/api';
+import type { FullReceiptResponse } from '@/types/receipt';
 
+/**
+ * Phase 1 Task 27 Pass 1 (spec §14.3 chokepoint disposition):
+ * `createReceipt()` (`POST /pos/receipts`) and `processReceiptPayments()`
+ * (`POST /pos/receipts/{id}/payments`) — the new-sale server-authoring
+ * callers — have been DELETED. The device authors every new sale locally
+ * (`createOfflineReceipt()`); the sync service ships the sealed receipt
+ * via the offline-sync pipeline.
+ *
+ * Only read-only methods remain.
+ */
 export async function fetchReceipt(id: string): Promise<FullReceiptResponse> {
   return apiGet<FullReceiptResponse>(`/pos/receipts/${id}`);
-}
-
-export async function createReceipt(
-  data: CreateReceiptRequest,
-): Promise<CreateReceiptResponse> {
-  return apiPost<CreateReceiptResponse>('/pos/receipts', data);
-}
-
-export async function processReceiptPayments(
-  receiptId: string,
-  data: ProcessReceiptPaymentsRequest,
-): Promise<ProcessReceiptPaymentsResponse> {
-  return apiPost<ProcessReceiptPaymentsResponse>(
-    `/pos/receipts/${receiptId}/payments`,
-    data,
-  );
 }

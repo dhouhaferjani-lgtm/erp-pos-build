@@ -100,6 +100,14 @@ final class ReceiptCreationService
      * @throws \InvalidArgumentException If lines are empty or products not found
      * @throws DiscountNotAllowedException If discount is not permitted
      * @throws DiscountExceedsLimitException If discount exceeds limits
+     *
+     * @internal §14.3 chokepoint (Task 30). All call sites are catalogued
+     *           in `apps/api/scripts/saleReceipt-chokepoint-manifest.json`:
+     *           - `ReceiptController::store` (Task 29 §14.2: 410 Gone) — `live: true`, disposition (b)
+     *           - `OrderToReceiptService::convertToReceipt` (Task 29 §14.2: 410 Gone) — `live: true`, disposition (b)
+     *           - `ExchangeService::processExchange` — `live: false`, disposition (b)
+     *           Adding a new caller without updating the manifest will fail
+     *           the §14.3 CI gate.
      */
     public function createReceipt(
         string $terminalId,

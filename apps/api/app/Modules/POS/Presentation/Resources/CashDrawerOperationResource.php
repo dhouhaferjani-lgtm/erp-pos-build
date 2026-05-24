@@ -28,6 +28,11 @@ final class CashDrawerOperationResource extends JsonResource
             'user_id' => $this->user_id,
             'reason' => $this->reason,
             'receipt_id' => $this->receipt_id,
+            'approval_id' => $this->approval_id,
+            'approval_fiscal_event_id' => $this->approval_fiscal_event_id,
+            'approval_scope' => $this->approval_scope,
+            'approval_supervisor_user_id' => $this->approval_supervisor_user_id,
+            'approval_target_hash' => $this->approval_target_hash,
             'created_at' => $this->created_at->toIso8601String(),
 
             // Helper methods

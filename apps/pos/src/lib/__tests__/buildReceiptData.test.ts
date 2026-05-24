@@ -13,11 +13,23 @@ vi.mock('@/stores/authStore', () => ({
   useAuthStore: vi.fn(),
 }));
 
-import { buildEscPosReceiptData } from '../buildReceiptData';
+import {
+  buildEscPosAccountPaymentReceiptData,
+  buildEscPosReceiptData,
+} from '../buildReceiptData';
 import type { FullReceiptResponse } from '@/types/receipt';
 import type { CheckoutResult } from '@/lib/offline/offlineCheckoutService';
+import { goldenAccountPaymentPayload } from '@/lib/fiscal/payloads/AccountPaymentPayload';
 
-/** Minimal but valid CheckoutResult fixture for offline-receipt tests */
+/**
+ * Minimal but valid CheckoutResult fixture for offline-receipt tests.
+ * Phase 1 Task 27 Pass 1 (spec §14.3): `onlineReceipt` / `onlinePayment` are
+ * gone from `CheckoutResult` — the device authors every sale locally now,
+ * so there's no online response payload to carry. `isOffline` is retained
+ * but its meaning shifted: it now describes the SYNC posture (true when
+ * the device was offline at checkout time and the immediate flush was
+ * skipped), not the authoring path (which is always local).
+ */
 function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): CheckoutResult {
   return {
     isOffline: true,
@@ -30,8 +42,6 @@ function makeOfflineCheckoutResult(overrides: Partial<CheckoutResult> = {}): Che
     changeDue: 0,
     currency: 'EUR',
     // fiscalHash is optional (string | undefined)
-    onlineReceipt: null,
-    onlinePayment: null,
     ...overrides,
   };
 }
@@ -527,5 +537,30 @@ describe('buildEscPosReceiptData — currency-aware display scale', () => {
     const receipt = makeStorageScaleReceipt('EUR', { tolerance_writeoff: null });
     const result = buildEscPosReceiptData(receipt);
     expect(result.tolerance_writeoff).toBeNull();
+  });
+
+  it('maps sealed ACCOUNT_PAYMENT metadata into printable receipt data', () => {
+    const payload = goldenAccountPaymentPayload();
+    payload.training_flag = true;
+    payload.customer = {
+      ...payload.customer,
+      phone: '+21611111111',
+    };
+    const result = buildEscPosAccountPaymentReceiptData({
+      payload,
+      fiscalEventId: '99999999-9999-4999-8999-999999999999',
+      fiscalHash: 'b'.repeat(64),
+      terminalName: 'Front T1',
+    });
+
+    expect(result.receipt_kind).toBe('account_payment');
+    expect(result.business_date).toBe(payload.business_date);
+    expect(result.terminal_id).toBe(payload.terminal_id);
+    expect(result.shift_id).toBe(payload.shift_id);
+    expect(result.training_flag).toBe(true);
+    expect(result.customer_account_id).toBe(payload.customer.customer_id);
+    expect(result.customer_phone).toBe('+21611111111');
+    expect(result.account_balance_before).toBe('300.000');
+    expect(result.account_balance_after).toBe('200.000');
   });
 });

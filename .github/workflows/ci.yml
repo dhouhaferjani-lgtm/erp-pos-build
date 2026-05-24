@@ -57,6 +57,51 @@ jobs:
       - name: Run Pint
         run: ./vendor/bin/pint --test
 
+  chokepoint-gate:
+    name: §14.3 Chokepoint Completeness Gate
+    runs-on: ubuntu-latest
+    # Spec v7 §14.3 — every ->createReceipt( and ->finalize( call site
+    # under apps/api/app + apps/api/routes MUST be reconciled against
+    # apps/api/scripts/saleReceipt-chokepoint-manifest.json. The shell
+    # gate (apps/api/scripts/check-saleReceipt-chokepoints.sh) is the
+    # primary enforcement; ChokepointCompletenessTest (run in the
+    # backend-test-pgsql merge gate) mirrors it at the PHPUnit layer
+    # for defense in depth. Both must be green to merge.
+    #
+    # The job is intentionally light — no PHP toolchain required, just
+    # ripgrep + jq + bash. Runs on every PR + push.
+    #
+    # Round-3 (Task 30 T30-R2-P1 fix): the receiver_type validator
+    # invocation inside the shell gate (php verify-chokepoint-manifest.php)
+    # is conditionally skipped when no `php` / vendor/autoload.php is
+    # available (controlled via SKIP_RECEIVER_TYPE_VALIDATOR=1). The
+    # full PHP validator runs in the backend-test-pgsql merge gate
+    # (which already has PHP + composer + vendor installed) as part of
+    # ChokepointCompletenessTest — defense-in-depth without bloating
+    # the lightweight feedback loop with a composer install.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install ripgrep + jq
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq
+
+      - name: Run §14.3 chokepoint gate (shell layer only)
+        env:
+          SKIP_RECEIVER_TYPE_VALIDATOR: '1'
+        run: bash apps/api/scripts/check-saleReceipt-chokepoints.sh
+
+      - name: Run ACCOUNT_CHARGE chokepoint gate
+        run: bash apps/api/scripts/check-accountCharge-chokepoints.sh
+
+      # Task 27B Pass 2A.TS — Pass 2B sequencing sentinel.
+      # While `apps/pos/src/lib/offline/.PASS_2B_PENDING` exists, any PR
+      # that wires `FiscalEventEngine` into the device-side checkout path
+      # (receiptService.ts / paymentStore.ts) is rejected. Pass 2B must
+      # atomically remove the marker AND add the wiring in the same commit.
+      # See synthesis v5 §8.A + Codex N-25 closure.
+      - name: Run Pass 2B sequencing sentinel
+        run: bash apps/pos/scripts/check-pass-2b-pending.sh
+
   backend-analyse:
     name: Backend Static Analysis (PHPStan)
     runs-on: ubuntu-latest
@@ -324,6 +369,161 @@ jobs:
         #   - FiscalEventsImmutabilityTest (Feature, Task 8): PG-only trigger
         #     semantics for the fiscal_events append-only ledger, including the
         #     gated `failed -> parsed` resume contract Task 24 depends on
+        #   - FiscalEventProjectionsTableTest (Feature, Task 9): PG-only FK
+        #     (fiscal_event_id → fiscal_events.id) + partial index for the
+        #     worker dispatcher hot path (projection_status IN pending,running)
+        #   - FiscalEventQuarantineTableTest (Feature, Task 10): PG-only
+        #     Phase 1 single-value CHECK on integrity_exception_class, hash-
+        #     format CHECKs, unresolved-incident partial index, and the
+        #     information_schema column-type contract for §8 envelope columns
+        #   - PosReceiptsCanonicalBytesTest (Feature, Task 11): PG-only FK
+        #     pos_receipts.fiscal_event_id → fiscal_events(id) and BYTEA /
+        #     nullability shape for the projection-row linkage anchor
+        #   - PaymentsOriginColumnsTest (Feature, Task 12): PG-only FK
+        #     payments.fiscal_event_id → fiscal_events(id) + column-type
+        #     contract for the Treasury-module integration columns
+        #   - OutboxIngestorTest (Feature, Task 19): exercises the §7.2
+        #     validate-then-insert flow against real PG tables — UNIQUE
+        #     (tenant_id, terminal_id, sequence_number) sequence_conflict
+        #     detection, in-table quarantine rows with valid hash-format
+        #     CHECKs, and the §7.5 projection-row creation in the same
+        #     transaction. SQLite passes locally (RefreshDatabase rebuilds
+        #     a portable subset of the schema) but PG is the production
+        #     truth — the CHECK constraints, FKs, and partial-unique
+        #     indexes only exist there.
+        #   - FiscalEventIngestionEndpointTest (Feature, Task 20): the
+        #     HTTP boundary for the OutboxIngestor — sequence_conflict
+        #     routing, malformed-envelope 422, cross-tenant 403. SQLite
+        #     covers the routing-layer happy-path locally; PG is the
+        #     production truth because the CHECK constraints on
+        #     `fiscal_event_quarantine.integrity_exception_class`
+        #     (Task 10 + the round-2 widening for `malformed_envelope`)
+        #     only fire there.
+        #   - PosCoreReceiptProjectionTest (Feature, Task 21): the
+        #     POS-core projector writes into `pos_receipts` (PG-only
+        #     CHECK constraints — `pos_receipts_totals`,
+        #     `pos_receipts_hash_length`, `pos_receipts_discount_positive`),
+        #     `pos_receipt_payments` (PG-only `pos_receipt_payments_amount`
+        #     CHECK + tenant-scoped `payment_method_id` FK), and
+        #     `pos_receipt_vat_details` (PG-only `pos_receipt_vat_details_gross_calc`
+        #     CHECK). The atomic INSERT ... ON CONFLICT ON CONSTRAINT
+        #     `pos_receipts_fiscal_event_id_unique` idempotency primitive
+        #     also only resolves to the named constraint on PG. SQLite
+        #     covers the happy-path locally; PG is the production truth
+        #     for the projector's failure-mode contract.
+        #   - AccountChargeProjectionTest (Feature, Phase 3 Task 6): the
+        #     POS-core ACCOUNT_CHARGE printable projector writes a jsonb
+        #     payload snapshot plus a unique `fiscal_event_id` idempotency
+        #     guard. SQLite covers local happy-path replay; PG is the
+        #     production truth for jsonb, UUID FKs, and unique replay
+        #     semantics.
+        #   - TreasuryAccountChargeBridgeTest (Feature, Phase 3 Task 8):
+        #     the Treasury ACCOUNT_CHARGE bridge posts AR journal_entries /
+        #     journal_lines from sealed fiscal events, relies on the PG
+        #     advisory-lock primitive for same-event concurrency, and must
+        #     fail closed on cross-company partner aliases before any AR row
+        #     is persisted. SQLite covers local happy-path replay; PG is the
+        #     production truth for advisory locks, UUID FKs, rollback
+        #     semantics, and idempotency-tail behaviour.
+        #   - DocumentAccountChargeFactureBridgeTest (Feature, Phase 3
+        #     Task 9): the Sales-gated ACCOUNT_CHARGE document bridge writes
+        #     draft invoice/document_lines from sealed fiscal events and
+        #     must stay draft-only, idempotent by fiscal event reference,
+        #     and tenant/company scoped on the business customer lookup.
+        #     SQLite covers local happy-path replay; PG is the production
+        #     truth for UUID FKs, jsonb payload snapshots, document-line
+        #     uniqueness, and CI visibility of the Sales module projection.
+        #   - TaskPhase3AccountChargeFullFlowTest (Feature, Phase 3 Task
+        #     10): the ACCOUNT_CHARGE closure matrix posts sealed device
+        #     envelopes through `/pos/sync/fiscal-events`, applies
+        #     POS-core/Treasury/Sales projectors synchronously, and asserts
+        #     exact canonical bytes, module-gated projection rows, AR journal
+        #     entries, and draft facture documents. SQLite covers the local
+        #     happy path; PG is the production truth for jsonb snapshots, UUID
+        #     FKs, projection-row uniqueness, and bridge transaction rollback.
+        #   - TreasuryReceiptBridgeTest (Feature, Task 22): the Treasury
+        #     bridge writes `payments` rows with the PG-only
+        #     `payments_fiscal_event_id_fk` FK + `payments_fiscal_event_id_idx`
+        #     partial index (Task 12 migration) and exercises the cross-
+        #     tenant `repository_id` fail-closed lookup. SQLite passes
+        #     the happy path; PG is the production truth for the FK +
+        #     index behaviour the bridge depends on for idempotency-tail
+        #     hot scans.
+        #   - PaymentOriginWriterInventoryTest (Feature, Task 22): pins
+        #     `payments.origin` stamping across the complete §13 writer
+        #     inventory (10 rows) — the PG-only `payments_fiscal_event_id_fk`
+        #     + the partial-unique index on
+        #     (company_id, original_payment_id, refund_request_id) for
+        #     receipt-proration idempotency only fire on PG.
+        #   - ParseFailureResumeTest (Feature, Task 24): the atomic
+        #     `failed → parsed` resume contract is gated by the PG-only
+        #     immutability trigger (Task 8 migration lines 154–230) —
+        #     the trigger is what raises if the resolution UPDATE misses
+        #     any of the four columns (payload / payload_parse_status /
+        #     integrity_status / integrity_resolved_(at|by)) in one
+        #     statement. SQLite has no trigger so the unit-level
+        #     contract is only fully exercised on PG.
+        #   - TerminalRegistrySnapshotTest (Feature, Task 26): the
+        #     server-authored TERMINAL_REGISTRY_SNAPSHOT path persists
+        #     real `fiscal_events` rows whose `current_hash` /
+        #     `previous_hash` go through the PG-only 64-hex CHECK
+        #     constraints (`fiscal_events_current_hash_format`,
+        #     `fiscal_events_previous_hash_format`) and whose
+        #     `event_type` goes through the enum-sourced
+        #     `fiscal_events_event_type_allowed` whitelist. SQLite passes
+        #     the happy path; PG is the production truth that the
+        #     emitter's canonical-bytes envelope yields a row PG will
+        #     accept without rejecting it as a malformed hash or
+        #     unwhitelisted type.
+        #   - VerifyEventChainCommandTest (Feature, Task 31): the
+        #     `fiscal:verify-event-chain` command seeds both `fiscal_events`
+        #     and `fiscal_event_quarantine` fixtures whose `current_hash` /
+        #     `previous_hash` columns go through the PG-only 64-hex CHECK
+        #     constraints, and whose `integrity_exception_class` goes
+        #     through the PG-only quarantine-class whitelist (Task 10 +
+        #     Task 19 round-2 widening for `malformed_envelope`). SQLite
+        #     passes the happy path; PG is the production truth that the
+        #     seeded fixtures (valid chain, tampered fixture,
+        #     `sequence_conflict` quarantine row) yield rows PG will
+        #     accept — ensuring the command's CI fixtures stay aligned
+        #     with the production schema.
+        #   - NewSaleServerAuthoringDispositionTest (Feature, Task 29):
+        #     pins spec §14.2 — all three new-sale authoring routes
+        #     (POST /pos/receipts, POST /pos/receipts/{id}/payments,
+        #     POST /pos/orders/{id}/close) return HTTP 410 Gone with
+        #     `NEW_SALE_AUTHORING_RETIRED`. Also pins the knowingly-retained
+        #     carve-outs (void / processReturn) + the read-only routes +
+        #     the `/pos/receipts/sync` Task-28-handoff invariant. The
+        #     Receipt::factory + Order seed paths go through the PG-only
+        #     `pos_receipts` / `pos_orders` schemas (UUID CHECK constraints,
+        #     enum columns); SQLite passes the happy path but PG is the
+        #     production truth that the seed factories accept the inserted
+        #     rows without a constraint violation.
+        #   - DeviceLossIncidentTest (Feature, Task 32 + round-2): the §12
+        #     device-loss incident register table goes through PG-only DDL —
+        #     the `device_loss_incidents_recovery_status_allowed` CHECK
+        #     (DeviceLossIncidentStatus whitelist), FKs to tenants /
+        #     companies / users, the `device_loss_incidents_tenant_terminal_idx`
+        #     admin-browse index, and the `device_loss_incidents_open_status_idx`
+        #     partial index scanning OPEN incidents (reported / recovering)
+        #     only. Round-2 T32-P1 swaps the simple `terminal_id` FK for the
+        #     composite `device_loss_incidents_terminal_scope_fk` covering
+        #     `(terminal_id, tenant_id, company_id) → pos_terminals(id, tenant_id,
+        #     company_id)` (with the redundant UNIQUE
+        #     `pos_terminals_id_tenant_company_unique` to satisfy PG's
+        #     composite-FK referent requirement). The new PG-only test
+        #     `test_cross_tenant_terminal_id_is_rejected_by_composite_fk_on_postgres`
+        #     pins the cross-tenant rejection by SQLSTATE 23503 + constraint
+        #     name; the round-2 round-2 raw-insert tests also seed real
+        #     tenant/company/terminal/user refs so the CHECK assertions actually
+        #     reach the CHECK rather than tripping FK orphans (T32-B1). SQLite
+        #     covers the column-presence + Eloquent-cast + boundary discipline
+        #     (recovery_status not in $fillable) layer; PG is the production
+        #     truth for the CHECK + composite FK + named-index contracts.
+        #   - VirtualAdminTerminalResolverTest (Feature, Phase 4): the
+        #     one-virtual-admin-terminal-per-company invariant is enforced by
+        #     the PG unique index. SQLite covers resolver behavior; PG is the
+        #     production truth for duplicate rejection.
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -333,7 +533,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test \
-            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest"
+            --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)

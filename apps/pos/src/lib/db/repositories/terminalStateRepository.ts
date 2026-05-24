@@ -53,6 +53,7 @@ export interface TerminalHashState {
    * version it sealed under so the server can hard-reject mismatched versions.
    */
   fiscal_schema_version: 2 | 3;
+  fiscal_event_genesis_seed?: string;
 }
 
 /**
@@ -72,6 +73,20 @@ export class FiscalRegressionError extends Error {
         `local hash_sequence=${before}, incoming=${after}. Rejecting write.`,
     );
     this.name = 'FiscalRegressionError';
+  }
+}
+
+export class ChainGenesisSeedConflictError extends Error {
+  constructor(
+    readonly terminalId: string,
+    readonly existingSeed: string,
+    readonly incomingSeed: string,
+  ) {
+    super(
+      `[fiscal] Conflicting fiscal_event_genesis_seed for terminal ${terminalId}: ` +
+        `existing=${existingSeed}, incoming=${incomingSeed}. Rejecting write.`,
+    );
+    this.name = 'ChainGenesisSeedConflictError';
   }
 }
 
@@ -135,12 +150,13 @@ export async function upsertTerminalState(
   db: Database,
   state: TerminalHashState,
 ): Promise<void> {
-  const current = await queryOne<{ hash_sequence: number }>(
+  const current = await queryOne<{ hash_sequence: number; fiscal_event_genesis_seed: string }>(
     db,
-    'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
+    'SELECT hash_sequence, fiscal_event_genesis_seed FROM terminal_state WHERE terminal_id = $1',
     [state.terminal_id],
   );
   const before = current?.hash_sequence ?? null;
+  const incomingFiscalSeed = state.fiscal_event_genesis_seed ?? state.genesis_seed;
 
   if (before !== null && state.hash_sequence < before) {
     logFiscal({
@@ -158,10 +174,33 @@ export async function upsertTerminalState(
     );
   }
 
+  const existingFiscalSeed = current?.fiscal_event_genesis_seed ?? '';
+  if (
+    current !== null &&
+    existingFiscalSeed !== '' &&
+    existingFiscalSeed !== incomingFiscalSeed
+  ) {
+    logFiscal({
+      op: 'upsertTerminalState.reject',
+      terminal_id: state.terminal_id,
+      existing_seed: existingFiscalSeed,
+      incoming_seed: incomingFiscalSeed,
+      reason: 'fiscal_event_genesis_seed_conflict',
+    });
+    throw new ChainGenesisSeedConflictError(
+      state.terminal_id,
+      existingFiscalSeed,
+      incomingFiscalSeed,
+    );
+  }
+
   await execute(
     db,
-    `INSERT INTO terminal_state (terminal_id, terminal_code, location_code, genesis_seed, last_hash, hash_sequence, fiscal_schema_version, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, datetime('now'))
+    `INSERT INTO terminal_state (
+       terminal_id, terminal_code, location_code, genesis_seed, last_hash,
+       hash_sequence, fiscal_schema_version, fiscal_event_genesis_seed, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
        location_code = excluded.location_code,
@@ -169,6 +208,10 @@ export async function upsertTerminalState(
        last_hash = excluded.last_hash,
        hash_sequence = excluded.hash_sequence,
        fiscal_schema_version = excluded.fiscal_schema_version,
+       fiscal_event_genesis_seed = CASE
+         WHEN terminal_state.fiscal_event_genesis_seed = '' THEN excluded.fiscal_event_genesis_seed
+         ELSE terminal_state.fiscal_event_genesis_seed
+       END,
        updated_at = datetime('now')`,
     [
       state.terminal_id,
@@ -178,6 +221,7 @@ export async function upsertTerminalState(
       state.last_hash,
       state.hash_sequence,
       state.fiscal_schema_version,
+      incomingFiscalSeed,
     ],
   );
 
@@ -187,50 +231,6 @@ export async function upsertTerminalState(
     before,
     after: state.hash_sequence,
     last_hash: state.last_hash,
-  });
-}
-
-export async function advanceHashChain(
-  db: Database,
-  terminalId: string,
-  newHash: string,
-  newSequence: number,
-): Promise<void> {
-  const current = await queryOne<{ hash_sequence: number }>(
-    db,
-    'SELECT hash_sequence FROM terminal_state WHERE terminal_id = $1',
-    [terminalId],
-  );
-  const before = current?.hash_sequence ?? null;
-
-  if (before === null || newSequence <= before) {
-    logFiscal({
-      op: 'advanceHashChain.reject',
-      terminal_id: terminalId,
-      before,
-      after: newSequence,
-      reason: before === null ? 'no_local_state' : 'non_strictly_increasing',
-    });
-    throw new FiscalRegressionError(
-      terminalId,
-      'advanceHashChain',
-      before ?? -1,
-      newSequence,
-    );
-  }
-
-  await execute(
-    db,
-    "UPDATE terminal_state SET last_hash = $1, hash_sequence = $2, updated_at = datetime('now') WHERE terminal_id = $3",
-    [newHash, newSequence, terminalId],
-  );
-
-  logFiscal({
-    op: 'advanceHashChain',
-    terminal_id: terminalId,
-    before,
-    after: newSequence,
-    last_hash: newHash,
   });
 }
 

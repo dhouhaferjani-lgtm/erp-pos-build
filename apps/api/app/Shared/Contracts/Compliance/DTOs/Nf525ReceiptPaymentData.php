@@ -18,6 +18,12 @@ namespace App\Shared\Contracts\Compliance\DTOs;
  * These fields land as nullable so refund flow can populate them without a
  * breaking change to the contract.
  *
+ * **Pass 2A.PHP.2 — canonical-only foreign-currency leg (synthesis v5 §8.B).**
+ * `foreignCurrencyAmount` + `foreignCurrencyCode` are sourced from
+ * `fiscal_events.payload.payments[]` and not projected to columns —
+ * readable via `CanonicalPayloadReader`. For legacy receipts
+ * (`fiscal_event_id IS NULL`) they default to null.
+ *
  * @see docs/superpowers/specs/2026-04-28-pos-refund-flow-design.md §5.1
  */
 final readonly class Nf525ReceiptPaymentData
@@ -27,5 +33,10 @@ final readonly class Nf525ReceiptPaymentData
         public string $amount,
         public ?string $instrumentType = null,
         public ?string $instrumentSerial = null,
+        // Pass 2A.PHP.2 — canonical-only fields.
+        /** Foreign-currency leg amount (bcformat at the foreign scale). */
+        public ?string $foreignCurrencyAmount = null,
+        /** Foreign-currency leg ISO 4217 code. */
+        public ?string $foreignCurrencyCode = null,
     ) {}
 }

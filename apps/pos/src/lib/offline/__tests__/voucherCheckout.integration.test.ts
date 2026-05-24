@@ -4,9 +4,8 @@
  *
  * B5-fix audit decision Option B (2026-05-01): the offline path NO LONGER
  * writes a local voucher_ledger row. The canonical voucher_ledger entry is
- * server-authored exclusively (ReceiptSyncService now invokes
- * VoucherRedemptionService::redeem during sync). The local mirror picks up
- * the canonical row on the next pullVoucherLedger.
+ * server-authored by the fiscal-event projection path. The local mirror picks
+ * up the canonical row on the next pullVoucherLedger.
  *
  * Wires every layer the B5 commit chain touches against a REAL SQLite
  * engine (node:sqlite via SqliteTestAdapter), no mocks for the database
@@ -60,6 +59,26 @@ vi.mock('@/lib/fiscal/hashService', () => ({
   computeFiscalHash: vi.fn().mockResolvedValue('integration-test-fiscal-hash-' + '0'.repeat(40)),
 }));
 
+const TEST_TENANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const TEST_COMPANY_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const TEST_TERMINAL_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const TEST_OPERATOR_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TEST_SHIFT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+const fiscalReceiptContext = {
+  tenantId: TEST_TENANT_ID,
+  companyId: TEST_COMPANY_ID,
+  shiftId: TEST_SHIFT_ID,
+  seller: {
+    name: 'Integration Seller SA',
+    taxNumber: '123456789',
+    countryCode: 'FR',
+    street: '1 Rue Integration',
+    city: 'Paris',
+    postalCode: '75001',
+  },
+} as const;
+
 const nodeSqliteAvailable = (() => {
   try {
     return Boolean(require('node:sqlite').DatabaseSync);
@@ -95,8 +114,9 @@ async function seedTerminalState(
     `INSERT INTO terminal_state (
        terminal_id, terminal_code, location_code, genesis_seed,
        last_hash, hash_sequence, manager_pin_throttle_until,
-       manager_pin_failed_attempts, fiscal_schema_version
-     ) VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7)`,
+       manager_pin_failed_attempts, fiscal_schema_version,
+       fiscal_event_genesis_seed, fiscal_event_last_hash, fiscal_event_sequence
+     ) VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8, $8, 0)`,
     [
       args.terminalId,
       args.terminalCode,
@@ -105,6 +125,7 @@ async function seedTerminalState(
       'previous-hash',
       0,
       args.fiscalSchemaVersion,
+      '2'.repeat(64),
     ],
   );
 }
@@ -130,10 +151,12 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { __resetFiscalEventEngineForTesting } = await import('@/lib/fiscal/instance');
+    __resetFiscalEventEngineForTesting();
     adapter = new SqliteTestAdapter();
     await runAllMigrations(adapter);
     await seedTerminalState(adapter, {
-      terminalId: 'terminal-int-1',
+      terminalId: TEST_TERMINAL_ID,
       terminalCode: 'T-INT-01',
       locationCode: 'INT-LOC',
       fiscalSchemaVersion: 2,
@@ -150,7 +173,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       code: 'SV-INT-0099',
       balance: '50.00',
       currency: 'EUR',
-      terminalId: 'terminal-int-1',
+      terminalId: TEST_TERMINAL_ID,
     });
 
     // Sanity: the voucher is fetchable via the production helper before
@@ -161,8 +184,9 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     expect(before!.status).toBe('Issued');
 
     const result = await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Integration Cashier',
       cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',
@@ -182,7 +206,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     });
 
     // (a) Receipt row exists with the fiscal hash.
-    expect(result.fiscalHash).toBe('integration-test-fiscal-hash-' + '0'.repeat(40));
+    expect(result.fiscalHash).toMatch(/^[0-9a-f]{64}$/);
     expect(result.idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
@@ -194,10 +218,9 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     expect(receiptRows[0]!.total).toBe('50.00');
 
     // (b) NO local voucher_ledger row was written (Option B). The canonical
-    //     row is server-authored exclusively — ReceiptSyncService now
-    //     invokes VoucherRedemptionService::redeem during sync, which
-    //     writes the canonical row tied to the synced receipt. The local
-    //     mirror picks up that row on the next pullVoucherLedger.
+    //     row is server-authored by the fiscal-event projection path and tied
+    //     to the synced receipt. The local mirror picks up that row on the
+    //     next pullVoucherLedger.
     const ledgerRows = await adapter.select<Array<{ voucher_id: string }>>(
       `SELECT voucher_id FROM voucher_ledger WHERE voucher_id = $1`,
       ['voucher-int-001'],
@@ -221,12 +244,13 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       code: 'SV-INT-PARTIAL',
       balance: '50.00',
       currency: 'EUR',
-      terminalId: 'terminal-int-1',
+      terminalId: TEST_TERMINAL_ID,
     });
 
     await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Cashier',
       cartItems: [makeCartItem({ line_total: '20.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',
@@ -254,8 +278,9 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
     // No voucher seeded for SV-MISSING.
     await expect(
       createOfflineReceipt(adapter as never, {
-        terminalId: 'terminal-int-1',
-        operatorId: 'op-int-1',
+        ...fiscalReceiptContext,
+        terminalId: TEST_TERMINAL_ID,
+        operatorId: TEST_OPERATOR_ID,
         operatorName: 'Cashier',
         cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0' })],
         currency: 'EUR',
@@ -294,12 +319,13 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       code: 'SV-INT-MIXED',
       balance: '20.00',
       currency: 'EUR',
-      terminalId: 'terminal-int-1',
+      terminalId: TEST_TERMINAL_ID,
     });
 
     await createOfflineReceipt(adapter as never, {
-      terminalId: 'terminal-int-1',
-      operatorId: 'op-int-1',
+      ...fiscalReceiptContext,
+      terminalId: TEST_TERMINAL_ID,
+      operatorId: TEST_OPERATOR_ID,
       operatorName: 'Cashier',
       cartItems: [makeCartItem({ line_total: '50.00', tax_amount: '0.00', tax_rate: '0' })],
       currency: 'EUR',

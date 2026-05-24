@@ -8,4 +8,5 @@ enum TerminalType: string
 {
     case Web = 'web';
     case Physical = 'physical';
+    case VirtualAdmin = 'virtual_admin';
 }

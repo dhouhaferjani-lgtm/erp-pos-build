@@ -19,7 +19,7 @@ No BLOCKER or REQUEST-CHANGES findings.
 
 **Reference:** `apps/api/tests/Feature/Fiscal/Task33FiscalFullFlowVerificationTest.php:35-43`, `:208-262`, `docs/superpowers/specs/2026-05-14-pos-customer-accounts-roadmap-v2.md:30`
 
-The test correctly exercises the real HTTP endpoint, server ingest/parse/hash verification, projection jobs, and NF525 export path. It does not execute the Tauri/TypeScript `FiscalEventEngine` or `receiptService.ts`; it builds a Tauri-style sealed envelope in PHP via the test helper. That is acceptable for an API-side Phase 1 closure test because Pass 2B already covers the device authoring path, but the comments and roadmap sentence should ideally say "Tauri-style device-authored envelope" or "device-shaped sealed envelope" rather than implying this single PHPUnit test executes the TS device engine.
+The test correctly exercises the real HTTP endpoint, server ingest/parse/hash verification, projection jobs, and NF525 export path. It does not execute the Tauri/TypeScript `FiscalEventEngine` or `receiptService.ts`; it builds a Tauri-style sealed envelope in PHP via the test helper. That is acceptable for an API-side Phase 1 closure test because Pass 2B already covers the device authoring path, but the comments and roadmap sentence should ideally say "Tauri-style device-shaped sealed envelope" rather than implying this single PHPUnit test executes the TS device engine.
 
 This is not a blocking defect because the test's asserted contract is still valuable and real for the server path: the server receives a sealed envelope through `/api/v1/pos/sync/fiscal-events`, verifies the exact bytes, persists them, projects business effects, and exports canonical-only NF525 fields.
 

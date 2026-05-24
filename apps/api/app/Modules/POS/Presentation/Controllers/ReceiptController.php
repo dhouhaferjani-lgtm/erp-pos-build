@@ -6,6 +6,8 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
@@ -30,6 +32,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 /**
  * POS Receipt Controller
@@ -155,6 +158,12 @@ final class ReceiptController extends Controller
 
         $request->validate([
             'reason' => 'required|string|max:255',
+            'approval_id' => 'required|uuid',
+            'approval_fiscal_event_id' => 'required|uuid',
+            'approval_scope' => 'required|in:void_or_return_override',
+            'approval_supervisor_user_id' => 'required|uuid',
+            'approval_override_event_id' => 'required|uuid',
+            'authorized_by_user_id' => 'required|uuid|same:approval_supervisor_user_id',
         ]);
 
         $companyId = $this->companyContext->getCompanyId();
@@ -175,10 +184,27 @@ final class ReceiptController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
+        $this->assertVoidReturnApproval(
+            receipt: $receipt,
+            user: $user,
+            approvalId: (string) $request->input('approval_id'),
+            approvalFiscalEventId: (string) $request->input('approval_fiscal_event_id'),
+            approvalSupervisorUserId: (string) $request->input('approval_supervisor_user_id'),
+            approvalOverrideEventId: (string) $request->input('approval_override_event_id'),
+            targetEventType: 'POS_RECEIPT_VOID',
+            targetReferenceId: $receipt->id,
+            expectedTarget: [
+                'receipt_id' => $receipt->id,
+                'receipt_number' => $receipt->receipt_number,
+                'reason' => (string) $request->input('reason'),
+            ],
+        );
+
         $voidedReceipt = $this->receiptVoidService->voidReceipt(
             $receipt,
             $user,
             $request->input('reason'),
+            $request->input('approval_supervisor_user_id'),
         );
 
         return response()->json([
@@ -210,6 +236,36 @@ final class ReceiptController extends Controller
             /** @var User $user */
             $user = Auth::user();
 
+            /** @var Receipt $originalReceipt */
+            $originalReceipt = Receipt::where('company_id', $this->companyContext->getCompanyId())
+                ->with(['lines'])
+                ->findOrFail($id);
+
+            $lineIds = [];
+            foreach ($validated['lines'] as $line) {
+                if (is_array($line) && array_key_exists('line_id', $line)) {
+                    $lineIds[] = (string) $line['line_id'];
+                }
+            }
+            sort($lineIds);
+
+            $this->assertVoidReturnApproval(
+                receipt: $originalReceipt,
+                user: $user,
+                approvalId: (string) $validated['approval_id'],
+                approvalFiscalEventId: (string) $validated['approval_fiscal_event_id'],
+                approvalSupervisorUserId: (string) $validated['approval_supervisor_user_id'],
+                approvalOverrideEventId: (string) $validated['approval_override_event_id'],
+                targetEventType: 'POS_RECEIPT_RETURN',
+                targetReferenceId: $originalReceipt->id,
+                expectedTarget: [
+                    'line_ids' => $lineIds,
+                    'reason' => (string) ($validated['notes'] ?? ''),
+                    'receipt_id' => $originalReceipt->id,
+                    'receipt_number' => $originalReceipt->receipt_number,
+                ],
+            );
+
             $returnReceipt = $this->receiptReturnService->processReturn(
                 originalReceiptId: $id,
                 returnLines: $validated['lines'],
@@ -217,6 +273,8 @@ final class ReceiptController extends Controller
                 cashier: $user,
                 terminalId: $validated['terminal_id'],
                 notes: $validated['notes'] ?? null,
+                authorizedByUserId: $validated['approval_supervisor_user_id'],
+                overrideReason: $validated['override_reason'] ?? $validated['notes'] ?? null,
             );
 
             // Surface the issued voucher (if any) and the new receipt's QR token
@@ -276,10 +334,122 @@ final class ReceiptController extends Controller
     }
 
     /**
-     * Create a new POS receipt.
+     * @param  array<string, mixed>  $expectedTarget
      *
-     * Creates a receipt with line items, calculates VAT, decrements stock,
-     * and computes the fiscal hash chain.
+     * @throws ValidationException
+     */
+    private function assertVoidReturnApproval(
+        Receipt $receipt,
+        User $user,
+        string $approvalId,
+        string $approvalFiscalEventId,
+        string $approvalSupervisorUserId,
+        string $approvalOverrideEventId,
+        string $targetEventType,
+        string $targetReferenceId,
+        array $expectedTarget,
+    ): void {
+        $approvalEvent = FiscalEvent::query()
+            ->where('id', $approvalFiscalEventId)
+            ->where('tenant_id', $receipt->tenant_id)
+            ->where('company_id', $receipt->company_id)
+            ->where('terminal_id', $receipt->terminal_id)
+            ->where('event_type', FiscalEventType::OPERATOR_APPROVAL_GRANTED->value)
+            ->first();
+
+        $overrideEvent = FiscalEvent::query()
+            ->where('id', $approvalOverrideEventId)
+            ->where('tenant_id', $receipt->tenant_id)
+            ->where('company_id', $receipt->company_id)
+            ->where('terminal_id', $receipt->terminal_id)
+            ->where('event_type', FiscalEventType::OVERRIDE_VOID_OR_RETURN->value)
+            ->where('reference_event_id', $approvalFiscalEventId)
+            ->first();
+
+        if ($approvalEvent === null || $overrideEvent === null) {
+            throw ValidationException::withMessages([
+                'approval_fiscal_event_id' => ['Void/return approval fiscal event chain was not found.'],
+            ]);
+        }
+
+        $approvalPayload = $this->fiscalPayload($approvalEvent);
+        $overridePayload = $this->fiscalPayload($overrideEvent);
+        $overrideContext = $overridePayload['override_context'] ?? null;
+
+        if (! is_array($overrideContext)) {
+            throw ValidationException::withMessages([
+                'approval_override_event_id' => ['Void/return override context is missing.'],
+            ]);
+        }
+
+        if (
+            ($approvalPayload['approval_id'] ?? null) !== $approvalId
+            || ($approvalPayload['approval_scope'] ?? null) !== 'void_or_return_override'
+            || ($approvalPayload['cashier_user_id'] ?? null) !== $user->id
+            || ($approvalPayload['supervisor_user_id'] ?? null) !== $approvalSupervisorUserId
+            || ($approvalPayload['tenant_id'] ?? null) !== $receipt->tenant_id
+            || ($approvalPayload['company_id'] ?? null) !== $receipt->company_id
+            || ($approvalPayload['terminal_id'] ?? null) !== $receipt->terminal_id
+            || ! $this->targetsEqual($approvalPayload['target'] ?? null, $expectedTarget)
+            || ($overridePayload['approval_event_id'] ?? null) !== $approvalFiscalEventId
+            || ($overridePayload['approval_id'] ?? null) !== $approvalId
+            || ($overridePayload['approval_scope'] ?? null) !== 'void_or_return_override'
+            || ($overridePayload['supervisor_user_id'] ?? null) !== $approvalSupervisorUserId
+            || ($overridePayload['tenant_id'] ?? null) !== $receipt->tenant_id
+            || ($overridePayload['company_id'] ?? null) !== $receipt->company_id
+            || ($overridePayload['terminal_id'] ?? null) !== $receipt->terminal_id
+            || ! $this->targetsEqual($overridePayload['target'] ?? null, $expectedTarget)
+            || ($overrideContext['target_event_type'] ?? null) !== $targetEventType
+            || ($overrideContext['target_reference_id'] ?? null) !== $targetReferenceId
+        ) {
+            throw ValidationException::withMessages([
+                'approval_override_event_id' => ['Void/return approval evidence does not match this operation.'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $expected
+     */
+    private function targetsEqual(mixed $actual, array $expected): bool
+    {
+        return is_array($actual) && $actual == $expected;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fiscalPayload(FiscalEvent $event): array
+    {
+        if (is_array($event->payload)) {
+            return $event->payload;
+        }
+
+        $decoded = json_decode($event->canonical_bytes, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $payload = $decoded['payload'] ?? null;
+
+        return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * [RETIRED §14.2] Created a new POS receipt.
+     *
+     * Created a receipt with line items, calculated VAT, decremented stock,
+     * and computed the fiscal hash chain.
+     *
+     * **§14.2 — NEW-SALE AUTHORING RETIRED.** The `POST /api/v1/pos/receipts`
+     * route is dispositioned to return HTTP 410 Gone with
+     * `NEW_SALE_AUTHORING_RETIRED` at the route-level closure (see
+     * `routes.php`). This controller method is preserved for the §14.3
+     * chokepoint manifest's reference to `ReceiptCreationService::createReceipt`
+     * (the `(c)` carve-outs `void` / `return` reach the service through
+     * sibling controllers — `ReceiptVoidService` / `ReceiptReturnService`
+     * — not through this method). Do not re-wire this method to a route
+     * for new-sale authoring without coordinating with Task 30's CI gate.
      */
     public function store(StoreReceiptRequest $request): JsonResponse
     {
@@ -497,10 +667,20 @@ final class ReceiptController extends Controller
     }
 
     /**
-     * Process payments for a receipt.
+     * [RETIRED §14.2] Processed payments for a receipt.
      *
-     * Supports split payments across multiple payment methods.
-     * Creates Treasury Payment records and General Ledger entries.
+     * Supported split payments across multiple payment methods. Created
+     * Treasury Payment records and General Ledger entries.
+     *
+     * **§14.2 — NEW-SALE AUTHORING RETIRED.** The
+     * `POST /api/v1/pos/receipts/{id}/payments` route is dispositioned to
+     * return HTTP 410 Gone with `NEW_SALE_AUTHORING_RETIRED` at the
+     * route-level closure (see `routes.php`). The device now authors
+     * `payment_lines[]` inside the SALE_RECEIPT envelope and the Treasury
+     * bridge (Task 22) projects the Treasury Payment + GL on ingestion.
+     * This method is preserved as a structural anchor for the writer
+     * inventory + audit; do not re-wire it to a route for new-sale
+     * authoring without coordinating with Task 30's CI gate.
      */
     public function storePayments(StoreReceiptPaymentsRequest $request, string $id): JsonResponse
     {

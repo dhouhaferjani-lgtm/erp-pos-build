@@ -8,7 +8,6 @@ import {
   modifyOrderLine,
   removeOrderLine,
   sendToKitchen,
-  closeOrder,
   cancelOrder,
   type OrderListParams,
   type CreateOrderRequest,
@@ -19,6 +18,9 @@ import {
   type AddLineResponse,
   type ModifyLineResponse,
 } from '../api/orderApi'
+// §14.2 — `closeOrder` import removed: the order-close → SALE_RECEIPT
+// path is retired (the backend route returns HTTP 410). Use `cancelOrder`
+// for non-receipt order termination.
 import { usePosTenantScope } from './usePosTenantScope'
 
 /**
@@ -190,27 +192,10 @@ export function useSendToKitchen() {
   })
 }
 
-/**
- * Close an order (convert to receipt).
- */
-export function useCloseOrder() {
-  const queryClient = useQueryClient()
-  const { tenantId, companyId } = usePosTenantScope()
-
-  return useMutation<OrderData, Error, string>({
-    mutationFn: (orderId) => closeOrder(orderId),
-    onSuccess: async (_data, orderId) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: tenantScopedKey([...orderKeys.detail(orderId)]),
-        }),
-        queryClient.invalidateQueries({
-          predicate: scopedOrderListPredicate(tenantId, companyId),
-        }),
-      ])
-    },
-  })
-}
+// §14.2 — `useCloseOrder` hook removed as part of the new-sale
+// server-authoring disposition. The order-close → SALE_RECEIPT path is
+// retired; the backend route returns HTTP 410. Use `useCancelOrder` for
+// non-receipt order termination.
 
 /**
  * Cancel an order.

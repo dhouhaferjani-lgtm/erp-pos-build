@@ -304,10 +304,26 @@ class Terminal extends Model
     }
 
     /**
+     * Scope to filter virtual admin terminals only
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeVirtualAdmin(Builder $query): Builder
+    {
+        return $query->where('type', TerminalType::VirtualAdmin);
+    }
+
+    /**
      * Check if this is a web terminal
      */
     public function isWeb(): bool
     {
         return $this->type === TerminalType::Web;
+    }
+
+    public function isVirtualAdmin(): bool
+    {
+        return $this->type === TerminalType::VirtualAdmin;
     }
 }

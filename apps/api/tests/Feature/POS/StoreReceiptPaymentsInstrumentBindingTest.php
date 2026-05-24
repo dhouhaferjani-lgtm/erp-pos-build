@@ -69,7 +69,23 @@ final class StoreReceiptPaymentsInstrumentBindingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — '.
+            'POST /api/v1/pos/receipts/{id}/payments retired (HTTP 410). '.
+            'Instrument-binding defense-in-depth lives at '.
+            'PosCoreReceiptProjection::writePayments (throws '.
+            'InstrumentRequiredException on voucher-like method_code '.
+            'without instrument_type/serial). Pinned by '.
+            'PosCoreReceiptProjectionTest::'.
+            'test_voucher_payment_line_without_instrument_type_is_rejected_by_projection + '.
+            'test_voucher_payment_line_without_instrument_serial_is_rejected_by_projection '.
+            '(round-2 Codex T29-F3 closure). Device-side payload validation '.
+            'in FiscalPayloadConstraintValidator covers monetary shape; '.
+            'instrument-kind enforcement lives in the projector. '.
+            'Pinned by NewSaleServerAuthoringDispositionTest.',
+        );
 
+        // Unreachable after the class-level skip — kept as documentation.
         $this->tenant = Tenant::factory()->create();
 
         Country::create([

@@ -236,37 +236,12 @@ final class KitchenDisplayTest extends TestCase
 
     public function test_table_released_on_order_close(): void
     {
-        $table = Table::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'table_number' => 'T1',
-            'seats' => 4,
-            'status' => TableStatus::Available,
-        ]);
-
-        // Create order with table
-        $response = $this->postJson('/api/v1/pos/orders', [
-            'terminal_id' => $this->terminal->id,
-            'shift_id' => $this->shift->id,
-            'table_id' => $table->id,
-        ]);
-
-        $orderId = $response->json('data.id');
-
-        // Add a line
-        $this->postJson("/api/v1/pos/orders/{$orderId}/lines", [
-            'product_id' => $this->product->id,
-            'quantity' => 1,
-            'unit_price' => '10.0000',
-            'tax_rate' => '19.00',
-        ]);
-
-        // Close order
-        $this->postJson("/api/v1/pos/orders/{$orderId}/close");
-
-        $table->refresh();
-        $this->assertEquals(TableStatus::Available, $table->status);
-        $this->assertNull($table->current_order_id);
+        $this->markTestSkipped(
+            'Obsolete per fiscal Phase 1 §14.2 disposition — POST /api/v1/pos/orders/{id}/close retired. '.
+            'The order-close → SALE_RECEIPT path is retired; table-release on close moves to '.
+            'device-authority cascade (Task 29 + §18). `test_table_released_on_order_cancel` below '.
+            'still exercises the cancel-path table release, which is the surviving non-receipt termination.',
+        );
     }
 
     public function test_table_released_on_order_cancel(): void
