@@ -1,9 +1,9 @@
 # T6 — Tenant Provisioning & SaaS Ops (Phase 0 GATE + Phase 1+ Ops)
 
 **Track:** T6 (P0 — Phase 0 is the **pre-sprint gate**, Phase 1+ runs parallel in Wave 1)
-**Date:** 2026-05-24 (v2 after Codex round-1 review)
-**Recommended workflow:** Codex throughout for migration moves + config flip + pre-warm pool jobs + backup automation. Opus design review on Stancl migration topology and pre-warm race safety.
-**Estimated effort:** Phase 0 ~10 PD (revised per round-3 reality check; covers 50+ FK rewrites, reference-data classification, central connection, Spatie placement, phpunit/PG strategy, fiscal coordination) + Phase 1+ ~4 PD = ~12 PD total. Target completion in <10 calendar days via parallel Opus + Codex sessions.
+**Date:** 2026-05-24 (v6 — current sprint revision; Phase 0 now owns the email-first Identity rewrite)
+**Recommended workflow:** Codex throughout for migration moves + config flip + pre-warm pool jobs + backup automation. Opus design review on Stancl migration topology, pre-warm race safety, AND the email-first Identity/auth refactor (highest-risk surface per round-5).
+**Estimated effort:** Phase 0 ~12 PD (revised per round-5 reality check; covers 50+ FK rewrites, reference-data tenant-side seeding, central connection, Spatie placement, phpunit/PG strategy, fiscal coordination, AND the full email-first Identity rewrite — login/register/verify/reset + central identity index + token-bound tenant + POS device-setup + web email-first UI; the token-bound-tenant design removes the Stancl request-data resolver work) + Phase 1+ OPS ~7 PD = **~19 PD total**. Target completion in <10 calendar days via parallel Opus + Codex sessions (Phase 0 is the long pole; Phase 1+ parallelizes after the gate).
 **Roadmap reference:** [2026-05-24-productization-sprint-roadmap.md](../coordination/2026-05-24-productization-sprint-roadmap.md)
 **Constitutional reference:** [2026-05-24-migration-topology-contract.md](../coordination/2026-05-24-migration-topology-contract.md)
 
@@ -33,7 +33,7 @@ Read before writing code:
 
 1. `apps/erp/apps/api/config/tenancy.php` (line 84: `pgsql => PostgreSQLSchemaManager::class` — the flip target is `PostgreSQLDatabaseManager::class`)
 2. `apps/erp/apps/api/config/tenancy.php` (lines 39–45: active bootstrappers: DatabaseTenancyBootstrapper, CacheTenancyBootstrapper, FilesystemTenancyBootstrapper, QueueTenancyBootstrapper; line 44 RedisTenancyBootstrapper commented out)
-3. `apps/erp/apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:1-252` — production-grade init service (DO NOT MODIFY in Phase 0; only consume in Phase 1 pool claim flow)
+3. `apps/erp/apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:1-252` — production-grade init service. **Phase 0 extends it** for reference-data seeding (§3 deliverable 9 + §4 seeding subsection); its core per-country init flow is then consumed by the Phase 1 pool-claim flow. (round-5 P1-2: it IS modified in Phase 0, contrary to the v5 note here.)
 4. `apps/erp/apps/api/app/Modules/Tenant/Domain/Tenant.php` — `TenantWithDatabase` interface, `HasDatabase`, `HasDomains`, `HasUuids`, `getDatabaseName()` returns `tenant_{slug}`
 5. `apps/erp/apps/api/app/Modules/Tenant/Domain/Enums/TenantStatus.php:1-16` — current cases: Active, Suspended, Pending, Archived. ADD `PreProvisioned` here.
 6. `apps/erp/apps/api/tests/Feature/Tenant/TenantInitializationTest.php:1-125` — existing test patterns for idempotency
@@ -50,11 +50,11 @@ Read before writing code:
 
 ---
 
-## 3. Phase 0 GATE — migration topology + Stancl flip (~10 PD)
+## 3. Phase 0 GATE — migration topology + Stancl flip (~12 PD)
 
 ### Deliverables (must all merge together)
 
-**Phase 0 scope (round-3 reality check applied):** this is genuinely 2 focused engineering weeks of work — clean-slate framing means no data migration burden, but ~50 cross-DB FK rewrites + reference-data tenant-side seeding + central connection setup + Spatie placement + phpunit/PG strategy + fiscal coordination + tenant identification middleware wiring. Phase 0 effort: ~10 PD with one focused Codex+Opus pair.
+**Phase 0 scope (round-5 reality check applied):** this is genuinely 2+ focused engineering weeks of work — clean-slate framing means no data migration burden, but ~50 cross-DB FK rewrites + reference-data tenant-side seeding + central connection setup + Spatie placement + phpunit/PG strategy + fiscal coordination + the full email-first Identity rewrite (§9 + deliverable 8). Phase 0 effort: ~12 PD with one focused Codex+Opus pair (round-5's independent range was 12–15 PD).
 
 1. **Create `apps/erp/apps/api/database/migrations/tenant/` directory**
 2. **Identify and move every existing migration that creates/alters a tenant table per the [migration topology contract](../coordination/2026-05-24-migration-topology-contract.md). Specifically (non-exhaustive — verify against the contract table):**
@@ -82,17 +82,25 @@ Read before writing code:
    - **Option B:** Make the existing test suite optionally Postgres via env override + run the full suite against PG in CI.
    - Phase 0 PR MUST run the chosen option's PG test suite + show green before merge.
 7. **Add Stancl flip integration test (PG-only):** create tenant → verify new database exists → verify tenant migrations ran inside it → verify central tables untouched → verify Pattern A `DB::connection('central')->table('plans')->find($id)` works from inside a tenant context
-8. **Rewrite `AuthController::login` and `AuthController::register` for multi-tenant (NEW per round-4 B-1):** Current `AuthController` uses `Auth::attempt`/`User::where('email', ...)` against the default DB — this breaks the moment `users` moves to per-tenant. The rewrite:
-   - **`login`:** accept `{tenant_id, email, password}` for Tauri/mobile clients (header `X-Tenant-ID` for subsequent requests after first login); for web clients on a subdomain, the tenant is resolved by Stancl middleware before AuthController runs. In both cases, `User::where('email', ...)` runs inside the tenant DB context.
-   - **`register`:** creates the tenant row in central DB, **creates the corresponding `domains` row** (so Stancl's `InitializeTenancyByDomain` can resolve subdomain → tenant; previously only `CreateTenantCommand:89` did this — web signup did not, per round-4 B-2), then initializes the tenant DB and creates the first user inside it.
-   - **Login response:** returns Sanctum token + tenant context info (slug, name) so Tauri can cache for subsequent requests.
-   - **Estimated effort:** 3-4 PD on its own (controller refactor + tests + Tauri login screen update + frontend register flow update).
-9. **Coordinate with in-flight fiscal Phase 1 (per round-2 R2-B1 + R2-P1-2 + B-5):**
+8. **Rewrite the ENTIRE Identity pre-auth surface for email-first multi-tenant (per round-5 B-1 + topology §9):** the current `AuthController` assumes a global `users` table across login, register, check-email, verify-email, forgot-password, and reset-password. Moving `users` tenant-side breaks ALL of them, not just login/register. The v6 architecture (topology contract §9) is **email-first + central identity index**. The rewrite:
+   - **Central identity index:** create `central_identities` (central DB) per topology §9.1 — `email`, `tenant_id` (UUID, no FK), `user_id` (nullable, informational), `unique(email, tenant_id)`. Pointers only, no credentials. Add a `tenant:reconcile-identities` command to backfill/repair.
+   - **`login` (email-first):** `POST /api/v1/auth/login`. Web: enter email → look up `central_identities` → 1 tenant continues, >1 returns the org picker list (Balanced), 0 returns a generic message (§9.7). POS/mobile: body carries the device-cached `{tenant_id, email, password}`. In all cases resolve tenant → `tenancy()->initialize($tenant)` → validate against `users` in-tenant. `LoginRequest` (`Identity/Presentation/Requests/LoginRequest.php:25-35`) gains an optional `tenant_id`.
+   - **`register`:** create the central `tenants` row + the `domains` row (`domain = "{slug}.synerivia.tn"`; previously only `CreateTenantCommand:86-94` did this) + a `central_identities` row, then `tenancy()->initialize()` and create the first `users` row INSIDE the tenant DB (current register does it all on the default connection — `AuthController.php:264-389`).
+   - **Remove `check-email`:** delete the global `AuthController::checkEmail` (`:422-427`) and drop the call from `apps/web/src/features/auth/components/AccountStep.tsx:23-26` — email uniqueness is per-tenant (`users.unique(tenant_id,email)`); collision surfaces at register submit.
+   - **`verify-email`:** token carries/resolves its tenant (via `central_identities` or embedded `tenant_id`) → `tenancy()->initialize()` → look up `EmailVerificationToken` + user in-tenant (`EmailVerificationService.php:39-60`). Reclassify `email_verification_tokens` tenant-side.
+   - **`forgot-password` / `reset-password`:** email (+ org pick if >1) → resolve tenant → issue/consume a tenant-scoped reset token under tenant context. Reconfigure the Laravel `Password` broker (`config/auth.php:73-77,103-107`) to run in tenant context. Reclassify `password_reset_tokens` tenant-side. Generic "if registered, we've sent a link" responses (§9.7).
+   - **Token-bound tenant (NOT a client header — resolves round-5 P1-1):** bind the issued Sanctum token to its tenant; a thin middleware reads the token's bound tenant and calls `tenancy()->initialize()` on each authenticated request. The client does NOT send `X-Tenant-ID`, so Stancl's `InitializeTenancyByRequestData` is off the auth path entirely.
+   - **Middleware wiring (round-5 P1-1):** this Laravel 12 app has NO `app/Http/Kernel.php` — wire all middleware in `apps/api/bootstrap/app.php:41-67`. Identity auth routes are under the **`web` route group** (`Identity/routes.php:21-43`); changes must cover that group, not only `api`, or `/api/v1/auth/*` is missed.
+   - **Subdomain (optional):** keep `InitializeTenancyByDomain` for the `{slug}.synerivia.tn` shortcut only.
+   - **Clients:** POS first-time setup captures the org-code once (device-bound, §9.3); cashiers then log in with email/PIN. Web login screen becomes email-first with an org picker + "Find my organization" (emails the list).
+   - **Estimated effort:** 5-7 PD on its own (controller + central index + broker reconfig + token-bound middleware + tests + POS device-setup flow + web email-first login UI + register flow update).
+9. **Reference-data tenant-side seeding — IN PHASE 0 (per round-5 P1-2; resolves the round-4 P1-3 contradiction):** the reference tables (`countries`, `country_tax_rates`, `country_payment_settings`, `tax_configurations`) move tenant-side as part of the migration moves above, so the seeders MUST be ready to populate them at the first claim — this is Phase 0 work, not Phase 1A. **Phase 0 extends** `TenantInitializationService::initializeForNewRegistration` to seed `countries` FIRST (currently tax config no-ops if `countries` is empty — `TenantInitializationService.php:207-214`), then `country_tax_rates` + `country_payment_settings`, then the existing per-country seeders. (Full detail in §4 "Reference-data seeding" — that subsection is Phase 0 scope despite living near the Phase 1 ops text.)
+10. **Coordinate with in-flight fiscal Phase 1 (per round-2 R2-B1 + R2-P1-2 + B-5):**
    - Fiscal Phase 1 has already committed 3 migrations at `database/migrations/2026_05_14_100001_*`, `..._100002_*`, `..._100003_*`. These ARE tenant-scoped (`fiscal_events`, `fiscal_events_immutability_*`, `fiscal_event_projections`). **They MUST be moved into `database/migrations/tenant/` as part of the Phase 0 PR.**
    - Fiscal Phase 1's still-pending Tasks 11 / 12 / 21 / 22 produce more migrations against tenant tables. **The fiscal session MUST pause new migration work during the Phase 0 PR window.** After Phase 0 lands, fiscal Phase 1 resumes targeting `database/migrations/tenant/` directly.
    - Get explicit sign-off from the fiscal session owner before the Phase 0 PR opens for merge.
-9. **Document gate completion:** write `apps/erp/docs/superpowers/coordination/2026-05-24-t6-phase0-gate-complete.md` so other tracks know it landed
-10. **PR title prefix:** `[T6-PHASE0-GATE]` so reviewers know this blocks everything
+11. **Document gate completion:** write `apps/erp/docs/superpowers/coordination/2026-05-24-t6-phase0-gate-complete.md` so other tracks know it landed
+12. **PR title prefix:** `[T6-PHASE0-GATE]` so reviewers know this blocks everything
 
 ### Acceptance criteria
 
@@ -101,7 +109,9 @@ Read before writing code:
 - [ ] `tenancy.php` flipped to `PostgreSQLDatabaseManager`
 - [ ] `composer test` and `./vendor/bin/phpstan` clean
 - [ ] New integration test passes: `TenantStancl FlipTest::test_creates_tenant_database_and_runs_tenant_migrations`
-- [ ] No FK in any tenant migration points to a central table (auto-checked by new pre-commit hook OR by manual grep audit documented in PR)
+- [ ] No FK in any tenant migration points to a central table. **Syntax-independent audit (round-4 S-1 / round-5):** both `grep -rn "constrained('tenants')\|constrained(\"tenants\")"` AND `grep -rn "references('id')->on('tenants')\|references(\"id\")->on(\"tenants\")"` over `database/migrations/tenant/` return zero hits (also check `plans`, `domains`).
+- [ ] **Identity surface (round-5 B-1):** `central_identities` created; `check-email` removed (route + `AccountStep.tsx` call); `email_verification_tokens` + `password_reset_tokens` migrations moved to `tenant/`; PG integration tests green for register (creates tenant + domains + identity rows + in-tenant user), email-first login (1-tenant + multi-tenant picker + unknown-email generic), token-authenticated request resolves tenant from the bound token (no `X-Tenant-ID` sent), verify-email in-tenant, forgot/reset password in-tenant.
+- [ ] **Middleware wired in `bootstrap/app.php`** (not `app/Http/Kernel.php`), covering the Identity `web` route group.
 - [ ] Gate-complete marker file created and merged
 
 ### Adversarial review checklist (Phase 0)
@@ -122,15 +132,15 @@ Read before writing code:
 
 Runs in Wave 1 (parallel with all other Wave 1 tracks), AFTER Phase 0 gate merges.
 
-### Expand TenantInitializationService seeding (per round-3 P1-3 — moved to Phase 0 per round-4 P1-3 contradiction resolution)
+### Expand TenantInitializationService seeding — ⚠️ PHASE 0 WORK (detail for §3 deliverable 9)
 
-**Phase placement:** this work LIVES IN Phase 0, not Phase 1A. The topology contract Section 9 says Phase 0 extends `TenantInitializationService`; older v4 T6 said Phase 1A. Resolving in Phase 0 because the reference-data tables move tenant-side as part of Phase 0's migration moves, and the seeders must be ready to populate them at the first claim. Round-4 P1-3 flagged this contradiction.
+**Phase placement (round-5 P1-2 — contradiction fully resolved):** this subsection is documented here next to the ops text for continuity, but it is **Phase 0 scope** — it is listed as Phase 0 deliverable 9 in §3, and its acceptance is part of the Phase 0 gate. It cannot be deferred to Phase 1A: the reference-data tables move tenant-side during Phase 0's migration moves, so the seeders must be ready to populate them at the first claim immediately after the flip. Every "extends" below means **Phase 0 extends**.
 
 
 
 Current `TenantInitializationService` (`apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:14-19, 53-69, 138-148, 205-223`) imports and calls: `TunisiaChartOfAccountsSeeder`, `FranceChartOfAccountsSeeder`, `GenericChartOfAccountsSeeder`, `PaymentMethodSeeder`, `PaymentRepositorySeeder`, `TunisiaTaxConfigurationSeeder`. **It does NOT call `TunisiaStampDutySeeder`, `TunisianParapharmacySeeder`, `TunisiaWithholdingRulesSeeder`** despite all three existing as seeder files.
 
-Phase 1A extends `TenantInitializationService::initializeForNewRegistration` to:
+Phase 0 extends `TenantInitializationService::initializeForNewRegistration` to:
 1. Seed `countries` table FIRST (new — currently tax config no-ops if `countries` empty per round-3 P1-3 evidence at TenantInitializationService.php:207-214)
 2. Seed `country_tax_rates` + `country_payment_settings`
 3. Then call existing per-country seeders (CoA, tax config, payment methods)
@@ -290,7 +300,7 @@ BackupService
 
 ## 10. Workflow recommendation
 
-**Phase 0 (Codex with Opus review, ~10 PD):** Migration moves + 50+ FK rewrites (syntax-independent) + Stancl flip + central connection + reference-data tenant-side seeding + Spatie classification + phpunit/PG strategy + fiscal coordination + AuthController login/register rewrite for multi-tenant + create domains row at signup. Flip test + gate marker. Codex executes mechanically; Opus reviews migration classification + AuthController refactor.
+**Phase 0 (Codex with Opus review, ~12 PD):** Migration moves + 50+ FK rewrites (syntax-independent) + Stancl flip + central connection + reference-data tenant-side seeding + Spatie classification + phpunit/PG strategy + fiscal coordination + the full email-first Identity rewrite (login/register/verify/reset + `central_identities` + token-bound tenant middleware + remove `check-email`) + create `domains` row at signup + POS device-setup org-code capture + web email-first login UI. Flip test + gate marker. Codex executes mechanically; **Opus reviews migration classification + the entire Identity/auth refactor** (the highest-risk surface per round-5).
 
 **Phase 1A (Codex, ~3 PD):** Pre-warm pool — TenantStatus::PreProvisioned + columns + `TenantPreWarmService` + `TenantClaimService` + `tenant:ensure-pool` command + concurrent claim test.
 

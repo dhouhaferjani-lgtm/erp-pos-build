@@ -1,4 +1,4 @@
-# POS Coordination Log — 2026-05-24 Sprint (v3 — broadened scope per round-2 R2-P2-2)
+# POS Coordination Log — 2026-05-24 Sprint (v6 — broadened scope per round-2 R2-P2-2)
 
 **Purpose:** Single coordination point for **ANY POS-related change** (Tauri client OR backend POS module OR migrations against POS-fiscal-touching tables) required by sprint tracks. The in-flight POS fiscal Codex session (running [2026-05-14-pos-phase1-fiscal-event-engine.md](../plans/2026-05-14-pos-phase1-fiscal-event-engine.md)) picks coordination items from here. **Sprint tracks do NOT modify POS code (Tauri OR backend) directly.** (Relative path corrected per round-4 S-2.)
 

@@ -1,7 +1,7 @@
 # T1 — Stock Transfer Module
 
 **Track:** T1 (P0 sprint — Wave 1 server side, Wave 2 POS deltas)
-**Date:** 2026-05-24 (v2 after Codex round-1 review)
+**Date:** 2026-05-24 (v6 — current sprint revision)
 **Recommended workflow:** Opus for Scenario B (inter-company auto sales/purchase pair) + Codex for Scenario A mechanics + per-location tax_id migration. Adversarial review: Codex headless on Scenario A; Opus headless on Scenario B (larger chunk).
 **Estimated effort:** ~12 PD
 **Roadmap reference:** [2026-05-24-productization-sprint-roadmap.md](../coordination/2026-05-24-productization-sprint-roadmap.md)
@@ -197,7 +197,7 @@ AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
 - [ ] If transfer has additional cost of 50 TND distributed pro-rata-by-value, WAC at destination reflects the cost addition
 - [ ] No sales/purchase documents created
 - [ ] Events emitted: `StockTransferInitiated`, `StockMovementRecorded` (×2), `StockTransferCompleted`
-- [ ] When tenant's `InTransitAvailability=Available`: POS sale at Location A during in-transit succeeds with notice
+- [ ] When the source company's `InTransitAvailability=Available`: POS sale at Location A during in-transit succeeds with notice
 - [ ] When `InTransitAvailability=NotAvailable`: same POS sale is blocked with clear error
 - [ ] **Idempotency:** retrying `complete` with the same idempotency_key produces no duplicate movements or events
 

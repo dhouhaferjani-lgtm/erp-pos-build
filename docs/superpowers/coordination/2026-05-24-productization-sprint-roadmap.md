@@ -1,24 +1,24 @@
-# Productization Sprint Roadmap — Source of Truth (v2)
+# Productization Sprint Roadmap — Source of Truth (v6)
 
 **Date:** 2026-05-24
-**Author:** Houssam + Claude (Opus 4.7) — revised after Codex adversarial review round 1
+**Author:** Houssam + Claude (Opus 4.7) — revised through 5 adversarial review rounds (Codex r1/r3/r5, Claude r2/r4)
 **Sprint window:** target <10 calendar days, parallel Opus + Codex sessions
 **Forcing function:** Nénupharma parapharmacy lead (3 shops, mixed Tunis + Sousse, + 1 warehouse). Features develop regardless — productize the platform.
 **Framing:** Productize the platform. Client #1 is the forcing function, not the scope limit. Every track ships generic, gated, reusable across all SaaS tenants.
 
 ---
 
-## Why this is v2
+## Version history (why this is v6)
 
-A round-1 Codex adversarial review (`apps/erp/docs/superpowers/reviews/2026-05-24-sprint-design-codex-review.md`) found 5 BLOCKERs, 7 P1s, and 6 missing concerns in the original roadmap. The biggest issues:
+Five adversarial review rounds shaped this plan. Each round's findings are in `apps/erp/docs/superpowers/reviews/2026-05-24-*`.
 
-- T6 was wrongly scoped as a parallel side-track; it's actually a **pre-sprint gate** that owns migration topology
-- T3 was anchored on WooCommerce despite the client's platform being unknown; **concrete adapters are deferred to a future sprint**
-- POS-touching tracks (T1, T2, T11) collide with in-flight fiscal Phase 1 work; need explicit fiscal session coordination
-- T4 has a real dependency on T3 (consumes `ChannelOrder`) that wasn't called out
-- Multiple specs cited wrong file paths or invented patterns that don't exist in the codebase
+- **v2 (after r1 Codex):** T6 reframed from side-track to **pre-sprint gate** owning migration topology; T3 de-anchored from WooCommerce (concrete adapters deferred); POS-touching tracks flagged for fiscal coordination; T4→T3 dependency surfaced; wrong file-path citations corrected.
+- **v3 (after r2 Claude):** T2 table-name + partial-index fixes; `users` reclassified tenant-scoped; `central` connection requirement added; backend-POS fiscal collision surfaced.
+- **v4 (after r3 Codex):** syntax-independent cross-DB FK audit; shared reference-data classified per-tenant; tenant-identification architecture (Section 9) added; clean-slate framing.
+- **v5 (after r4 Claude + Codex):** Stancl defaults corrected; `domains`-row subdomain path; `database_name` field error fixed; effort raised to 10 PD; duplicate heading + citations swept.
+- **v6 (after r5 Codex):** the topology is settled; the remaining risk was the **auth/identity surface**. v6 locks an **email-first login backed by a thin central identity index** (decision: topology contract §9), expands T6 Phase 0 to own the *entire* Identity pre-auth surface (login/register/verify/reset, drop global `check-email`), binds tenant to the Sanctum token (removing the Stancl request-data middleware from the auth path), corrects middleware wiring to `bootstrap/app.php`, moves reference-data seeding fully into Phase 0, and fixes effort arithmetic + remaining citations.
 
-v2 restructures around two waves separated by the fiscal collision boundary, and treats T3 as shared infrastructure only.
+v6 keeps the v2 two-wave structure (separated by the fiscal collision boundary), treats T3 as shared infrastructure only, and adds the auth-model decision below.
 
 ---
 
@@ -36,17 +36,21 @@ v2 restructures around two waves separated by the fiscal collision boundary, and
 
 ```
 ─────────────────────────────────────────────────────────────────────
-PHASE 0 — PRE-SPRINT GATE (T6 Phase 0)            ~10 PD (~5 working days, Codex+Opus pair)
+PHASE 0 — PRE-SPRINT GATE (T6 Phase 0)            ~12 PD (Codex+Opus pair; long pole of the sprint)
 ─────────────────────────────────────────────────────────────────────
   Owner: Codex with Opus design review
   Deliverables:
     1. Migration topology contract published (DONE)
     2. database/migrations/tenant/ directory created
-    3. Tenant migrations moved into tenant/
-    4. tenancy.php flipped to PostgreSQLDatabaseManager
-    5. All existing tests still pass against flipped config
-    6. Stancl flip integration test added
-    7. Gate-complete marker doc at coordination/2026-05-24-t6-phase0-gate-complete.md
+    3. Tenant migrations moved into tenant/ (incl. 50+ cross-DB FK rewrites)
+    4. tenancy.php flipped to PostgreSQLDatabaseManager + central connection added
+    5. Reference-data tables move tenant-side + seeding wired into Phase 0
+    6. Email-first Identity rewrite: central_identities index + login/register/
+       verify/reset in tenant context + drop global check-email + token-bound
+       tenant middleware (wired in bootstrap/app.php). See topology §9.
+    7. All existing tests still pass against flipped config (PG-backed)
+    8. Stancl flip integration test + identity PG integration tests added
+    9. Gate-complete marker doc at coordination/2026-05-24-t6-phase0-gate-complete.md
 
   Until this gate is merged, NO other track writes a new migration.
 
@@ -65,7 +69,7 @@ WAVE 1 — Server-side work, ZERO Tauri POS touch    ~5-8 days
 ─────────────────────────────────────────────────────────────────────
 WAVE 2 — POS-touching, sequenced with fiscal session  ~3-5 days
 ─────────────────────────────────────────────────────────────────────
-  Each item requires fiscal handshake. Items enter Tauri deltas log
+  Each item requires fiscal handshake. Items enter the POS coordination log
   with explicit ownership + sequence.
 
   Items:
@@ -94,7 +98,7 @@ DEFERRED TO FUTURE SPRINT (separate planning cycle)
 
 | # | Track | Spec file | Wave | Effort | Recommended workflow |
 |---|---|---|---|---|---|
-| **T6 Phase 0** | Migration topology gate (Stancl flip + 50+ FK rewrites + central conn + reference-data seeding + AuthController rewrite + flip test) | [2026-05-24-t6-tenant-provisioning.md](../specs/2026-05-24-t6-tenant-provisioning.md) | **Pre-sprint** | ~10 PD | Codex + Opus review |
+| **T6 Phase 0** | Migration topology gate (Stancl flip + 50+ FK rewrites + central conn + reference-data seeding + **email-first Identity rewrite + central identity index** + flip test) | [2026-05-24-t6-tenant-provisioning.md](../specs/2026-05-24-t6-tenant-provisioning.md) | **Pre-sprint** | ~12 PD | Codex + Opus review (Opus owns the auth refactor) |
 | **T1** | Stock Transfer (Scenarios A + B + per-location tax_id + batch preservation via inventory_batch_movements) | [2026-05-24-t1-stock-transfer.md](../specs/2026-05-24-t1-stock-transfer.md) | 1 server / 2 POS deltas | ~12 PD | Opus (Scenario B) + Codex (Scenario A + migrations) |
 | **T2** | Product Variants Module (data model + service + admin matrix + WC mapping deferred + POS picker delta) | [2026-05-24-t2-variants.md](../specs/2026-05-24-t2-variants.md) | 1 server / 2 POS deltas | ~16 PD | Opus (schema + backward compat) → Codex (mechanical) |
 | **T3** | Multi-channel Sync Hub — **shared infrastructure only** (interface + framework + admin UI + reconciliation + credentials; NO concrete adapters) | [2026-05-24-t3-sync-hub.md](../specs/2026-05-24-t3-sync-hub.md) | 1 | ~6 PD | Opus (interface) + Codex (framework + UI) |
@@ -103,7 +107,7 @@ DEFERRED TO FUTURE SPRINT (separate planning cycle)
 | **T6 ops** | Pre-warm pool + backup automation + restore drill + monitoring | [2026-05-24-t6-tenant-provisioning.md](../specs/2026-05-24-t6-tenant-provisioning.md) | 1 (parallel after Phase 0) | ~7 PD | Codex |
 | **T11** | B2B/B2C Clean Separation (DESIGN ONLY this sprint) | [2026-05-24-t11-b2b-b2c-separation.md](../specs/2026-05-24-t11-b2b-b2c-separation.md) | 1 | ~3 PD | Opus |
 
-**Sprint total:** ~61 PD across 7 tracks (down from 68 — WC implementation deferred).
+**Sprint total:** ~70 PD across 7 tracks (table sums to 70: 12+12+16+6+9+5+7+3; corrected from the stale ~61 per round-5 P2-1, and +2 for the v6 T6 Phase 0 Identity expansion).
 
 ---
 
@@ -186,7 +190,7 @@ After T6 Phase 0 merges:
 - **Adversarial reviews:** `apps/erp/docs/superpowers/reviews/2026-05-XX-<track-slug>-<tool>-review.md`
 - **Migration topology contract:** `apps/erp/docs/superpowers/coordination/2026-05-24-migration-topology-contract.md`
 - **Session handoffs / coordination:** `apps/erp/docs/superpowers/coordination/2026-05-XX-<topic>.md`
-- **Tauri POS deltas log:** `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md`
+- **POS coordination log:** `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md`
 - **Phase 0 gate-complete marker:** `apps/erp/docs/superpowers/coordination/2026-05-24-t6-phase0-gate-complete.md` (created when T6 Phase 0 merges)
 
 ---
@@ -223,15 +227,17 @@ After T6 Phase 0 merges:
 
 ## Phase prioritization (per user direction)
 
-**Tier A — Start RIGHT NOW, parallel sessions safe:**
-- T6 Phase 0 (~10 PD, Codex+Opus pair)
-- T2 Variants Phases 1–3 (domain + service + admin UI; migrations branch-dev until Phase 0 merges)
-- T3 Sync Hub shared infra (interface + entities + admin UI)
-- T4 Order Routing Phases 1–4 (zone taxonomy + rule engine + scoring + UI)
-- T5 Owner Reporting MVP (ECharts widgets mirroring POS Analytics)
-- T11 design refinement → 3 impl specs (Opus)
-- T1 server-side (Scenarios A + B + per-location tax_id + batch preservation fix via inventory_batch_movements)
-- Batch management completion (set `requires_batch_tracking` defaults + E2E test)
+**Tier A — Start RIGHT NOW, parallel sessions safe.** ⚠️ **Migration rule (round-5 P1-3):** every migration-writing track below does **non-migration work only** (domain, service, admin UI, tests) and **branches its migrations on-dev until T6 Phase 0 merges**. No new migration lands before the gate.
+- T6 Phase 0 (~12 PD, Codex+Opus pair) — the gate; owns the email-first Identity rewrite (see auth-model note below)
+- T2 Variants Phases 1–3 (domain + service + admin UI; **migrations branch-dev until Phase 0 merges**)
+- T3 Sync Hub shared infra (interface + entities + admin UI; **migrations branch-dev until Phase 0 merges**)
+- T4 Order Routing Phases 1–4 (zone taxonomy + rule engine + scoring + UI; **migrations branch-dev until Phase 0 merges**)
+- T5 Owner Reporting MVP (ECharts widgets mirroring POS Analytics; read-only over existing tables — no new migrations expected, branch any it needs)
+- T11 design refinement → 3 impl specs (Opus; design-only, no migrations)
+- T1 server-side (Scenarios A + B + per-location tax_id + batch preservation fix via inventory_batch_movements; **migrations branch-dev until Phase 0 merges**)
+- Batch management completion (set `requires_batch_tracking` defaults + E2E test; **the defaults migration branches-dev until Phase 0 merges**)
+
+> **Auth-model decision (v6, locked):** email-first login backed by a thin central identity index (`central_identities`), live org picker for multi-tenant emails (Balanced enumeration stance), subdomain optional, POS device-bound to one tenant (org-code once at setup). Tenant is bound to the Sanctum token, so authenticated requests carry no `X-Tenant-ID`. Full contract in topology contract §9; Phase 0 owns the implementation.
 
 **Tier B — Sequenced on Tier A delivery:**
 - T3 concrete adapters (WC / Shopify / PrestaShop / Paradeals) — needs T3 infra merged + client platform decision

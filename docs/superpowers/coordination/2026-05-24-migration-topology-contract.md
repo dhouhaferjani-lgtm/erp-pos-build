@@ -31,10 +31,13 @@ This rule survives the Stancl `PostgreSQLSchemaManager` → `PostgreSQLDatabaseM
 | `domains` | Tenant module | Per-tenant subdomain → tenant_id resolution |
 | `plans` | Tenant module | Subscription plan catalog |
 | `tenant_subscriptions` | Billing module | Tenant subscription state (table name corrected from v3 per round-3 P2-1; verified at `apps/api/database/migrations/2025_12_01_193759_create_tenant_subscriptions_table.php:14`) |
-| `super_admins` (if exists) | Auth | Super-admin users that span tenants — central only |
-| **NOT** `users` | — | **TENANT-scoped** (corrected per round-2 B-2 + round-3 P2-3 line citations): `users` is per-tenant — verified at `apps/api/database/migrations/2025_11_30_000003_create_users_table.php:18` declares `tenant_id` column and line 39 declares `unique(['tenant_id', 'email'])`. Regular users belong in each tenant's DB. Only super-admins live central (separate `super_admins` table to be created in Phase 0 if not already present). |
+| `super_admins` | Auth | Super-admin users that span tenants — central only. **Verified exists** at `apps/api/database/migrations/2025_12_01_194614_create_super_admins_table.php:14-28` (round-5 P2-2: no "create if not present"). |
+| `central_identities` (NEW v6) | Tenant / Identity-central | Email → tenant(s) lookup index for email-first login (§9.1). Pointers only, NO credentials. NO FK to `tenants` (Pattern A). |
+| **NOT** `users` | — | **TENANT-scoped** (corrected per round-2 B-2 + round-3 P2-3 line citations): `users` is per-tenant — verified at `apps/api/database/migrations/2025_11_30_000003_create_users_table.php:18` declares `tenant_id` column and line 39 declares `unique(['tenant_id', 'email'])`. Regular users belong in each tenant's DB. Only super-admins live central. |
 | `permissions`, `roles`, `model_has_permissions`, `model_has_roles`, `role_has_permissions` | Spatie | **TENANT-scoped (DECISION per round-3 P1-4 evidence):** Spatie config has teams enabled with `tenant_id` as team key (`apps/api/config/permission.php:95-134`); migration uses `tenant_id` in roles + model pivots (`apps/api/database/migrations/2025_11_29_231806_create_permission_tables.php:36-44, 61-66, 85-90`). All Spatie permission tables move to tenant DB; no central role catalog. |
-| `failed_jobs`, `jobs`, `cache`, `sessions`, `password_reset_tokens` | Laravel infra | Cross-tenant infrastructure |
+| `failed_jobs`, `jobs`, `cache`, `sessions` | Laravel infra | Cross-tenant infrastructure |
+| `personal_access_tokens` (Sanctum) | Identity-central | **CENTRAL with an added `tenant_id` column (v6 — §9.4).** Must be central: the token → tenant resolution happens *before* tenancy is initialized, so the token row has to be readable on the central connection. Polymorphic `tokenable` (User) is type+id columns only — no cross-DB FK. |
+| **NOT** `password_reset_tokens`, `email_verification_tokens` | — | **TENANT-scoped (v6 — §9.5):** both FK/relate to tenant `users`; password reset + email verification run inside tenant context after the central-index resolves the tenant. Reclassified from central in v6. |
 | Sentry / monitoring metadata if any | Observability | Cross-tenant |
 
 ### Tenant DB tables (replicated per tenant via Stancl)
@@ -206,91 +209,120 @@ When T2 adds `variant_id` (nullable) to `stock_levels`, `stock_movements`, `stoc
 **Reference tables to seed per-tenant (verified in code):**
 | Table | Current location | Phase 0 action |
 |---|---|---|
-| `countries` | `apps/api/database/migrations/2025_11_30_*_create_countries_table.php` | Move to `tenant/`; seed via `CountrySeeder` |
+| `countries` | `apps/api/database/migrations/2025_12_01_192409_create_countries_table.php` | Move to `tenant/`; seed via `CountriesSeeder` (`database/seeders/CountriesSeeder.php:10`) — corrected filename + seeder class per round-5 P2-3 |
 | `country_tax_rates` | `2025_12_01_192545_create_country_tax_rates_table.php` (FK on countries.code) | Move to `tenant/`; FK intra-tenant; seed |
-| `country_payment_settings` | `2025_12_02_*` | Move to `tenant/`; seed |
+| `country_payment_settings` | `2025_12_10_100000_create_country_payment_settings_table.php` | Move to `tenant/`; seed — corrected filename per round-5 P2-3 |
 | `tax_configurations` | `2025_12_30_100000_create_tax_configurations_table.php` (FK on countries.code) | Move to `tenant/`; FK intra-tenant; seed via existing `TunisiaTaxConfigurationSeeder` etc. |
 
-`TenantInitializationService` already seeds CoA + tax_configurations per country. Phase 0 extends it to seed `countries` FIRST (so dependent tables have FK targets), then `country_tax_rates`, etc.
+`TenantInitializationService` already seeds CoA + tax_configurations per country. **Phase 0** (not Phase 1A — round-5 P1-2) extends it to seed `countries` FIRST (so dependent tables have FK targets), then `country_tax_rates`, then `country_payment_settings`.
 
-## 9. Tenant identification architecture (NEW per user direction)
+## 9. Tenant identification & authentication architecture (v6 — email-first + central identity index)
 
-Every tenant has its own physical PG database. The API must resolve **which DB to open** for each request. Resolution mechanisms:
+**Decision (locked per user direction + industry research, v6):** authentication is **email-first**, backed by a thin **central identity index**. Subdomain resolution is an *optional shortcut*, not the required entry point. The canonical rule: **authentication is global; authorization is tenant-scoped** (WorkOS / Auth0 / Wristband / Clerk consensus). The same email may belong to more than one tenant; a single email is **not** a tenant boundary.
 
-### Web ERP — subdomain-based via `domains` table (corrected per round-4 B-2)
+This model directly resolves round-5 B-1 (the pre-auth identity flows that assumed a global `users` table) and shrinks round-5 P1-1 (the Stancl request-data middleware no longer carries the auth path — see "Subsequent requests" below).
 
-- URL pattern: `{tenant_slug}.synerivia.tn` (e.g., `nenupharma.synerivia.tn`)
-- Stancl's `InitializeTenancyByDomain` middleware resolves tenant by **querying the `domains` table** (verified at Stancl's `DomainTenantResolver.php:32-43`) — NOT by parsing the subdomain string directly
-- The central `domains` table maps `domain` (e.g., `nenupharma.synerivia.tn`) → `tenant_id`
-- **Phase 0 work item (NEW per round-4 B-2):** `AuthController::register()` must create a `domains` row alongside the tenant row. Currently only the CLI `CreateTenantCommand:89` does this; web signup does not. Without this fix, subdomain login will 404.
-- Each tenant DB is named `tenant_{slug}` per the computed return value of `Tenant::getDatabaseName()` at `apps/api/app/Modules/Tenant/Domain/Tenant.php` (this is a method, not a column on the `tenants` table)
+### 9.1 Central identity index (NEW central table)
 
-### Tauri desktop POS — explicit tenant_id
+A lightweight central lookup table maps an email to the tenant(s) it belongs to. It stores **pointers only — never credentials**.
 
-Desktop apps have no subdomain. Resolution via:
-- First-time login screen prompts for THREE fields: `tenant_id` (the tenant's slug) + `email` + `password`
-- API endpoint: `POST /api/v1/auth/login` with body `{tenant_id, email, password}` (current `LoginRequest` accepts only email/password/device — needs rewrite as part of Phase 0 work item 8)
-- API resolves `tenant_id` slug against central `tenants.slug` → bind tenant context → validate email/password against `users` in that tenant's DB
-- On successful login, store `tenant_id` + session token in Tauri local storage (existing `@tauri-apps/plugin-store`)
-- Subsequent requests carry tenant identifier via HTTP header; API uses a tenancy-resolver middleware
+```php
+// central DB — Tenant module or new Identity-central module
+Schema::create('central_identities', function (Blueprint $t) {
+    $t->uuid('id')->primary();
+    $t->string('email')->index();          // NOT globally unique — same email may map to many tenants
+    $t->uuid('tenant_id');                  // plain UUID, NO FK (Pattern A — central row, but cross-row resolution at app layer)
+    $t->uuid('user_id')->nullable();        // informational: the tenant-side users.id; resolved post-tenancy-init
+    $t->timestamps();
+    $t->unique(['email', 'tenant_id']);     // one index row per (email, tenant) membership
+});
+```
 
-**Stancl middleware reality (corrected per round-4 codex BLOCKER B-1):**
+- **Credentials stay tenant-side.** Password hashes live only in each tenant's `users` table. The index answers "which tenant DB(s) do I open for this email?" — nothing more.
+- **Kept in sync** by `AuthController::register` (insert on tenant+user creation), invite flows, and user deletion. A reconcile command backfills/repairs it.
+- This is the "central account index with tenant_id + email" round-5's reviewer named as an acceptable B-1 fix.
 
-Installed Stancl `v3.10.0` ships these defaults that DON'T match our v4 sketch:
-- `InitializeTenancyByRequestData` middleware reads header `X-Tenant` (NOT `X-Tenant-ID`) and resolves via `tenancy()->find($payload)` which expects the tenant PRIMARY KEY (NOT slug)
-- `RequestDataTenantResolver.php:21-29` confirms PK-based lookup
+### 9.2 Web ERP login — email-first with live org picker (Balanced)
 
-Phase 0 has two implementation paths; pick one explicitly:
-- **Option A (recommended — slug-based UX preserved):** write a custom `SlugTenantResolver` that looks up by `tenants.slug` instead of PK, register it as Stancl's tenant resolver for the request-data middleware, and configure the header name to `X-Tenant-ID`. ~0.5 PD additional work in Phase 0.
-- **Option B (use Stancl defaults — simpler but worse UX):** use tenant UUID instead of slug. User remembers a UUID instead of "nenupharma". Header is `X-Tenant`, payload is UUID. Zero custom code.
+1. User lands on a single global login route (no subdomain required). Enters **email**.
+2. API looks up `central_identities` by email:
+   - **0 tenants:** return a generic "no organizations found — check your email or contact your administrator." (Does not confirm/deny the email; rate-limited.)
+   - **1 tenant:** proceed straight to the password step, binding that tenant context.
+   - **>1 tenants:** return the list of tenants for that email; the user picks the active organization (the **Balanced** enumeration stance — for a valid email we show memberships in-browser; accepted tradeoff for non-tech-savvy UX, paired with rate-limiting).
+3. With the tenant chosen, the API calls `tenancy()->initialize($tenant)` and validates email + password against the `users` table **inside that tenant's DB**.
+4. **"Find my organization"** link on the login screen: enter email → we **email** the list of organizations / sign-in links (privacy-preserving recovery path, regardless of the live-picker stance).
 
-**v5 commits to Option A** — the slug UX matches the user's direction. T6 Phase 0 work item 8 includes writing the custom resolver.
+**Subdomain shortcut (optional):** `{tenant_slug}.synerivia.tn` still works for users who bookmark it — Stancl's `InitializeTenancyByDomain` resolves it via the central `domains` table (full-host lookup, verified at `DomainTenantResolver.php:32-43`). Signup creates the `domains` row (`domain = "{slug}.synerivia.tn"`); previously only `CreateTenantCommand:86-94` did this. With wildcard SSL on `*.synerivia.tn`, the only per-tenant setup is the `domains` insert. When present, the subdomain skips steps 1–2.
 
-### Web ERP — domain row creation at signup
+**Drop global email-availability (`check-email`):** with same-email-across-tenants allowed, email uniqueness is **per-tenant** (`users.unique(tenant_id, email)` already enforces this). The current public `AuthController::checkEmail` (`AuthController.php:422-427`, called by `apps/web/src/features/auth/components/AccountStep.tsx:23-26`) does a *global* `User::where('email')` — that is now conceptually obsolete. Phase 0 **removes** it; the React registration step drops the call (email collision is detected per-tenant at submit).
 
-`InitializeTenancyByDomain` resolves via the central `domains` table — it expects a full domain row, e.g., `nenupharma.synerivia.tn`. `DomainTenantResolver` queries `domains.domain` with the full hostname.
+### 9.3 POS (Tauri) & future mobile — device-bound to one tenant
 
-Decision per round-4 P1-2: use FULL-DOMAIN rows (not slug extraction). Signup creates a `domains` row with `domain = "{slug}.synerivia.tn"`. Phase 0 work item 8 (AuthController::register rewrite) includes this. If wildcard SSL is configured for `*.synerivia.tn`, the only setup per tenant is the domains row insert.
+A physical terminal belongs to **one shop / one tenant**. So:
+- **First-time device setup** (manager): enter the **organization code** (`tenant_id` slug) **once** → device resolves + caches `tenant_id` in `@tauri-apps/plugin-store`.
+- **Every shift after that:** cashier enters only **email + password (or PIN)**. No org-code per login. The cached `tenant_id` is sent with the login request.
+- Login endpoint `POST /api/v1/auth/login` accepts `{tenant_id, email, password}`; current `LoginRequest` (`apps/api/app/Modules/Identity/Presentation/Requests/LoginRequest.php:25-35`) accepts only email/password/device — Phase 0 adds the optional `tenant_id`.
+- This keeps the org-code one-time and out of the cashier's daily flow. Mobile follows the same pattern (one tenant per install).
 
-### Future mobile app — same as Tauri
+### 9.4 Subsequent (authenticated) requests — token-bound tenant, NOT a client header
 
-- Same first-time login UX: `tenant_id` + `email` + `password`
-- Same header-based subsequent requests
-- Local secure storage caches `tenant_id`
+After login resolves the tenant and `tenancy()->initialize($tenant)` runs, the issued **Sanctum token is bound to that tenant** via a `tenant_id` column on the **central** `personal_access_tokens` table (see §2). On each authenticated request the resolution order is:
 
-### Central DB tenant directory
+1. A thin tenant-resolver middleware (registered in `bootstrap/app.php`, running **before** `auth:sanctum`) reads the bearer token and looks it up in **central** `personal_access_tokens` → gets `tenant_id`.
+2. It calls `tenancy()->initialize($tenant)` for that tenant.
+3. `auth:sanctum` then resolves the `tokenable` `User` **in tenant context** (the User lives in the tenant DB).
 
-The central `tenants` table fields (corrected per round-4: `database_name` is NOT a column — it's the return value of `Tenant::getDatabaseName()` method which composes `tenant_{slug}` at runtime):
+**The client never sends `X-Tenant-ID`** — the tenant travels with the token, server-side.
 
-- `slug` (unique, indexed) — the user-facing tenant_id (verify exists in current `tenants` table migration; add if missing)
+**Why `personal_access_tokens` must be central (chicken-and-egg, called out so the implementer doesn't trip on it):** the token must be resolvable to a tenant *before* tenancy is initialized. If the table were tenant-side, step 1 couldn't run. So it's central with a `tenant_id` column; the `tokenable` polymorphic columns hold the tenant-side User's type+id (no cross-DB FK — polymorphic relations don't constrain).
+
+This is the key simplification over v5: **Stancl's `InitializeTenancyByRequestData` is NOT on the authenticated API path**, so round-5 P1-1 (its `X-Tenant` default header, PK-based `RequestDataTenantResolver`, and the constructor typed to `RequestDataTenantResolver`) largely stops being our problem. Implementation note for Phase 0: this custom middleware must be ordered ahead of `auth:sanctum`, and Sanctum's token model is pointed at the central connection while `tokenable` resolution happens post-`tenancy()->initialize()`. Stancl's request-data middleware is only relevant if we ever expose pre-token API clients that self-declare a tenant; we don't in this sprint.
+
+### 9.5 Pre-auth identity flows (round-5 B-1 — all owned by Phase 0)
+
+Every pre-auth path resolves tenant context **before** touching `users`:
+
+| Flow | v6 behavior |
+|---|---|
+| `check-email` (registration) | **Removed** — email uniqueness is per-tenant; collision surfaces at register submit. |
+| email verification (`verify-email`) | Token resolves its tenant via `central_identities` (or a tenant_id embedded in the token), then `tenancy()->initialize()` → look up `EmailVerificationToken` + user in-tenant. `email_verification_tokens` reclassified **tenant-side** (it FKs `users` — `2025_12_21_125019_*:16-26`). |
+| `forgot-password` / `reset-password` | Email (and chosen org if >1) → resolve tenant via index → issue + consume a **tenant-scoped** reset token in tenant context. `password_reset_tokens` reclassified **tenant-side**; the Laravel `Password` broker is reconfigured to operate under tenant context (`config/auth.php:73-77,103-107` currently points at the central provider). Generic "if that email is registered, we've sent a link" responses. |
+| `register` | Creates the central `tenants` row + the `domains` row + a `central_identities` row, then `tenancy()->initialize()` and creates the first `users` row **inside the tenant DB** (current register does it all on the default connection in one transaction — `AuthController.php:264-389`). |
+
+### 9.6 Central DB tenant directory
+
+The central `tenants` table (`database_name` is **not** a column — it's `Tenant::getDatabaseName()` returning `tenant_{slug}` at `Tenant.php:248-250`):
+- `slug` (unique, indexed) — the user-facing organization code
 - `status` (Active, Suspended, PreProvisioned, Pending, Archived)
 - `created_at`, `updated_at`
-- Subscription state lives in the separate `tenant_subscriptions` table referenced by Pattern A (UUID, no FK across DB boundary post-flip)
-- Companion `domains` table maps `domain` → `tenant_id` (this is the table Stancl actually queries for resolution)
-- Companion `super_admins` table for platform users — VERIFIED EXISTS at `apps/api/database/migrations/2025_12_01_194614_create_super_admins_table.php` (corrected per round-4: NO need to "create if not present"; it's there)
+- Subscription state in the separate `tenant_subscriptions` table (Pattern A, UUID, no cross-DB FK)
+- Companion `domains` table maps `domain` → `tenant_id` (what Stancl queries for the optional subdomain path)
+- Companion `super_admins` table for platform users — **verified exists** at `apps/api/database/migrations/2025_12_01_194614_create_super_admins_table.php:14-28`
+- NEW: `central_identities` (§9.1)
 
-When user enters `tenant_id` at Tauri login, API queries central `tenants` table → resolves database connection → opens tenant DB context → validates credentials. **Login failure modes:**
-- Unknown `tenant_id`: 404 with "tenant not found" (avoid revealing whether the tenant exists vs the email)
-- Tenant in `Suspended` / `Archived` status: 403 with clear message
-- Tenant in `PreProvisioned` (unclaimed pool): same as not found for security
-- Bad email/password against valid tenant: 401 with generic "invalid credentials"
+### 9.7 Login failure modes (round-5 P2-5 — generic, enumeration-aware)
 
-### Slug format
+The Balanced stance accepts showing org memberships for a *valid* email (the live picker). Everything else is generic:
+- **Unknown email** (0 index rows): generic "no organizations found — check your email"; rate-limited. Does not distinguish "no such email" from "email exists but you mistyped."
+- **Unknown `tenant_id`** (POS/explicit): generic "sign-in failed" — **same body** as bad credentials, so slugs aren't enumerable via the API. (Subdomain slugs are public by nature; the *API* still returns generic.)
+- **Suspended / Archived** tenant: 403 with a clear operator-facing message (only reachable once a valid credential pair is known).
+- **PreProvisioned** (unclaimed pool): treated as sign-in failed.
+- **Bad email/password** against a valid tenant: generic "invalid credentials" (401).
 
-`tenant_id` slug rules (per existing `tenants` table conventions):
-- Lowercase a-z, 0-9, hyphens only
-- 3-32 characters
-- Globally unique
-- Generated at tenant signup (auto-suggest from company name, user can customize)
-- Examples: `nenupharma`, `acme-pharma`, `client-001`
+### 9.8 Slug (organization code) format
 
-### Stancl middleware references
+- Lowercase `a-z`, `0-9`, hyphens; 3–32 chars; globally unique
+- Auto-suggested from company name at signup (`Str::slug()` used today at `AuthController.php:272` — note it permits input that needs normalizing to the a-z/0-9/hyphen rule); user may customize
+- Format enforced at the application layer; uniqueness already enforced by the `tenants` DB index
+- Examples: `acme-pharma`, `client-001`
 
-- `Stancl\Tenancy\Middleware\InitializeTenancyByDomain` (web ERP)
-- `Stancl\Tenancy\Middleware\InitializeTenancyByRequestData` (Tauri, mobile, API clients)
-- `Stancl\Tenancy\Middleware\InitializeTenancyByDomainOrSubdomain` (if mixing patterns)
+### 9.9 Stancl middleware wiring (round-5 P1-1)
 
-Phase 0 work includes wiring both middleware in `app/Http/Kernel.php` route middleware group for the appropriate route groups (web vs api/desktop).
+- This Laravel 12 app has **no `app/Http/Kernel.php`** — middleware is configured in **`apps/api/bootstrap/app.php:41-67`**. All v6 middleware wiring goes there.
+- Identity auth routes live under the **`web` route group** at `apps/api/app/Modules/Identity/routes.php:21-43` (public pre-auth routes at `:21-40`). Any middleware/route changes must cover this group, not only the `api` group, or `/api/v1/auth/*` is missed.
+- `Stancl\Tenancy\Middleware\InitializeTenancyByDomain` — used **only** for the optional subdomain web path.
+- The authenticated API uses our **token-bound tenant middleware** (§9.4), not Stancl's request-data middleware.
+- If a slug-based subdomain resolver is ever needed, it must `extends RequestDataTenantResolver` and be container-bound to that type (the shipped middleware constructor is typed `RequestDataTenantResolver` at `InitializeTenancyByRequestData.php:30`) — but §9.4 means we don't need it for this sprint.
 
 ---
 
