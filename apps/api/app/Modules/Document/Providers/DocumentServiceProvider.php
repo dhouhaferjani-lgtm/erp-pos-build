@@ -15,7 +15,7 @@ use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoi
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use Illuminate\Support\ServiceProvider;
 
 class DocumentServiceProvider extends ServiceProvider

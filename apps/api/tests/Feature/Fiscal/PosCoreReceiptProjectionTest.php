@@ -7,6 +7,7 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -29,7 +30,6 @@ use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -1305,6 +1305,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $payload = [
             'business_date' => $businessDate->toDateString(),
+            'approval_references' => [],
             'buyer' => $buyer,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',

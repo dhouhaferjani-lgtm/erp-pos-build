@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -14,7 +15,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Domain\AccountChargeReceipt;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;

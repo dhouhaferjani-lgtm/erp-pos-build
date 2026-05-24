@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Providers;
 
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\DefaultModuleActivationResolver;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\HashChainIntegrityProvider;
 use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\PreflightFiscalGateCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\VerifyEventChainCommand;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Contracts\Foundation\Application;

@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Application\Projections;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentView;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -26,7 +27,6 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

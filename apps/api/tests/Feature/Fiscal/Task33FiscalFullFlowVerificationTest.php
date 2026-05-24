@@ -270,6 +270,7 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
     {
         return [
             'business_date' => $businessDate,
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => $this->user->id,
             'cashier_name' => $this->user->name,

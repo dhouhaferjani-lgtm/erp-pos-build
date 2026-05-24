@@ -10,6 +10,7 @@ use App\Modules\POS\Application\Services\VirtualAdminTerminalResolver;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -76,7 +77,7 @@ final class VirtualAdminTerminalResolverTest extends TestCase
             'code' => 'VADMIN-1',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         Terminal::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,

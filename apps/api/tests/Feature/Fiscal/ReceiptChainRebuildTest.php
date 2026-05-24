@@ -305,6 +305,7 @@ final class ReceiptChainRebuildTest extends TestCase
         // currency_code).
         $payload = [
             'business_date' => Carbon::now('UTC')->toDateString(),
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',

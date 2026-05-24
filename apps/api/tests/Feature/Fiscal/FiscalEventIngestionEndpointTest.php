@@ -493,6 +493,7 @@ final class FiscalEventIngestionEndpointTest extends TestCase
     {
         return [
             'business_date' => '2026-05-20',
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',
