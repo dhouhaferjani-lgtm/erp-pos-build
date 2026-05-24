@@ -40,7 +40,7 @@ export function DiscountModal({
   onApplyTransactionDiscount,
   canDiscount,
   maxDiscountPercent,
-  terminalMaxDiscountPercent,
+  terminalMaxDiscountPercent: _terminalMaxDiscountPercent,
   disabledReason,
   requiresReason,
   approvalContext,
@@ -194,7 +194,7 @@ export function DiscountModal({
     } finally {
       setVerifyingPin(false);
     }
-  }, [managerPin, discountType, value, reason, terminalMaxDiscountPercent, approvalContext, onApplyTransactionDiscount, onClose, t]);
+  }, [managerPin, discountType, value, reason, approvalContext, onApplyTransactionDiscount, onClose, t]);
 
   if (!isOpen) return null;
 

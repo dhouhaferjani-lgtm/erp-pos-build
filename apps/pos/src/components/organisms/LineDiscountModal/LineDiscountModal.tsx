@@ -42,7 +42,7 @@ export function LineDiscountModal({
   itemName,
   canDiscount,
   maxDiscountPercent,
-  terminalMaxDiscountPercent,
+  terminalMaxDiscountPercent: _terminalMaxDiscountPercent,
   disabledReason,
   approvalContext,
   lineReferenceId,
@@ -196,7 +196,7 @@ export function LineDiscountModal({
     } finally {
       setVerifyingPin(false);
     }
-  }, [managerPin, discountType, value, reason, terminalMaxDiscountPercent, approvalContext, lineReferenceId, itemName, onApply, onClose, t]);
+  }, [managerPin, discountType, value, reason, approvalContext, lineReferenceId, itemName, onApply, onClose, t]);
 
   if (!isOpen) return null;
 
