@@ -45,6 +45,31 @@ export interface ZSessionReportTotals {
   voided_count: number;
 }
 
+export interface AuthorXReportInput {
+  tenantId: string;
+  companyId: string;
+  terminalId: string;
+  shiftId: string;
+  sessionId: string;
+  businessDate: string;
+  operatorId: string;
+  operatorName: string;
+  periodStart: string;
+  periodEnd: string;
+  xReportUuid: string;
+  reportTotals: ZSessionReportTotals;
+  vatBreakdown: ReadonlyArray<Record<string, unknown>>;
+  paymentMethodTotals: ReadonlyArray<Record<string, unknown>>;
+  cashDrawerTotals: Record<string, unknown>;
+  operationalEventRange: Record<string, unknown>;
+  isTraining: boolean;
+  generatedAtDevice?: Date;
+}
+
+export interface AuthorXReportResult {
+  xReportEvent: FiscalEventAppendResult;
+}
+
 export interface AuthorZSessionCloseInput {
   tenantId: string;
   companyId: string;
@@ -149,6 +174,43 @@ export function buildOpeningFloatPayload(
     session_id: input.sessionId,
     shift_id: input.shiftId,
     training_flag: input.isTraining,
+  };
+}
+
+export function buildXReportPayload(
+  input: AuthorXReportInput,
+  generatedAtDevice: Date,
+): Record<string, unknown> {
+  const totals = input.reportTotals;
+  return {
+    business_date: input.businessDate,
+    cash_drawer_totals: input.cashDrawerTotals,
+    generated_at_device: generatedAtDevice.toISOString(),
+    operational_event_range: input.operationalEventRange,
+    operator_id: input.operatorId,
+    operator_name: input.operatorName,
+    payment_method_totals: input.paymentMethodTotals,
+    period_end: input.periodEnd,
+    period_start: input.periodStart,
+    receipt_count: totals.sales_count,
+    refunds_totals: {
+      amount: totals.refunds_amount,
+      count: totals.refunds_count,
+    },
+    sales_totals: {
+      gross_sales: totals.gross_sales,
+      net_sales: totals.net_sales,
+      tax_amount: totals.tax_amount,
+    },
+    session_id: input.sessionId,
+    shift_id: input.shiftId,
+    terminal_id: input.terminalId,
+    training_flag: input.isTraining,
+    vat_breakdown: input.vatBreakdown,
+    voids_totals: {
+      count: totals.voided_count,
+    },
+    x_report_uuid: input.xReportUuid,
   };
 }
 
@@ -310,6 +372,29 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
     await db.execute('ROLLBACK');
     throw error;
   }
+}
+
+export async function appendXReport(
+  db: Database | SqlSurface,
+  engine: ZSessionFiscalEventEngine,
+  input: AuthorXReportInput,
+): Promise<AuthorXReportResult> {
+  const generatedAtDevice = input.generatedAtDevice ?? new Date();
+  const xReportEvent = await engine.append(db, {
+    event_type: 'X_REPORT',
+    tenant_id: input.tenantId,
+    company_id: input.companyId,
+    terminal_id: input.terminalId,
+    operator_id: input.operatorId,
+    event_time_device: isoSecondsUtc(generatedAtDevice),
+    business_date: input.businessDate,
+    chain_context: zChainContext(input.isTraining),
+    payload: buildXReportPayload(input, generatedAtDevice),
+    source_event_class: 'x_report',
+    source_event_id: input.xReportUuid,
+  });
+
+  return { xReportEvent };
 }
 
 export async function appendZSessionCloseAndZReport(

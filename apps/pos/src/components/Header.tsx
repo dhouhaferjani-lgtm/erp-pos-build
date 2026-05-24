@@ -17,7 +17,7 @@ import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
-import type { GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
+import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
@@ -190,7 +190,17 @@ export function Header() {
     setReportError(null);
     setXReport(null);
     try {
-      const report = await generateXReport(terminal.id);
+      const xOpts: GenerateXReportOpts = shift && tenantId
+        ? {
+            tenantId,
+            fiscalShiftId: shift.fiscal_shift_id,
+            fiscalSessionId: shift.fiscal_session_id,
+            operatorId: shift.user.id,
+            operatorName: shift.user.name,
+            isTraining: terminal.is_training_mode === true,
+          }
+        : {};
+      const report = await generateXReport(terminal.id, xOpts);
       setXReport(report);
     } catch (err) {
       setReportError(getErrorMessage(err));

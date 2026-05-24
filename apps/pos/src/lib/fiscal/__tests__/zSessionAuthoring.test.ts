@@ -7,12 +7,15 @@ import { FiscalEventEngine } from '../FiscalEventEngine';
 import { FiscalEventPayloadRegistry } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
 import {
+  appendXReport,
   appendZSessionCloseAndZReport,
   authorZSessionOpenWithOpeningFloatOnDb,
+  buildXReportPayload,
   buildZReportPayload,
   buildOpeningFloatPayload,
   buildSessionOpenPayload,
   buildSessionClosePayload,
+  type AuthorXReportInput,
   type AuthorZSessionCloseInput,
   type AuthorZSessionOpenInput,
 } from '../zSessionAuthoring';
@@ -126,6 +129,38 @@ function closeInput(overrides: Partial<AuthorZSessionCloseInput> = {}): AuthorZS
     isTraining: false,
     closedAtDevice: new Date('2026-05-16T18:00:00.123Z'),
     sessionCloseUuid: '77777777-7777-4777-8777-777777777777',
+    ...overrides,
+  };
+}
+
+function xReportInput(overrides: Partial<AuthorXReportInput> = {}): AuthorXReportInput {
+  return {
+    tenantId: TENANT_ID,
+    companyId: COMPANY_ID,
+    terminalId: TERMINAL_ID,
+    shiftId: SHIFT_ID,
+    sessionId: SESSION_ID,
+    businessDate: '2026-05-16',
+    operatorId: OPERATOR_ID,
+    operatorName: 'Alice',
+    periodStart: '2026-05-16T08:00:00.000Z',
+    periodEnd: '2026-05-16T12:00:00.000Z',
+    xReportUuid: '88888888-8888-4888-8888-888888888888',
+    reportTotals: {
+      sales_count: 1,
+      gross_sales: '50.000',
+      net_sales: '42.000',
+      tax_amount: '8.000',
+      refunds_count: 0,
+      refunds_amount: '0.000',
+      voided_count: 0,
+    },
+    vatBreakdown: [],
+    paymentMethodTotals: [],
+    cashDrawerTotals: {},
+    operationalEventRange: { first_sequence: 1, last_sequence: 1 },
+    isTraining: false,
+    generatedAtDevice: new Date('2026-05-16T12:00:00.123Z'),
     ...overrides,
   };
 }
@@ -251,6 +286,36 @@ d('zSessionAuthoring', () => {
       z_number: 3,
       z_report_uuid: '66666666-6666-4666-8666-666666666666',
     });
+  });
+
+  it('builds X_REPORT payloads with non-closing canonical keys', () => {
+    const payload = buildXReportPayload(
+      xReportInput(),
+      new Date('2026-05-16T12:00:00.123Z'),
+    );
+
+    expect(payload).toMatchObject({
+      business_date: '2026-05-16',
+      generated_at_device: '2026-05-16T12:00:00.123Z',
+      receipt_count: 1,
+      session_id: SESSION_ID,
+      shift_id: SHIFT_ID,
+      terminal_id: TERMINAL_ID,
+      training_flag: false,
+      x_report_uuid: '88888888-8888-4888-8888-888888888888',
+    });
+    expect(payload).not.toHaveProperty('z_number');
+    expect(payload).not.toHaveProperty('closure_status');
+  });
+
+  it('authors X_REPORT on the z_session chain without closing the session', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    const result = await appendXReport(adapter, engine, xReportInput());
+
+    expect(result.xReportEvent.event_type).toBe('X_REPORT');
+    expect(result.xReportEvent.chain_context).toBe('z_session');
+    expect(result.xReportEvent.sequence_number).toBe(3);
   });
 
   it('authors SESSION_CLOSE followed by Z_REPORT on the z_session chain', async () => {
