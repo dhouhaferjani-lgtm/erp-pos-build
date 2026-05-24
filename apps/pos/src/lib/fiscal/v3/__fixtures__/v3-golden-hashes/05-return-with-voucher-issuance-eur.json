@@ -1,0 +1,32 @@
+{
+  "input": {
+    "receipt_number": "CN-2026-000001",
+    "posted_at": "2026-04-28T14:00:00Z",
+    "previous_hash": "415ee65fcd6e41fb52052df7f0fdabf20ade6df28f1d26d9f12907c905b657c1",
+    "total": "-10.00",
+    "currency": "EUR",
+    "vat_breakdown": [{"rate": "0.20", "amount": "-1.67"}],
+    "payments": [
+      {"method_code": "store_voucher", "payment_type": "refund", "amount": "-10.00", "instrument_type": "store_voucher", "instrument_serial": "OTSP-NEWVC000001-P"}
+    ],
+    "voucher_ledger_entries": [
+      {
+        "voucher_id": "11111111-2222-3333-4444-555555555555",
+        "voucher_code": "OTSP-NEWVC000001-P",
+        "event": "issued",
+        "amount": "+10.00",
+        "gl_journal_entry_id": "66666666-7777-8888-9999-000000000001"
+      }
+    ],
+    "exchange_group_id": null,
+    "audit": {
+      "authorized_by_user_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "override_reason": "Customer loyalty exception",
+      "policy_trigger": "out_of_window",
+      "out_of_window": true,
+      "refund_request_id": "ffffffff-0000-1111-2222-333333333333"
+    }
+  },
+  "expected_canonical": "{\"audit_hash\":\"5d22118e704a3980978590056bc0fad2ddf57034b3917aa274bafa224735336a\",\"currency\":\"EUR\",\"exchange_group_id\":null,\"payment_methods_hash\":\"02ad0573f87e6dd59a026dc135257886115c74fb6277b8a21d2113de7c82f86b\",\"posted_at\":\"2026-04-28T14:00:00Z\",\"previous_hash\":\"415ee65fcd6e41fb52052df7f0fdabf20ade6df28f1d26d9f12907c905b657c1\",\"receipt_number\":\"CN-2026-000001\",\"schema_version\":3,\"total\":\"-10.00\",\"vat_breakdown_hash\":\"5f360b05f182bd73bc6ebaea8233be464746366341721a59e9c85cff6e1513cb\",\"voucher_ledger_hash\":\"e5fd1ea97ced298f3eb701c0c22013d806f943a3ad4d4fddcbcdc09c4c473186\"}",
+  "expected_hash": "b8417359789b0e4beab0cdca554a482f6b312a491378bf2951169d63a295b890"
+}

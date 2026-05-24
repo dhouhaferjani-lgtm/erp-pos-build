@@ -1,0 +1,22 @@
+{
+  "input": {
+    "receipt_number": "R-2026-000002",
+    "posted_at": "2026-04-28T11:00:00Z",
+    "previous_hash": "4db73253d2456bb80d2577904c4a600f72f218648b7b0350c84311e4f4871003",
+    "total": "25.000",
+    "currency": "TND",
+    "vat_breakdown": [
+      {"rate": "0.19", "amount": "3.992"},
+      {"rate": "0.07", "amount": "0.654"}
+    ],
+    "payments": [
+      {"method_code": "card", "payment_type": "pos", "amount": "15.000", "instrument_type": null, "instrument_serial": null},
+      {"method_code": "cash", "payment_type": "pos", "amount": "10.000", "instrument_type": null, "instrument_serial": null}
+    ],
+    "voucher_ledger_entries": [],
+    "exchange_group_id": null,
+    "audit": null
+  },
+  "expected_canonical": "{\"audit_hash\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"currency\":\"TND\",\"exchange_group_id\":null,\"payment_methods_hash\":\"721f0dde122a92893ba82b2b5f00387b9405a5628b03f50e906f2a0863301671\",\"posted_at\":\"2026-04-28T11:00:00Z\",\"previous_hash\":\"4db73253d2456bb80d2577904c4a600f72f218648b7b0350c84311e4f4871003\",\"receipt_number\":\"R-2026-000002\",\"schema_version\":3,\"total\":\"25.000\",\"vat_breakdown_hash\":\"28f50c2250627596945ad7e8cbb020fc2678cb2d38181cdb8e769767bc73f92c\",\"voucher_ledger_hash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\"}",
+  "expected_hash": "0c5d9b4ca8efbe67c94f4866fa525e034133c8b0afdd1779e62280263c70b34d"
+}

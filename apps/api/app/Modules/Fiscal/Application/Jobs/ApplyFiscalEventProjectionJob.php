@@ -25,6 +25,8 @@ use Throwable;
  * Horizon-owned runner for a single `fiscal_event_projections` row —
  * spec v7 §7.5 + plan §1705.
  *
+ * @cross-tenant-by-design Fiscal projection queue job is system-scoped because the projection row is durable outbox state; handle() resolves tenant/company through the fiscal event and projectors rebind from that event context.
+ *
  * **Where lifecycle state lives.**
  *   - Horizon owns transient state — retry counts, backoff, delivery
  *     guarantees, lock primitives at the queue layer.

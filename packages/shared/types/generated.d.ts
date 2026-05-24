@@ -101,6 +101,25 @@ amount: string;
 level: number;
 is_parent: boolean;
 };
+export type CashReconciliationData = {
+date: string;
+location_id: string;
+location_name: string;
+terminal_id: string;
+terminal_name: string;
+shift_id: string;
+expected_cash: string;
+counted_cash: string;
+variance: string;
+variance_severity: string;
+};
+export type CategoryRevenueData = {
+category_id: number | null;
+category_name: string;
+revenue: string;
+percentage: string;
+quantity: string;
+};
 export type LedgerData = {
 opening_balance: string;
 closing_balance: string;
@@ -126,6 +145,13 @@ balance: string;
 source_type: string | null;
 source_id: string | null;
 };
+export type PaymentMethodBreakdownData = {
+payment_type: string;
+payment_method_name: string;
+amount: string;
+percentage: string;
+transaction_count: number;
+};
 export type ProfitLossData = {
 revenue: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
 expenses: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
@@ -142,6 +168,32 @@ account_type: string;
 amount: string;
 level: number;
 is_parent: boolean;
+};
+export type SalesByLocationData = {
+period: string;
+company_id: string;
+company_name: string;
+location_id: string;
+location_name: string;
+gross_sales: string;
+receipt_count: number;
+};
+export type StockAlertData = {
+product_id: string;
+product_name: string;
+location_id: string;
+location_name: string;
+quantity: string;
+min_quantity: string;
+threshold_pct: number;
+severity: string;
+};
+export type TopSkuData = {
+product_id: string | null;
+product_name: string;
+sku: string | null;
+revenue: string;
+quantity: string;
 };
 export type TrialBalanceData = {
 lines: Array<App.Modules.Accounting.Application.DTOs.Reports.TrialBalanceLineData>;
@@ -507,6 +559,15 @@ export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' 
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
+}
+declare namespace App.Modules.Fiscal.Domain.Enums {
+export type DeviceLossIncidentStatus = 'reported' | 'recovering' | 'resolved' | 'unrecoverable';
+export type FiscalEventType = 'SALE_RECEIPT' | 'CHAIN_BREAK_DETECTED' | 'CHAIN_RESTART' | 'TERMINAL_REGISTRY_SNAPSHOT' | 'COMPANY_DAY_CLOSURE_MANIFEST' | 'ACCOUNT_PAYMENT' | 'ACCOUNT_CHARGE' | 'ACCOUNT_REFUND' | 'ACCOUNT_PAYMENT_RECONCILED' | 'ACCOUNT_CREDIT_ISSUE' | 'ACCOUNT_CREDIT_USAGE' | 'DEPOSIT_RECEIPT' | 'IDENTITY_ALIAS_RECONCILED' | 'SALE_VOID' | 'SALE_CORRECTION' | 'REFUND_RECEIPT' | 'PARTIAL_REFUND' | 'RETURN_WITHOUT_RECEIPT' | 'OPENING_FLOAT' | 'CASH_IN' | 'CASH_OUT' | 'SAFE_DROP' | 'CASH_CORRECTION' | 'SESSION_OPEN' | 'SESSION_CLOSE' | 'X_REPORT' | 'Z_REPORT' | 'REPRINT_COPY';
+export type IntegrityExceptionClass = 'canonical_hash_mismatch' | 'canonical_parse_failure' | 'time_anomaly' | 'sequence_gap' | 'sequence_conflict' | 'malformed_envelope';
+export type IntegrityStatus = 'verified' | 'quarantined';
+export type PayloadParseStatus = 'pending' | 'parsed' | 'failed';
+export type ProjectionStatus = 'pending' | 'running' | 'applied' | 'dead_lettered';
+export type SignatureStatus = 'not_required' | 'pending' | 'signed' | 'failed';
 }
 declare namespace App.Modules.Identity.Application.DTOs {
 export type AuthUserData = {
@@ -1466,6 +1527,7 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
+export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';

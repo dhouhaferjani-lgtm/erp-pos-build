@@ -171,6 +171,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.financial',
             'reports.operational',
             'reports.manage',  // VAT period management
+            'dashboard.owner',
 
             // Workshop — Work Orders (Spec B)
             'work-orders.view',
@@ -387,7 +388,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'treasury.view',
             'journal.view',
             'accounts.view', 'accounts.manage',
-            'reports.financial', 'reports.operational', 'reports.manage',
+            'reports.financial', 'reports.operational', 'reports.manage', 'dashboard.owner',
             'work-orders.view', 'work-orders.create', 'work-orders.update',
             'work-orders.approve', 'work-orders.assign', 'work-orders.transition',
             'work-orders.cancel', 'work-orders.complete', 'work-orders.view_financials',
