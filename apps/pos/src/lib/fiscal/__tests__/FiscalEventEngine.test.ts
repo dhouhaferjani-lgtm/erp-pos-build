@@ -20,6 +20,7 @@ import { migrations } from '@/lib/db/migrations';
 import {
   ChainHeadNotInitializedError,
   ConcurrentChainAdvanceError,
+  FiscalEventChainContextError,
   FiscalEventEngine,
   FiscalEventPayloadValidationError,
   SALE_RECEIPT_PAYLOAD_KEYS,
@@ -189,7 +190,7 @@ function saleReceiptRequest(
     tenant_id: TENANT_ID,
     company_id: COMPANY_ID,
     terminal_id: TERMINAL_ID,
-    operator_id: OPERATOR_ID,
+    operator_id: SR_CASHIER_UUID,
     event_time_device: '2026-05-16T10:00:00Z',
     business_date: '2026-05-16',
     payload: validSaleReceiptPayload(),
@@ -205,7 +206,7 @@ function accountPaymentRequest(
     tenant_id: TENANT_ID,
     company_id: COMPANY_ID,
     terminal_id: TERMINAL_ID,
-    operator_id: OPERATOR_ID,
+    operator_id: SR_CASHIER_UUID,
     event_time_device: '2026-05-21T10:15:30Z',
     business_date: '2026-05-21',
     payload: goldenAccountPaymentPayload(),
@@ -223,12 +224,92 @@ function accountChargeRequest(
     tenant_id: TENANT_ID,
     company_id: COMPANY_ID,
     terminal_id: TERMINAL_ID,
-    operator_id: OPERATOR_ID,
+    operator_id: SR_CASHIER_UUID,
     event_time_device: '2026-05-21T10:15:30Z',
     business_date: '2026-05-21',
     payload: goldenAccountChargePayload(),
     source_event_class: 'account_charges',
     source_event_id: '66666666-6666-4666-8666-666666666666',
+    ...overrides,
+  };
+}
+
+function validSessionOpenPayload(trainingFlag = false): Record<string, unknown> {
+  return {
+    business_date: '2026-05-16',
+    currency_code: 'TND',
+    currency_scale: 3,
+    opened_at_device: '2026-05-16T08:00:00.000Z',
+    opening_float_amount: '100.000',
+    operator_id: SR_CASHIER_UUID,
+    operator_name: 'Alice',
+    session_id: '77777777-7777-4777-8777-777777777777',
+    shift_id: SR_SHIFT_UUID,
+    terminal_id: SR_TERMINAL_UUID,
+    terminal_label: 'T01',
+    training_flag: trainingFlag,
+  };
+}
+
+function sessionOpenRequest(
+  overrides: Partial<FiscalEventAppendRequest> = {},
+): FiscalEventAppendRequest {
+  return {
+    event_type: 'SESSION_OPEN',
+    tenant_id: TENANT_ID,
+    company_id: COMPANY_ID,
+    terminal_id: TERMINAL_ID,
+    operator_id: SR_CASHIER_UUID,
+    event_time_device: '2026-05-16T08:00:00Z',
+    business_date: '2026-05-16',
+    chain_context: 'z_session',
+    payload: validSessionOpenPayload(),
+    source_event_class: 'pos_session',
+    source_event_id: '77777777-7777-4777-8777-777777777777',
+    ...overrides,
+  };
+}
+
+function validZCashDrawerMovementPayload(
+  movementType: 'OPENING_FLOAT' | 'CASH_IN' | 'CASH_OUT' | 'SAFE_DROP' | 'CASH_CORRECTION' = 'OPENING_FLOAT',
+  trainingFlag = false,
+): Record<string, unknown> {
+  return {
+    amount: '100.000',
+    approval: null,
+    business_date: '2026-05-16',
+    cash_drawer_operation_id: null,
+    currency_code: 'TND',
+    currency_scale: 3,
+    event_time_device: '2026-05-16T08:00:00.000Z',
+    movement_id: '88888888-8888-4888-8888-888888888888',
+    movement_type: movementType,
+    operator_id: SR_CASHIER_UUID,
+    operator_name: 'Alice',
+    reason_code: 'opening_float',
+    reason_text: null,
+    session_id: '77777777-7777-4777-8777-777777777777',
+    shift_id: SR_SHIFT_UUID,
+    training_flag: trainingFlag,
+  };
+}
+
+function zCashDrawerMovementRequest(
+  movementType: 'OPENING_FLOAT' | 'CASH_IN' | 'CASH_OUT' | 'SAFE_DROP' | 'CASH_CORRECTION' = 'OPENING_FLOAT',
+  overrides: Partial<FiscalEventAppendRequest> = {},
+): FiscalEventAppendRequest {
+  return {
+    event_type: movementType,
+    tenant_id: TENANT_ID,
+    company_id: COMPANY_ID,
+    terminal_id: TERMINAL_ID,
+    operator_id: OPERATOR_ID,
+    event_time_device: '2026-05-16T08:00:00Z',
+    business_date: '2026-05-16',
+    chain_context: 'z_session',
+    payload: validZCashDrawerMovementPayload(movementType),
+    source_event_class: 'z_cash_drawer_movement',
+    source_event_id: '88888888-8888-4888-8888-888888888888',
     ...overrides,
   };
 }
@@ -564,15 +645,7 @@ d('FiscalEventEngine.append', () => {
     );
 
     const operational = await engine.append(adapter, saleReceiptRequest());
-    const zSession = await engine.append(
-      adapter,
-      saleReceiptRequest({
-        chain_context: 'z_session',
-        event_time_device: '2026-05-16T10:01:00Z',
-        source_event_class: 'z_session_test',
-        source_event_id: '55555555-5555-4555-8555-555555555555',
-      }),
-    );
+    const zSession = await engine.append(adapter, sessionOpenRequest());
 
     expect(operational.chain_context).toBe('operational');
     expect(operational.sequence_number).toBe(1);
@@ -611,6 +684,89 @@ d('FiscalEventEngine.append', () => {
     expect(heads[0]?.fiscal_event_last_hash).toBe(operational.current_hash);
     expect(heads[0]?.z_chain_sequence).toBe(1);
     expect(heads[0]?.z_chain_last_hash).toBe(zSession.current_hash);
+  });
+
+  it('rejects SESSION_OPEN on the operational chain before mutating state', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        sessionOpenRequest({
+          chain_context: 'operational',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(FiscalEventChainContextError);
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+    const operationalHead = await selectChainHead(adapter);
+    expect(operationalHead.fiscal_event_sequence).toBe(0);
+  });
+
+  it('rejects a training payload on a production chain context', async () => {
+    await expect(
+      engine.append(
+        adapter,
+        sessionOpenRequest({
+          payload: validSessionOpenPayload(true),
+        }),
+      ),
+    ).rejects.toThrow(/training_flag=true requires training_/);
+
+    const rows = await selectAllEvents(adapter);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('accepts SESSION_OPEN and OPENING_FLOAT on the z_session chain', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state
+          SET z_chain_genesis_seed = $1
+        WHERE terminal_id = $2`,
+      [ALT_GENESIS_SEED, TERMINAL_ID],
+    );
+
+    const open = await engine.append(adapter, sessionOpenRequest());
+    const openingFloat = await engine.append(
+      adapter,
+      zCashDrawerMovementRequest('OPENING_FLOAT', {
+        event_time_device: '2026-05-16T08:00:01Z',
+      }),
+    );
+
+    expect(open.chain_context).toBe('z_session');
+    expect(open.sequence_number).toBe(1);
+    expect(open.previous_hash).toBe(ALT_GENESIS_SEED);
+    expect(openingFloat.chain_context).toBe('z_session');
+    expect(openingFloat.sequence_number).toBe(2);
+    expect(openingFloat.previous_hash).toBe(open.current_hash);
+  });
+
+  it('validates CASH_OUT as a Z-session movement only on the z_session chain', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state
+          SET z_chain_genesis_seed = $1
+        WHERE terminal_id = $2`,
+      [ALT_GENESIS_SEED, TERMINAL_ID],
+    );
+
+    const zMovement = await engine.append(
+      adapter,
+      zCashDrawerMovementRequest('CASH_OUT', {
+        source_event_id: '99999999-9999-4999-8999-999999999999',
+      }),
+    );
+
+    expect(zMovement.event_type).toBe('CASH_OUT');
+    expect(zMovement.chain_context).toBe('z_session');
+
+    await expect(
+      engine.append(
+        adapter,
+        zCashDrawerMovementRequest('CASH_OUT', {
+          chain_context: 'operational',
+          source_event_id: '99999999-9999-4999-8999-999999999998',
+        }),
+      ),
+    ).rejects.toThrow(/CASH_DRAWER_MOVEMENT payload missing required key/);
   });
 
   // -------------------------------------------------------------------
@@ -1038,10 +1194,23 @@ d('FiscalEventEngine.append', () => {
   });
 
   it('Pass 2A.TS — rejects training_flag mismatch (SALE + true)', async () => {
-    const payload = { ...validSaleReceiptPayload(), training_flag: true };
-    await expect(engine.append(adapter, saleReceiptRequest({ payload }))).rejects.toThrow(
-      /payload_training_flag_mismatch:invoice_type_code=SALE:training_flag=true/,
+    await adapter.execute(
+      `UPDATE terminal_state
+          SET training_fiscal_event_genesis_seed = $1
+        WHERE terminal_id = $2`,
+      [ALT_GENESIS_SEED, TERMINAL_ID],
     );
+
+    const payload = { ...validSaleReceiptPayload(), training_flag: true };
+    await expect(
+      engine.append(
+        adapter,
+        saleReceiptRequest({
+          chain_context: 'training_operational',
+          payload,
+        }),
+      ),
+    ).rejects.toThrow(/payload_training_flag_mismatch:invoice_type_code=SALE:training_flag=true/);
   });
 
   it('Pass 2A.TS — rejects training_flag mismatch (TRAINING + false)', async () => {
@@ -1367,6 +1536,13 @@ d('FiscalEventEngine.append', () => {
   });
 
   it('Phase 2.7 — accepts training ACCOUNT_PAYMENT with zero amount', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state
+          SET training_fiscal_event_genesis_seed = $1
+        WHERE terminal_id = $2`,
+      [ALT_GENESIS_SEED, TERMINAL_ID],
+    );
+
     const payload = goldenAccountPaymentPayload();
     payload.training_flag = true;
     payload.payment = { ...payload.payment, amount: '0.000' };
@@ -1375,7 +1551,13 @@ d('FiscalEventEngine.append', () => {
       payment_amount: '0.000',
     };
 
-    const event = await engine.append(adapter, accountPaymentRequest({ payload }));
+    const event = await engine.append(
+      adapter,
+      accountPaymentRequest({
+        chain_context: 'training_operational',
+        payload,
+      }),
+    );
 
     expect(event.event_type).toBe('ACCOUNT_PAYMENT');
   });

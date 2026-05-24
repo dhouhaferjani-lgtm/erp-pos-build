@@ -104,6 +104,32 @@ final class StrictCanonicalParserTest extends TestCase
         $this->assertSame('119.000', $result->payload['totals']['amount_charged_to_account']);
     }
 
+    public function test_strict_parser_rejects_session_open_on_operational_chain_context(): void
+    {
+        $bytes = $this->envelope('SESSION_OPEN', $this->canonicalSessionOpenPayload());
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::SESSION_OPEN);
+
+        $this->assertFailed($result);
+        $this->assertStringContainsString('envelope_chain_context_event_type_mismatch', $result->failureReason ?? '');
+    }
+
+    public function test_strict_parser_accepts_z_session_cash_out_payload(): void
+    {
+        $bytes = $this->envelope(
+            'CASH_OUT',
+            $this->canonicalZCashDrawerMovementPayload('CASH_OUT'),
+            ['chain_context' => 'z_session'],
+        );
+
+        $result = $this->parser()->parse($bytes, FiscalEventType::CASH_OUT);
+
+        $this->assertTrue($result->ok, 'unexpected failure: '.($result->failureReason ?? '(none)'));
+        $this->assertNotNull($result->payload);
+        $this->assertSame('CASH_OUT', $result->payload['movement_type']);
+        $this->assertSame('session-1', $result->payload['reason_code']);
+    }
+
     public function test_strict_parser_rejects_account_payment_extra_payload_key(): void
     {
         $payload = $this->canonicalAccountPaymentPayload();
@@ -673,6 +699,52 @@ final class StrictCanonicalParserTest extends TestCase
     private function validAccountChargeEnvelope(): string
     {
         return $this->envelope('ACCOUNT_CHARGE', $this->canonicalAccountChargePayload());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalSessionOpenPayload(bool $trainingFlag = false): array
+    {
+        return [
+            'business_date' => '2026-05-16',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'opened_at_device' => '2026-05-16T08:00:00.000Z',
+            'opening_float_amount' => '100.000',
+            'operator_id' => '11111111-1111-4111-8111-111111111111',
+            'operator_name' => 'Default Cashier',
+            'session_id' => '77777777-7777-4777-8777-777777777777',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'terminal_label' => 'T01',
+            'training_flag' => $trainingFlag,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function canonicalZCashDrawerMovementPayload(string $movementType, bool $trainingFlag = false): array
+    {
+        return [
+            'amount' => '25.000',
+            'approval' => null,
+            'business_date' => '2026-05-16',
+            'cash_drawer_operation_id' => null,
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'event_time_device' => '2026-05-16T08:15:00.000Z',
+            'movement_id' => '88888888-8888-4888-8888-888888888888',
+            'movement_type' => $movementType,
+            'operator_id' => '11111111-1111-4111-8111-111111111111',
+            'operator_name' => 'Default Cashier',
+            'reason_code' => 'session-1',
+            'reason_text' => null,
+            'session_id' => '77777777-7777-4777-8777-777777777777',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'training_flag' => $trainingFlag,
+        ];
     }
 
     /**

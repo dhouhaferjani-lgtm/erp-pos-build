@@ -136,6 +136,18 @@ export class ServerAuthoredEventTypeError extends Error {
 }
 
 /**
+ * Thrown when an implemented event type is submitted to the wrong fiscal
+ * chain. Z/session events must never leak onto the operational receipt chain,
+ * and training payloads must consume only training sequence numbers.
+ */
+export class FiscalEventChainContextError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FiscalEventChainContextError';
+  }
+}
+
+/**
  * Thrown when the chain INSERT trips the v37 partial UNIQUE on
  * `(tenant_id, terminal_id, sequence_number)` — i.e. a parallel
  * `append()` already advanced this chain head between our `readChainHead`
@@ -200,6 +212,36 @@ export const FISCAL_CHAIN_CONTEXTS = [
 ] as const;
 
 export type FiscalChainContext = (typeof FISCAL_CHAIN_CONTEXTS)[number];
+
+const OPERATIONAL_CHAIN_EVENT_TYPES = new Set<FiscalEventTypeValue>([
+  'SALE_RECEIPT',
+  'ACCOUNT_PAYMENT',
+  'ACCOUNT_CHARGE',
+  'CHAIN_BREAK_DETECTED',
+  'CHAIN_RESTART',
+  'OPERATOR_APPROVAL_GRANTED',
+  'OVERRIDE_CREDIT_LIMIT',
+  'OVERRIDE_ACCOUNT_STATUS',
+  'OVERRIDE_DISCOUNT_LIMIT',
+  'OVERRIDE_TENDER_TOLERANCE',
+  'OVERRIDE_VOID_OR_RETURN',
+  // Phase 4 pre-cutover legacy drawer evidence events. Cutover Z-session
+  // movements use the context-sensitive Z payload validator below.
+  'CASH_OUT',
+  'SAFE_DROP',
+]);
+
+const Z_SESSION_CHAIN_EVENT_TYPES = new Set<FiscalEventTypeValue>([
+  'SESSION_OPEN',
+  'OPENING_FLOAT',
+  'CASH_IN',
+  'CASH_OUT',
+  'SAFE_DROP',
+  'CASH_CORRECTION',
+  'SESSION_CLOSE',
+  'X_REPORT',
+  'Z_REPORT',
+]);
 
 // -------------------------------------------------------------------
 // Typed payload-input interfaces (Phase 1 implemented event types).
@@ -514,12 +556,13 @@ export class FiscalEventEngine {
     // bytes) + P1-1 (timestamp / business_date format not enforced).
     // Throws FiscalEventPayloadValidationError on contract violation.
     this.validateRequestEnvelope(request);
-    this.validateRequestPayload(request);
+    const chainContext = request.chain_context ?? 'operational';
 
     // Step 1 — resolve event_version via the registry. Reserved types
     // throw before any state mutation.
     const eventVersion = this.registry.eventVersionFor(request.event_type);
-    const chainContext = request.chain_context ?? 'operational';
+    this.validateChainContext(request, chainContext);
+    this.validateRequestPayload(request, chainContext);
 
     // Step 2 — device-side idempotency on (tenant_id, terminal_id,
     // source_event_class, source_event_id). The lookup is scoped
@@ -743,6 +786,35 @@ export class FiscalEventEngine {
     }
   }
 
+  private validateChainContext(
+    request: FiscalEventAppendRequest,
+    chainContext: FiscalChainContext,
+  ): void {
+    const isZSessionContext = chainContext === 'z_session' || chainContext === 'training_z_session';
+    const allowedTypes = isZSessionContext ? Z_SESSION_CHAIN_EVENT_TYPES : OPERATIONAL_CHAIN_EVENT_TYPES;
+    if (!allowedTypes.has(request.event_type)) {
+      throw new FiscalEventChainContextError(
+        `Fiscal event type ${request.event_type} is not allowed on ${chainContext} chain_context.`,
+      );
+    }
+
+    const trainingFlag = payloadTrainingFlag(request.payload);
+    if (trainingFlag === null) return;
+
+    const isTrainingContext =
+      chainContext === 'training_operational' || chainContext === 'training_z_session';
+    if (trainingFlag && !isTrainingContext) {
+      throw new FiscalEventChainContextError(
+        `payload training_flag=true requires training_* chain_context; got ${chainContext}.`,
+      );
+    }
+    if (!trainingFlag && isTrainingContext) {
+      throw new FiscalEventChainContextError(
+        `payload training_flag=false requires production chain_context; got ${chainContext}.`,
+      );
+    }
+  }
+
   /**
    * Per-event-type payload validation — STRUCTURAL conformance only:
    * key set + types + regex + enums + nested-object shape. The encoder
@@ -774,7 +846,10 @@ export class FiscalEventEngine {
    * rejected at the Step -1 boundary BEFORE this validator runs — so
    * those branches never execute here.
    */
-  private validateRequestPayload(request: FiscalEventAppendRequest): void {
+  private validateRequestPayload(
+    request: FiscalEventAppendRequest,
+    chainContext: FiscalChainContext,
+  ): void {
     switch (request.event_type) {
       case 'SALE_RECEIPT':
         validateSaleReceiptPayload(request.payload);
@@ -806,7 +881,11 @@ export class FiscalEventEngine {
         return;
       case 'CASH_OUT':
       case 'SAFE_DROP':
-        validateCashDrawerMovementPayload(request.payload);
+        if (chainContext === 'z_session' || chainContext === 'training_z_session') {
+          validateZCashDrawerMovementPayload(request.payload);
+        } else {
+          validateCashDrawerMovementPayload(request.payload);
+        }
         return;
       case 'OPENING_FLOAT':
       case 'CASH_IN':
@@ -3056,6 +3135,14 @@ function assertPlainPayload(payload: unknown, label: string): Record<string, unk
     throw new FiscalEventPayloadValidationError(`${label} payload must be an object.`);
   }
   return payload as Record<string, unknown>;
+}
+
+function payloadTrainingFlag(payload: unknown): boolean | null {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return null;
+  }
+  const value = (payload as Record<string, unknown>)['training_flag'];
+  return typeof value === 'boolean' ? value : null;
 }
 
 /**

@@ -210,6 +210,8 @@ final class OutboxIngestorTest extends TestCase
         $zSession = $this->ingest($this->validEnvelope([
             'id' => Str::uuid()->toString(),
             'chain_context' => 'z_session',
+            'event_type' => FiscalEventType::SESSION_OPEN,
+            'payload' => $this->minimalSessionOpenPayload(),
             'sequence_number' => 1,
             'source_event_class' => 'z_session_test',
             'source_event_id' => Str::uuid()->toString(),
@@ -789,7 +791,12 @@ final class OutboxIngestorTest extends TestCase
         // Build the canonical envelope (spec §4 — 14 alphabetical keys).
         // The "payload" subobject is a minimal valid SALE_RECEIPT payload
         // per spec §4 / the StrictCanonicalParser PAYLOAD_KEYS map.
-        $payload = $this->minimalSaleReceiptPayload();
+        $payloadOverride = $overrides['payload'] ?? null;
+        unset($overrides['payload']);
+
+        $payload = is_array($payloadOverride)
+            ? $payloadOverride
+            : $this->minimalSaleReceiptPayload();
 
         $canonicalArray = [
             'business_date' => $fields['business_date'],
@@ -909,6 +916,27 @@ final class OutboxIngestorTest extends TestCase
             ]],
             'vat_total' => '0.00',
             'vouchers_redeemed' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function minimalSessionOpenPayload(): array
+    {
+        return [
+            'business_date' => '2026-05-20',
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'opened_at_device' => '2026-05-20T08:00:00.000Z',
+            'opening_float_amount' => '100.00',
+            'operator_id' => '11111111-1111-4111-8111-111111111111',
+            'operator_name' => 'Default Cashier',
+            'session_id' => '77777777-7777-4777-8777-777777777777',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'terminal_label' => 'T01',
+            'training_flag' => false,
         ];
     }
 

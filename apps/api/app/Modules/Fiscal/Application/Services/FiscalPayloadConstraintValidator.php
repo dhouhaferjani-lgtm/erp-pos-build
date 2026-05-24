@@ -309,11 +309,20 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  array<string, mixed>  $payload
      */
-    public function validatePayloadKeySet(FiscalEventType $type, array $payload): ?string
-    {
+    public function validatePayloadKeySet(
+        FiscalEventType $type,
+        array $payload,
+        string $chainContext = 'operational',
+    ): ?string {
         $expected = self::PAYLOAD_KEYS[$type->value] ?? null;
         if ($expected === null) {
             return 'event_type_unimplemented:'.$type->value;
+        }
+        if (
+            in_array($type, [FiscalEventType::CASH_OUT, FiscalEventType::SAFE_DROP], true)
+            && in_array($chainContext, ['z_session', 'training_z_session'], true)
+        ) {
+            $expected = ZCashDrawerMovementPayload::PAYLOAD_KEYS;
         }
 
         if ($type === FiscalEventType::ACCOUNT_CHARGE && array_key_exists('payments', $payload)) {
@@ -345,8 +354,11 @@ final class FiscalPayloadConstraintValidator
      * @throws LogicException when invoked with a Phase 1 event type that
      *                        has no matching per-event clause (planning defect)
      */
-    public function validatePerEventConstraints(FiscalEventType $type, array $payload): void
-    {
+    public function validatePerEventConstraints(
+        FiscalEventType $type,
+        array $payload,
+        string $chainContext = 'operational',
+    ): void {
         match ($type) {
             FiscalEventType::SALE_RECEIPT => $this->validateSaleReceiptPayload($payload),
             FiscalEventType::CHAIN_BREAK_DETECTED => $this->validateChainBreakDetectedPayload($payload),
@@ -362,7 +374,9 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
             FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validateOverridePayload($payload),
             FiscalEventType::CASH_OUT,
-            FiscalEventType::SAFE_DROP => $this->validateCashDrawerMovementPayload($payload),
+            FiscalEventType::SAFE_DROP => in_array($chainContext, ['z_session', 'training_z_session'], true)
+                ? $this->validateZCashDrawerMovementPayload($payload)
+                : $this->validateCashDrawerMovementPayload($payload),
             FiscalEventType::OPENING_FLOAT,
             FiscalEventType::CASH_IN,
             FiscalEventType::CASH_CORRECTION => $this->validateZCashDrawerMovementPayload($payload),
