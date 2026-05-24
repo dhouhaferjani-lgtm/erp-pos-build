@@ -7,6 +7,7 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -29,7 +30,6 @@ use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -289,7 +289,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
     public function test_unknown_method_code_rolls_projection_back(): void
     {
-        // Pass 2A.PHP.2 — the 27-key canonical payload no longer carries
+        // Pass 2A.PHP.2 — the 28-key canonical payload no longer carries
         // `payment_method_id`; the projector resolves the FK via
         // `PaymentMethodResolver::resolveByCode($tenantId, $methodCode)`.
         // An unknown method_code returns null → fail-closed RuntimeException
@@ -1204,12 +1204,12 @@ final class PosCoreReceiptProjectionTest extends TestCase
      * Persist a verified SALE_RECEIPT fiscal_events row directly via the
      * Eloquent model — bypasses OutboxIngestor (Task 19).
      *
-     * **Pass 2A.PHP.2 — emits the 27-key Candidate C-v3 canonical payload
+     * **Pass 2A.PHP.2 — emits the 28-key Candidate C-v3 canonical payload
      * per synthesis v5 §3.** The helper accepts old-shape overrides
      * (`paymentLinesOverride` with `payment_method_id`, `lines` with
      * `sku/unit_price/line_total`, etc.) and translates them to the new
      * canonical shape so existing test bodies stay readable. Pass 2B may
-     * tighten the helper to accept only 27-key overrides once the wider
+     * tighten the helper to accept only 28-key overrides once the wider
      * codebase has migrated.
      *
      * @param  list<array<string, mixed>>|null  $paymentLinesOverride  legacy {payment_method_id, amount, method_code, instrument_*} shape
@@ -1235,7 +1235,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        // ---- Translate legacy overrides → 27-key canonical shape. ----
+        // ---- Translate legacy overrides → 28-key canonical shape. ----
         $payments = [];
         $payLines = $paymentLinesOverride ?? [
             ['payment_method_id' => $this->paymentMethodId, 'amount' => '10.00', 'method_code' => 'CASH'],
@@ -1305,6 +1305,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
 
         $payload = [
             'business_date' => $businessDate->toDateString(),
+            'approval_references' => [],
             'buyer' => $buyer,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',

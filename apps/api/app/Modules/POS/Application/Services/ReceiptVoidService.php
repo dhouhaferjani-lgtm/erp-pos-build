@@ -49,19 +49,25 @@ final class ReceiptVoidService
      *
      * @throws \RuntimeException If receipt is already voided
      */
-    public function voidReceipt(Receipt $receipt, User $voidedBy, string $reason): Receipt
-    {
+    public function voidReceipt(
+        Receipt $receipt,
+        User $voidedBy,
+        string $reason,
+        ?string $authorizedByUserId = null,
+    ): Receipt {
         if ($receipt->is_voided) {
             throw new \RuntimeException('Receipt is already voided');
         }
 
-        return DB::transaction(function () use ($receipt, $voidedBy, $reason): Receipt {
+        return DB::transaction(function () use ($receipt, $voidedBy, $reason, $authorizedByUserId): Receipt {
             // 1. Mark as voided
             $receipt->update([
                 'is_voided' => true,
                 'voided_at' => now(),
                 'voided_by' => $voidedBy->id,
                 'void_reason' => $reason,
+                'authorized_by_user_id' => $authorizedByUserId,
+                'override_reason' => $reason,
             ]);
 
             // 2. Reverse stock movements for each line

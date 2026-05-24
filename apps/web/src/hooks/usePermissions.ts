@@ -92,6 +92,9 @@ export const PERMISSIONS = {
   'pos.issue_goodwill_voucher': ['admin', 'manager'],
   'pos.search_customer_full_history': ['admin', 'manager'],
 
+  // Fiscal quarantine resolution
+  'fiscal.events.resolve_quarantine': ['admin', 'manager'],
+
   // Catalog (Composite Items & Modifiers)
   'composite-items.view': ['admin', 'manager'],
   'composite-items.create': ['admin', 'manager'],

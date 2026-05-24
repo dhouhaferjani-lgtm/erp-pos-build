@@ -1,3 +1,5 @@
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+
 export interface SelectedModifier {
   modifier_id: string;
   modifier_group_id: string;
@@ -26,6 +28,7 @@ export interface CartItem {
   discount_percent?: string;
   discount_amount?: string;
   discount_reason?: string;
+  discount_approval_evidence?: PosOverrideEvidence;
   /**
    * 'return'  — negative line from a refund/exchange (Returning section).
    * 'sale'    — normal positive purchase line (default when omitted).

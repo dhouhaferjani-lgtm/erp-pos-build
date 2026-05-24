@@ -214,6 +214,7 @@ final class LargeReceiptFixtureGenerator
         ];
 
         $payload = [
+            'approval_references' => [],
             'business_date' => $businessDate,
             'buyer' => $buyer,
             'cashier_id' => $cashierUuid,

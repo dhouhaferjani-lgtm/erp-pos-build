@@ -71,7 +71,7 @@ const fiscalReceiptContext = {
   shiftId: TEST_SHIFT_ID,
   seller: {
     name: 'Integration Seller SA',
-    taxNumber: 'FR123456789',
+    taxNumber: '123456789',
     countryCode: 'FR',
     street: '1 Rue Integration',
     city: 'Paris',

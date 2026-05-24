@@ -130,12 +130,13 @@ class FirstTenantProductionSecurityTest extends TestCase
         }
     }
 
-    public function test_manager_pin_endpoint_enforces_per_ip_per_user_rate_limit(): void
+    public function test_manager_pin_endpoint_enforces_target_context_rate_limit(): void
     {
         // The ManagerPinController uses a hand-rolled key
-        // 'verify-manager-pin:<ip>:<user_id>' with 3 attempts per 30 seconds.
+        // 'verify-manager-pin:<tenant_id>:<terminal_id>:<user_id>:<approval_scope>'
+        // with 3 attempts per 30 seconds.
         // Verify the key shape and threshold are still in place so a brute
-        // force attack on a single manager PIN gets HTTP 429 after the
+        // force attack on a single approval target gets HTTP 429 after the
         // third attempt, regardless of the network-wide login throttle.
         $controllerSource = file_get_contents(
             base_path('app/Modules/POS/Presentation/Controllers/ManagerPinController.php'),
@@ -143,9 +144,9 @@ class FirstTenantProductionSecurityTest extends TestCase
 
         $this->assertNotFalse($controllerSource);
         $this->assertStringContainsString(
-            "'verify-manager-pin:'.\$request->ip().':'.\$userId",
+            "'verify-manager-pin:'.\$caller->tenant_id.':'.\$terminalId.':'.\$userId.':'.\$approvalScope->value",
             $controllerSource,
-            'ManagerPinController must keep the per-(IP, user_id) rate-limit key shape.',
+            'ManagerPinController must keep the per approval target rate-limit key shape.',
         );
         $this->assertStringContainsString(
             'RateLimiter::tooManyAttempts($key, 3)',

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Fiscal\Domain\DTOs;
 
 /**
- * SALE_RECEIPT payload — canonical 27-key Candidate C-v3 shape (synthesis v5).
+ * SALE_RECEIPT payload — canonical 28-key Candidate C-v3 shape (synthesis v5 + Phase 4 approval references).
  *
  * Replaces the Phase 1 v1 10-key shape (currency / discount_total / lines /
  * payment_lines / subtotal / tax_total / total / vat_breakdown / voucher_redemptions /
@@ -34,6 +34,7 @@ final readonly class SaleReceiptPayload
 {
     /**
      * @param  array<string, mixed>  $buyer  null OR BuyerBlock per §3
+     * @param  list<array<string, mixed>>  $approvalReferences
      * @param  list<array<string, mixed>>  $lineItems
      * @param  array<string, mixed>  $originalReceiptReference  null on plain SALE
      * @param  list<array<string, mixed>>  $payments
@@ -42,6 +43,7 @@ final readonly class SaleReceiptPayload
      * @param  list<array<string, mixed>>  $vouchersRedeemed
      */
     public function __construct(
+        public array $approvalReferences,
         public string $businessDate,
         public ?array $buyer,
         public string $cashierId,
@@ -83,6 +85,7 @@ final readonly class SaleReceiptPayload
 
         // Required list-shaped containers; validator enforces list-ness +
         // per-row monetary fields. DTO surface stores raw.
+        $approvalReferences = FiscalPayloadArrayGuards::requireArray($data, 'approval_references');
         $lineItems = FiscalPayloadArrayGuards::requireArray($data, 'line_items');
         $payments = FiscalPayloadArrayGuards::requireArray($data, 'payments');
         $vatBreakdown = FiscalPayloadArrayGuards::requireArray($data, 'vat_breakdown');
@@ -93,6 +96,8 @@ final readonly class SaleReceiptPayload
         $originalReceiptReference = FiscalPayloadArrayGuards::optionalArray($data, 'original_receipt_reference');
 
         return new self(
+            // @phpstan-ignore-next-line argument.type
+            approvalReferences: $approvalReferences,
             businessDate: FiscalPayloadArrayGuards::requireString($data, 'business_date'),
             // @phpstan-ignore-next-line argument.type
             buyer: $buyer,
@@ -136,6 +141,7 @@ final readonly class SaleReceiptPayload
     public function toArray(): array
     {
         return [
+            'approval_references' => $this->approvalReferences,
             'business_date' => $this->businessDate,
             'buyer' => $this->buyer,
             'cashier_id' => $this->cashierId,

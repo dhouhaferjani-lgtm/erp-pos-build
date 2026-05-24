@@ -1,26 +1,34 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
-import { apiPost } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import type { Operator } from '@/stores/operatorStore';
+import {
+  authorPosOverride,
+  type PosOverrideContext,
+  type PosOverrideEvidence,
+} from '@/lib/operatorApproval/posOverrideAuthoring';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
 
 type DiscountType = 'percentage' | 'fixed';
+
+export interface DiscountApplyPayload {
+  type: 'percentage' | 'fixed';
+  value: string;
+  reason: string;
+  approvalEvidence?: PosOverrideEvidence;
+}
 
 export interface DiscountModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyTransactionDiscount: (data: {
-    type: 'percentage' | 'fixed';
-    value: string;
-    reason: string;
-  }) => void;
+  onApplyTransactionDiscount: (data: DiscountApplyPayload) => void;
   canDiscount: boolean;
   maxDiscountPercent: number;
   terminalMaxDiscountPercent: number;
   disabledReason?: string;
   requiresReason: boolean;
+  approvalContext?: PosOverrideContext;
 }
 
 const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'C'];
@@ -32,9 +40,10 @@ export function DiscountModal({
   onApplyTransactionDiscount,
   canDiscount,
   maxDiscountPercent,
-  terminalMaxDiscountPercent,
+  terminalMaxDiscountPercent: _terminalMaxDiscountPercent,
   disabledReason,
   requiresReason,
+  approvalContext,
 }: DiscountModalProps) {
   const { t } = useTranslation('pos');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -49,6 +58,7 @@ export function DiscountModal({
   const [managerPin, setManagerPin] = useState('');
   const [managerError, setManagerError] = useState<string | null>(null);
   const [verifyingPin, setVerifyingPin] = useState(false);
+  const targetReferenceIdRef = useRef<string>(crypto.randomUUID());
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -59,6 +69,7 @@ export function DiscountModal({
       setNeedsApproval(false);
       setManagerPin('');
       setManagerError(null);
+      targetReferenceIdRef.current = crypto.randomUUID();
     }
   }, [isOpen]);
 
@@ -132,24 +143,46 @@ export function DiscountModal({
     setManagerError(null);
     setVerifyingPin(true);
     try {
-      const manager = await apiPost<Operator>('/pos/auth/verify-pin', { pin: managerPin });
-
-      if (!manager.can_discount) {
-        setManagerError(t('discount.managerDenied'));
+      if (approvalContext === undefined) {
+        setManagerError(t('discount.approvalEvidenceRequired'));
         return;
       }
 
-      const managerLimit = manager.max_discount_percent ?? terminalMaxDiscountPercent;
-      const managerMax = Math.min(managerLimit, terminalMaxDiscountPercent);
-      if (discountType === 'percentage' && parseFloat(value) > managerMax) {
-        setManagerError(t('discount.managerDenied'));
-        return;
-      }
+      const reasonText = reason.trim();
+      const manager = await verifyScopedManagerPin({
+        pin: managerPin,
+        context: approvalContext,
+        approvalScope: 'discount_limit_override',
+        targetEventType: 'DISCOUNT_LIMIT_OVERRIDE',
+        targetReferenceId: targetReferenceIdRef.current,
+        reason: reasonText || 'Discount limit override',
+      });
+      const approvalEvidence = await authorPosOverride({
+        context: approvalContext,
+        supervisor: {
+          id: manager.id,
+          name: manager.name,
+          roles: manager.roles,
+        },
+        approvalScope: 'discount_limit_override',
+        targetEventType: 'DISCOUNT_LIMIT_OVERRIDE',
+        targetReferenceId: targetReferenceIdRef.current,
+        target: {
+          discount_type: discountType,
+          discount_value: value,
+          reason: reasonText,
+          target_reference_id: targetReferenceIdRef.current,
+        },
+        policyVersion: 'pos-discount-policy-v1',
+        reasonCode: reasonText === '' ? 'discount_limit_override' : 'manager_reason',
+        reasonText: reasonText || null,
+      });
 
       onApplyTransactionDiscount({
         type: discountType,
         value,
         reason: reason.trim(),
+        approvalEvidence,
       });
       setValue('');
       setReason('');
@@ -161,7 +194,7 @@ export function DiscountModal({
     } finally {
       setVerifyingPin(false);
     }
-  }, [managerPin, discountType, value, reason, terminalMaxDiscountPercent, onApplyTransactionDiscount, onClose, t]);
+  }, [managerPin, discountType, value, reason, approvalContext, onApplyTransactionDiscount, onClose, t]);
 
   if (!isOpen) return null;
 

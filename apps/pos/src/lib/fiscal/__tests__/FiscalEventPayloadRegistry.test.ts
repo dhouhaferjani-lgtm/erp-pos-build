@@ -8,11 +8,22 @@ import {
 describe('FiscalEventPayloadRegistry', () => {
   const registry = new FiscalEventPayloadRegistry();
 
-  it('marks all four Phase 1 event types as implemented', () => {
+  it('marks implemented fiscal event types as implemented', () => {
     expect(registry.isImplemented('SALE_RECEIPT')).toBe(true);
     expect(registry.isImplemented('CHAIN_BREAK_DETECTED')).toBe(true);
     expect(registry.isImplemented('CHAIN_RESTART')).toBe(true);
     expect(registry.isImplemented('TERMINAL_REGISTRY_SNAPSHOT')).toBe(true);
+    expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
+    expect(registry.isImplemented('ACCOUNT_CHARGE')).toBe(true);
+    expect(registry.isImplemented('ACCOUNT_STATUS_CHANGED')).toBe(true);
+    expect(registry.isImplemented('OPERATOR_APPROVAL_GRANTED')).toBe(true);
+    expect(registry.isImplemented('OVERRIDE_CREDIT_LIMIT')).toBe(true);
+    expect(registry.isImplemented('OVERRIDE_ACCOUNT_STATUS')).toBe(true);
+    expect(registry.isImplemented('OVERRIDE_DISCOUNT_LIMIT')).toBe(true);
+    expect(registry.isImplemented('OVERRIDE_TENDER_TOLERANCE')).toBe(true);
+    expect(registry.isImplemented('OVERRIDE_VOID_OR_RETURN')).toBe(true);
+    expect(registry.isImplemented('CASH_OUT')).toBe(true);
+    expect(registry.isImplemented('SAFE_DROP')).toBe(true);
   });
 
   it('marks reserved-not-implemented types as unimplemented', () => {
@@ -25,16 +36,12 @@ describe('FiscalEventPayloadRegistry', () => {
       'RETURN_WITHOUT_RECEIPT',
       'OPENING_FLOAT',
       'CASH_IN',
-      'CASH_OUT',
-      'SAFE_DROP',
       'CASH_CORRECTION',
       'SESSION_OPEN',
       'SESSION_CLOSE',
       'X_REPORT',
       'Z_REPORT',
       'REPRINT_COPY',
-      'ACCOUNT_PAYMENT',
-      'ACCOUNT_CHARGE',
       'ACCOUNT_REFUND',
       'ACCOUNT_PAYMENT_RECONCILED',
       'ACCOUNT_CREDIT_ISSUE',
@@ -53,6 +60,37 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.eventVersionFor('CHAIN_BREAK_DETECTED')).toBe(1);
     expect(registry.eventVersionFor('CHAIN_RESTART')).toBe(1);
     expect(registry.eventVersionFor('TERMINAL_REGISTRY_SNAPSHOT')).toBe(1);
+    expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+    expect(registry.eventVersionFor('ACCOUNT_CHARGE')).toBe(1);
+    expect(registry.eventVersionFor('ACCOUNT_STATUS_CHANGED')).toBe(1);
+    expect(registry.eventVersionFor('OPERATOR_APPROVAL_GRANTED')).toBe(1);
+    expect(registry.eventVersionFor('OVERRIDE_CREDIT_LIMIT')).toBe(1);
+    expect(registry.eventVersionFor('OVERRIDE_ACCOUNT_STATUS')).toBe(1);
+    expect(registry.eventVersionFor('OVERRIDE_DISCOUNT_LIMIT')).toBe(1);
+    expect(registry.eventVersionFor('OVERRIDE_TENDER_TOLERANCE')).toBe(1);
+    expect(registry.eventVersionFor('OVERRIDE_VOID_OR_RETURN')).toBe(1);
+    expect(registry.eventVersionFor('CASH_OUT')).toBe(1);
+    expect(registry.eventVersionFor('SAFE_DROP')).toBe(1);
+  });
+
+  it('implements ACCOUNT_PAYMENT at version 1 without changing server-only types', () => {
+    expect(registry.isImplemented('ACCOUNT_PAYMENT')).toBe(true);
+    expect(registry.eventVersionFor('ACCOUNT_PAYMENT')).toBe(1);
+    expect(registry.serverOnlyTypes()).toEqual([
+      'TERMINAL_REGISTRY_SNAPSHOT',
+      'COMPANY_DAY_CLOSURE_MANIFEST',
+      'ACCOUNT_STATUS_CHANGED',
+    ]);
+  });
+
+  it('implements ACCOUNT_CHARGE at version 1 without changing server-only types', () => {
+    expect(registry.isImplemented('ACCOUNT_CHARGE')).toBe(true);
+    expect(registry.eventVersionFor('ACCOUNT_CHARGE')).toBe(1);
+    expect(registry.serverOnlyTypes()).toEqual([
+      'TERMINAL_REGISTRY_SNAPSHOT',
+      'COMPANY_DAY_CLOSURE_MANIFEST',
+      'ACCOUNT_STATUS_CHANGED',
+    ]);
   });
 
   it('throws FiscalEventTypeNotImplementedError when resolving a reserved type', () => {
@@ -81,6 +119,17 @@ describe('FiscalEventPayloadRegistry', () => {
         'CHAIN_BREAK_DETECTED',
         'CHAIN_RESTART',
         'TERMINAL_REGISTRY_SNAPSHOT',
+        'ACCOUNT_PAYMENT',
+        'ACCOUNT_CHARGE',
+        'ACCOUNT_STATUS_CHANGED',
+        'OPERATOR_APPROVAL_GRANTED',
+        'OVERRIDE_CREDIT_LIMIT',
+        'OVERRIDE_ACCOUNT_STATUS',
+        'OVERRIDE_DISCOUNT_LIMIT',
+        'OVERRIDE_TENDER_TOLERANCE',
+        'OVERRIDE_VOID_OR_RETURN',
+        'CASH_OUT',
+        'SAFE_DROP',
       ]),
     );
   });
@@ -103,10 +152,18 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isServerOnly('COMPANY_DAY_CLOSURE_MANIFEST')).toBe(true);
   });
 
+  it('marks ACCOUNT_STATUS_CHANGED as server-only administrative carve-out', () => {
+    expect(registry.isServerOnly('ACCOUNT_STATUS_CHANGED')).toBe(true);
+  });
+
   it('marks SALE_RECEIPT / CHAIN_BREAK_DETECTED / CHAIN_RESTART as NOT server-only (device-authored)', () => {
     expect(registry.isServerOnly('SALE_RECEIPT')).toBe(false);
     expect(registry.isServerOnly('CHAIN_BREAK_DETECTED')).toBe(false);
     expect(registry.isServerOnly('CHAIN_RESTART')).toBe(false);
+    expect(registry.isServerOnly('ACCOUNT_PAYMENT')).toBe(false);
+    expect(registry.isServerOnly('ACCOUNT_CHARGE')).toBe(false);
+    expect(registry.isServerOnly('OPERATOR_APPROVAL_GRANTED')).toBe(false);
+    expect(registry.isServerOnly('OVERRIDE_CREDIT_LIMIT')).toBe(false);
   });
 
   it('serverOnlyTypes() returns the stable §11.0 set', () => {
@@ -114,6 +171,7 @@ describe('FiscalEventPayloadRegistry', () => {
       new Set<FiscalEventTypeValue>([
         'TERMINAL_REGISTRY_SNAPSHOT',
         'COMPANY_DAY_CLOSURE_MANIFEST',
+        'ACCOUNT_STATUS_CHANGED',
       ]),
     );
   });

@@ -9,6 +9,11 @@ import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { useCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import { verifyScopedManagerPin } from '@/lib/operatorApproval/scopedManagerPin';
+import { authorPosOverride } from '@/lib/operatorApproval/posOverrideAuthoring';
+import type { PosOverrideContext, PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
+import { ensureApprovalFiscalEventsSynced } from '@/lib/operatorApproval/approvalFiscalSync';
+import { useTerminalStore } from '@/stores/terminalStore';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
 interface ReceiptLine {
@@ -30,11 +35,12 @@ interface ReceiptDetail {
 interface VoidReturnModalProps {
   isOpen: boolean;
   onClose: () => void;
+  approvalContext?: PosOverrideContext;
 }
 
 type ActionTab = 'void' | 'return';
 
-export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
+export function VoidReturnModal({ isOpen, onClose, approvalContext }: VoidReturnModalProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
   const isOnline = useConnectivityStore((s) => s.isOnline);
@@ -48,6 +54,43 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
   const [actionTab, setActionTab] = useState<ActionTab>('void');
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState('');
+  const [managerPin, setManagerPin] = useState('');
+
+  const authorizeVoidReturn = useCallback(async (
+    targetEventType: string,
+    targetReferenceId: string,
+    target: Record<string, unknown>,
+  ): Promise<PosOverrideEvidence> => {
+    if (approvalContext === undefined) {
+      throw new Error(t('voidReturn.approvalRequired'));
+    }
+
+    const reasonText = reason.trim();
+    const manager = await verifyScopedManagerPin({
+      pin: managerPin,
+      context: approvalContext,
+      approvalScope: 'void_or_return_override',
+      targetEventType,
+      targetReferenceId,
+      reason: reasonText || 'Void or return override',
+    });
+
+    return authorPosOverride({
+      context: approvalContext,
+      supervisor: {
+        id: manager.id,
+        name: manager.name,
+        roles: manager.roles,
+      },
+      approvalScope: 'void_or_return_override',
+      targetEventType,
+      targetReferenceId,
+      target,
+      policyVersion: 'pos-void-return-policy-v1',
+      reasonCode: reasonText === '' ? 'void_or_return_override' : 'manager_reason',
+      reasonText: reasonText || null,
+    });
+  }, [approvalContext, managerPin, reason, t]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -127,32 +170,43 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
     setIsProcessing(true);
     setError(null);
     try {
+      const reasonText = reason.trim();
       if (isLocalReceipt) {
-        // Void a local unsynced receipt — mark as voided in SQLite
-        const { companyId } = useAuthStore.getState();
-        const db = await getDatabase(companyId ?? '');
-        const { execute } = await import('@/lib/db');
-        await execute(
-          db,
-          'UPDATE offline_receipts SET voided = 1, void_reason = $1 WHERE id = $2',
-          [reason.trim(), receipt.id],
-        );
-        setSuccessMsg(t('voidReturn.confirmVoid'));
-      } else {
-        // Void a server receipt — requires API
-        await apiPost<unknown>(`/pos/receipts/${receipt.id}/void`, {
-          reason: reason.trim(),
-        });
-        setSuccessMsg(t('voidReturn.confirmVoid'));
+        throw new Error(t('voidReturn.syncBeforeVoid'));
       }
+      const approvalEvidence = await authorizeVoidReturn(
+        'POS_RECEIPT_VOID',
+        receipt.id,
+        {
+          receipt_id: receipt.id,
+          receipt_number: receipt.receipt_number,
+          reason: reasonText,
+        },
+      );
+      const { companyId } = useAuthStore.getState();
+      await ensureApprovalFiscalEventsSynced(companyId ?? '', [
+        approvalEvidence.approval_event_id,
+        approvalEvidence.override_event_id,
+      ]);
+      await apiPost<unknown>(`/pos/receipts/${receipt.id}/void`, {
+        reason: reasonText,
+        approval_id: approvalEvidence.approval_id,
+        approval_fiscal_event_id: approvalEvidence.approval_event_id,
+        approval_scope: approvalEvidence.approval_scope,
+        approval_supervisor_user_id: approvalEvidence.supervisor_user_id,
+        approval_override_event_id: approvalEvidence.override_event_id,
+        authorized_by_user_id: approvalEvidence.supervisor_user_id,
+      });
+      setSuccessMsg(t('voidReturn.confirmVoid'));
       setReceipt(null);
       setReason('');
+      setManagerPin('');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
-  }, [receipt, reason, t, isLocalReceipt]);
+  }, [receipt, reason, authorizeVoidReturn, t, isLocalReceipt]);
 
   const handleReturn = useCallback(async () => {
     if (!receipt || selectedLines.size === 0) return;
@@ -162,21 +216,51 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
       const lines = receipt.lines
         .filter((l) => selectedLines.has(l.id))
         .map((l) => ({ line_id: l.id, quantity: l.quantity }));
+      const reasonText = reason.trim();
+      const approvalEvidence = await authorizeVoidReturn(
+        'POS_RECEIPT_RETURN',
+        receipt.id,
+        {
+          receipt_id: receipt.id,
+          receipt_number: receipt.receipt_number,
+          line_ids: lines.map((line) => line.line_id).sort(),
+          reason: reasonText,
+        },
+      );
+      const terminal = useTerminalStore.getState().terminal;
+      if (!terminal) {
+        throw new Error(t('errors.noTerminalSelected'));
+      }
+      const { companyId } = useAuthStore.getState();
+      await ensureApprovalFiscalEventsSynced(companyId ?? '', [
+        approvalEvidence.approval_event_id,
+        approvalEvidence.override_event_id,
+      ]);
 
       await apiPost<unknown>(`/pos/receipts/${receipt.id}/return`, {
         lines,
-        reason: reason.trim(),
+        return_reason: 'other',
+        notes: reasonText,
+        terminal_id: terminal.id,
+        approval_id: approvalEvidence.approval_id,
+        approval_fiscal_event_id: approvalEvidence.approval_event_id,
+        approval_scope: approvalEvidence.approval_scope,
+        approval_supervisor_user_id: approvalEvidence.supervisor_user_id,
+        approval_override_event_id: approvalEvidence.override_event_id,
+        authorized_by_user_id: approvalEvidence.supervisor_user_id,
+        override_reason: reasonText,
       });
       setSuccessMsg(t('voidReturn.confirmReturn'));
       setReceipt(null);
       setSelectedLines(new Set());
       setReason('');
+      setManagerPin('');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
-  }, [receipt, selectedLines, reason, t]);
+  }, [receipt, selectedLines, reason, authorizeVoidReturn, t]);
 
   const handleClose = useCallback(() => {
     setSearchQuery('');
@@ -185,6 +269,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
     setSuccessMsg(null);
     setSelectedLines(new Set());
     setReason('');
+    setManagerPin('');
     onClose();
   }, [onClose]);
 
@@ -327,11 +412,24 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
               />
             </div>
 
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                {t('voidReturn.managerPin')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                inputMode="numeric"
+                value={managerPin}
+                onChange={(e) => setManagerPin(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
             {/* Action button */}
             {actionTab === 'void' ? (
               <button
                 onClick={() => void handleVoid()}
-                disabled={isProcessing}
+                disabled={isProcessing || managerPin.length < 4}
                 className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-red-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('voidReturn.confirmVoid')}
@@ -339,7 +437,7 @@ export function VoidReturnModal({ isOpen, onClose }: VoidReturnModalProps) {
             ) : (
               <button
                 onClick={() => void handleReturn()}
-                disabled={isProcessing || selectedLines.size === 0}
+                disabled={isProcessing || selectedLines.size === 0 || managerPin.length < 4}
                 className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-amber-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('voidReturn.confirmReturn')}

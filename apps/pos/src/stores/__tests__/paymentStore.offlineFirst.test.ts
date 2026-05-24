@@ -48,6 +48,26 @@ vi.mock('@/lib/offline/offlineCheckoutService', () => ({
   executeCheckout: vi.fn(),
 }));
 
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: vi.fn(async () => ({
+    id: 'supervisor-1',
+    name: 'Supervisor',
+    roles: ['manager'],
+  })),
+}));
+
+vi.mock('@/lib/operatorApproval/posOverrideAuthoring', () => ({
+  authorPosOverride: vi.fn(async (input: { targetReferenceId: string }) => ({
+    approval_id: '10000000-0000-4000-8000-000000000001',
+    approval_event_id: '10000000-0000-4000-8000-000000000002',
+    approval_scope: 'tender_tolerance_override',
+    override_event_id: '10000000-0000-4000-8000-000000000003',
+    policy_version: 'pos-phase-4-v1',
+    supervisor_user_id: 'supervisor-1',
+    target_reference_id: input.targetReferenceId,
+  })),
+}));
+
 vi.mock('@/stores/syncStore', () => ({
   useSyncStore: {
     getState: vi.fn().mockReturnValue({
@@ -72,7 +92,7 @@ describe('paymentStore offline-first cash checkout', () => {
         id: 'company-1',
         name: 'Test Co',
         legalName: 'Test SA',
-        tax_id: 'FR123456789',
+        tax_id: '123456789',
         countryCode: 'FR',
         address_street: '1 Rue Test',
         address_city: 'Paris',
@@ -567,6 +587,46 @@ describe('paymentStore offline-first cash checkout', () => {
     expect(callArgs.payments).toHaveLength(2);
     expect(callArgs.payments[0]).toEqual(expect.objectContaining({ methodCode: 'CASH', amount: '20.00' }));
     expect(callArgs.payments[1]).toEqual(expect.objectContaining({ methodCode: 'CARD', amount: '30.00', cardLastFour: '1234' }));
+  });
+
+  it('under-tender advanced checkout authors tender tolerance evidence before receipt creation', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+    const { verifyScopedManagerPin } = await import('@/lib/operatorApproval/scopedManagerPin');
+    const { authorPosOverride } = await import('@/lib/operatorApproval/posOverrideAuthoring');
+
+    await usePaymentStore.getState().processAdvancedCheckout(
+      'term-1',
+      useCartStore.getState().items,
+      [{ payment_method_id: 'pm-cash', amount: 49, repository_id: 'repo-cash' }],
+      undefined,
+      undefined,
+      undefined,
+      { tenderTolerancePin: '1234' },
+    );
+
+    expect(verifyScopedManagerPin).toHaveBeenCalledWith(expect.objectContaining({
+      pin: '1234',
+      approvalScope: 'tender_tolerance_override',
+      targetEventType: 'SALE_RECEIPT',
+    }));
+    expect(authorPosOverride).toHaveBeenCalledWith(expect.objectContaining({
+      approvalScope: 'tender_tolerance_override',
+      targetEventType: 'SALE_RECEIPT',
+      target: expect.objectContaining({
+        tendered_amount: '49.00',
+        total_amount: '50.00',
+        shortfall_amount: '1.00',
+      }),
+    }));
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenderToleranceEvidence: expect.objectContaining({
+          approval_scope: 'tender_tolerance_override',
+          override_event_id: '10000000-0000-4000-8000-000000000003',
+        }),
+      }),
+    );
   });
 
   it('advanced checkout throws clearly when a payment method is unknown', async () => {

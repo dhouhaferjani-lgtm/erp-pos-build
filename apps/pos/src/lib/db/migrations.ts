@@ -1114,4 +1114,180 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Customer Accounts Phase 2 (Task 2) — local POS customer mirror.
+    //
+    // This is inbound reference data for cashier search/attach and account
+    // balance display. It is intentionally scoped by tenant_id + company_id
+    // on every key and lookup; account-payment fiscal authoring must never
+    // resolve a customer from another company when the same customer UUID is
+    // present in a different local tenant/company cache.
+    version: 39,
+    name: 'create_customers_mirror',
+    sql: `
+      CREATE TABLE IF NOT EXISTS customers (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        tax_number TEXT,
+        customer_category TEXT,
+        receivable_balance TEXT NOT NULL DEFAULT '0.0000',
+        credit_balance TEXT NOT NULL DEFAULT '0.0000',
+        balance_updated_at TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sync_version TEXT,
+        updated_at TEXT,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(tenant_id, company_id, name);
+      CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(tenant_id, company_id, phone);
+      CREATE INDEX IF NOT EXISTS idx_customers_tax_number ON customers(tenant_id, company_id, tax_number);
+    `,
+  },
+  {
+    // Customer Accounts Phase 2 (Task 5) — local pending customer create
+    // outbox plus client→server alias mirror. Both tables are scoped by
+    // tenant_id + company_id so fiscal authoring cannot resolve a local
+    // pending UUID through another company's server Partner alias.
+    version: 40,
+    name: 'create_pending_customer_alias_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS pending_customer_outbox (
+        client_customer_uuid TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'failed')),
+        sync_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_customer_outbox_status
+        ON pending_customer_outbox(tenant_id, company_id, status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS customer_aliases (
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        client_customer_uuid TEXT NOT NULL,
+        server_partner_id TEXT NOT NULL,
+        resolved_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_customer_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_aliases_server_partner
+        ON customer_aliases(tenant_id, company_id, server_partner_id);
+    `,
+  },
+  {
+    // Phase 3 Task 3 — charge-to-account credit controls for offline
+    // account-charge authoring. These remain inbound mirror fields only:
+    // tenant_id + company_id scoping is still enforced by the customers
+    // composite primary key and repository lookups.
+    version: 41,
+    name: 'add_account_charge_credit_controls_to_customers',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE customers ADD COLUMN credit_limit TEXT',
+        'ALTER TABLE customers ADD COLUMN payment_terms_days INTEGER',
+        'ALTER TABLE customers ADD COLUMN charge_account_enabled INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE customers ADD COLUMN charge_policy_version TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 6 — account-status mirror for account-charge fail-closed rules.
+    version: 42,
+    name: 'add_account_status_to_customers_mirror',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE customers ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended', 'closed', 'disputed'))",
+        'ALTER TABLE customers ADD COLUMN account_status_changed_at TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_reason TEXT',
+        'ALTER TABLE customers ADD COLUMN account_status_version INTEGER NOT NULL DEFAULT 1',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 7 — scoped approval metadata for offline supervisor PIN checks.
+    version: 43,
+    name: 'add_scoped_approval_metadata_to_operator_pins',
+    sql: '',
+    async run(db) {
+      const statements = [
+        "ALTER TABLE operator_pins ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE operator_pins ADD COLUMN company_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE operator_pins ADD COLUMN approval_scopes TEXT NOT NULL DEFAULT '[]'",
+        'ALTER TABLE operator_pins ADD COLUMN approval_scope_permissions_fetched_at TEXT',
+        "ALTER TABLE operator_pins ADD COLUMN approval_mirror_status TEXT NOT NULL DEFAULT 'fresh' CHECK (approval_mirror_status IN ('fresh', 'server_quarantined'))",
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
+  {
+    // Phase 4 Task 10 — approval evidence for legacy cash drawer DEPOSIT/PAYOUT queue rows.
+    version: 44,
+    name: 'add_cash_drawer_approval_evidence',
+    sql: '',
+    async run(db) {
+      const statements = [
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_fiscal_event_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_scope TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_supervisor_user_id TEXT',
+        'ALTER TABLE offline_cash_drawer_ops ADD COLUMN approval_target_hash TEXT',
+      ];
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+    },
+  },
 ];

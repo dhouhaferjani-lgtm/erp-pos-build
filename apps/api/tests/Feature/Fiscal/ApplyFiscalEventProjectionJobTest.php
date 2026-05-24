@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -27,7 +28,6 @@ use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1234,10 +1234,11 @@ final class ApplyFiscalEventProjectionJobTest extends TestCase
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
 
-        // Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+        // Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
         // synthesis v5 §3.
         $payload = [
             'business_date' => $businessDate->toDateString(),
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',

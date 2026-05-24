@@ -21,6 +21,7 @@ import { hydrateFromReceipt } from '@/lib/refundFlow/hydrateFromReceipt';
 import { ReceiptScanConfirmationSheet } from '@/components/pos/ReceiptScanConfirmationSheet';
 import { ReceiptLocatorScreen } from '@/components/pos/ReceiptLocatorScreen';
 import { ResumeRefundDraftBanner } from '@/components/pos/ResumeRefundDraftBanner';
+import { CustomerAttachPanel } from '@/components/customers/CustomerAttachPanel';
 import { getErrorMessage } from '@/lib/api';
 import { useCurrency } from '@/lib/currency';
 import { resolveDiscountAccess } from '@/lib/discountPermissions';
@@ -52,6 +53,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import type { ConsumptionMode } from '@/components/atoms/ConsumptionModeToggle';
 import type { POSProduct } from '@/types/product';
 import type { SelectedModifier } from '@/types/cart';
+import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 
 /**
  * Look up the receipt's signed QR token from the local SQLite index.
@@ -130,6 +132,7 @@ export function HomePage() {
   const clearLastReceipt = usePaymentStore((s) => s.clearLastReceipt);
   const lastReceiptIdempotencyKey = usePaymentStore((s) => s.lastReceiptIdempotencyKey);
   const lastReceiptServerId = usePaymentStore((s) => s.lastReceiptServerId);
+  const lastReceiptPrintData = usePaymentStore((s) => s.lastReceiptPrintData);
   const paymentError = usePaymentStore((s) => s.error);
 
   // Hold store
@@ -146,6 +149,23 @@ export function HomePage() {
   // companyId is known and reused across modal opens (getDatabase is
   // idempotent for the same companyId — it returns the cached handle).
   const companyIdForVoucherDb = useAuthStore((s) => s.companyId);
+  const activeCompanyId = useAuthStore((s) => s.companyId);
+  const activeTenantId = useAuthStore((s) => s.user?.tenantId ?? null);
+  const activeUserId = useAuthStore((s) => s.user?.id ?? null);
+  const approvalContext = useMemo(() => {
+    if (!activeTenantId || !activeCompanyId || !terminal) return undefined;
+    const cashierUserId = operator?.id ?? activeUserId;
+    if (!cashierUserId) return undefined;
+
+    return {
+      tenantId: activeTenantId,
+      companyId: activeCompanyId,
+      terminalId: terminal.id,
+      cashierUserId,
+      businessDate: new Date().toISOString().slice(0, 10),
+      isTraining: terminal.is_training_mode === true,
+    };
+  }, [activeTenantId, activeCompanyId, terminal, operator?.id, activeUserId]);
   const [voucherDb, setVoucherDb] = useState<import('@tauri-apps/plugin-sql').default | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -393,7 +413,7 @@ export function HomePage() {
         }
       })();
     },
-    [terminal?.id, handleProductBarcode, setPendingScanResult, t],
+    [handleProductBarcode, setPendingScanResult, t],
   );
 
   useBarcodeScanner({
@@ -598,6 +618,14 @@ export function HomePage() {
       try {
         const companyId = useAuthStore.getState().companyId;
 
+        if (lastReceiptPrintData) {
+          if (!cancelled) {
+            setEscPosData(lastReceiptPrintData);
+            setEscPosSource('local');
+          }
+          return;
+        }
+
         if (lastReceiptServerId) {
           const fullReceipt = await fetchReceipt(lastReceiptServerId);
           const qrToken = await lookupQrToken(fullReceipt.receipt_number, companyId);
@@ -632,7 +660,7 @@ export function HomePage() {
     void loader();
 
     return () => { cancelled = true; };
-  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, escPosSource, receiptVisibility]);
+  }, [showSuccessModal, lastReceipt, lastReceiptIdempotencyKey, lastReceiptServerId, lastReceiptPrintData, escPosSource, receiptVisibility]);
 
   // Smart Prompts: fetch recommendations when cart changes
   useEffect(() => {
@@ -813,7 +841,10 @@ export function HomePage() {
   }, [cartItems.length]);
 
   const handleAdvancedComplete = useCallback(
-    async (payments: Parameters<typeof processAdvancedCheckout>[2]) => {
+    async (
+      payments: Parameters<typeof processAdvancedCheckout>[2],
+      options?: Parameters<typeof processAdvancedCheckout>[6],
+    ) => {
       if (!terminal) return;
       try {
         await processAdvancedCheckout(
@@ -823,6 +854,7 @@ export function HomePage() {
           transactionDiscount,
           isFnB ? consumptionMode : undefined,
           isFnB ? selectedTableId : undefined,
+          options,
         );
         setShowAdvancedModal(false);
         setShowSuccessModal(true);
@@ -865,11 +897,12 @@ export function HomePage() {
   );
 
   const handleApplyTransactionDiscount = useCallback(
-    (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
+    (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       useCartStore.getState().setTransactionDiscount({
         type: data.type,
         value: data.value,
         reason: data.reason || undefined,
+        approvalEvidence: data.approvalEvidence,
       });
     },
     [],
@@ -892,17 +925,18 @@ export function HomePage() {
           ...item,
           discount_type: undefined,
           discount_percent: undefined,
-          discount_amount: undefined,
-          discount_reason: undefined,
-          line_total: grossTotal.toFixed(currencyDecimals),
-          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
-        };
+	          discount_amount: undefined,
+	          discount_reason: undefined,
+	          discount_approval_evidence: undefined,
+	          line_total: grossTotal.toFixed(currencyDecimals),
+	          tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
+	        };
       }),
     }));
   }, [currencyDecimals]);
 
   const handleApplyLineDiscount = useCallback(
-    (data: { type: 'percentage' | 'fixed'; value: string; reason: string }) => {
+    (data: { type: 'percentage' | 'fixed'; value: string; reason: string; approvalEvidence?: PosOverrideEvidence }) => {
       if (!discountItemId) return;
 
       useCartStore.setState((state) => ({
@@ -920,9 +954,10 @@ export function HomePage() {
             ...item,
             discount_type: data.type,
             discount_percent: data.type === 'percentage' ? data.value : undefined,
-            discount_amount: discountAmount.toFixed(currencyDecimals),
-            discount_reason: data.reason || undefined,
-            line_total: lineTotal.toFixed(currencyDecimals),
+	            discount_amount: discountAmount.toFixed(currencyDecimals),
+	            discount_reason: data.reason || undefined,
+	            discount_approval_evidence: data.approvalEvidence,
+	            line_total: lineTotal.toFixed(currencyDecimals),
             tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
           };
         }),
@@ -1061,34 +1096,42 @@ export function HomePage() {
       )}
 
       {/* Cart - left panel (first in DOM) */}
-      <div className="flex-[4] min-w-[340px] border-r border-gray-200">
-        <TransactionCart
-          items={cartItems}
-          subtotal={subtotal()}
-          taxAmount={taxAmount()}
-          discountAmount={discountAmount()}
-          total={total()}
-          itemCount={itemCount()}
-          hasDiscount={!!transactionDiscount}
-          onUpdateQuantity={updateQuantity}
-          onRemoveItem={removeItem}
-          onClearCart={clearCart}
-          onPayCash={handlePayCash}
-          onAdvancedPayments={handleAdvancedPayments}
-          onQuantityTap={handleQuantityTap}
-          onDiscount={() => setShowDiscountModal(true)}
-          onHold={() => void handleHold()}
-          onRecall={() => setShowHeldModal(true)}
-          onReturns={() => setShowReceiptLocator(true)}
-          onLineDiscount={handleLineDiscount}
-          onRemoveLineDiscount={handleRemoveLineDiscount}
-          onEditModifiers={handleEditModifiers}
-          onRemoveDiscount={handleRemoveDiscount}
-          paymentMethods={paymentMethods}
-          paymentRepositories={paymentRepositories}
-          checkoutDisabled={!hashChainReady || isProcessing}
-          netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
+      <div className="flex min-w-[340px] flex-[4] flex-col border-r border-gray-200">
+        <CustomerAttachPanel
+          tenantId={activeTenantId}
+          companyId={activeCompanyId}
+          terminalId={terminal?.id ?? null}
+          onAccountPaymentComplete={() => setShowSuccessModal(true)}
         />
+        <div className="min-h-0 flex-1">
+          <TransactionCart
+            items={cartItems}
+            subtotal={subtotal()}
+            taxAmount={taxAmount()}
+            discountAmount={discountAmount()}
+            total={total()}
+            itemCount={itemCount()}
+            hasDiscount={!!transactionDiscount}
+            onUpdateQuantity={updateQuantity}
+            onRemoveItem={removeItem}
+            onClearCart={clearCart}
+            onPayCash={handlePayCash}
+            onAdvancedPayments={handleAdvancedPayments}
+            onQuantityTap={handleQuantityTap}
+            onDiscount={() => setShowDiscountModal(true)}
+            onHold={() => void handleHold()}
+            onRecall={() => setShowHeldModal(true)}
+            onReturns={() => setShowReceiptLocator(true)}
+            onLineDiscount={handleLineDiscount}
+            onRemoveLineDiscount={handleRemoveLineDiscount}
+            onEditModifiers={handleEditModifiers}
+            onRemoveDiscount={handleRemoveDiscount}
+            paymentMethods={paymentMethods}
+            paymentRepositories={paymentRepositories}
+            checkoutDisabled={!hashChainReady || isProcessing}
+            netTotal={activeRefundReceiptUuid !== null ? netTotal : undefined}
+          />
+        </div>
       </div>
 
       {/* Product grid - right panel (second in DOM) */}
@@ -1179,6 +1222,7 @@ export function HomePage() {
             : undefined
         }
         requiresReason={true}
+        approvalContext={approvalContext}
       />
 
       {/* Line discount modal */}
@@ -1195,6 +1239,8 @@ export function HomePage() {
             ? t(`pos:${lineDiscountAccess.disabledReason}`)
             : undefined
         }
+        approvalContext={approvalContext}
+        lineReferenceId={discountItemId}
       />
 
       {/* Modifier selection modal */}
@@ -1209,6 +1255,7 @@ export function HomePage() {
       <VoidReturnModal
         isOpen={showVoidReturnModal}
         onClose={() => setShowVoidReturnModal(false)}
+        approvalContext={approvalContext}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan

@@ -123,8 +123,19 @@ final class FiscalEventIngestionController extends Controller
         //     to a 500 — the device's authoring logic must not reuse a
         //     source-event-id across different fiscal events.
         $results = [];
-        foreach ($envelopes as $envelope) {
-            $results[] = $this->resultToWire($this->ingestor->ingest($envelope));
+        foreach ($envelopes as $index => $envelope) {
+            $result = $this->ingestor->ingest($envelope);
+            if ($result->rejectionCode === 'SERVER_ONLY_EVENT_TYPE') {
+                return response()->json([
+                    'error' => [
+                        'code' => 'SERVER_ONLY_EVENT_TYPE',
+                        'message' => 'Server-only fiscal event types cannot be ingested from a POS device.',
+                        'envelope_index' => $index,
+                    ],
+                ], 422);
+            }
+
+            $results[] = $this->resultToWire($result);
         }
 
         return response()->json(['results' => $results]);

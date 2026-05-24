@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+
+import { SALE_RECEIPT_PAYLOAD_KEYS } from '../FiscalEventEngine';
+import { ACCOUNT_PAYMENT_PAYLOAD_KEYS } from '../payloads/AccountPaymentPayload';
+import { ACCOUNT_CHARGE_PAYLOAD_KEYS } from '../payloads/AccountChargePayload';
+
+describe('Fiscal payload PHP/TS key drift gates', () => {
+  it('Pass 2A.TS — SALE_RECEIPT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpValidatorPayloadKeys('SALE_RECEIPT');
+    const tsKeys = [...SALE_RECEIPT_PAYLOAD_KEYS].sort();
+
+    expect(tsKeys).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(28);
+  });
+
+  it('Phase 2.7 — ACCOUNT_PAYMENT_PAYLOAD_KEYS byte-mirrors PHP PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpValidatorPayloadKeys('ACCOUNT_PAYMENT');
+    const tsKeys = [...ACCOUNT_PAYMENT_PAYLOAD_KEYS].sort();
+
+    expect(tsKeys).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(20);
+  });
+
+  it('Phase 3.1 R4 — ACCOUNT_CHARGE_PAYLOAD_KEYS byte-mirrors PHP DTO PAYLOAD_KEYS', () => {
+    const phpKeys = readPhpAccountChargePayloadKeys();
+    const tsKeys = [...ACCOUNT_CHARGE_PAYLOAD_KEYS].sort();
+
+    expect(tsKeys).toEqual([...phpKeys].sort());
+    expect(tsKeys).toHaveLength(28);
+  });
+});
+
+function readPhpValidatorPayloadKeys(eventType: 'SALE_RECEIPT' | 'ACCOUNT_PAYMENT'): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require('node:path') as typeof import('node:path');
+  const candidates = [
+    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
+    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php'),
+  ];
+  const phpPath = candidates.find((p) => fs.existsSync(p));
+  if (!phpPath) {
+    throw new Error(
+      `FiscalPayloadConstraintValidator.php not found at any candidate path: ${candidates.join(', ')}`,
+    );
+  }
+  const src = fs.readFileSync(phpPath, 'utf8');
+  const match = src.match(new RegExp(`'${eventType}'\\s*=>\\s*\\[([\\s\\S]*?)\\]`));
+  if (!match) {
+    throw new Error(`Could not locate '${eventType}' => [...] in ${phpPath}`);
+  }
+  const body = match[1] ?? '';
+  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
+  if (keys.length === 0) {
+    throw new Error(`No keys extracted for ${eventType} from ${phpPath}`);
+  }
+  return keys;
+}
+
+function readPhpAccountChargePayloadKeys(): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require('node:path') as typeof import('node:path');
+  const candidates = [
+    path.resolve(__dirname, '../../../../../../apps/api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
+    path.resolve(__dirname, '../../../../../api/app/Modules/Fiscal/Domain/DTOs/AccountChargePayload.php'),
+  ];
+  const phpPath = candidates.find((p) => fs.existsSync(p));
+  if (!phpPath) {
+    throw new Error(`AccountChargePayload.php not found at any candidate path: ${candidates.join(', ')}`);
+  }
+  const src = fs.readFileSync(phpPath, 'utf8');
+  const match = src.match(/public const PAYLOAD_KEYS = \[([\s\S]*?)\];/);
+  if (!match) {
+    throw new Error(`Could not locate AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
+  }
+  const body = match[1] ?? '';
+  const keys = Array.from(body.matchAll(/'([a-z_][a-z0-9_]*)'/g)).map((m) => m[1] as string);
+  if (keys.length === 0) {
+    throw new Error(`No keys extracted from AccountChargePayload::PAYLOAD_KEYS in ${phpPath}`);
+  }
+  return keys;
+}

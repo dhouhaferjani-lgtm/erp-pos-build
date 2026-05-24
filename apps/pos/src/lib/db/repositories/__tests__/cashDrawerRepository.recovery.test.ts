@@ -22,6 +22,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 import { migrations } from '@/lib/db/migrations';
 import {
+  insertCashDrawerOp,
   recoverStrandedSyncingCashDrawerOps,
   type OfflineCashDrawerOp,
 } from '../cashDrawerRepository';
@@ -191,5 +192,38 @@ d('recoverStrandedSyncingCashDrawerOps — boot-time crash recovery', () => {
     const recovered = await recoverStrandedSyncingCashDrawerOps(adapter.asDatabase());
 
     expect(recovered).toBe(0);
+  });
+
+  it('persists approval evidence for deposit and payout queue rows', async () => {
+    await insertCashDrawerOp(adapter.asDatabase(), {
+      id: 'op-approved',
+      idempotency_key: 'key-op-approved',
+      type: 'payout',
+      amount: '12.000',
+      reason: 'Petty cash',
+      operator_id: 'op-1',
+      operator_name: 'Cashier',
+      terminal_id: 't-1',
+      shift_id: 's-1',
+      status: 'pending',
+      approval_id: 'approval-1',
+      approval_fiscal_event_id: 'approval-event-1',
+      approval_scope: 'cash_drawer_control',
+      approval_supervisor_user_id: 'supervisor-1',
+      approval_target_hash: 'a'.repeat(64),
+    });
+
+    const rows = await adapter.select<OfflineCashDrawerOp[]>(
+      'SELECT * FROM offline_cash_drawer_ops WHERE id = $1',
+      ['op-approved'],
+    );
+
+    expect(rows[0]).toMatchObject({
+      approval_id: 'approval-1',
+      approval_fiscal_event_id: 'approval-event-1',
+      approval_scope: 'cash_drawer_control',
+      approval_supervisor_user_id: 'supervisor-1',
+      approval_target_hash: 'a'.repeat(64),
+    });
   });
 });

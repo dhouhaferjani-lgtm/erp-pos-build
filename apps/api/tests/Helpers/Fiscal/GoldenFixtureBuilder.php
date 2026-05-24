@@ -331,7 +331,7 @@ final class GoldenFixtureBuilder
         return self::baseEnvelope([
             'receipt_uuid' => '00000000-0000-4000-8000-000000000013',
             'cashier_name' => 'François Müller الكاشير',
-            'seller' => self::seller(['name' => 'Café Größenwahn al-Tunisi', 'tax_jurisdiction_country_code' => 'TN', 'tax_number' => '1234567A/A/A/000']),
+            'seller' => self::seller(['name' => 'Café Größenwahn al-Tunisi', 'tax_jurisdiction_country_code' => 'TN', 'tax_number' => '1234567AM000']),
             'line_items' => [
                 self::lineItem(['name' => 'Crème brûlée', 'unit_price' => '8.00', 'line_subtotal' => '8.00', 'line_vat' => '0.00', 'vat_rate' => '0.00', 'tax_category_code' => 'Z']),
             ],
@@ -395,6 +395,7 @@ final class GoldenFixtureBuilder
     private static function baseEnvelope(array $overrides): array
     {
         $defaults = [
+            'approval_references' => [],
             'business_date' => '2026-05-20',
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',

@@ -145,7 +145,7 @@ class PrivilegedAuditLogTest extends TestCase
             'ManagerPinController::verify must return user_id so the override audit chain links to the approving manager.',
         );
         $this->assertStringContainsString(
-            "'user_name' => \$valid ? \$manager->name : null",
+            "'user_name' => \$manager->name",
             $source,
             'ManagerPinController::verify must return user_name on success for human-readable audit display.',
         );

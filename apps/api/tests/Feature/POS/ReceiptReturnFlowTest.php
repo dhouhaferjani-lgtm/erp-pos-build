@@ -8,6 +8,8 @@ use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
@@ -23,6 +25,8 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -337,7 +341,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act: POST to return endpoint
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($saleReceipt, $requestData),
         );
 
         // Assert: 201 with correct return receipt shape
@@ -464,7 +468,7 @@ final class ReceiptReturnFlowTest extends TestCase
 
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($saleReceipt, $requestData),
         );
 
         $response->assertStatus(201);
@@ -533,7 +537,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($saleReceipt, $requestData),
         );
 
         // Assert: 400 error for invalid return data (over-return)
@@ -590,7 +594,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$voidedReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($voidedReceipt, $requestData),
         );
 
         // Assert: 422 error (RuntimeException path in controller)
@@ -649,7 +653,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$returnReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($returnReceipt, $requestData),
         );
 
         // Assert: 422 error -- cannot return a return receipt
@@ -691,21 +695,21 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act 1: Partial return of 2 -- should succeed
         $response1 = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $returnPayload('2'),
+            $this->withVoidReturnApproval($saleReceipt, $returnPayload('2')),
         );
         $response1->assertStatus(201);
 
         // Act 2: Another partial return of 2 -- should succeed (total returned = 4, remaining = 1)
         $response2 = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $returnPayload('2'),
+            $this->withVoidReturnApproval($saleReceipt, $returnPayload('2')),
         );
         $response2->assertStatus(201);
 
         // Act 3: Try to return 2 more -- should fail (only 1 remaining)
         $response3 = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $returnPayload('2'),
+            $this->withVoidReturnApproval($saleReceipt, $returnPayload('2')),
         );
         $response3->assertStatus(400);
         $this->assertEquals('INVALID_RETURN_DATA', $response3->json('error.code'));
@@ -714,7 +718,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act 4: Return the last 1 -- should succeed (total returned = 5, fully returned)
         $response4 = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $returnPayload('1'),
+            $this->withVoidReturnApproval($saleReceipt, $returnPayload('1')),
         );
         $response4->assertStatus(201);
 
@@ -775,7 +779,7 @@ final class ReceiptReturnFlowTest extends TestCase
         // Act: Process return
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$saleReceipt->id}/return",
-            $requestData,
+            $this->withVoidReturnApproval($saleReceipt, $requestData),
         );
 
         // Assert: Return succeeded
@@ -802,6 +806,118 @@ final class ReceiptReturnFlowTest extends TestCase
             'quantity_after' => $expectedQuantity,
             'reference_type' => 'pos_receipt_return',
             'reference_id' => $returnReceiptId,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestData
+     * @return array<string, mixed>
+     */
+    private function withVoidReturnApproval(Receipt $receipt, array $requestData): array
+    {
+        $lineIds = collect($requestData['lines'] ?? [])
+            ->pluck('line_id')
+            ->map(static fn (mixed $lineId): string => (string) $lineId)
+            ->sort()
+            ->values()
+            ->all();
+        $reason = (string) ($requestData['notes'] ?? '');
+        $target = [
+            'receipt_id' => $receipt->id,
+            'receipt_number' => $receipt->receipt_number,
+            'line_ids' => $lineIds,
+            'reason' => $reason,
+        ];
+
+        $approvalId = Str::uuid()->toString();
+        $approvalEventId = Str::uuid()->toString();
+        $overrideEventId = Str::uuid()->toString();
+
+        $approvalPayload = [
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'cashier_user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => $reason === '' ? null : $reason,
+            'regime_extensions' => null,
+            'requested_at_device' => now()->toISOString(),
+            'resolved_at_device' => now()->toISOString(),
+            'supervisor_user_id' => $this->user->id,
+            'supervisor_user_snapshot' => ['name' => $this->user->name, 'roles' => ['manager']],
+            'target' => $target,
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $this->terminal->id,
+            'training_flag' => false,
+        ];
+        $this->storeFiscalEvent($approvalEventId, FiscalEventType::OPERATOR_APPROVAL_GRANTED, $approvalPayload);
+
+        $overridePayload = [
+            'approval_event_id' => $approvalEventId,
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'override_context' => [
+                'target_event_type' => 'POS_RECEIPT_RETURN',
+                'target_reference_id' => $receipt->id,
+            ],
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => $reason === '' ? null : $reason,
+            'supervisor_user_id' => $this->user->id,
+            'target' => $target,
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $this->terminal->id,
+            'training_flag' => false,
+        ];
+        $this->storeFiscalEvent(
+            $overrideEventId,
+            FiscalEventType::OVERRIDE_VOID_OR_RETURN,
+            $overridePayload,
+            $approvalEventId,
+        );
+
+        return $requestData + [
+            'approval_id' => $approvalId,
+            'approval_fiscal_event_id' => $approvalEventId,
+            'approval_scope' => 'void_or_return_override',
+            'approval_supervisor_user_id' => $this->user->id,
+            'approval_override_event_id' => $overrideEventId,
+            'authorized_by_user_id' => $this->user->id,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function storeFiscalEvent(
+        string $id,
+        FiscalEventType $eventType,
+        array $payload,
+        ?string $referenceEventId = null,
+    ): void {
+        FiscalEvent::query()->create([
+            'id' => $id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'operator_id' => $this->user->id,
+            'event_type' => $eventType->value,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => DB::table('fiscal_events')->count() + 1,
+            'event_time_device' => now(),
+            'business_date' => now()->toDateString(),
+            'server_received_at' => now(),
+            'reference_event_id' => $referenceEventId,
+            'canonical_bytes' => json_encode(['payload' => $payload], JSON_THROW_ON_ERROR),
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => hash('sha256', $id),
+            'payload' => $payload,
+            'payload_parse_status' => 'parsed',
         ]);
     }
 
