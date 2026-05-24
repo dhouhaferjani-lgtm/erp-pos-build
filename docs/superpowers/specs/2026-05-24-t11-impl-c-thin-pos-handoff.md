@@ -16,8 +16,10 @@
 A B2B account sometimes walks up to the counter. The cashier should be able to
 (a) *recognise* the account, (b) get its *negotiated prices*, and (c) either take
 **immediate payment** (→ a normal `Receipt`, no change to today) **or** hand the
-cart off to the back office as a **draft sales order** the office finalises with
-credit terms. The counter must **never** itself extend credit, pick payment
+cart off to the back office as a **draft sales order** the office then
+**reviews → confirms → converts to an invoice** (the existing converter accepts
+only *confirmed* sales orders, so confirmation is an explicit office step — §2.1,
+§5). The counter must **never** itself extend credit, pick payment
 terms, or emit a B2B invoice. The Tauri binary stays thin.
 
 This track delivers the **server + web** side of that hand-off, and *specifies*
@@ -35,6 +37,8 @@ SalesOrder" rule.
 
 ## 2. Architecture grounding (verified file paths + state)
 
+> **Path convention:** all paths are relative to the monorepo root `/Users/houssamr/Projects/syneriva` (production code under `apps/erp/apps/api/…`), matching the sibling T-track specs. A reviewer rooted at `apps/erp` sees the same files under `apps/api/…`.
+
 Read in this order:
 
 1. `apps/erp/apps/pos/src/stores/holdStore.ts` (lines 1–178) — the **park-sale pattern to mirror for the UX**: `holdCurrentCart` captures the cart, persists, clears the cart (line 138), and drops the pending idempotency key (line 143). `recallTransaction` / `discardTransaction` round it out. **Note:** `holdCurrentCart` persists to **local SQLite** (`insertHeldTransaction`, line 126); the new "Save as Draft Order" persists to the **server** instead — see §2.1.
@@ -42,7 +46,7 @@ Read in this order:
 3. `apps/erp/apps/api/app/Modules/Document/Domain/Enums/DocumentStatus.php` (lines 8–14) — `Draft, Confirmed, Posted, Paid, Received, Cancelled`. A draft order = `Document(type = SalesOrder, status = Draft)`. `Draft` is editable + deletable (lines 18–37).
 4. `apps/erp/apps/api/app/Modules/Document/Domain/Enums/DocumentType.php` (lines 7–17) — `SalesOrder` is a real type. `Receipt` is **not** a Document type (the POS receipt path is unchanged).
 5. `apps/erp/apps/api/app/Modules/Document/Domain/Document.php` — the aggregate. The `documents` table has `source_document_id` (nullable, `2025_11_30_080000_create_documents_table.php:33`) for conversion chains; **no `origin`/`channel` column today** (see §3.3).
-6. `apps/erp/apps/api/app/Modules/Document/Domain/Services/Conversion/Converters/SalesOrderToInvoiceConverter.php` — **the office rep's "convert to invoice with terms" already exists.** This track reuses it; it does not reimplement conversion.
+6. `apps/erp/apps/api/app/Modules/Document/Domain/Services/Conversion/Converters/SalesOrderToInvoiceConverter.php` — the existing sales-order→invoice converter, reused (not reimplemented). ⚠️ **Two verified constraints that shape the office flow (round-1 Codex BLOCKER + P1-1):** (a) it **rejects `Draft`** — `SalesOrderToInvoiceConverter.php:100-101` adds "Sales order must be confirmed before conversion" and `:143-144` throws a 422 for `DocumentStatus::Draft`; the web action bar only shows convert-to-invoice when `status === 'confirmed'` (`DocumentActionBar.tsx:105`). So the office must **confirm** the draft first. (b) it **hardcodes `due_date = now()->addDays(30)`** (`SalesOrderToInvoiceConverter.php:167`) and the convert endpoint takes no terms input (`DocumentConversionController.php:58` validates only `partial` + `line_ids`) — so "with terms" today means **fixed Net 30**; configurable terms are out of scope (§9).
 7. `apps/erp/apps/api/app/Modules/Document/Domain/Services/Conversion/DocumentConverterRegistry.php` — registry the converter is resolved from.
 8. `apps/erp/apps/web/src/features/documents/sales-orders/SalesOrderDetailPage.tsx` + `apps/erp/apps/web/src/features/documents/DocumentListPage.tsx` — the existing web surfaces the queue extends/filters.
 9. **impl-B** `PricingStrategyResolver` (lines = the impl-B spec) — the hand-off prices lines through this, so the draft order carries the same B2B prices the cashier saw.
@@ -90,9 +94,11 @@ final class DraftOrderHandoffService
 }
 ```
 
-- `CreateDraftOrderCommand` (DTO): `string partnerId` (must be a customer), `string locationId`, `string currency`, `list<DraftOrderLineInput> lines` (`productId`, `?variantId`, `quantity`, optional `note`), `?string reference`, `?string originTerminalId` (informational).
+- `CreateDraftOrderCommand` (DTO): `string partnerId` (must be a customer), `string locationId`, `string currency`, `list<DraftOrderLineInput> lines` (`productId`, `quantity`, optional `note`), `?string reference`, `?string originTerminalId`.
+  - **No `variantId` on the line input in this track (round-1 Codex P1-4):** `document_lines`/`DocumentLine` have no `variant_id` column today (`DocumentLine.php:64` fillable has `product_id`/`batch_id`/`product_code`/`service_id`, no variant; `CreateDocumentRequest.php:89` has no `lines.*.variant_id` rule). Adding `variant_id` to `document_lines` is **T2-owned** (topology contract §2). `variantId` is therefore a **conditional T2 dependency**, added to the line input only after T2 lands — not part of this track.
+  - **`originTerminalId` is observability-only (round-1 Codex P1-3):** it is carried on the `DraftOrderHandedOff` event payload, **not persisted on the `documents` row** in the default (no-migration) path (no column exists) and **not shown in the queue**. It surfaces in the queue only if the optional `origin`/`payload` work (§3.3) lands.
 - Line prices are **server-resolved** via `PricingStrategyResolver` (channel_id = null) — the POS-supplied price is treated as advisory and re-verified server-side (never trust client prices for a B2B document).
-- The created document is `type = SalesOrder`, `status = Draft`. Office conversion to `Invoice` (with terms) reuses the existing `SalesOrderToInvoiceConverter`.
+- The created document is `type = SalesOrder`, `status = Draft`, created with **`EmissionSurface::Api`** in the `EmissionContext` (round-1 Codex P2-3 — name it explicitly so an implementer never picks `Pos` and fights the policy). Office conversion to `Invoice` is **Draft → Confirm → Convert** (§5) and reuses the existing `SalesOrderToInvoiceConverter` (fixed Net 30 terms).
 
 ### 3.2 Enums
 
@@ -116,23 +122,24 @@ column.
 
 ### REST endpoints (new / reused)
 
-- `POST /api/v1/draft-orders` — **new.** Body = `CreateDraftOrderCommand`. Creates the `SalesOrder`/`Draft`. Behind `['api','auth:sanctum',SetPermissionsTeam::class]`, RBAC `draft-order.create`. Validates all UUIDs with `Str::isUuid()`. Tenant/company scoped via `CompanyContext`. Returns the created `Document` DTO.
-- `GET /api/v1/draft-orders` — **new (thin wrapper)** or a filter on the existing documents list: `type=SalesOrder & status=Draft`. RBAC `draft-order.view`.
-- **Reused:** existing sales-order → invoice conversion endpoint/flow (backed by `SalesOrderToInvoiceConverter`) for the office rep. No new conversion code.
+- `POST /api/v1/draft-orders` — **new.** Body = `CreateDraftOrderCommand`. Creates the `SalesOrder`/`Draft`. **Add inside the existing Document route group** so it inherits `['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantClaim::class]` (verified at `Document/Presentation/routes.php:33`; the bare CLAUDE.md trio omits `EnforceTokenTenantClaim` — round-1 Codex P2-1). RBAC **`can:orders.create`** (reuse — round-1 Codex SUGGESTION; the Document module already gates sales-order creation with `orders.create` at `routes.php:90`). FormRequest validates `partner_id`/`product_id`/`location_id` with tenant/company `ScopedExists`, not just `Str::isUuid()`. Returns the created `Document` DTO.
+- **Listing — reuse the existing sales-order list filter** (round-1 Codex P2-2): `GET /api/v1/orders?status=draft` (already implemented — `SalesOrderController::index()` + `HandlesDocuments::applyFilters()` status enum), gated by existing `can:orders.view`. **No new `GET /api/v1/draft-orders` endpoint.** The web `DraftOrderQueuePage` calls this filter.
+- **Reused:** existing sales-order confirm + convert endpoints (`Draft → Confirmed`, then `SalesOrderToInvoiceConverter`) for the office rep. No new conversion code.
 
 ### Events
 
 - `DraftOrderHandedOff` (`document_id`, `tenant_id`, `partner_id`, `location_id`, `origin_terminal_id`) — emitted post-commit so the office queue / notifications can react. New immutable event.
 - Existing `DocumentConverted` fires on the office conversion (unchanged).
 
-### Permissions (new)
+### Permissions (reuse existing — round-1 Codex SUGGESTION)
 
-`draft-order.view`, `draft-order.create`. Wired into `RolesAndPermissionsSeeder`. (POS cashiers get `create`; office reps get `view` + existing invoice-conversion permissions.)
+**Reuse the existing `orders.*` family** rather than inventing a `draft-order.*` family: `orders.create` (POS cashier creates the hand-off), `orders.view` (office sees the queue), `orders.confirm` + the existing invoice-conversion permission (office confirms then converts). These already exist and gate the sales-order routes (`Document/Presentation/routes.php:81-90`). No new permission family unless a product reason emerges; if so, document the role split.
 
 ### POS-client contract (specified here; implemented via the coordination log)
 
-`useHoldStore`-sibling action (do **not** add to `holdStore` itself — keep the
-local-park store pure; add a new store/action, e.g. `draftOrderStore.saveAsDraftOrder`):
+A `saveAsDraftOrder` action that **mirrors the `holdCurrentCart` UX** (capture cart →
+persist → `clearCart()` + `discardPendingSubmission()`, mirroring `holdStore.ts:138,143`)
+but **POSTs to the server instead of writing local SQLite**:
 
 ```ts
 // mirrors holdCurrentCart UX, but POSTs instead of writing SQLite
@@ -143,14 +150,24 @@ saveAsDraftOrder(): Promise<void>
 //  → requires online; disabled offline
 ```
 
+**Placement is the fiscal session's call (resolves round-1 Codex P1-5).** The
+coordination-log T11-D2 entry currently says "extend existing `holdStore`"; this spec
+does **not** over-rule that — the fiscal session that owns the Tauri files decides
+whether to add the action to `holdStore` or to a sibling store. The **binding
+invariants** (the only things this spec mandates) are: (1) it mirrors the hold UX,
+(2) it POSTs to `/api/v1/draft-orders` (server), **not** local SQLite, and (3) the
+existing **Hold / Recall / Discard** behaviour is preserved unchanged. The
+coordination-log T11-D2 wording is updated to match these invariants when the
+branches reconcile (§12).
+
 ---
 
 ## 5. User-visible surface
 
 ### Web ERP (built directly, `apps/web/src/features/documents/`)
 
-- **DraftOrderQueuePage** — list of `SalesOrder`/`Draft` documents (filtered `DocumentListPage`), newest first, showing partner (B2B badge via impl-A), location, line count, total, origin terminal. Office rep clicks through to the existing `SalesOrderDetailPage`.
-- **Convert-to-invoice** — uses the existing sales-order detail action + `SalesOrderToInvoiceConverter`; the rep sets credit terms there (existing B2B flow). No new conversion UI.
+- **DraftOrderQueuePage** — list of `SalesOrder`/`Draft` documents (the existing `/orders?status=draft` filter). Columns are exactly what the existing `DocumentData` DTO + `DocumentListPage` already expose: **number, type, status, partner (with B2B badge via impl-A), date, total** (round-1 Codex P1-2: `DocumentData` has no `location_id`/location name/`origin_terminal_id`/`payload` — `DocumentData.php:21`,`:154`; `generated.d.ts:426`; the list renders number/type/status/partner/date/total — `DocumentListPage.tsx:342`). **Location, line count, and origin terminal are NOT shown in this track's default (no-migration) queue** — they require the optional `origin`/`payload` work (§3.3) owned by T5. Office rep clicks through to the existing `SalesOrderDetailPage`.
+- **Office lifecycle — Draft → Confirm → Convert (resolves round-1 Codex BLOCKER):** the existing converter rejects drafts, so the rep flow is: (1) open the draft, review/edit lines, (2) **Confirm** the sales order (`Draft → Confirmed`, existing `SalesOrderDetailPage` confirm action at `SalesOrderDetailPage.tsx:89`), (3) **Convert to Invoice** (existing action at `:105` → `SalesOrderToInvoiceConverter`). **Terms today are fixed Net 30** (converter hardcodes `due_date = now()->addDays(30)`; the convert endpoint takes no terms input — round-1 Codex P1-1). No new conversion UI; configurable terms are out of scope (§9).
 - i18n `draftOrders` namespace; design tokens for colors.
 
 ### POS (Tauri — **specified, logged, NOT built here**; fiscal session owns the files)
@@ -182,7 +199,7 @@ Refines the existing coordination-log entries:
 - [ ] Cashier selects a B2B partner (`payment_terms_days = 30`) at POS; cart prices update to the partner's `PartnerPriceList` via `/api/v1/pricing/resolve` (impl-B)
 - [ ] Cashier pays immediately by cash → a normal `Receipt` is created tied to `partner_id`; **no `Document` is created** (unchanged from today)
 - [ ] Cashier instead hits "Save as Draft Order → Web" → `POST /api/v1/draft-orders` creates `Document(type=SalesOrder, status=Draft)` with server-resolved B2B line prices; cart clears; pending idempotency key dropped
-- [ ] The draft appears in **DraftOrderQueuePage**; office rep opens it and converts to `Invoice` with 30-day terms via the existing `SalesOrderToInvoiceConverter`
+- [ ] The draft appears in **DraftOrderQueuePage** (via `/orders?status=draft`); office rep opens it, **confirms it (`Draft → Confirmed`)**, then converts to `Invoice` (fixed Net 30) via the existing `SalesOrderToInvoiceConverter` — converting a still-`Draft` order is rejected (422), matching production
 - [ ] The POS **cannot**, through any path, create a `Document` — it only POSTs the hand-off; the server creates the draft on the Web/API surface (policy-allowed). A POS-surface emission attempt is rejected by `DocumentEmissionPolicy` (impl-B)
 - [ ] Server **re-prices** lines; a tampered client price in the request body is ignored (server value wins)
 - [ ] "Save as Draft Order" is **disabled offline** with a clear message; the existing offline "Hold" still works
@@ -196,7 +213,7 @@ Refines the existing coordination-log entries:
 - [ ] Feature: server-reprice — client sends wrong price, stored price = resolver price
 - [ ] Feature: emission-policy assertion — service refuses to create on a POS surface context; accepts Web/Api
 - [ ] Feature: tenant isolation + UUID guard + RBAC on the endpoint
-- [ ] Feature: office conversion of the draft → Invoice with terms (reusing the existing converter) works end-to-end
+- [ ] Feature: office lifecycle end-to-end — confirm the draft (`Draft → Confirmed`) then convert to Invoice (fixed Net 30) via the existing converter; converting while still `Draft` returns 422
 - [ ] Web: DraftOrderQueuePage renders the queue (component test, mocked query) + tenant-scope test mirroring `SalesOrderDetailPage.tenantScope.test.tsx`
 - [ ] POS deltas: acceptance owned by the fiscal session when T11-D1/D2/D3 ship (cross-referenced, not run here)
 
@@ -204,15 +221,15 @@ Refines the existing coordination-log entries:
 
 ## 8. Adversarial review checklist
 
-**Reviewer instruction (mandatory):** *"Verify every finding against actual code at the cited paths — read the files. Pay special attention to: (1) the POS never emits a `Document` — the draft is created server-side via the hand-off endpoint on the Web/API surface, reconciling with impl-B's policy that POS can't emit `SalesOrder`; (2) the hand-off mirrors `holdStore` UX but persists to the server, NOT local SQLite, and is a sibling that leaves the existing 'Hold' feature (holdStore.ts) untouched — confirm by reading holdStore.ts; (3) server re-prices via `PricingStrategyResolver`, never trusting client prices; (4) the office conversion reuses the existing `SalesOrderToInvoiceConverter`, not a new one; (5) all Tauri changes are LOGGED to the POS coordination log, with zero direct Tauri edits in this track; (6) no migration in the core track (or, if `origin` adopted, it's one nullable column in migrations/tenant/, merge-after T6)."*
+**Reviewer instruction (mandatory):** *"Verify every finding against actual code at the cited paths — read the files. Pay special attention to: (1) the POS never emits a `Document` — the draft is created server-side via the hand-off endpoint on the Web/API surface, reconciling with impl-B's policy that POS can't emit `SalesOrder`; (2) the hand-off mirrors `holdStore` UX but persists to the server, NOT local SQLite, and preserves the existing Hold/Recall/Discard behaviour (placement in holdStore-or-sibling is the fiscal session's call) — confirm by reading holdStore.ts; (3) server re-prices via `PricingStrategyResolver`, never trusting client prices; (4) the office flow is Draft → **Confirm** → Convert (the existing `SalesOrderToInvoiceConverter` rejects drafts and hardcodes Net 30) — not a direct draft conversion, and not a new converter; (5) all Tauri changes are LOGGED to the POS coordination log, with zero direct Tauri edits in this track; (6) no migration in the core track (or, if `origin` adopted, it's one nullable column in migrations/tenant/, merge-after T6)."*
 
 - [ ] No `Document` is ever created by POS-client code; the draft is server-created on Web/API surface; `DocumentEmissionPolicy` is asserted in `DraftOrderHandoffService`
-- [ ] `holdStore.ts` is untouched; the new action is a separate store/sibling; "Hold" still works; idempotency-key drop mirrors `holdStore.ts:143`
+- [ ] Existing **Hold / Recall / Discard** behaviour is preserved; `saveAsDraftOrder` mirrors the hold UX but POSTs to the server (not local SQLite) and drops the idempotency key (`holdStore.ts:143`). Placement (in `holdStore` or a sibling) is the fiscal session's call; the coordination-log T11-D2 wording is reconciled to these invariants
 - [ ] Server re-prices via `PricingStrategyResolver`; client-supplied line prices are not persisted
 - [ ] Office conversion reuses `SalesOrderToInvoiceConverter` (no duplicate conversion logic)
 - [ ] All Tauri/POS-client work is logged in the POS coordination log (T11-D1/D2/D3 refined); **zero** Tauri files edited in this track's diff
 - [ ] No migration in the core track; if `origin` adopted, single nullable column in `migrations/tenant/`, no cross-DB FK, merge-after T6
-- [ ] Endpoint: UUID guard, RBAC (`draft-order.create`/`view`), tenant/company scope; cross-tenant → 404, malformed UUID → 422
+- [ ] Endpoint: `ScopedExists` validation, RBAC reuses `orders.create`/`orders.view`, route inside Document group (`EnforceTokenTenantClaim`), tenant/company scope; cross-tenant → 404, malformed UUID → 422
 - [ ] "Save as Draft Order" online-only; offline path is explicitly out of scope (no sync-engine touch)
 - [ ] `DraftOrderHandedOff` is a new immutable event
 - [ ] Web UI uses `t()` + design tokens; types from DTOs (`typescript:transform`)
@@ -222,6 +239,8 @@ Refines the existing coordination-log entries:
 
 ## 9. Out of scope
 
+- **Configurable credit terms on conversion** — the existing converter hardcodes Net 30 and the convert endpoint takes no terms input; anything beyond fixed Net 30 (a terms picker, per-partner terms applied at conversion) is a separate enhancement, not this track (round-1 Codex P1-1)
+- **`variant_id` on draft-order lines** — T2-owned (`document_lines.variant_id` does not exist yet); added only after T2 lands (round-1 Codex P1-4)
 - **Offline draft-order queuing** (would touch the fiscal-sensitive POS sync engine) — deferred; online-only for now
 - Direct Tauri edits — all POS-client work via the coordination log → fiscal session
 - New invoice-conversion logic — reuse existing `SalesOrderToInvoiceConverter`
@@ -247,9 +266,9 @@ Refines the existing coordination-log entries:
 
 ## 11. Workflow recommendation
 
-**Phase 1 (Codex, ~2 PD) — server hand-off:** `DraftOrderHandoffService` + `CreateDraftOrderCommand`/`DraftOrderLineInput` DTOs + `DraftOrderHandedOff` event + `POST /api/v1/draft-orders` endpoint + permissions + FormRequest (UUID guards). TDD: endpoint feature test first (incl. server-reprice + policy assertion). Reuse `SalesOrderToInvoiceConverter` for conversion — verify the office flow end-to-end.
+**Phase 1 (Codex, ~2 PD) — server hand-off:** `DraftOrderHandoffService` + `CreateDraftOrderCommand`/`DraftOrderLineInput` DTOs + `DraftOrderHandedOff` event + `POST /api/v1/draft-orders` endpoint (inside the Document route group; `can:orders.create`; `ScopedExists` FormRequest) creating `SalesOrder/Draft` with `EmissionSurface::Api`. TDD: endpoint feature test first (server-reprice + policy assertion + cross-tenant/UUID). Verify the **Draft → Confirm → Convert** office flow end-to-end (confirm step required before the existing `SalesOrderToInvoiceConverter`; converting a draft must 422).
 
-**Phase 2 (Codex, ~1 PD) — web queue UI:** `DraftOrderQueuePage` (filter `SalesOrder`/`Draft`), B2B badge (impl-A), link to existing detail/convert. i18n + tenant-scope test.
+**Phase 2 (Codex, ~1 PD) — web queue UI:** `DraftOrderQueuePage` (reuse `/orders?status=draft`; columns number/type/status/partner/date/total), B2B badge (impl-A), link to existing detail page with its confirm + convert actions. i18n + tenant-scope test.
 
 **Phase 3 (logged, NOT built — fiscal session, sized in the POS log):** refine T11-D1/D2/D3 in the POS coordination log with the §5 acceptance; the fiscal/POS session triages and ships the Tauri deltas (`saveAsDraftOrder` sibling action, B2B badge, resolve-on-select). **Do not edit Tauri code in this track.**
 
@@ -262,6 +281,7 @@ Adversarial review: Codex headless against §8 after Phase 1+2.
 - **Hard dependencies:** T11-impl-B (resolver + policy) and T11-impl-A (customer model) must merge first.
 - **No T6 Phase 0 dependency** for the core (migration-free). The optional `origin` column is T5-aligned and would merge-after Phase 0.
 - **POS-client deltas** are the existing **T11-D1/D2/D3** entries in [2026-05-24-pos-coordination-log.md](../coordination/2026-05-24-pos-coordination-log.md); this spec refines their acceptance. They ship via the fiscal session per that log's handshake protocol — **never via direct Tauri edits here.**
+- **Reconcile T11-D2 wording (round-1 Codex P1-5):** the coordination-log T11-D2 row says "Extend existing `holdStore`", which read as a hard contradiction of an earlier draft of this spec. Resolved: this spec mandates only the three invariants in §4 (mirror hold UX; server POST not local SQLite; preserve Hold/Recall/Discard) and leaves placement to the fiscal session. When the sprint branches reconcile, update the T11-D2 "Suggested approach" cell to reference these invariants so the log and this spec agree. (The log lives on the sibling `docs/sprint-planning-2026-05-24` branch; this is a co-merge reconciliation item, not a change on this branch.)
 - **Fiscal Phase 1 collision:** the hand-off does **not** touch the receipt/sync/device files fiscal Phase 1 rewrites (it adds a *new* sibling store + a *server* endpoint). The B2B badge attaches to the POS customer-accounts surface, also fiscal-coordinated. Keeping "Save as Draft Order" online-only deliberately avoids the offline sync engine.
 - **Published-API change:** new `POST /api/v1/draft-orders` + `GET /api/v1/draft-orders` — note in [REALIGNMENT-LOG.md](../../03-ERP-INTEGRATION/REALIGNMENT-LOG.md) when shipped.
 - **Backward compat is non-negotiable** — `holdStore`, receipts, and existing sales-order/conversion flows are untouched.
