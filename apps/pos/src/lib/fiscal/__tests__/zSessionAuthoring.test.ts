@@ -7,9 +7,13 @@ import { FiscalEventEngine } from '../FiscalEventEngine';
 import { FiscalEventPayloadRegistry } from '../FiscalEventPayloadRegistry';
 import { HashChainIntegrityProvider } from '../HashChainIntegrityProvider';
 import {
+  appendZSessionCloseAndZReport,
   authorZSessionOpenWithOpeningFloatOnDb,
+  buildZReportPayload,
   buildOpeningFloatPayload,
   buildSessionOpenPayload,
+  buildSessionClosePayload,
+  type AuthorZSessionCloseInput,
   type AuthorZSessionOpenInput,
 } from '../zSessionAuthoring';
 
@@ -71,6 +75,57 @@ function input(overrides: Partial<AuthorZSessionOpenInput> = {}): AuthorZSession
     isTraining: false,
     openedAtDevice: new Date('2026-05-16T08:00:00.123Z'),
     openingFloatMovementId: MOVEMENT_ID,
+    ...overrides,
+  };
+}
+
+function closeInput(overrides: Partial<AuthorZSessionCloseInput> = {}): AuthorZSessionCloseInput {
+  return {
+    tenantId: TENANT_ID,
+    companyId: COMPANY_ID,
+    terminalId: TERMINAL_ID,
+    terminalLabel: 'T01',
+    shiftId: SHIFT_ID,
+    sessionId: SESSION_ID,
+    businessDate: '2026-05-16',
+    operatorId: OPERATOR_ID,
+    operatorName: 'Alice',
+    currencyCode: 'TND',
+    currencyScale: 3,
+    periodStart: '2026-05-16T08:00:00.000Z',
+    periodEnd: '2026-05-16T18:00:00.000Z',
+    zReportUuid: '66666666-6666-4666-8666-666666666666',
+    zNumber: 3,
+    formattedZNumber: 'Z0003',
+    expectedCash: '150.000',
+    countedCash: '150.000',
+    varianceAmount: '0.000',
+    varianceDirection: 'balanced',
+    varianceSeverity: 'balanced',
+    varianceReason: null,
+    reportTotals: {
+      sales_count: 1,
+      gross_sales: '50.000',
+      net_sales: '42.000',
+      tax_amount: '8.000',
+      refunds_count: 0,
+      refunds_amount: '0.000',
+      voided_count: 0,
+    },
+    vatBreakdown: [],
+    paymentMethodTotals: [],
+    cashCountLines: [],
+    cashDrawerTotals: {},
+    grandTotalsBefore: {},
+    grandTotalsAfter: {},
+    toleranceSummary: null,
+    legacyReportReference: null,
+    companySnapshot: { company_id: COMPANY_ID },
+    seller: null,
+    operationalEventRange: { first_sequence: 1, last_sequence: 1 },
+    isTraining: false,
+    closedAtDevice: new Date('2026-05-16T18:00:00.123Z'),
+    sessionCloseUuid: '77777777-7777-4777-8777-777777777777',
     ...overrides,
   };
 }
@@ -156,5 +211,60 @@ d('zSessionAuthoring', () => {
       { event_type: 'SESSION_OPEN', chain_context: 'z_session', sequence_number: 1 },
       { event_type: 'OPENING_FLOAT', chain_context: 'z_session', sequence_number: 2 },
     ]);
+  });
+
+  it('builds SESSION_CLOSE and Z_REPORT payloads with required canonical keys', () => {
+    const closedAtDevice = new Date('2026-05-16T18:00:00.123Z');
+    const sessionClose = buildSessionClosePayload(
+      closeInput(),
+      closedAtDevice,
+      '77777777-7777-4777-8777-777777777777',
+    );
+    expect(sessionClose).toMatchObject({
+      business_date: '2026-05-16',
+      closure_status: 'closed',
+      expected_cash: '150.000',
+      generated_at_device: '2026-05-16T18:00:00.123Z',
+      session_id: SESSION_ID,
+      shift_id: SHIFT_ID,
+      terminal_id: TERMINAL_ID,
+      training_flag: false,
+      variance_direction: 'balanced',
+    });
+
+    const zReport = buildZReportPayload(closeInput(), closedAtDevice, {
+      first_sequence: 1,
+      last_sequence: 3,
+    });
+    expect(zReport).toMatchObject({
+      business_date: '2026-05-16',
+      closed_at_device: '2026-05-16T18:00:00.123Z',
+      currency_code: 'TND',
+      currency_scale: 3,
+      formatted_z_number: 'Z0003',
+      period_type: 'DAY',
+      session_id: SESSION_ID,
+      shift_id: SHIFT_ID,
+      terminal_id: TERMINAL_ID,
+      terminal_label: 'T01',
+      training_flag: false,
+      z_number: 3,
+      z_report_uuid: '66666666-6666-4666-8666-666666666666',
+    });
+  });
+
+  it('authors SESSION_CLOSE followed by Z_REPORT on the z_session chain', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+
+    const result = await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+
+    expect(result.sessionCloseEvent.event_type).toBe('SESSION_CLOSE');
+    expect(result.sessionCloseEvent.chain_context).toBe('z_session');
+    expect(result.sessionCloseEvent.sequence_number).toBe(3);
+    expect(result.zReportEvent.event_type).toBe('Z_REPORT');
+    expect(result.zReportEvent.chain_context).toBe('z_session');
+    expect(result.zReportEvent.sequence_number).toBe(4);
+    expect(result.zReportEvent.previous_hash).toBe(result.sessionCloseEvent.current_hash);
+    expect(result.zReportEvent.reference_event_id).toBe(result.sessionCloseEvent.id);
   });
 });

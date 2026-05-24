@@ -17,7 +17,7 @@ import { EndOfDayPreviewModal } from '@/components/pos/EndOfDayPreviewModal';
 import { ReportsMenu } from '@/components/pos/ReportsMenu';
 import { XReportModal } from '@/components/pos/XReportModal';
 import { generateXReport, generateZReport } from '@/api/reportApi';
-import type { XReportResponse } from '@/api/reportApi';
+import type { GenerateZReportOpts, XReportResponse } from '@/api/reportApi';
 import { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
@@ -208,21 +208,31 @@ export function Header() {
     preview: EndOfDayPreview,
     cashCountPayload: CashCountCommitPayload | null,
   ): Promise<EndOfDayConfirmResult> => {
-    if (!terminal || !shift || !companyId) {
-      throw new Error('Missing terminal, shift, or company context');
+    if (!terminal || !shift || !companyId || !tenantId) {
+      throw new Error('Missing terminal, shift, company, or tenant context');
     }
 
     // Build opts from cash-count payload when present.
     // Pass fraudSettings so generateZReport can compute variance_severity.
-    const zOpts = cashCountPayload != null
+    const fiscalZOpts: GenerateZReportOpts = {
+      tenantId,
+      fiscalShiftId: shift.fiscal_shift_id,
+      fiscalSessionId: shift.fiscal_session_id,
+      terminalLabel: terminal.code,
+      operatorId: shift.user.id,
+      operatorName: shift.user.name,
+      isTraining: terminal.is_training_mode === true,
+    };
+    const zOpts: GenerateZReportOpts = cashCountPayload != null
       ? {
+          ...fiscalZOpts,
           cashCounts: cashCountPayload.cashCounts,
           varianceReason: cashCountPayload.varianceReason,
           managerUserId: cashCountPayload.managerUserId,
           blindCountUsed: cashCountPayload.blindCountUsed,
           fraudSettings: fraudSettings ?? null,
         }
-      : {};
+      : fiscalZOpts;
 
     // Store refs so handlePrintZReport can access them after confirmation
     lastCashCountPayloadRef.current = cashCountPayload;

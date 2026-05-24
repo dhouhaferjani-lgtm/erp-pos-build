@@ -35,6 +35,62 @@ export interface AuthorZSessionOpenResult {
   openingFloatMovementId: string;
 }
 
+export interface ZSessionReportTotals {
+  sales_count: number;
+  gross_sales: string;
+  net_sales: string;
+  tax_amount: string;
+  refunds_count: number;
+  refunds_amount: string;
+  voided_count: number;
+}
+
+export interface AuthorZSessionCloseInput {
+  tenantId: string;
+  companyId: string;
+  terminalId: string;
+  terminalLabel: string;
+  shiftId: string;
+  sessionId: string;
+  businessDate: string;
+  operatorId: string;
+  operatorName: string;
+  currencyCode: string;
+  currencyScale: 0 | 2 | 3;
+  periodStart: string;
+  periodEnd: string;
+  zReportUuid: string;
+  zNumber: number;
+  formattedZNumber: string;
+  expectedCash: string;
+  countedCash: string | null;
+  varianceAmount: string | null;
+  varianceDirection: 'over' | 'under' | 'balanced' | null;
+  varianceSeverity: string | null;
+  varianceReason: string | null;
+  reportTotals: ZSessionReportTotals;
+  vatBreakdown: ReadonlyArray<Record<string, unknown>>;
+  paymentMethodTotals: ReadonlyArray<Record<string, unknown>>;
+  cashCountLines: ReadonlyArray<Record<string, unknown>>;
+  cashDrawerTotals: Record<string, unknown>;
+  grandTotalsBefore: Record<string, unknown>;
+  grandTotalsAfter: Record<string, unknown>;
+  toleranceSummary: Record<string, unknown> | null;
+  legacyReportReference: Record<string, unknown> | null;
+  companySnapshot: Record<string, unknown>;
+  seller: Record<string, unknown> | null;
+  operationalEventRange: Record<string, unknown>;
+  isTraining: boolean;
+  closedAtDevice?: Date;
+  sessionCloseUuid?: string;
+}
+
+export interface AuthorZSessionCloseResult {
+  sessionCloseEvent: FiscalEventAppendResult;
+  zReportEvent: FiscalEventAppendResult;
+  sessionCloseUuid: string;
+}
+
 export interface ZSessionFiscalEventEngine {
   append(
     tx: Database | SqlSurface,
@@ -96,6 +152,113 @@ export function buildOpeningFloatPayload(
   };
 }
 
+export function buildSessionClosePayload(
+  input: AuthorZSessionCloseInput,
+  closedAtDevice: Date,
+  sessionCloseUuid: string,
+): Record<string, unknown> {
+  const totals = input.reportTotals;
+  return {
+    business_date: input.businessDate,
+    cash_count_lines: input.cashCountLines,
+    cash_drawer_totals: input.cashDrawerTotals,
+    closure_status: 'closed',
+    counted_cash: input.countedCash,
+    expected_cash: input.expectedCash,
+    generated_at_device: closedAtDevice.toISOString(),
+    manager_approval: null,
+    operational_event_range: input.operationalEventRange,
+    operator_id: input.operatorId,
+    operator_name: input.operatorName,
+    payment_method_totals: input.paymentMethodTotals,
+    period_end: input.periodEnd,
+    period_start: input.periodStart,
+    receipt_count: totals.sales_count,
+    refunds_totals: {
+      amount: totals.refunds_amount,
+      count: totals.refunds_count,
+    },
+    sales_totals: {
+      gross_sales: totals.gross_sales,
+      net_sales: totals.net_sales,
+      tax_amount: totals.tax_amount,
+    },
+    session_close_uuid: sessionCloseUuid,
+    session_id: input.sessionId,
+    shift_id: input.shiftId,
+    terminal_id: input.terminalId,
+    training_flag: input.isTraining,
+    variance_amount: input.varianceAmount,
+    variance_direction: input.varianceDirection,
+    variance_reason: input.varianceReason,
+    variance_severity: input.varianceSeverity,
+    vat_breakdown: input.vatBreakdown,
+    voids_totals: {
+      count: totals.voided_count,
+    },
+  };
+}
+
+export function buildZReportPayload(
+  input: AuthorZSessionCloseInput,
+  closedAtDevice: Date,
+  sessionEventRange: Record<string, unknown>,
+): Record<string, unknown> {
+  const totals = input.reportTotals;
+  return {
+    business_date: input.businessDate,
+    cash_count: {
+      counted_cash: input.countedCash,
+      expected_cash: input.expectedCash,
+      lines: input.cashCountLines,
+      variance_amount: input.varianceAmount,
+      variance_direction: input.varianceDirection,
+      variance_reason: input.varianceReason,
+      variance_severity: input.varianceSeverity,
+    },
+    cash_drawer_totals: input.cashDrawerTotals,
+    closed_at_device: closedAtDevice.toISOString(),
+    company_snapshot: input.companySnapshot,
+    currency_code: input.currencyCode,
+    currency_scale: input.currencyScale,
+    formatted_z_number: input.formattedZNumber,
+    grand_totals_after: input.grandTotalsAfter,
+    grand_totals_before: input.grandTotalsBefore,
+    legacy_report_reference: input.legacyReportReference,
+    operational_event_range: input.operationalEventRange,
+    operator_id: input.operatorId,
+    operator_name: input.operatorName,
+    payment_method_totals: input.paymentMethodTotals,
+    period_end: input.periodEnd,
+    period_start: input.periodStart,
+    period_type: 'DAY',
+    receipt_totals: {
+      count: totals.sales_count,
+      gross_sales: totals.gross_sales,
+      net_sales: totals.net_sales,
+      tax_amount: totals.tax_amount,
+    },
+    refunds_totals: {
+      amount: totals.refunds_amount,
+      count: totals.refunds_count,
+    },
+    seller: input.seller,
+    session_event_range: sessionEventRange,
+    session_id: input.sessionId,
+    shift_id: input.shiftId,
+    terminal_id: input.terminalId,
+    terminal_label: input.terminalLabel,
+    tolerance_summary: input.toleranceSummary,
+    training_flag: input.isTraining,
+    vat_breakdown: input.vatBreakdown,
+    voids_totals: {
+      count: totals.voided_count,
+    },
+    z_number: input.zNumber,
+    z_report_uuid: input.zReportUuid,
+  };
+}
+
 export async function authorZSessionOpenWithOpeningFloatOnDb(
   db: Database | SqlSurface,
   engine: ZSessionFiscalEventEngine,
@@ -147,6 +310,58 @@ export async function authorZSessionOpenWithOpeningFloatOnDb(
     await db.execute('ROLLBACK');
     throw error;
   }
+}
+
+export async function appendZSessionCloseAndZReport(
+  db: Database | SqlSurface,
+  engine: ZSessionFiscalEventEngine,
+  input: AuthorZSessionCloseInput,
+): Promise<AuthorZSessionCloseResult> {
+  const closedAtDevice = input.closedAtDevice ?? new Date();
+  const sessionCloseUuid = input.sessionCloseUuid ?? crypto.randomUUID();
+  const chainContext = zChainContext(input.isTraining);
+
+  const sessionCloseEvent = await engine.append(db, {
+    event_type: 'SESSION_CLOSE',
+    tenant_id: input.tenantId,
+    company_id: input.companyId,
+    terminal_id: input.terminalId,
+    operator_id: input.operatorId,
+    event_time_device: isoSecondsUtc(closedAtDevice),
+    business_date: input.businessDate,
+    chain_context: chainContext,
+    payload: buildSessionClosePayload(input, closedAtDevice, sessionCloseUuid),
+    source_event_class: 'pos_session_close',
+    source_event_id: sessionCloseUuid,
+  });
+
+  const sessionEventRange = {
+    first_sequence: 1,
+    last_sequence: sessionCloseEvent.sequence_number,
+    session_close_event_id: sessionCloseEvent.id,
+    session_close_hash: sessionCloseEvent.current_hash,
+  };
+
+  const zReportEvent = await engine.append(db, {
+    event_type: 'Z_REPORT',
+    tenant_id: input.tenantId,
+    company_id: input.companyId,
+    terminal_id: input.terminalId,
+    operator_id: input.operatorId,
+    event_time_device: isoSecondsUtc(closedAtDevice),
+    business_date: input.businessDate,
+    chain_context: chainContext,
+    payload: buildZReportPayload(input, closedAtDevice, sessionEventRange),
+    reference_event_id: sessionCloseEvent.id,
+    source_event_class: 'z_report',
+    source_event_id: input.zReportUuid,
+  });
+
+  return {
+    sessionCloseEvent,
+    zReportEvent,
+    sessionCloseUuid,
+  };
 }
 
 export async function authorZSessionOpenWithOpeningFloat(
