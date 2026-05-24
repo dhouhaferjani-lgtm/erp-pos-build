@@ -109,9 +109,10 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
         Sanctum::actingAs($this->user);
 
         $eventId = Str::uuid()->toString();
-        $eventTimeDevice = '2026-05-20T14:30:00Z';
-        $payloadEventTimeDevice = '2026-05-20T14:30:00.000Z';
-        $businessDate = '2026-05-20';
+        $deviceTime = Carbon::now('UTC')->setMilliseconds(0);
+        $eventTimeDevice = $deviceTime->format('Y-m-d\TH:i:s\Z');
+        $payloadEventTimeDevice = $deviceTime->format('Y-m-d\TH:i:s.v\Z');
+        $businessDate = $deviceTime->toDateString();
         $payload = $this->saleReceiptPayload($eventId, $payloadEventTimeDevice, $businessDate);
         $envelope = $this->sealedEnvelope(
             eventId: $eventId,

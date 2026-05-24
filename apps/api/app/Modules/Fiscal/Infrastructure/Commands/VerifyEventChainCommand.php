@@ -60,6 +60,8 @@ use Throwable;
  * pattern).** If the DB query raises mid-walk, the command logs critical,
  * surfaces a transient failure (exit 2), and exits — never crashes the
  * operator's terminal mid-report.
+ *
+ * @cross-tenant-by-design Operator verification command walks fiscal chains from explicit tenant and terminal options instead of inheriting request tenant context.
  */
 final class VerifyEventChainCommand extends Command
 {

@@ -94,11 +94,15 @@ final class GoodsReceiptService
                     continue;
                 }
 
+                if (($product->requires_batch_tracking ?? false) && ! isset($batchData[$line->id])) {
+                    throw new \DomainException("Batch data is required for batch-tracked product {$product->id}");
+                }
+
                 // Use landed cost from the PO line (includes allocated additional costs)
                 $landedUnitCost = (float) ($line->landed_unit_cost ?? $line->unit_price);
 
                 // Record purchase with WAC update and audit trail
-                $this->wacService->recordPurchase(
+                $movement = $this->wacService->recordPurchase(
                     product: $product,
                     location: $location,
                     quantity: (float) $qtyToReceive,
@@ -125,6 +129,7 @@ final class GoodsReceiptService
                         batchId: (int) $batch->id,
                         locationId: (string) $location->id,
                         quantity: $qtyToReceive,
+                        movementId: $movement->id,
                     );
 
                     $line->batch_id = $batch->id;

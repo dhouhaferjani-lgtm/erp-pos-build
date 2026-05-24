@@ -137,6 +137,8 @@ use Throwable;
  * for transient downstream outages (GL post failure, payment-method lookup
  * cache miss) without churning Horizon's queue for hours on a genuinely
  * stuck projection.
+ *
+ * @cross-tenant-by-design Fiscal projection queue job is system-scoped by design; projectors rehydrate tenant and company from the immutable fiscal event.
  */
 final class ApplyFiscalEventProjectionJob implements ShouldQueue
 {

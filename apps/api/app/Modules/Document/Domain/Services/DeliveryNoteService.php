@@ -247,7 +247,7 @@ final class DeliveryNoteService
             }
 
             // Record stock sale with audit trail
-            $this->wacService->recordSale(
+            $movement = $this->wacService->recordSale(
                 product: $line->product,
                 location: $location,
                 quantity: (float) $line->quantity,
@@ -263,6 +263,7 @@ final class DeliveryNoteService
                     batchId: (int) $line->batch_id,
                     locationId: (string) $location->id,
                     quantity: (string) $line->quantity,
+                    movementId: $movement->id,
                 );
             }
         }

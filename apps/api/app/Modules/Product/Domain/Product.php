@@ -39,6 +39,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $barcode
  * @property bool $is_active
  * @property bool $is_active_for_ecommerce
+ * @property bool $requires_batch_tracking
+ * @property int|null $default_shelf_life_days
  * @property array<int, string>|null $oem_numbers
  * @property array<int, array{brand: string, reference: string}>|null $cross_references
  * @property string $cost_price
@@ -88,6 +90,8 @@ class Product extends Model implements SellableContract
         'barcode',
         'is_active',
         'is_active_for_ecommerce',
+        'requires_batch_tracking',
+        'default_shelf_life_days',
         'oem_numbers',
         'cross_references',
         'cost_price',
@@ -117,6 +121,8 @@ class Product extends Model implements SellableContract
             'type' => ProductType::class,
             'is_active' => 'boolean',
             'is_active_for_ecommerce' => 'boolean',
+            'requires_batch_tracking' => 'boolean',
+            'default_shelf_life_days' => 'integer',
             'is_physical' => 'boolean',
             'oem_numbers' => 'array',
             'cross_references' => 'array',
@@ -131,6 +137,34 @@ class Product extends Model implements SellableContract
     protected static function newFactory(): ProductFactory
     {
         return ProductFactory::new();
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Product $product): void {
+            if (array_key_exists('requires_batch_tracking', $product->getAttributes())) {
+                return;
+            }
+
+            /** @var Tenant|null $tenant */
+            $tenant = Tenant::query()->find($product->tenant_id);
+            $vertical = $tenant?->vertical;
+
+            if ($vertical === null) {
+                return;
+            }
+
+            if (! $product->is_physical) {
+                $product->requires_batch_tracking = false;
+
+                return;
+            }
+
+            $product->requires_batch_tracking = (bool) config(
+                "verticals.{$vertical->value}.product_defaults.requires_batch_tracking",
+                false,
+            );
+        });
     }
 
     /**

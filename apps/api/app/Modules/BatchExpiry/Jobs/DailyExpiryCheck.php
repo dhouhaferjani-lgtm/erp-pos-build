@@ -17,6 +17,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Daily batch expiry check job.
@@ -29,7 +30,7 @@ use Illuminate\Support\Facades\Notification;
  *
  * Schedule: Daily at 1:00 AM
  *
- * @cross-tenant-by-design Daily system-wide batch expiry sweep queue job — registered in routes/console.php:33 as Schedule::job(DailyExpiryCheck::class)->dailyAt('01:30'); iterates Batch rows across all tenants by design (markExpiredBatches scans the whole table); per-row writes inherit company_id from the batch row, per-company notifications use explicit User::whereRaw('company_id = ?', [$companyId]) filter.
+ * @cross-tenant-by-design Daily system-wide batch expiry sweep queue job — registered in routes/console.php:33 as Schedule::job(DailyExpiryCheck::class)->dailyAt('01:30'); iterates Batch rows across all tenants by design (markExpiredBatches scans the whole table); per-row writes inherit company_id from the batch row, per-company notifications use company memberships plus tenant-scoped permissions.
  */
 class DailyExpiryCheck implements ShouldQueue
 {
@@ -135,35 +136,55 @@ class DailyExpiryCheck implements ShouldQueue
         // Group batches by company
         $batchesByCompany = $criticalBatches->groupBy('company_id');
 
-        foreach ($batchesByCompany as $companyId => $batches) {
-            $firstBatch = $batches->first();
-            $company = $firstBatch?->company;
+        $permissionRegistrar = app(PermissionRegistrar::class);
+        $originalTeamId = $permissionRegistrar->getPermissionsTeamId();
 
-            Log::info('Critical batches found for company', [
-                'company_id' => $companyId,
-                'company_name' => $company->name ?? 'Unknown',
-                'batch_count' => $batches->count(),
-                'batches' => $batches->map(fn ($b) => [
-                    'batch_number' => $b->batch_number,
-                    'product_name' => $b->product->name ?? 'Unknown',
-                    'expiry_date' => $b->expiry_date->toDateString(),
-                    'days_until_expiry' => $b->daysUntilExpiry(),
-                ])->toArray(),
-            ]);
+        try {
+            foreach ($batchesByCompany as $companyId => $batches) {
+                $firstBatch = $batches->first();
+                if ($firstBatch === null) {
+                    continue;
+                }
 
-            $admins = User::whereRaw('company_id = ?', [$companyId])
-                ->permission('batches.view')
-                ->get();
+                $company = $firstBatch->company;
+                $tenantId = (string) $firstBatch->tenant_id;
+                $companyId = (string) $companyId;
 
-            if ($admins->isNotEmpty()) {
-                Notification::send($admins, new CriticalBatchExpiryNotification($batches));
-
-                Log::info('Sent critical batch expiry notifications', [
+                Log::info('Critical batches found for company', [
                     'company_id' => $companyId,
-                    'admin_count' => $admins->count(),
+                    'company_name' => $company->name ?? 'Unknown',
                     'batch_count' => $batches->count(),
+                    'batches' => $batches->map(fn ($b) => [
+                        'batch_number' => $b->batch_number,
+                        'product_name' => $b->product->name ?? 'Unknown',
+                        'expiry_date' => $b->expiry_date->toDateString(),
+                        'days_until_expiry' => $b->daysUntilExpiry(),
+                    ])->toArray(),
                 ]);
+
+                $permissionRegistrar->setPermissionsTeamId($tenantId);
+
+                $admins = User::query()
+                    ->where('tenant_id', $tenantId)
+                    ->whereHas('companyMemberships', function ($query) use ($companyId): void {
+                        $query->whereRaw('company_id = ?', [$companyId])
+                            ->whereRaw('status = ?', ['active']);
+                    })
+                    ->permission('batches.view')
+                    ->get();
+
+                if ($admins->isNotEmpty()) {
+                    Notification::send($admins, new CriticalBatchExpiryNotification($batches));
+
+                    Log::info('Sent critical batch expiry notifications', [
+                        'company_id' => $companyId,
+                        'admin_count' => $admins->count(),
+                        'batch_count' => $batches->count(),
+                    ]);
+                }
             }
+        } finally {
+            $permissionRegistrar->setPermissionsTeamId($originalTeamId);
         }
     }
 
