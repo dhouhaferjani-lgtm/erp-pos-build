@@ -2,8 +2,8 @@
 
 **Date:** 2026-05-24
 **Author:** Houssam + Claude (Opus 4.7) — revised after Codex adversarial review round 1
-**Sprint window:** 2 weeks (one vacation week in the middle)
-**Forcing function:** Nénupharma parapharmacy lead (3 shops, mixed Tunis + Sousse, + 1 warehouse) — meeting in ~2 weeks
+**Sprint window:** target <10 calendar days, parallel Opus + Codex sessions
+**Forcing function:** Nénupharma parapharmacy lead (3 shops, mixed Tunis + Sousse, + 1 warehouse). Features develop regardless — productize the platform.
 **Framing:** Productize the platform. Client #1 is the forcing function, not the scope limit. Every track ships generic, gated, reusable across all SaaS tenants.
 
 ---
@@ -51,11 +51,13 @@ PHASE 0 — PRE-SPRINT GATE (T6 Phase 0)            ~2-3 days
   Until this gate is merged, NO other track writes a new migration.
 
 ─────────────────────────────────────────────────────────────────────
-WAVE 1 — Server-side work, ZERO POS touch          ~5-8 days
+WAVE 1 — Server-side work, ZERO Tauri POS touch    ~5-8 days
 ─────────────────────────────────────────────────────────────────────
-  Full parallelization safe. No collision with fiscal Phase 1.
+  Tauri client = untouched. Backend POS module changes require fiscal
+  handshake (T1-S1 + T2-S1 in the coordination log). Plain server work
+  (T3 / T4 / T5 / T11 / T6 ops) parallelizes freely.
 
-  T3-infra | T4 | T5 | T11-design | T1-server | T2-server
+  T3-infra | T4 | T5 | T11-design | T1-server (handshake on POS file) | T2-server (handshake on POS migrations) | T6 ops
 
   Run as separate Opus/Codex sessions. Daily merge to dev.
   Each track's adversarial review at end of its work (chunked, headless).
@@ -125,25 +127,24 @@ DEFERRED TO FUTURE SPRINT (separate planning cycle)
 
 **BUT Wave 1 has real backend-POS collisions (per round-2 R2-B1):**
 - T1 Phase 2 modifies `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` lines 831-883 (the in-transit availability fix) — fiscal Phase 1 Tasks 21/22 simultaneously rewrite sibling services and the `PosCoreReceiptProjection` swallows logic adjacent to that area
-- T2 Wave 1 adds `variant_id` to `pos_receipt_lines`, `pos_receipt_line_batch_allocations`, `payments` — fiscal Phase 1 Tasks 11/12 simultaneously add `pos_receipts.fiscal_event_id`, `pos_receipts.canonical_bytes`, `payments.origin`, `payments.fiscal_event_id` to the same/related tables
+- T2 Wave 1 adds `variant_id` to `pos_receipt_lines`, `pos_receipt_line_batch_allocations` (corrected per round-3 P1-1: T2 does NOT touch `payments` — that column ownership belongs entirely to fiscal Phase 1 Task 12 which adds `payments.origin` + `payments.fiscal_event_id`). Tables T2 touches still overlap with fiscal Phase 1's POS-receipt area; coordination still required.
 
 **The two collision classes (Tauri + backend-POS) both go through the unified coordination protocol** documented in `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md` (file renamed from `-tauri-pos-deltas.md` to reflect broader scope per round-2 R2-P2-2):
 
-1. Track lead drafts the delta entry in the deltas log
-2. Notifies the fiscal session owner (currently assumed to be Houssam, pending confirmation on return)
-3. Fiscal session owner triages: schedule into fiscal roadmap OR defer post-fiscal-Phase-1 OR negotiate alternative
-4. Once scheduled, fiscal session owner moves the entry to "In flight" and implements
-5. PR closes the entry as "Done"
+1. Track lead drafts the coordination entry in the unified log
+2. When a Codex POS session opens next (dispatched by user), it consumes pending entries
+3. Codex POS session implements, marks "In flight" in the log, then "Done — PR #N" when shipped
+4. No human-routing handoff needed; the log IS the protocol
 
 **No Wave 2 item AND no backend-POS Wave 1 item ships without explicit fiscal session sign-off.**
 
 **Specifically requires fiscal handshake (Wave 1 backend-POS, per round-2 R2-B1):**
 - T1 Phase 2 `ReceiptCreationService.php` modification (in-transit availability)
-- T2 Wave 1 migrations adding `variant_id` to `pos_receipt_lines`, `pos_receipt_line_batch_allocations`, `payments`
+- T2 Wave 1 migrations adding `variant_id` to `pos_receipt_lines`, `pos_receipt_line_batch_allocations` (NOT `payments` — corrected per round-3 P1-1)
 
-**Fiscal session pause requirement (per T6 Phase 0):** the in-flight fiscal Phase 1 must pause new migration commits during the Phase 0 PR window so T6 Phase 0 can move the 3 already-committed fiscal migrations into `database/migrations/tenant/` cleanly. After Phase 0 lands, fiscal Phase 1 resumes targeting `tenant/` directly. See T6 Phase 0 acceptance criteria for the explicit fiscal coordination step.
+**Fiscal session pause requirement (per T6 Phase 0):** the in-flight fiscal Phase 1 must pause new migration commits during the Phase 0 PR window so T6 Phase 0 can move the 3 already-committed fiscal migrations into `database/migrations/tenant/`. Clean-slate framing per user direction: those 3 migrations can be REGENERATED under the tenant directory rather than physically moved (no data to preserve). After Phase 0 lands, fiscal Phase 1 resumes targeting `tenant/` directly.
 
-**Fiscal session ownership (open question, blocks Wave 2 + backend-POS Wave 1):** Currently "default assumption: Houssam personally, pending confirmation." Per round-2 R2-P1-1, this MUST be resolved before Wave 2 starts. Specifically: (a) who owns? (b) what canonical notification channel? (c) what triage SLA? (d) what's the vacation-week escalation? Decision required from Houssam on return.
+**Fiscal session ownership (per user direction):** all sessions are Opus/Codex; user checks every 3-4 hours. No vacation-week escalation or SLA gymnastics needed. Sprint tracks log POS coordination items to the unified log; when a Codex POS session opens next, it picks them up. No human-routing handoff required between sessions.
 
 ---
 
@@ -220,9 +221,30 @@ After T6 Phase 0 merges:
 
 ---
 
-## Open coordination question (pending answer on return)
+## Phase prioritization (per user direction)
 
-The fiscal Phase 1 session ownership (Houssam personally / separate Codex session / team member) determines exactly how Wave 2 handshake routes. Default assumption while running autonomously: **Houssam owns it**, Wave 2 items get logged to the deltas file for triage on return.
+**Tier A — Start RIGHT NOW, parallel sessions safe:**
+- T6 Phase 0 (~8 PD, Codex+Opus pair)
+- T2 Variants Phases 1–3 (domain + service + admin UI; migrations branch-dev until Phase 0 merges)
+- T3 Sync Hub shared infra (interface + entities + admin UI)
+- T4 Order Routing Phases 1–4 (zone taxonomy + rule engine + scoring + UI)
+- T5 Owner Reporting MVP (ECharts widgets mirroring POS Analytics)
+- T11 design refinement → 3 impl specs (Opus)
+- T1 server-side (Scenarios A + B + per-location tax_id + batch preservation fix via inventory_batch_movements)
+- Batch management completion (set `requires_batch_tracking` defaults + E2E test)
+
+**Tier B — Sequenced on Tier A delivery:**
+- T3 concrete adapters (WC / Shopify / PrestaShop / Paradeals) — needs T3 infra merged + client platform decision
+- T4 Phase 5 (channel-order integration) — needs T3 Phase 2 ChannelOrder model
+- T11 impl-A/B (customer model + PricingStrategyResolver + DocumentEmissionPolicy) — needs T11 design merged
+
+**Tier C — Wait for fiscal Phase 1 completion, then quick alignment pass:**
+- T1 POS deltas (receipt template tax_id, InTransitAvailability rendering, offline behavior)
+- T2 POS deltas (variant picker modal, barcode → variant, cart line display, SQLite variant_id migration)
+- T11 impl-C (thin-POS B2B hand-off via holdStore extension)
+- POS variant integration (extend existing product/composite-item scoping to handle variants — small rework per user assessment)
+
+**Estimated end-to-end:** ~10 calendar days for Tiers A+B with parallel Opus + Codex sessions. Tier C bounded to ~3 PD when fiscal Phase 1 completes.
 
 ---
 

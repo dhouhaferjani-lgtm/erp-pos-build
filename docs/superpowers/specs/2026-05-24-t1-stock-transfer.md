@@ -115,13 +115,13 @@ StockTransferService
   ::cancel(UUID $transferId, User $cancelledBy, string $reason): StockTransfer
   ::calculateTransferCostImpact(StockTransfer): WACImpactDTO
 
-InTransitAvailabilityService
-  ::current(UUID $tenantId): InTransitAvailability
-  ::set(UUID $tenantId, InTransitAvailability $value, User $user): void
+InTransitAvailabilityService  // per-company scope (locked per round-3 P1-2)
+  ::current(UUID $companyId): InTransitAvailability
+  ::set(UUID $companyId, InTransitAvailability $value, User $user): void
 
 AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
   ::availableForSale(UUID $productId, ?UUID $variantId, UUID $locationId): decimal
-  // honors current InTransitAvailability tenant setting
+  // resolves company from location → honors that company's InTransitAvailability setting
 ```
 
 ### Events emitted
@@ -141,8 +141,8 @@ AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
 - `GET /api/v1/stock-transfers/{id}` — detail with lines + linked documents
 - `GET /api/v1/inter-company-pricing-strategies` — list per tenant
 - `PUT /api/v1/inter-company-pricing-strategies/{id}` — update
-- `GET /api/v1/settings/in-transit-availability` — current setting
-- `PUT /api/v1/settings/in-transit-availability` — update
+- `GET /api/v1/companies/{companyId}/settings/in-transit-availability` — current setting (per-company per round-3 P1-2)
+- `PUT /api/v1/companies/{companyId}/settings/in-transit-availability` — update
 
 ---
 
@@ -163,7 +163,7 @@ AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
 
 - **InterCompanyPricingStrategyPage** — per-tenant CRUD
 - **LocationSettingsPage** — extend with `tax_id`, `branch_code`, `legal_name` + preview on receipts
-- **InTransitAvailabilitySettingsPage** — tenant toggle: Available / Pending / NotAvailable
+- **InTransitAvailabilitySettingsPage** — per-COMPANY toggle: Available / Pending / NotAvailable (scope corrected per round-3 P1-2; super-admin can configure per company; if tenant has multiple companies, each can differ)
 
 ### POS (Wave 2 deltas — log to `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md`)
 
@@ -179,7 +179,7 @@ AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
 - [ ] Zero client names in code/config
 - [ ] Per-location tax_id is generic — works for TN branch numbering, FR SIRET-par-établissement, MA ICE, or any other scheme
 - [ ] Inter-company pricing strategies are config, not code
-- [ ] In-transit availability is a per-tenant setting (Available/Pending/NotAvailable)
+- [ ] In-transit availability is a per-COMPANY setting (Available/Pending/NotAvailable; scope locked per round-3 P1-2)
 - [ ] Transfer cost distribution configurable per transfer (default per tenant)
 - [ ] All migrations in `database/migrations/tenant/`
 - [ ] No cross-DB FKs (Scenario B intercompany is intra-tenant — both companies in same tenant DB)

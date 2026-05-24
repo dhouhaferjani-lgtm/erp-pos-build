@@ -3,7 +3,7 @@
 **Track:** T6 (P0 — Phase 0 is the **pre-sprint gate**, Phase 1+ runs parallel in Wave 1)
 **Date:** 2026-05-24 (v2 after Codex round-1 review)
 **Recommended workflow:** Codex throughout for migration moves + config flip + pre-warm pool jobs + backup automation. Opus design review on Stancl migration topology and pre-warm race safety.
-**Estimated effort:** Phase 0 ~3 PD + Phase 1+ ~7 PD = ~10 PD total (revised upward from v1's 7 PD per P2-4 finding)
+**Estimated effort:** Phase 0 ~8 PD (revised per round-3 reality check; covers 50+ FK rewrites, reference-data classification, central connection, Spatie placement, phpunit/PG strategy, fiscal coordination) + Phase 1+ ~4 PD = ~12 PD total. Target completion in <10 calendar days via parallel Opus + Codex sessions.
 **Roadmap reference:** [2026-05-24-productization-sprint-roadmap.md](../coordination/2026-05-24-productization-sprint-roadmap.md)
 **Constitutional reference:** [2026-05-24-migration-topology-contract.md](../coordination/2026-05-24-migration-topology-contract.md)
 
@@ -50,11 +50,11 @@ Read before writing code:
 
 ---
 
-## 3. Phase 0 GATE — migration topology + Stancl flip (~3 PD)
+## 3. Phase 0 GATE — migration topology + Stancl flip (~8 PD)
 
 ### Deliverables (must all merge together)
 
-**Phase 0 scope expanded per round-2 review (B-1 through B-5):** what looked like "config flip + file moves" is actually a multi-day rewrite of 39 migrations + adding a new DB connection + reclassifying the `users` table. Realistic Phase 0 effort revised from 3 PD to 5–6 PD.
+**Phase 0 scope (round-3 reality check applied):** this is genuinely 2 focused engineering weeks of work — clean-slate framing means no data migration burden, but ~50 cross-DB FK rewrites + reference-data tenant-side seeding + central connection setup + Spatie placement + phpunit/PG strategy + fiscal coordination + tenant identification middleware wiring. Phase 0 effort: ~8 PD with one focused Codex+Opus pair.
 
 1. **Create `apps/erp/apps/api/database/migrations/tenant/` directory**
 2. **Identify and move every existing migration that creates/alters a tenant table per the [migration topology contract](../coordination/2026-05-24-migration-topology-contract.md). Specifically (non-exhaustive — verify against the contract table):**
@@ -67,7 +67,10 @@ Read before writing code:
    - **`users` table** (corrected per round-2 B-2: it has `tenant_id` + `unique(tenant_id, email)`, so it's TENANT-scoped, NOT central as v1 said)
    - Spatie permission tables (`permissions`, `roles`, `model_has_permissions`, `model_has_roles`, `role_has_permissions`) — verify each: if `model_id` resolves to tenant `users`, they follow to tenant DB
    - Any other tenant-scoped table
-3. **Rewrite the 39 tenant migrations that declare `->constrained('tenants')` cross-DB FK** (verified by grep: `grep -rln "constrained('tenants')\|constrained(\"tenants\")" database/migrations/` returns 39 hits). Replace each with `->uuid('tenant_id')->index()` (no FK constraint — DB boundary post-flip can't enforce it). Per round-2 B-1, this is mechanical but high-volume; estimate 1.5 PD on its own.
+3. **Rewrite ALL tenant migrations that declare cross-DB FK to `tenants`** — syntax-independent audit (per round-3 B-1). Run BOTH:
+   - `grep -rln "constrained('tenants')\|constrained(\"tenants\")" database/migrations/` (39 files)
+   - `grep -rln "references('id')->on('tenants')\|references(\"id\")->on(\"tenants\")" database/migrations/` (additional files including `users`, `companies`, `product_images`)
+   - Combined unique-file count: ~50 files. Each rewritten to plain `->uuid('tenant_id')->index()` (no FK — DB boundary post-flip can't enforce it). Mechanical but high-volume; ~2 PD on its own.
 4. **Add the `central` connection to `config/database.php`** (per round-2 B-3 + topology contract Pattern A) — point at same Postgres host as default `pgsql`, with fixed `DB_CENTRAL_DATABASE` env var (e.g., `synerivia_central`). The default `pgsql` connection becomes the per-tenant connection (Stancl resolves it).
 5. **Update `tenancy.php`:**
    - Flip `pgsql => PostgreSQLDatabaseManager::class`
@@ -113,6 +116,19 @@ Read before writing code:
 ## 4. Phase 1 OPS — pre-warm pool + backup + monitoring (~7 PD)
 
 Runs in Wave 1 (parallel with all other Wave 1 tracks), AFTER Phase 0 gate merges.
+
+### Expand TenantInitializationService seeding (per round-3 P1-3)
+
+Current `TenantInitializationService` (`apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:14-19, 53-69, 138-148, 205-223`) imports and calls: `TunisiaChartOfAccountsSeeder`, `FranceChartOfAccountsSeeder`, `GenericChartOfAccountsSeeder`, `PaymentMethodSeeder`, `PaymentRepositorySeeder`, `TunisiaTaxConfigurationSeeder`. **It does NOT call `TunisiaStampDutySeeder`, `TunisianParapharmacySeeder`, `TunisiaWithholdingRulesSeeder`** despite all three existing as seeder files.
+
+Phase 1A extends `TenantInitializationService::initializeForNewRegistration` to:
+1. Seed `countries` table FIRST (new — currently tax config no-ops if `countries` empty per round-3 P1-3 evidence at TenantInitializationService.php:207-214)
+2. Seed `country_tax_rates` + `country_payment_settings`
+3. Then call existing per-country seeders (CoA, tax config, payment methods)
+4. ADD calls to `TunisiaStampDutySeeder`, `TunisianParapharmacySeeder`, `TunisiaWithholdingRulesSeeder` when country=TN
+5. Idempotency preserved (each seeder uses `updateOrCreate` or equivalent)
+
+Acceptance: Tunisian signup produces tenant with COMPLETE TN compliance (CoA + TVA + stamp duty + withholding rules + parapharmacy SKU seeds if applicable).
 
 ### Pre-warm pool
 

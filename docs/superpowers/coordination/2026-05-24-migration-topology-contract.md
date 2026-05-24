@@ -30,10 +30,10 @@ This rule survives the Stancl `PostgreSQLSchemaManager` → `PostgreSQLDatabaseM
 | `tenants` | Tenant module | The directory of all tenants; obviously central |
 | `domains` | Tenant module | Per-tenant subdomain → tenant_id resolution |
 | `plans` | Tenant module | Subscription plan catalog |
-| `subscriptions` | Tenant module | Tenant subscription state |
+| `tenant_subscriptions` | Billing module | Tenant subscription state (table name corrected from v3 per round-3 P2-1; verified at `apps/api/database/migrations/2025_12_01_193759_create_tenant_subscriptions_table.php:14`) |
 | `super_admins` (if exists) | Auth | Super-admin users that span tenants — central only |
-| **NOT** `users` | — | **CORRECTED per round-2 B-2:** `users` is actually TENANT-scoped — verified at `apps/api/database/migrations/2025_11_30_000003_create_users_table.php:13` declares `tenant_id` column and line 24 declares `unique(['tenant_id', 'email'])`. Regular users belong in each tenant's DB. Only super-admins or platform-level cross-tenant identity (if any exists today) lives central. |
-| `permissions`, `roles`, `model_has_permissions`, `model_has_roles`, `role_has_permissions` | Spatie | **Open question (round-2 B-2 highlighted):** Spatie permissions may need to be tenant-scoped too if roles vary per tenant. Phase 0 must verify by reading the actual schema before moving these. If `model_id` resolves to tenant `users`, then permission tables follow users → tenant. |
+| **NOT** `users` | — | **TENANT-scoped** (corrected per round-2 B-2 + round-3 P2-3 line citations): `users` is per-tenant — verified at `apps/api/database/migrations/2025_11_30_000003_create_users_table.php:18` declares `tenant_id` column and line 39 declares `unique(['tenant_id', 'email'])`. Regular users belong in each tenant's DB. Only super-admins live central (separate `super_admins` table to be created in Phase 0 if not already present). |
+| `permissions`, `roles`, `model_has_permissions`, `model_has_roles`, `role_has_permissions` | Spatie | **TENANT-scoped (DECISION per round-3 P1-4 evidence):** Spatie config has teams enabled with `tenant_id` as team key (`apps/api/config/permission.php:95-134`); migration uses `tenant_id` in roles + model pivots (`apps/api/database/migrations/2025_11_29_231806_create_permission_tables.php:36-44, 61-66, 85-90`). All Spatie permission tables move to tenant DB; no central role catalog. |
 | `failed_jobs`, `jobs`, `cache`, `sessions`, `password_reset_tokens` | Laravel infra | Cross-tenant infrastructure |
 | Sentry / monitoring metadata if any | Observability | Cross-tenant |
 
@@ -129,9 +129,14 @@ if (!$plan) {
 }
 ```
 
-**Phase 0 prerequisite (per round-2 B-3):** The `'central'` connection name does NOT exist in `apps/erp/apps/api/config/database.php` today. T6 Phase 0 MUST add it as part of the gate work — point it at the same Postgres host as the default `pgsql` connection but using a fixed `DB_CENTRAL_DATABASE` env var (e.g., `synerivia_central`). The current default `pgsql` connection becomes the per-tenant connection (resolved by Stancl). Add the central connection schema definition before any Pattern A code can compile.
+**Phase 0 prerequisite (per round-2 B-3):** The `'central'` connection name does NOT exist in `apps/erp/apps/api/config/database.php` today. T6 Phase 0 MUST add it as part of the gate work — point it at a separate physical PG database `synerivia_central` (via `DB_CENTRAL_DATABASE` env var). The default `pgsql` connection becomes the per-tenant connection template (Stancl resolves the actual DB per request). Add the central connection schema definition before any Pattern A code can compile.
 
-**Phase 0 also addresses (per round-2 B-1): the 39 existing tenant migrations that declare `->constrained('tenants')` or similar cross-DB FKs.** Verified by grep. These FK declarations will fail at migration time post-flip (because `tenants` table is in central DB and tenant migrations run against the tenant DB). Phase 0 work list must include: rewriting these 39 files to drop the cross-DB FK constraints and replace with plain `->uuid('tenant_id')->index()`. Mechanical work but volume is real.
+**Phase 0 also addresses (per round-2 B-1 + round-3 B-1): cross-DB FK declarations in tenant migrations.** Verified by syntax-independent grep:
+- `grep -rln "constrained('tenants')\\|constrained(\"tenants\")"` returns 39 files
+- `grep -rln "references('id')->on('tenants')\\|references(\"id\")->on(\"tenants\")"` returns additional files including `users` (`2025_11_30_000003_create_users_table.php:33-36`), `companies` (`2025_11_30_104000_create_companies_table.php:104-105`), `product_images` (`2025_12_29_155412_create_product_images_table.php:33-34`)
+- Combined unique-file count: ~50 files (per round-3 B-1 confirmation)
+
+These FK declarations will fail at migration time post-flip. Phase 0 work list must rewrite ALL of them (regardless of syntax form) to plain `->uuid('tenant_id')->index()`. **Phase 0 acceptance must use a syntax-independent FK audit grep** covering BOTH `constrained('tenants')` and `references('id')->on('tenants')` patterns. Clean-slate framing per user direction: no data preservation needed; rewrite freely.
 
 ### Pattern B — Central table needs to reference a tenant row
 
@@ -192,9 +197,80 @@ When T2 adds `variant_id` (nullable) to `stock_levels`, `stock_movements`, `stoc
 
 ---
 
-## 8. Open question (parked, not a blocker)
+## 8. Shared reference data — RESOLVED (per round-3 B-2 + clean-slate guidance)
 
-- **Shared central reference data** (e.g., country list, currency list): currently lives where? If in central, tenant tables that reference them follow Pattern A. If duplicated per tenant (each tenant has its own `countries` table seeded), simpler but storage-redundant. **Pre-flip status:** they're all in one DB, so the question doesn't bite. **Post-flip:** revisit when first new tenant DB is created.
+**Decision:** all reference data tables live in EVERY tenant DB, seeded via `TenantInitializationService` at tenant claim time. NOT central.
+
+**Rationale:** clean-slate move to multi-DB means no data migration burden. Per-tenant seeding is simpler than Pattern A lookups for tables that change rarely (countries, country_tax_rates, etc.). It also means tenant tables can FK to these reference tables normally within the same DB.
+
+**Reference tables to seed per-tenant (verified in code):**
+| Table | Current location | Phase 0 action |
+|---|---|---|
+| `countries` | `apps/api/database/migrations/2025_11_30_*_create_countries_table.php` | Move to `tenant/`; seed via `CountrySeeder` |
+| `country_tax_rates` | `2025_12_01_192545_create_country_tax_rates_table.php` (FK on countries.code) | Move to `tenant/`; FK intra-tenant; seed |
+| `country_payment_settings` | `2025_12_02_*` | Move to `tenant/`; seed |
+| `tax_configurations` | `2025_12_30_100000_create_tax_configurations_table.php` (FK on countries.code) | Move to `tenant/`; FK intra-tenant; seed via existing `TunisiaTaxConfigurationSeeder` etc. |
+
+`TenantInitializationService` already seeds CoA + tax_configurations per country. Phase 0 extends it to seed `countries` FIRST (so dependent tables have FK targets), then `country_tax_rates`, etc.
+
+## 9. Tenant identification architecture (NEW per user direction)
+
+Every tenant has its own physical PG database. The API must resolve **which DB to open** for each request. Resolution mechanisms:
+
+### Web ERP — subdomain-based
+
+- URL pattern: `{tenant_slug}.synerivia.tn` (e.g., `nenupharma.synerivia.tn`)
+- Stancl's `InitializeTenancyByDomain` middleware resolves tenant from subdomain
+- Tenant slug is stored in central `tenants.slug` (already exists per current `Tenant` model)
+- Each tenant DB is named `tenant_{slug}` per existing `Tenant::getDatabaseName()` at `apps/api/app/Modules/Tenant/Domain/Tenant.php`
+
+### Tauri desktop POS — explicit tenant_id
+
+Desktop apps have no subdomain. Resolution via:
+- First-time login screen prompts for THREE fields: `tenant_id` (the tenant's slug or unique code) + `email` + `password`
+- API endpoint: `POST /api/v1/auth/login` with body `{tenant_id, email, password}`
+- API resolves `tenant_id` against central `tenants.slug` → bind tenant context → validate email/password against `users` in that tenant's DB
+- On successful login, store `tenant_id` + session token in Tauri local storage (existing `@tauri-apps/plugin-store` per POS architecture)
+- Subsequent requests carry `tenant_id` via `X-Tenant-ID` HTTP header; API uses Stancl's `InitializeTenancyByRequestData` middleware (header-based identifier)
+- User does not re-enter `tenant_id` on subsequent app launches
+
+### Future mobile app — same as Tauri
+
+- Same first-time login UX: `tenant_id` + `email` + `password`
+- Same header-based subsequent requests
+- Local secure storage caches `tenant_id`
+
+### Central DB tenant directory
+
+The central `tenants` table must support:
+- `slug` (unique, indexed) — the user-facing tenant_id
+- `database_name` (default `tenant_{slug}` per existing convention)
+- `status` (Active, Suspended, PreProvisioned, Pending, Archived)
+- `subscription_state` (via `tenant_subscriptions` table)
+- `created_at`, `updated_at`
+
+When user enters `tenant_id` at Tauri login, API queries central `tenants` table → resolves database connection → opens tenant DB context → validates credentials. **Login failure modes:**
+- Unknown `tenant_id`: 404 with "tenant not found" (avoid revealing whether the tenant exists vs the email)
+- Tenant in `Suspended` / `Archived` status: 403 with clear message
+- Tenant in `PreProvisioned` (unclaimed pool): same as not found for security
+- Bad email/password against valid tenant: 401 with generic "invalid credentials"
+
+### Slug format
+
+`tenant_id` slug rules (per existing `tenants` table conventions):
+- Lowercase a-z, 0-9, hyphens only
+- 3-32 characters
+- Globally unique
+- Generated at tenant signup (auto-suggest from company name, user can customize)
+- Examples: `nenupharma`, `acme-pharma`, `client-001`
+
+### Stancl middleware references
+
+- `Stancl\Tenancy\Middleware\InitializeTenancyByDomain` (web ERP)
+- `Stancl\Tenancy\Middleware\InitializeTenancyByRequestData` (Tauri, mobile, API clients)
+- `Stancl\Tenancy\Middleware\InitializeTenancyByDomainOrSubdomain` (if mixing patterns)
+
+Phase 0 work includes wiring both middleware in `app/Http/Kernel.php` route middleware group for the appropriate route groups (web vs api/desktop).
 
 ---
 
