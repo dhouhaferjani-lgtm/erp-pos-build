@@ -60,6 +60,8 @@ use Throwable;
  * pattern).** If the DB query raises mid-walk, the command logs critical,
  * surfaces a transient failure (exit 2), and exits — never crashes the
  * operator's terminal mid-report.
+ *
+ * @cross-tenant-by-design Operator/CI integrity command verifies a specific chain selected by required --tenant and --terminal options after an actor permission gate; it intentionally runs without CompanyContext.
  */
 final class VerifyEventChainCommand extends Command
 {

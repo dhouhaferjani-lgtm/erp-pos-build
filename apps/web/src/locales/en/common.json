@@ -199,6 +199,7 @@
     "counting": "Inventory Counting",
     "enrichmentQueue": "Enrichment Queue",
     "inventoryCounting": "Inventory Counting",
+    "channels": "Channels",
     "priceLists": "Price Lists",
     "compositeItems": "Composite Items",
     "modifierGroups": "Modifier Groups",

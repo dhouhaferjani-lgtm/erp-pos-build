@@ -132,6 +132,8 @@ use Throwable;
  * global chain truth. The projector itself looks up tenant/company on the
  * `FiscalEvent` if it needs to rebind context.
  *
+ * @cross-tenant-by-design System-scoped fiscal projection queue job: projection rows are selected by globally unique fiscal_event_projections.id, and projectors derive tenant/company from the FiscalEvent row before tenant-specific side effects.
+ *
  * **Tries / backoff.** `$tries = 5` with exponential backoff
  * `[10, 30, 60, 300, 900]` seconds. The five-try ceiling is comfortable
  * for transient downstream outages (GL post failure, payment-method lookup

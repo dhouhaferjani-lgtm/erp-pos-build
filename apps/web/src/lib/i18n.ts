@@ -44,6 +44,7 @@ import enDocuments from '../locales/en/documents.json'
 import enVouchers from '../locales/en/vouchers.json'
 import enRefundPolicies from '../locales/en/refund-policies.json'
 import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
+import enChannels from '../locales/en/channels.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -86,6 +87,7 @@ import frDocuments from '../locales/fr/documents.json'
 import frVouchers from '../locales/fr/vouchers.json'
 import frRefundPolicies from '../locales/fr/refund-policies.json'
 import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
+import frChannels from '../locales/fr/channels.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -102,6 +104,7 @@ import arMenu from '../locales/ar/menu.json'
 import arPartsCatalog from '../locales/ar/parts-catalog.json'
 import arDocuments from '../locales/ar/documents.json'
 import arVouchers from '../locales/ar/vouchers.json'
+import arChannels from '../locales/ar/channels.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -154,6 +157,7 @@ const resources = {
     vouchers: enVouchers,
     'refund-policies': enRefundPolicies,
     'customer-history-audit': enCustomerHistoryAudit,
+    channels: enChannels,
   },
   fr: {
     common: frCommon,
@@ -197,6 +201,7 @@ const resources = {
     vouchers: frVouchers,
     'refund-policies': frRefundPolicies,
     'customer-history-audit': frCustomerHistoryAudit,
+    channels: frChannels,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -243,6 +248,7 @@ const resources = {
     vouchers: arVouchers,
     'refund-policies': enRefundPolicies,
     'customer-history-audit': enCustomerHistoryAudit,
+    channels: arChannels,
   },
 }
 
@@ -253,7 +259,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'customer-history-audit', 'channels'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

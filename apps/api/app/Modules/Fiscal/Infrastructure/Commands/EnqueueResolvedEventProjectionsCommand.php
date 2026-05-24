@@ -86,6 +86,8 @@ use Throwable;
  *         actor, unknown fiscal-event-id when targeted explicitly)
  *   - 2 — transient failure (registry-resolver hard error, DB connection
  *         lost mid-loop, etc.); operator re-runs to retry
+ *
+ * @cross-tenant-by-design Operator recovery command scans fiscal_events across tenant ids by explicit --tenant/--fiscal-event-id filters and requires an actor permission gate before enqueueing projection work.
  */
 final class EnqueueResolvedEventProjectionsCommand extends Command
 {

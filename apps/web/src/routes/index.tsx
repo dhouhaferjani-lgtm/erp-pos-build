@@ -147,6 +147,13 @@ const PriceListListPage = lazy(() => import('../features/pricing/PriceListListPa
 const PriceListDetailPage = lazy(() => import('../features/pricing/PriceListDetailPage').then((m) => ({ default: m.PriceListDetailPage })))
 const PriceListForm = lazy(() => import('../features/pricing/PriceListForm').then((m) => ({ default: m.PriceListForm })))
 
+// Channels module
+const ChannelListPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelListPage })))
+const ChannelCreateWizard = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelCreateWizard })))
+const ChannelProductMappingPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelProductMappingPage })))
+const ChannelSyncStatusDashboard = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelSyncStatusDashboard })))
+const ChannelOrdersPage = lazy(() => import('../features/channels').then((m) => ({ default: m.ChannelOrdersPage })))
+
 // Import module
 const ImportDashboardPage = lazy(() => import('../features/import/pages/ImportDashboardPage').then((m) => ({ default: m.ImportDashboardPage })))
 const ImportWizardPage = lazy(() => import('../features/import/pages/ImportWizardPage').then((m) => ({ default: m.ImportWizardPage })))
@@ -1698,6 +1705,60 @@ export function AppRoutes() {
               <RequirePermission permission="pricing.manage">
                 <SuspenseWrapper>
                   <PriceListForm />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Channels Module */}
+        <Route path="channels">
+          <Route
+            index
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <ChannelListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <ChannelCreateWizard />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/products"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <ChannelProductMappingPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/sync"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <ChannelSyncStatusDashboard />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/orders"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <ChannelOrdersPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

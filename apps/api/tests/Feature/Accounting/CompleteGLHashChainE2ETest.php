@@ -285,6 +285,25 @@ final class CompleteGLHashChainE2ETest extends TestCase
         $this->assertTrue($this->hashService->verifyChain($this->company->id), 'Chain of 50 entries should be valid');
     }
 
+    public function test_document_backed_entry_numbers_do_not_collide_with_same_second_dates(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+
+        try {
+            $invoice1 = $this->createAndPostInvoice('INV-COLLISION-1', '100.00');
+            $invoice2 = $this->createAndPostInvoice('INV-COLLISION-2', '100.00');
+        } finally {
+            $this->travelBack();
+        }
+
+        $entry1 = JournalEntry::where('source_id', $invoice1->id)->firstOrFail();
+        $entry2 = JournalEntry::where('source_id', $invoice2->id)->firstOrFail();
+
+        $this->assertNotSame($entry1->entry_number, $entry2->entry_number);
+        $this->assertStringEndsWith(str_replace('-', '', $invoice1->id), $entry1->entry_number);
+        $this->assertStringEndsWith(str_replace('-', '', $invoice2->id), $entry2->entry_number);
+    }
+
     public function test_different_companies_have_independent_chains(): void
     {
         // Create second company
