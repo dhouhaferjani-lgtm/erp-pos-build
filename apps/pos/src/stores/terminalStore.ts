@@ -9,6 +9,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSyncStore } from '@/stores/syncStore';
 import { usePaymentStore } from '@/stores/paymentStore';
 import { serializeErrorForLog } from '@/lib/errorLogging';
+import { getCurrencyDecimals } from '@/lib/currency';
+import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
 
 export interface Location {
   id: string;
@@ -54,6 +56,8 @@ export interface Shift {
   status: 'OPEN' | 'CLOSED';
   opening_cash: string;
   opened_at: string;
+  fiscal_shift_id?: string;
+  fiscal_session_id?: string;
   user: {
     id: string;
     name: string;
@@ -136,6 +140,72 @@ async function refreshOperatorDiscountPermissionsAfterTerminalChange(terminalCod
       serializeErrorForLog(error),
     );
   }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function fiscalCurrencyScale(currencyCode: string): 0 | 2 | 3 {
+  const scale = getCurrencyDecimals(currencyCode);
+  if (scale === 0 || scale === 2 || scale === 3) return scale;
+  throw new Error(`Unsupported fiscal currency scale ${scale} for ${currencyCode}`);
+}
+
+function fiscalSessionIdForShift(shift: Shift): string {
+  return shift.fiscal_session_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+}
+
+function fiscalShiftIdForShift(shift: Shift): string {
+  return shift.fiscal_shift_id ?? (isUuid(shift.id) ? shift.id : crypto.randomUUID());
+}
+
+async function authorShiftOpenFiscalEvents(
+  terminal: Terminal,
+  shift: Shift,
+  openingCash: string,
+): Promise<Shift> {
+  const auth = useAuthStore.getState();
+  if (!auth.user?.tenantId || !auth.companyId) {
+    throw new Error('Cannot author Z-session opening event without active tenant and company.');
+  }
+
+  const company = auth.companies.find((candidate) => candidate.id === auth.companyId);
+  const currencyCode = company?.currency ?? 'EUR';
+  const fiscalShiftId = fiscalShiftIdForShift(shift);
+  const fiscalSessionId = fiscalSessionIdForShift(shift);
+  const openedAtDevice = new Date(shift.opened_at);
+  if (Number.isNaN(openedAtDevice.getTime())) {
+    throw new Error(`Cannot author Z-session opening event with invalid shift opened_at ${shift.opened_at}.`);
+  }
+
+  await authorZSessionOpenWithOpeningFloat({
+    tenantId: auth.user.tenantId,
+    companyId: auth.companyId,
+    terminalId: terminal.id,
+    terminalLabel: terminal.code,
+    shiftId: fiscalShiftId,
+    sessionId: fiscalSessionId,
+    businessDate: shift.opened_at.slice(0, 10),
+    operatorId: shift.user.id || auth.user.id,
+    operatorName: shift.user.name || auth.user.name,
+    currencyCode,
+    currencyScale: fiscalCurrencyScale(currencyCode),
+    openingFloatAmount: openingCash,
+    isTraining: terminal.is_training_mode,
+    openedAtDevice,
+    openingCashDrawerOperationId: null,
+  });
+
+  if (shift.fiscal_shift_id === fiscalShiftId && shift.fiscal_session_id === fiscalSessionId) {
+    return shift;
+  }
+
+  return {
+    ...shift,
+    fiscal_shift_id: fiscalShiftId,
+    fiscal_session_id: fiscalSessionId,
+  };
 }
 
 /**
@@ -524,6 +594,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     if (!terminal) throw new Error('No terminal configured');
 
     set({ isLoading: true });
+    let shift: Shift;
     try {
       const body: Record<string, string> = {
         terminal_code: terminal.code,
@@ -532,27 +603,34 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       if (cashierId) {
         body['cashier_id'] = cashierId;
       }
-      const shift = await apiPost<Shift>('/pos/shifts/open', body);
-      await setStoredValue(StorageKeys.SHIFT, shift);
-      set({ shift, isLoading: false });
+      shift = await apiPost<Shift>('/pos/shifts/open', body);
     } catch {
       // Offline fallback: create local shift
       const authState = useAuthStore.getState();
       const user = authState.user;
-      const offlineShift: Shift = {
+      shift = {
         id: `offline-${crypto.randomUUID()}`,
         terminal_id: terminal.id,
         shift_number: 0,
         status: 'OPEN',
         opening_cash: openingCash,
         opened_at: new Date().toISOString(),
+        fiscal_shift_id: crypto.randomUUID(),
+        fiscal_session_id: crypto.randomUUID(),
         user: {
           id: cashierId ?? user?.id ?? '',
           name: user?.name ?? 'Operator',
         },
       };
-      await setStoredValue(StorageKeys.SHIFT, offlineShift);
-      set({ shift: offlineShift, isLoading: false });
+    }
+
+    try {
+      const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
+      await setStoredValue(StorageKeys.SHIFT, fiscalShift);
+      set({ shift: fiscalShift, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
     }
   },
 
