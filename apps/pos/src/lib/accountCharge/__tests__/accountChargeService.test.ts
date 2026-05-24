@@ -40,6 +40,7 @@ const appendResult = {
   terminal_id: '33333333-3333-4333-8333-333333333333',
   operator_id: '44444444-4444-4444-8444-444444444444',
   event_type: 'ACCOUNT_CHARGE',
+  chain_context: 'operational',
   event_version: 1,
   signature_version: 'hash-chain-integrity-v1',
   sequence_number: 7,

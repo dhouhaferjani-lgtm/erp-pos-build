@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
+use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
@@ -69,6 +70,7 @@ final class VerifyEventChainCommand extends Command
     protected $signature = 'fiscal:verify-event-chain '.
         '{--tenant= : tenant_id of the chain to verify (required)} '.
         '{--terminal= : terminal_id of the chain to verify (required)} '.
+        '{--chain-context=operational : fiscal chain context to verify} '.
         '{--from-sequence= : start the walk at this sequence_number (default: 1)} '.
         '{--actor-id= : authenticated user id performing the action (required for the permission gate)}';
 
@@ -142,9 +144,19 @@ final class VerifyEventChainCommand extends Command
             return self::FAILURE;
         }
 
+        $chainContext = $this->option('chain-context');
+        if (! is_string($chainContext) || ! in_array($chainContext, FiscalEventEnvelope::CHAIN_CONTEXTS, true)) {
+            $this->error(sprintf(
+                '--chain-context must be one of [%s].',
+                implode(', ', FiscalEventEnvelope::CHAIN_CONTEXTS),
+            ));
+
+            return self::FAILURE;
+        }
+
         // ---- Walk the chain ----
         try {
-            $incidents = $this->walkChain($tenantId, $terminalId, $fromSequence);
+            $incidents = $this->walkChain($tenantId, $terminalId, $chainContext, $fromSequence);
             $quarantineIncidents = $this->reportQuarantineIncidents($tenantId, $terminalId);
         } catch (Throwable $e) {
             // Fail-closed (Task 18 F1) — a DB outage mid-walk is a
@@ -156,6 +168,7 @@ final class VerifyEventChainCommand extends Command
                 [
                     'tenant_id' => $tenantId,
                     'terminal_id' => $terminalId,
+                    'chain_context' => $chainContext,
                     'from_sequence' => $fromSequence,
                     'exception' => $e::class,
                     'message' => $e->getMessage(),
@@ -169,9 +182,10 @@ final class VerifyEventChainCommand extends Command
         $totalIncidents = count($incidents) + count($quarantineIncidents);
         if ($totalIncidents === 0) {
             $this->info(sprintf(
-                'chain verified — terminal %s, tenant %s, %d events walked from sequence %d, no quarantine incidents.',
+                'chain verified — terminal %s, tenant %s, context %s, %d events walked from sequence %d, no quarantine incidents.',
                 $terminalId,
                 $tenantId,
+                $chainContext,
                 $this->lastWalkedCount,
                 $fromSequence,
             ));
@@ -191,9 +205,10 @@ final class VerifyEventChainCommand extends Command
         }
 
         $this->error(sprintf(
-            'chain NOT verified — terminal %s, tenant %s: %d chain incidents, %d quarantine incidents.',
+            'chain NOT verified — terminal %s, tenant %s, context %s: %d chain incidents, %d quarantine incidents.',
             $terminalId,
             $tenantId,
+            $chainContext,
             count($incidents),
             count($quarantineIncidents),
         ));
@@ -211,13 +226,14 @@ final class VerifyEventChainCommand extends Command
      *
      * @return list<string>
      */
-    private function walkChain(string $tenantId, string $terminalId, int $fromSequence): array
+    private function walkChain(string $tenantId, string $terminalId, string $chainContext, int $fromSequence): array
     {
         $incidents = [];
 
         $rows = FiscalEvent::query()
             ->where('tenant_id', $tenantId)
             ->where('terminal_id', $terminalId)
+            ->where('chain_context', $chainContext)
             ->where('sequence_number', '>=', $fromSequence)
             ->orderBy('sequence_number')
             ->get([
@@ -238,7 +254,7 @@ final class VerifyEventChainCommand extends Command
         // walk. If we are starting from sequence 1, it must equal the
         // terminal's `genesis_seed`. Otherwise it must equal the
         // `current_hash` of the row at (fromSequence - 1).
-        $expectedPrevious = $this->resolveExpectedPreviousHash($tenantId, $terminalId, $fromSequence);
+        $expectedPrevious = $this->resolveExpectedPreviousHash($tenantId, $terminalId, $chainContext, $fromSequence);
 
         foreach ($rows as $row) {
             // (1) Re-hash check.
@@ -296,13 +312,14 @@ final class VerifyEventChainCommand extends Command
      * exists — the caller surfaces that as a chain incident on the first
      * row.
      */
-    private function resolveExpectedPreviousHash(string $tenantId, string $terminalId, int $fromSequence): ?string
+    private function resolveExpectedPreviousHash(string $tenantId, string $terminalId, string $chainContext, int $fromSequence): ?string
     {
         if ($fromSequence > 1) {
             /** @var stdClass|null $prior */
             $prior = $this->db->table('fiscal_events')
                 ->where('tenant_id', $tenantId)
                 ->where('terminal_id', $terminalId)
+                ->where('chain_context', $chainContext)
                 ->where('sequence_number', $fromSequence - 1)
                 ->first(['current_hash']);
 

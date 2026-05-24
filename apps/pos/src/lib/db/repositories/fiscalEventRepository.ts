@@ -15,6 +15,7 @@ export interface LocalFiscalEvent {
   sequence_number: number;
   event_time_device: string;
   business_date: string;
+  chain_context: string;
   last_server_time_seen: string | null;
   reference_event_id: string | null;
   reference_document_id: string | null;
@@ -46,6 +47,7 @@ export interface FiscalEventWireEnvelope {
     sequence_number: number;
     event_time_device: string;
     business_date: string;
+    chain_context: string;
     last_server_time_seen: string | null;
     reference_event_id: string | null;
     reference_document_id: string | null;
@@ -77,13 +79,13 @@ export async function getPendingFiscalEventsForSync(
     db,
     `SELECT id, tenant_id, company_id, terminal_id, operator_id,
             event_type, event_version, signature_version, sequence_number,
-            event_time_device, business_date, last_server_time_seen,
+            event_time_device, business_date, chain_context, last_server_time_seen,
             reference_event_id, reference_document_id, source_event_class,
             source_event_id, canonical_bytes, previous_hash, current_hash,
             sync_status, sync_error, created_at, synced_at
        FROM fiscal_events
       WHERE sync_status IN ('pending', 'failed')
-      ORDER BY sequence_number ASC`,
+      ORDER BY chain_context ASC, sequence_number ASC`,
   );
 }
 
@@ -134,7 +136,7 @@ export function fiscalEventToWireEnvelope(
     envelope_id: event.id,
     type: 'FISCAL_EVENT',
     payload_version: 1,
-    idempotency_key: `${event.terminal_id}:${String(event.sequence_number)}`,
+    idempotency_key: `${event.terminal_id}:${event.chain_context}:${String(event.sequence_number)}`,
     payload: {
       id: event.id,
       tenant_id: event.tenant_id,
@@ -147,6 +149,7 @@ export function fiscalEventToWireEnvelope(
       sequence_number: event.sequence_number,
       event_time_device: event.event_time_device,
       business_date: event.business_date,
+      chain_context: event.chain_context,
       last_server_time_seen: event.last_server_time_seen,
       reference_event_id: event.reference_event_id,
       reference_document_id: event.reference_document_id,

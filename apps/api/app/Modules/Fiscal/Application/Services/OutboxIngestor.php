@@ -167,7 +167,9 @@ final class OutboxIngestor
         /** @var stdClass|null $prior */
         $prior = $this->db->table('fiscal_events')
             ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
             ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
             ->orderByDesc('sequence_number')
             ->first();
 
@@ -622,6 +624,7 @@ final class OutboxIngestor
             'sequence_number' => $envelope->sequenceNumber,
             'event_time_device' => $envelope->eventTimeDevice,
             'business_date' => $envelope->businessDate,
+            'chain_context' => $envelope->chainContext,
             'last_server_time_seen' => $envelope->lastServerTimeSeen,
             'server_received_at' => $serverReceivedAt->toDateTimeString(),
             'reference_event_id' => $envelope->referenceEventId,
@@ -679,12 +682,12 @@ final class OutboxIngestor
                 $placeholders,
             );
         } else {
-            // SQLite + others — explicit conflict-target on (tenant_id,
-            // terminal_id, sequence_number) so a source-event-id
-            // collision still propagates as a QueryException.
+            // SQLite + others — explicit conflict-target on the chain slot
+            // so a source-event-id collision still propagates as a
+            // QueryException.
             $sql = sprintf(
                 'INSERT INTO "fiscal_events" (%s) VALUES (%s) '.
-                'ON CONFLICT (tenant_id, terminal_id, sequence_number) '.
+                'ON CONFLICT (tenant_id, company_id, terminal_id, chain_context, sequence_number) '.
                 'DO NOTHING RETURNING id',
                 $columnList,
                 $placeholders,
@@ -802,7 +805,9 @@ final class OutboxIngestor
         /** @var stdClass|null $existing */
         $existing = $this->db->table('fiscal_events')
             ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
             ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
             ->where('sequence_number', $envelope->sequenceNumber)
             ->first();
 

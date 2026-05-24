@@ -582,6 +582,7 @@ final class StrictCanonicalParserTest extends TestCase
     {
         $fields = array_merge([
             'business_date' => '2026-05-16',
+            'chain_context' => 'operational',
             'company_id' => 'co-1',
             'event_time_device' => '2026-05-16T12:00:00Z',
             'event_type' => $eventType,

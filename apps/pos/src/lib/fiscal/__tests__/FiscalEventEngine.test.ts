@@ -240,6 +240,7 @@ interface FiscalEventRowDb {
   terminal_id: string;
   operator_id: string;
   event_type: string;
+  chain_context: string;
   event_version: number;
   signature_version: string;
   sequence_number: number;
@@ -261,7 +262,7 @@ async function selectAllEvents(adapter: SqliteTestAdapter): Promise<FiscalEventR
   return adapter.select<FiscalEventRowDb[]>(
     `SELECT id, tenant_id, company_id, terminal_id, operator_id,
             event_type, event_version, signature_version,
-            sequence_number, event_time_device, business_date,
+            sequence_number, event_time_device, business_date, chain_context,
             reference_event_id, reference_document_id,
             source_event_class, source_event_id,
             canonical_bytes, previous_hash, current_hash,
@@ -501,6 +502,7 @@ d('FiscalEventEngine.append', () => {
 
     expect(Object.keys(parsed).sort()).toEqual([
       'business_date',
+      'chain_context',
       'company_id',
       'event_time_device',
       'event_type',
@@ -517,6 +519,7 @@ d('FiscalEventEngine.append', () => {
     ]);
 
     expect(parsed.sequence_number).toBe(1);
+    expect(parsed.chain_context).toBe('operational');
     expect(parsed.previous_hash).toBe(GENESIS_SEED);
     expect(parsed.event_type).toBe('SALE_RECEIPT');
     expect(parsed.event_version).toBe(1);
@@ -550,6 +553,64 @@ d('FiscalEventEngine.append', () => {
     const head2 = await selectChainHead(adapter, 'terminal-2');
     expect(head1.fiscal_event_sequence).toBe(1);
     expect(head2.fiscal_event_sequence).toBe(1);
+  });
+
+  it('chain_context creates independent sequence streams on the same terminal', async () => {
+    await adapter.execute(
+      `UPDATE terminal_state
+          SET z_chain_genesis_seed = $1
+        WHERE terminal_id = $2`,
+      [ALT_GENESIS_SEED, TERMINAL_ID],
+    );
+
+    const operational = await engine.append(adapter, saleReceiptRequest());
+    const zSession = await engine.append(
+      adapter,
+      saleReceiptRequest({
+        chain_context: 'z_session',
+        event_time_device: '2026-05-16T10:01:00Z',
+        source_event_class: 'z_session_test',
+        source_event_id: '55555555-5555-4555-8555-555555555555',
+      }),
+    );
+
+    expect(operational.chain_context).toBe('operational');
+    expect(operational.sequence_number).toBe(1);
+    expect(operational.previous_hash).toBe(GENESIS_SEED);
+    expect(zSession.chain_context).toBe('z_session');
+    expect(zSession.sequence_number).toBe(1);
+    expect(zSession.previous_hash).toBe(ALT_GENESIS_SEED);
+
+    const rows = await adapter.select<
+      Array<{ chain_context: string; sequence_number: number; previous_hash: string }>
+    >(
+      `SELECT chain_context, sequence_number, previous_hash
+         FROM fiscal_events
+        ORDER BY chain_context ASC`,
+    );
+    expect(rows).toEqual([
+      { chain_context: 'operational', sequence_number: 1, previous_hash: GENESIS_SEED },
+      { chain_context: 'z_session', sequence_number: 1, previous_hash: ALT_GENESIS_SEED },
+    ]);
+
+    const heads = await adapter.select<
+      Array<{
+        fiscal_event_sequence: number;
+        fiscal_event_last_hash: string;
+        z_chain_sequence: number;
+        z_chain_last_hash: string;
+      }>
+    >(
+      `SELECT fiscal_event_sequence, fiscal_event_last_hash,
+              z_chain_sequence, z_chain_last_hash
+         FROM terminal_state
+        WHERE terminal_id = $1`,
+      [TERMINAL_ID],
+    );
+    expect(heads[0]?.fiscal_event_sequence).toBe(1);
+    expect(heads[0]?.fiscal_event_last_hash).toBe(operational.current_hash);
+    expect(heads[0]?.z_chain_sequence).toBe(1);
+    expect(heads[0]?.z_chain_last_hash).toBe(zSession.current_hash);
   });
 
   // -------------------------------------------------------------------

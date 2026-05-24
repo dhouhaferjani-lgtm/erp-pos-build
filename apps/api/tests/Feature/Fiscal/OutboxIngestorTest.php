@@ -204,6 +204,38 @@ final class OutboxIngestorTest extends TestCase
         );
     }
 
+    public function test_chain_context_allows_parallel_sequence_streams_for_same_terminal(): void
+    {
+        $operational = $this->ingest($this->validEnvelope(['sequence_number' => 1]));
+        $zSession = $this->ingest($this->validEnvelope([
+            'id' => Str::uuid()->toString(),
+            'chain_context' => 'z_session',
+            'sequence_number' => 1,
+            'source_event_class' => 'z_session_test',
+            'source_event_id' => Str::uuid()->toString(),
+        ]));
+
+        $this->assertTrue($operational->stored);
+        $this->assertTrue($zSession->stored);
+        $this->assertFalse($zSession->sequenceConflict);
+
+        $rows = DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->orderBy('chain_context')
+            ->get(['chain_context', 'sequence_number']);
+
+        $this->assertSame(
+            [
+                ['chain_context' => 'operational', 'sequence_number' => 1],
+                ['chain_context' => 'z_session', 'sequence_number' => 1],
+            ],
+            $rows->map(fn (object $row): array => [
+                'chain_context' => (string) $row->chain_context,
+                'sequence_number' => (int) $row->sequence_number,
+            ])->all(),
+        );
+    }
+
     public function test_verified_event_stores_with_zero_projection_rows_when_no_projector_is_active(): void
     {
         // Simulated zero-active-projector state — `untagAllProjectors()`
@@ -741,6 +773,7 @@ final class OutboxIngestorTest extends TestCase
             'sequence_number' => 1,
             'event_time_device' => now()->utc()->format('Y-m-d\TH:i:s\Z'),
             'business_date' => now()->utc()->toDateString(),
+            'chain_context' => 'operational',
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,
@@ -760,6 +793,7 @@ final class OutboxIngestorTest extends TestCase
 
         $canonicalArray = [
             'business_date' => $fields['business_date'],
+            'chain_context' => $fields['chain_context'],
             'company_id' => $fields['company_id'],
             'event_time_device' => $fields['event_time_device'],
             'event_type' => $fields['event_type']->value,
@@ -793,6 +827,7 @@ final class OutboxIngestorTest extends TestCase
             sequenceNumber: $fields['sequence_number'],
             eventTimeDevice: $fields['event_time_device'],
             businessDate: $fields['business_date'],
+            chainContext: $fields['chain_context'],
             lastServerTimeSeen: $fields['last_server_time_seen'],
             referenceEventId: $fields['reference_event_id'],
             referenceDocumentId: $fields['reference_document_id'],

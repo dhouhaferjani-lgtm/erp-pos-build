@@ -162,6 +162,7 @@ function makeFiscalEvent(overrides: Partial<LocalFiscalEvent> = {}): LocalFiscal
     sequence_number: 1,
     event_time_device: '2026-05-20T12:00:00Z',
     business_date: '2026-05-20',
+    chain_context: 'operational',
     last_server_time_seen: null,
     reference_event_id: null,
     reference_document_id: null,

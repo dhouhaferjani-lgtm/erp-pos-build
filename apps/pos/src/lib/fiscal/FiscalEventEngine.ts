@@ -167,6 +167,7 @@ export class ConcurrentChainAdvanceError extends Error {
  */
 export interface FiscalEventAppendRequest {
   event_type: FiscalEventTypeValue;
+  chain_context?: FiscalChainContext;
   tenant_id: string;
   company_id: string;
   terminal_id: string;
@@ -190,6 +191,15 @@ export interface FiscalEventAppendRequest {
   source_event_class?: string;
   source_event_id?: string;
 }
+
+export const FISCAL_CHAIN_CONTEXTS = [
+  'operational',
+  'z_session',
+  'training_operational',
+  'training_z_session',
+] as const;
+
+export type FiscalChainContext = (typeof FISCAL_CHAIN_CONTEXTS)[number];
 
 // -------------------------------------------------------------------
 // Typed payload-input interfaces (Phase 1 implemented event types).
@@ -420,6 +430,7 @@ export interface FiscalEventAppendResult {
   terminal_id: string;
   operator_id: string;
   event_type: FiscalEventTypeValue;
+  chain_context: FiscalChainContext;
   event_version: number;
   signature_version: string;
   sequence_number: number;
@@ -508,6 +519,7 @@ export class FiscalEventEngine {
     // Step 1 — resolve event_version via the registry. Reserved types
     // throw before any state mutation.
     const eventVersion = this.registry.eventVersionFor(request.event_type);
+    const chainContext = request.chain_context ?? 'operational';
 
     // Step 2 — device-side idempotency on (tenant_id, terminal_id,
     // source_event_class, source_event_id). The lookup is scoped
@@ -532,7 +544,12 @@ export class FiscalEventEngine {
     // lowercase hex value (Task 13 Codex P3 forward-looking input +
     // Task 15 round-2 Codex P3 hardening — also rejects 'GENESIS',
     // '0'.repeat(64), and any non-hex sentinel).
-    const head = await this.readChainHead(sql, request.tenant_id, request.terminal_id);
+    const head = await this.readChainHead(
+      sql,
+      request.tenant_id,
+      request.terminal_id,
+      chainContext,
+    );
     if (!LOWER_HEX_64.test(head.fiscal_event_genesis_seed)) {
       throw new ChainHeadNotInitializedError(
         request.terminal_id,
@@ -550,6 +567,7 @@ export class FiscalEventEngine {
     const signatureVersion = this.integrityProvider.version();
     const canonicalPayload = {
       business_date: request.business_date,
+      chain_context: chainContext,
       company_id: request.company_id,
       event_time_device: request.event_time_device,
       event_type: request.event_type,
@@ -581,7 +599,7 @@ export class FiscalEventEngine {
         `INSERT INTO fiscal_events (
            id, tenant_id, company_id, terminal_id, operator_id,
            event_type, event_version, signature_version,
-           sequence_number, event_time_device, business_date,
+           sequence_number, event_time_device, business_date, chain_context,
            reference_event_id, reference_document_id,
            source_event_class, source_event_id,
            canonical_bytes, previous_hash, current_hash,
@@ -589,11 +607,11 @@ export class FiscalEventEngine {
          ) VALUES (
            $1, $2, $3, $4, $5,
            $6, $7, $8,
-           $9, $10, $11,
-           $12, $13,
-           $14, $15,
-           $16, $17, $18,
-           'not_required', 'pending', $19
+           $9, $10, $11, $12,
+           $13, $14,
+           $15, $16,
+           $17, $18, $19,
+           'not_required', 'pending', $20
          )`,
         [
           id,
@@ -607,6 +625,7 @@ export class FiscalEventEngine {
           sequenceNumber,
           request.event_time_device,
           request.business_date,
+          chainContext,
           request.reference_event_id ?? null,
           request.reference_document_id ?? null,
           request.source_event_class ?? null,
@@ -627,10 +646,7 @@ export class FiscalEventEngine {
     // Step 6 — advance the chain head. Same `tx` so the advance is
     // atomic with the insert.
     await sql.execute(
-      `UPDATE terminal_state
-          SET fiscal_event_last_hash = $1,
-              fiscal_event_sequence  = $2
-        WHERE terminal_id = $3`,
+      this.chainHeadUpdateSql(chainContext),
       [currentHash, sequenceNumber, request.terminal_id],
     );
 
@@ -641,6 +657,7 @@ export class FiscalEventEngine {
       terminal_id: request.terminal_id,
       operator_id: request.operator_id,
       event_type: request.event_type,
+      chain_context: chainContext,
       event_version: eventVersion,
       signature_version: signatureVersion,
       sequence_number: sequenceNumber,
@@ -687,7 +704,7 @@ export class FiscalEventEngine {
     const rows = await sql.select<FiscalEventRowShape[]>(
       `SELECT id, tenant_id, company_id, terminal_id, operator_id,
               event_type, event_version, signature_version,
-              sequence_number, event_time_device, business_date,
+              sequence_number, event_time_device, business_date, chain_context,
               reference_event_id, reference_document_id,
               source_event_class, source_event_id,
               canonical_bytes, previous_hash, current_hash,
@@ -804,11 +821,13 @@ export class FiscalEventEngine {
     sql: SqlSurface,
     tenantId: string,
     terminalId: string,
+    chainContext: FiscalChainContext,
   ): Promise<{
     fiscal_event_genesis_seed: string;
     fiscal_event_last_hash: string;
     fiscal_event_sequence: number;
   }> {
+    const columns = this.chainHeadColumns(chainContext);
     const rows = await sql.select<
       Array<{
         fiscal_event_genesis_seed: unknown;
@@ -816,7 +835,9 @@ export class FiscalEventEngine {
         fiscal_event_sequence: unknown;
       }>
     >(
-      `SELECT fiscal_event_genesis_seed, fiscal_event_last_hash, fiscal_event_sequence
+      `SELECT ${columns.genesis} AS fiscal_event_genesis_seed,
+              ${columns.lastHash} AS fiscal_event_last_hash,
+              ${columns.sequence} AS fiscal_event_sequence
          FROM terminal_state
         WHERE terminal_id = $1`,
       [terminalId],
@@ -844,6 +865,47 @@ export class FiscalEventEngine {
       fiscal_event_last_hash: row.fiscal_event_last_hash,
       fiscal_event_sequence: row.fiscal_event_sequence,
     };
+  }
+
+  private chainHeadColumns(chainContext: FiscalChainContext): {
+    genesis: string;
+    lastHash: string;
+    sequence: string;
+  } {
+    switch (chainContext) {
+      case 'operational':
+        return {
+          genesis: 'fiscal_event_genesis_seed',
+          lastHash: 'fiscal_event_last_hash',
+          sequence: 'fiscal_event_sequence',
+        };
+      case 'z_session':
+        return {
+          genesis: 'z_chain_genesis_seed',
+          lastHash: 'z_chain_last_hash',
+          sequence: 'z_chain_sequence',
+        };
+      case 'training_operational':
+        return {
+          genesis: 'training_fiscal_event_genesis_seed',
+          lastHash: 'training_fiscal_event_last_hash',
+          sequence: 'training_fiscal_event_sequence',
+        };
+      case 'training_z_session':
+        return {
+          genesis: 'training_z_chain_genesis_seed',
+          lastHash: 'training_z_chain_last_hash',
+          sequence: 'training_z_chain_sequence',
+        };
+    }
+  }
+
+  private chainHeadUpdateSql(chainContext: FiscalChainContext): string {
+    const columns = this.chainHeadColumns(chainContext);
+    return `UPDATE terminal_state
+               SET ${columns.lastHash} = $1,
+                   ${columns.sequence} = $2
+             WHERE terminal_id = $3`;
   }
 
   /** Expose the default DB handle for callers that want a non-tx convenience. */
@@ -3111,6 +3173,7 @@ interface FiscalEventRowShape {
   terminal_id: unknown;
   operator_id: unknown;
   event_type: unknown;
+  chain_context: unknown;
   event_version: unknown;
   signature_version: unknown;
   sequence_number: unknown;
@@ -3136,6 +3199,7 @@ function rowToResult(row: FiscalEventRowShape): FiscalEventAppendResult {
     terminal_id: requireString(row.terminal_id, 'terminal_id'),
     operator_id: requireString(row.operator_id, 'operator_id'),
     event_type: requireString(row.event_type, 'event_type') as FiscalEventTypeValue,
+    chain_context: requireString(row.chain_context, 'chain_context') as FiscalChainContext,
     event_version: requireNumber(row.event_version, 'event_version'),
     signature_version: requireString(row.signature_version, 'signature_version'),
     sequence_number: requireNumber(row.sequence_number, 'sequence_number'),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
@@ -74,6 +75,7 @@ final class StrictCanonicalParser
     /** The 14 canonical envelope keys per spec §4 (alphabetical). */
     private const ENVELOPE_KEYS = [
         'business_date',
+        'chain_context',
         'company_id',
         'event_time_device',
         'event_type',
@@ -544,6 +546,10 @@ final class StrictCanonicalParser
         // business_date: ISO 8601 date.
         if (! is_string($envelope['business_date']) || preg_match(self::ISO_8601_DATE, $envelope['business_date']) !== 1) {
             return 'envelope_business_date_invalid:must be ISO 8601 date';
+        }
+
+        if (! is_string($envelope['chain_context']) || ! in_array($envelope['chain_context'], FiscalEventEnvelope::CHAIN_CONTEXTS, true)) {
+            return 'envelope_chain_context_invalid:got='.var_export($envelope['chain_context'], true);
         }
 
         // Non-empty string IDs.
