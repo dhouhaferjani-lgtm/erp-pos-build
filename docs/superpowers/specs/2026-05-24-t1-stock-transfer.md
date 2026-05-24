@@ -168,8 +168,8 @@ AvailableQuantityService  // consumed by POS ReceiptCreationService + cart logic
 ### POS (Wave 2 deltas — log to `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md`)
 
 - Receipt template surfaces `location.tax_id` and `location.branch_code` when set
-- `InTransitAvailability` rendering on product cards (shows "Available with notice" / "Pending" / "Not available" based on tenant setting + active in-transit transfers)
-- Offline mode: cached `available_quantity` includes in-transit adjustment per tenant setting (snapshot at sync time)
+- `InTransitAvailability` rendering on product cards (shows "Available with notice" / "Pending" / "Not available" based on per-company setting + active in-transit transfers)
+- Offline mode: cached `available_quantity` includes in-transit adjustment per company setting (snapshot at sync time)
 - Server-side enforcement: `ReceiptCreationService` consumes `AvailableQuantityService::availableForSale` (which honors the setting) — if `NotAvailable` and product is in transit, sale blocked with clear error message
 
 ---

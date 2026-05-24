@@ -3,7 +3,7 @@
 **Track:** T6 (P0 — Phase 0 is the **pre-sprint gate**, Phase 1+ runs parallel in Wave 1)
 **Date:** 2026-05-24 (v2 after Codex round-1 review)
 **Recommended workflow:** Codex throughout for migration moves + config flip + pre-warm pool jobs + backup automation. Opus design review on Stancl migration topology and pre-warm race safety.
-**Estimated effort:** Phase 0 ~8 PD (revised per round-3 reality check; covers 50+ FK rewrites, reference-data classification, central connection, Spatie placement, phpunit/PG strategy, fiscal coordination) + Phase 1+ ~4 PD = ~12 PD total. Target completion in <10 calendar days via parallel Opus + Codex sessions.
+**Estimated effort:** Phase 0 ~10 PD (revised per round-3 reality check; covers 50+ FK rewrites, reference-data classification, central connection, Spatie placement, phpunit/PG strategy, fiscal coordination) + Phase 1+ ~4 PD = ~12 PD total. Target completion in <10 calendar days via parallel Opus + Codex sessions.
 **Roadmap reference:** [2026-05-24-productization-sprint-roadmap.md](../coordination/2026-05-24-productization-sprint-roadmap.md)
 **Constitutional reference:** [2026-05-24-migration-topology-contract.md](../coordination/2026-05-24-migration-topology-contract.md)
 
@@ -50,11 +50,11 @@ Read before writing code:
 
 ---
 
-## 3. Phase 0 GATE — migration topology + Stancl flip (~8 PD)
+## 3. Phase 0 GATE — migration topology + Stancl flip (~10 PD)
 
 ### Deliverables (must all merge together)
 
-**Phase 0 scope (round-3 reality check applied):** this is genuinely 2 focused engineering weeks of work — clean-slate framing means no data migration burden, but ~50 cross-DB FK rewrites + reference-data tenant-side seeding + central connection setup + Spatie placement + phpunit/PG strategy + fiscal coordination + tenant identification middleware wiring. Phase 0 effort: ~8 PD with one focused Codex+Opus pair.
+**Phase 0 scope (round-3 reality check applied):** this is genuinely 2 focused engineering weeks of work — clean-slate framing means no data migration burden, but ~50 cross-DB FK rewrites + reference-data tenant-side seeding + central connection setup + Spatie placement + phpunit/PG strategy + fiscal coordination + tenant identification middleware wiring. Phase 0 effort: ~10 PD with one focused Codex+Opus pair.
 
 1. **Create `apps/erp/apps/api/database/migrations/tenant/` directory**
 2. **Identify and move every existing migration that creates/alters a tenant table per the [migration topology contract](../coordination/2026-05-24-migration-topology-contract.md). Specifically (non-exhaustive — verify against the contract table):**
@@ -82,7 +82,12 @@ Read before writing code:
    - **Option B:** Make the existing test suite optionally Postgres via env override + run the full suite against PG in CI.
    - Phase 0 PR MUST run the chosen option's PG test suite + show green before merge.
 7. **Add Stancl flip integration test (PG-only):** create tenant → verify new database exists → verify tenant migrations ran inside it → verify central tables untouched → verify Pattern A `DB::connection('central')->table('plans')->find($id)` works from inside a tenant context
-8. **Coordinate with in-flight fiscal Phase 1 (per round-2 R2-B1 + R2-P1-2 + B-5):**
+8. **Rewrite `AuthController::login` and `AuthController::register` for multi-tenant (NEW per round-4 B-1):** Current `AuthController` uses `Auth::attempt`/`User::where('email', ...)` against the default DB — this breaks the moment `users` moves to per-tenant. The rewrite:
+   - **`login`:** accept `{tenant_id, email, password}` for Tauri/mobile clients (header `X-Tenant-ID` for subsequent requests after first login); for web clients on a subdomain, the tenant is resolved by Stancl middleware before AuthController runs. In both cases, `User::where('email', ...)` runs inside the tenant DB context.
+   - **`register`:** creates the tenant row in central DB, **creates the corresponding `domains` row** (so Stancl's `InitializeTenancyByDomain` can resolve subdomain → tenant; previously only `CreateTenantCommand:89` did this — web signup did not, per round-4 B-2), then initializes the tenant DB and creates the first user inside it.
+   - **Login response:** returns Sanctum token + tenant context info (slug, name) so Tauri can cache for subsequent requests.
+   - **Estimated effort:** 3-4 PD on its own (controller refactor + tests + Tauri login screen update + frontend register flow update).
+9. **Coordinate with in-flight fiscal Phase 1 (per round-2 R2-B1 + R2-P1-2 + B-5):**
    - Fiscal Phase 1 has already committed 3 migrations at `database/migrations/2026_05_14_100001_*`, `..._100002_*`, `..._100003_*`. These ARE tenant-scoped (`fiscal_events`, `fiscal_events_immutability_*`, `fiscal_event_projections`). **They MUST be moved into `database/migrations/tenant/` as part of the Phase 0 PR.**
    - Fiscal Phase 1's still-pending Tasks 11 / 12 / 21 / 22 produce more migrations against tenant tables. **The fiscal session MUST pause new migration work during the Phase 0 PR window.** After Phase 0 lands, fiscal Phase 1 resumes targeting `database/migrations/tenant/` directly.
    - Get explicit sign-off from the fiscal session owner before the Phase 0 PR opens for merge.
@@ -117,7 +122,11 @@ Read before writing code:
 
 Runs in Wave 1 (parallel with all other Wave 1 tracks), AFTER Phase 0 gate merges.
 
-### Expand TenantInitializationService seeding (per round-3 P1-3)
+### Expand TenantInitializationService seeding (per round-3 P1-3 — moved to Phase 0 per round-4 P1-3 contradiction resolution)
+
+**Phase placement:** this work LIVES IN Phase 0, not Phase 1A. The topology contract Section 9 says Phase 0 extends `TenantInitializationService`; older v4 T6 said Phase 1A. Resolving in Phase 0 because the reference-data tables move tenant-side as part of Phase 0's migration moves, and the seeders must be ready to populate them at the first claim. Round-4 P1-3 flagged this contradiction.
+
+
 
 Current `TenantInitializationService` (`apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:14-19, 53-69, 138-148, 205-223`) imports and calls: `TunisiaChartOfAccountsSeeder`, `FranceChartOfAccountsSeeder`, `GenericChartOfAccountsSeeder`, `PaymentMethodSeeder`, `PaymentRepositorySeeder`, `TunisiaTaxConfigurationSeeder`. **It does NOT call `TunisiaStampDutySeeder`, `TunisianParapharmacySeeder`, `TunisiaWithholdingRulesSeeder`** despite all three existing as seeder files.
 
@@ -281,7 +290,7 @@ BackupService
 
 ## 10. Workflow recommendation
 
-**Phase 0 (Codex with Opus review, ~3 PD):** Migration moves + Stancl flip + flip test + gate marker. Codex executes mechanically; Opus reviews migration classification correctness.
+**Phase 0 (Codex with Opus review, ~10 PD):** Migration moves + 50+ FK rewrites (syntax-independent) + Stancl flip + central connection + reference-data tenant-side seeding + Spatie classification + phpunit/PG strategy + fiscal coordination + AuthController login/register rewrite for multi-tenant + create domains row at signup. Flip test + gate marker. Codex executes mechanically; Opus reviews migration classification + AuthController refactor.
 
 **Phase 1A (Codex, ~3 PD):** Pre-warm pool — TenantStatus::PreProvisioned + columns + `TenantPreWarmService` + `TenantClaimService` + `tenant:ensure-pool` command + concurrent claim test.
 

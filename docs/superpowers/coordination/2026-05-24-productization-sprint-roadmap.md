@@ -36,7 +36,7 @@ v2 restructures around two waves separated by the fiscal collision boundary, and
 
 ```
 ─────────────────────────────────────────────────────────────────────
-PHASE 0 — PRE-SPRINT GATE (T6 Phase 0)            ~2-3 days
+PHASE 0 — PRE-SPRINT GATE (T6 Phase 0)            ~10 PD (~5 working days, Codex+Opus pair)
 ─────────────────────────────────────────────────────────────────────
   Owner: Codex with Opus design review
   Deliverables:
@@ -94,7 +94,7 @@ DEFERRED TO FUTURE SPRINT (separate planning cycle)
 
 | # | Track | Spec file | Wave | Effort | Recommended workflow |
 |---|---|---|---|---|---|
-| **T6 Phase 0** | Migration topology gate (Stancl flip + tenant migrations dir + flip test) | [2026-05-24-t6-tenant-provisioning.md](../specs/2026-05-24-t6-tenant-provisioning.md) | **Pre-sprint** | ~3 PD | Codex + Opus review |
+| **T6 Phase 0** | Migration topology gate (Stancl flip + 50+ FK rewrites + central conn + reference-data seeding + AuthController rewrite + flip test) | [2026-05-24-t6-tenant-provisioning.md](../specs/2026-05-24-t6-tenant-provisioning.md) | **Pre-sprint** | ~10 PD | Codex + Opus review |
 | **T1** | Stock Transfer (Scenarios A + B + per-location tax_id + batch preservation via inventory_batch_movements) | [2026-05-24-t1-stock-transfer.md](../specs/2026-05-24-t1-stock-transfer.md) | 1 server / 2 POS deltas | ~12 PD | Opus (Scenario B) + Codex (Scenario A + migrations) |
 | **T2** | Product Variants Module (data model + service + admin matrix + WC mapping deferred + POS picker delta) | [2026-05-24-t2-variants.md](../specs/2026-05-24-t2-variants.md) | 1 server / 2 POS deltas | ~16 PD | Opus (schema + backward compat) → Codex (mechanical) |
 | **T3** | Multi-channel Sync Hub — **shared infrastructure only** (interface + framework + admin UI + reconciliation + credentials; NO concrete adapters) | [2026-05-24-t3-sync-hub.md](../specs/2026-05-24-t3-sync-hub.md) | 1 | ~6 PD | Opus (interface) + Codex (framework + UI) |
@@ -224,7 +224,7 @@ After T6 Phase 0 merges:
 ## Phase prioritization (per user direction)
 
 **Tier A — Start RIGHT NOW, parallel sessions safe:**
-- T6 Phase 0 (~8 PD, Codex+Opus pair)
+- T6 Phase 0 (~10 PD, Codex+Opus pair)
 - T2 Variants Phases 1–3 (domain + service + admin UI; migrations branch-dev until Phase 0 merges)
 - T3 Sync Hub shared infra (interface + entities + admin UI)
 - T4 Order Routing Phases 1–4 (zone taxonomy + rule engine + scoring + UI)

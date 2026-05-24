@@ -30,7 +30,7 @@ Read before writing code:
 5. `apps/erp/apps/api/app/Modules/Company/Domain/Location.php` (lines 22–88: Location is scoped via `company_id`, not `tenant_id`. Per topology contract, intra-tenant FKs are fine for Phase 1; trust DB boundary for tenant isolation)
 6. `apps/erp/apps/api/app/Modules/Inventory/Domain/StockLevel.php` — stock per location — routing input
 7. `apps/erp/apps/api/app/Modules/Inventory/Domain/StockReservation.php` — routing decision creates reservation at chosen location
-8. `apps/erp/apps/api/app/Modules/Document/Domain/Document.php` — `additional_costs` includes `transport`/`shipping`/`insurance`/`customs`/`handling`/`other`
+8. `apps/erp/apps/api/app/Modules/Document/Domain/DocumentAdditionalCost.php` (line 17 has the `cost_type` enum: `transport`/`shipping`/`insurance`/`customs`/`handling`/`other`). Note: `additional_costs` is a related entity (separate `document_additional_costs` table), NOT a JSONB column on Document — corrected per round-3 P2-4 + round-4 sweep.
 9. **No existing Zone/Territory/Governorate entity** — confirmed absent; this spec creates it
 10. **No existing carrier/shipping engine** — `additional_costs` is manual entry only; routing scoring uses a stub estimator based on location-pair distance heuristic, externalizable later
 

@@ -148,7 +148,7 @@ This design produces 3 implementation tracks for the NEXT sprint cycle:
 |---|---|---|
 | **T11-impl-A** — Customer model augmentation | `customer_contacts` join table with role enum + service + tests | ~3 PD |
 | **T11-impl-B** — PricingStrategyResolver + DocumentEmissionPolicy | New services + integration into POS receipt flow + web sales-order flow + comprehensive tests | ~5 PD |
-| **T11-impl-C** — Thin-POS B2B hand-off UX | Extend `holdStore` for draft orders + B2B badge in POS search + web queue UI | ~4 PD (most logged to `2026-05-24-tauri-pos-deltas.md` for fiscal coordination) |
+| **T11-impl-C** — Thin-POS B2B hand-off UX | Extend `holdStore` for draft orders + B2B badge in POS search + web queue UI | ~4 PD (most logged to `2026-05-24-pos-coordination-log.md` for fiscal coordination) |
 
 Total next-cycle effort: ~12 PD.
 

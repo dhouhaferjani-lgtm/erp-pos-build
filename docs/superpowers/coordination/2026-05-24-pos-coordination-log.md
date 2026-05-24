@@ -1,12 +1,12 @@
 # POS Coordination Log — 2026-05-24 Sprint (v3 — broadened scope per round-2 R2-P2-2)
 
-**Purpose:** Single coordination point for **ANY POS-related change** (Tauri client OR backend POS module OR migrations against POS-fiscal-touching tables) required by sprint tracks. The in-flight POS Codex/Houssam fiscal session (running [2026-05-14-pos-phase1-fiscal-event-engine.md](../superpowers/plans/2026-05-14-pos-phase1-fiscal-event-engine.md)) picks coordination items from here. **Sprint tracks do NOT modify POS code (Tauri OR backend) directly.**
+**Purpose:** Single coordination point for **ANY POS-related change** (Tauri client OR backend POS module OR migrations against POS-fiscal-touching tables) required by sprint tracks. The in-flight POS fiscal Codex session (running [2026-05-14-pos-phase1-fiscal-event-engine.md](../plans/2026-05-14-pos-phase1-fiscal-event-engine.md)) picks coordination items from here. **Sprint tracks do NOT modify POS code (Tauri OR backend) directly.** (Relative path corrected per round-4 S-2.)
 
-**File rename:** previously `2026-05-24-tauri-pos-deltas.md`. Renamed per round-2 review (R2-P2-2) — original scope was too narrow; Wave 1 backend-POS work (T1 `ReceiptCreationService.php` mods, T2 migrations on `pos_receipt_lines` / `pos_receipt_line_batch_allocations` / `payments`) also requires fiscal coordination, not just Tauri-side changes.
+**File rename:** previously `2026-05-24-tauri-pos-deltas.md`. Renamed per round-2 review (R2-P2-2) — original scope was too narrow; Wave 1 backend-POS work (T1 `ReceiptCreationService.php` mods, T2 migrations on `pos_receipt_lines` / `pos_receipt_line_batch_allocations`) also requires fiscal coordination, not just Tauri-side changes. **NOT `payments`** — that column ownership belongs entirely to fiscal Phase 1 Task 12 (corrected per round-3 P1-1 + round-4 sweep).
 
 **Wave 1 backend-POS items requiring fiscal handshake (per round-2 R2-B1):**
-- **T1-S1 (NEW server-side coordination item):** modifying `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` lines 831-883 to consume `AvailableQuantityService` for in-transit availability enforcement. Fiscal Phase 1 Tasks 21/22 simultaneously refactor sibling services (`ReceiptSyncService.php`, `ReceiptPaymentService.php`); sequencing required.
-- **T2-S1 (NEW server-side coordination item):** adding `variant_id` columns to `pos_receipt_lines`, `pos_receipt_line_batch_allocations`, `payments` via migrations. Fiscal Phase 1 Tasks 11/12 add columns to overlapping tables (`pos_receipts.fiscal_event_id`, `payments.origin`); sequencing required to avoid migration-order conflicts.
+- **T1-S1 (server-side coordination item):** modifying `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` lines 831-883 to consume `AvailableQuantityService` for in-transit availability enforcement. Fiscal Phase 1 Tasks 21/22 simultaneously refactor sibling services (`ReceiptSyncService.php`, `ReceiptPaymentService.php`); sequencing required.
+- **T2-S1 (server-side coordination item):** adding `variant_id` columns to `pos_receipt_lines`, `pos_receipt_line_batch_allocations` via migrations (NOT `payments` — that's owned by fiscal Phase 1 Task 12). Fiscal Phase 1 Tasks 11/12 add columns to overlapping POS tables; sequencing required to avoid migration-order conflicts.
 
 ---
 
@@ -16,18 +16,20 @@ The round-1 Codex adversarial review correctly identified that v1's "log to delt
 
 **The protocol:**
 
-1. **Sprint track lead** writes the delta entry in the table below (track origin, what's needed, why, suggested approach, urgency, dependencies, file targets)
-2. **Sprint track lead** notifies fiscal session owner (default assumption: **Houssam personally**, pending confirmation) via Telegram/Adam OR direct message
-3. **Fiscal session owner** triages within 1 working day:
-   - **Schedule:** add into fiscal session roadmap with explicit sequence point
-   - **Defer:** mark "post-fiscal-Phase-1", do not ship in Wave 2
+1. **Sprint track lead** writes the coordination entry in the table below (track origin, what's needed, why, suggested approach, urgency, dependencies, file targets)
+2. **When a Codex POS session opens next** (whether for fiscal Phase 1 continuation or for a dedicated POS work pass), it consumes pending entries from this log
+3. **Codex POS session** triages each entry:
+   - **Schedule:** add into the POS session roadmap with explicit sequence point
+   - **Defer:** mark "post-fiscal-Phase-1", do not ship now
    - **Negotiate:** propose alternative server-side approach that avoids POS touch
-4. **Fiscal session owner** moves accepted entries to "In flight" section + sequences into fiscal roadmap
-5. **PR ships** the delta as part of fiscal session work; entry moves to "Done deltas" with PR link
+4. **Codex POS session** moves accepted entries to "In flight" section
+5. **PR ships** the coordination item; entry moves to "Done" with PR link
 
-**No Wave 2 item ships without explicit fiscal session sign-off.**
+No human-routing handoff required between sessions — the log IS the protocol (per user direction post-round-3).
 
-**Wave 1 is zero-Tauri-touch by design** — no entry below applies to Wave 1.
+**Coordination items ship via the fiscal session.** Wave 2 items + backend-POS Wave 1 items (T1-S1 + T2-S1 above) are handled the same way: log here, picked up when next Codex POS session opens.
+
+**Wave 1 is zero-Tauri-CLIENT-touch** — the Tauri client code is untouched. Wave 1 backend-POS work (T1-S1 + T2-S1 above) IS in scope here. Tauri-CLIENT items appear in Tier C / Wave 2 sections below.
 
 ---
 
@@ -38,8 +40,8 @@ The round-1 Codex adversarial review correctly identified that v1's "log to delt
 | # | Need | Why | Files touched | Suggested approach | Urgency | Dependencies | Status |
 |---|---|---|---|---|---|---|---|
 | T1-D1 | Surface `location.tax_id` + `location.branch_code` on printed receipts when set (fallback to company-level when null) | Tunisian branch numbering requires per-branch tax ID on receipts (also generic across other tax-ID-by-branch jurisdictions) | Receipt template renderer (Tauri side or server-rendered PDF) | Extend receipt template lookup to read `location.tax_id` + `branch_code`; fallback to `company.tax_id`. Verify both online + offline rendering paths. | Medium (needed for client meeting demo if possible) | T1 Phase 1 migration (`tax_id` + `branch_code` columns) must merge first | Pending fiscal triage |
-| T1-D2 | InTransitAvailability POS rendering — show "Available with notice" / "Pending" / "Not available" on product cards based on tenant setting | Per Codex P1-5: T1's in-transit setting requires POS behavior change; can't pass through server work alone for the UX | `apps/pos/src/components/Product*`, possibly `cartStore.ts` for availability calculation | Add availability descriptor to product DTO (server-side); POS renders accordingly. Offline mode: cached `available_quantity` includes in-transit adjustment per tenant setting (snapshot at sync time). | Medium | T1 server-side `AvailableQuantityService` + setting storage must merge first | Pending fiscal triage |
-| T1-D3 | Server-side enforcement: `ReceiptCreationService` consumes `AvailableQuantityService` (which honors `InTransitAvailability` setting) | If setting=NotAvailable and product is in transit, sale must be blocked server-side too | `apps/erp/apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (lines 831-883) | Replace existing raw `StockLevel::getAvailableQuantity()` call with `AvailableQuantityService::availableForSale($productId, $variantId, $locationId)` | High (server-side, no POS change but coordinates with D2) | T1 server-side merged | Server-only — not actually a Tauri delta; flagged here for visibility |
+| T1-D2 | InTransitAvailability POS rendering — show "Available with notice" / "Pending" / "Not available" on product cards based on per-COMPANY setting | Per Codex P1-5: T1's in-transit setting requires POS behavior change; can't pass through server work alone for the UX | `apps/pos/src/components/Product*`, possibly `cartStore.ts` for availability calculation | Add availability descriptor to product DTO (server-side); POS renders accordingly. Offline mode: cached `available_quantity` includes in-transit adjustment per company setting (snapshot at sync time). | Medium | T1 server-side `AvailableQuantityService` + per-company setting storage must merge first | Pending fiscal triage |
+| T1-D3 | Server-side enforcement: `ReceiptCreationService` consumes `AvailableQuantityService` (which honors per-COMPANY `InTransitAvailability` setting) | If setting=NotAvailable and product is in transit, sale must be blocked server-side too | `apps/erp/apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php` (lines 831-883) | Replace existing raw `StockLevel::getAvailableQuantity()` call with `AvailableQuantityService::availableForSale($productId, $variantId, $locationId)` | High (server-side coordination item — part of T1-S1) | T1 server-side merged | Backend-POS coordination item (per round-4 P2-2: not a Tauri delta but coordinates with same fiscal session for sequencing) |
 
 ### From T2 (Variants)
 

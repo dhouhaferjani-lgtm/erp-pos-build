@@ -14,7 +14,7 @@ This rule survives the Stancl `PostgreSQLSchemaManager` → `PostgreSQLDatabaseM
 
 ### Consequences (all sprint specs comply)
 
-- Tenant tables do not declare FKs to `tenants`, `domains`, `plans`, `subscriptions`, central `users`, or anything in the central DB
+- Tenant tables do not declare FKs to `tenants`, `domains`, `plans`, `tenant_subscriptions`, `super_admins`, or anything in the central DB
 - Central tables do not declare FKs to anything tenant-scoped (they can't — they don't know which tenant DB to look in)
 - `tenant_id` columns on tenant tables are **optional and informational** post-flip (the DB itself identifies the tenant); keep them for audit + observability but they no longer enforce isolation
 - Cross-tenant validation moves from "FK constraint" to "service-layer assertion under the current tenant context"
@@ -217,22 +217,40 @@ When T2 adds `variant_id` (nullable) to `stock_levels`, `stock_movements`, `stoc
 
 Every tenant has its own physical PG database. The API must resolve **which DB to open** for each request. Resolution mechanisms:
 
-### Web ERP — subdomain-based
+### Web ERP — subdomain-based via `domains` table (corrected per round-4 B-2)
 
 - URL pattern: `{tenant_slug}.synerivia.tn` (e.g., `nenupharma.synerivia.tn`)
-- Stancl's `InitializeTenancyByDomain` middleware resolves tenant from subdomain
-- Tenant slug is stored in central `tenants.slug` (already exists per current `Tenant` model)
-- Each tenant DB is named `tenant_{slug}` per existing `Tenant::getDatabaseName()` at `apps/api/app/Modules/Tenant/Domain/Tenant.php`
+- Stancl's `InitializeTenancyByDomain` middleware resolves tenant by **querying the `domains` table** (verified at Stancl's `DomainTenantResolver.php:32-43`) — NOT by parsing the subdomain string directly
+- The central `domains` table maps `domain` (e.g., `nenupharma.synerivia.tn`) → `tenant_id`
+- **Phase 0 work item (NEW per round-4 B-2):** `AuthController::register()` must create a `domains` row alongside the tenant row. Currently only the CLI `CreateTenantCommand:89` does this; web signup does not. Without this fix, subdomain login will 404.
+- Each tenant DB is named `tenant_{slug}` per the computed return value of `Tenant::getDatabaseName()` at `apps/api/app/Modules/Tenant/Domain/Tenant.php` (this is a method, not a column on the `tenants` table)
 
 ### Tauri desktop POS — explicit tenant_id
 
 Desktop apps have no subdomain. Resolution via:
-- First-time login screen prompts for THREE fields: `tenant_id` (the tenant's slug or unique code) + `email` + `password`
-- API endpoint: `POST /api/v1/auth/login` with body `{tenant_id, email, password}`
-- API resolves `tenant_id` against central `tenants.slug` → bind tenant context → validate email/password against `users` in that tenant's DB
-- On successful login, store `tenant_id` + session token in Tauri local storage (existing `@tauri-apps/plugin-store` per POS architecture)
-- Subsequent requests carry `tenant_id` via `X-Tenant-ID` HTTP header; API uses Stancl's `InitializeTenancyByRequestData` middleware (header-based identifier)
-- User does not re-enter `tenant_id` on subsequent app launches
+- First-time login screen prompts for THREE fields: `tenant_id` (the tenant's slug) + `email` + `password`
+- API endpoint: `POST /api/v1/auth/login` with body `{tenant_id, email, password}` (current `LoginRequest` accepts only email/password/device — needs rewrite as part of Phase 0 work item 8)
+- API resolves `tenant_id` slug against central `tenants.slug` → bind tenant context → validate email/password against `users` in that tenant's DB
+- On successful login, store `tenant_id` + session token in Tauri local storage (existing `@tauri-apps/plugin-store`)
+- Subsequent requests carry tenant identifier via HTTP header; API uses a tenancy-resolver middleware
+
+**Stancl middleware reality (corrected per round-4 codex BLOCKER B-1):**
+
+Installed Stancl `v3.10.0` ships these defaults that DON'T match our v4 sketch:
+- `InitializeTenancyByRequestData` middleware reads header `X-Tenant` (NOT `X-Tenant-ID`) and resolves via `tenancy()->find($payload)` which expects the tenant PRIMARY KEY (NOT slug)
+- `RequestDataTenantResolver.php:21-29` confirms PK-based lookup
+
+Phase 0 has two implementation paths; pick one explicitly:
+- **Option A (recommended — slug-based UX preserved):** write a custom `SlugTenantResolver` that looks up by `tenants.slug` instead of PK, register it as Stancl's tenant resolver for the request-data middleware, and configure the header name to `X-Tenant-ID`. ~0.5 PD additional work in Phase 0.
+- **Option B (use Stancl defaults — simpler but worse UX):** use tenant UUID instead of slug. User remembers a UUID instead of "nenupharma". Header is `X-Tenant`, payload is UUID. Zero custom code.
+
+**v5 commits to Option A** — the slug UX matches the user's direction. T6 Phase 0 work item 8 includes writing the custom resolver.
+
+### Web ERP — domain row creation at signup
+
+`InitializeTenancyByDomain` resolves via the central `domains` table — it expects a full domain row, e.g., `nenupharma.synerivia.tn`. `DomainTenantResolver` queries `domains.domain` with the full hostname.
+
+Decision per round-4 P1-2: use FULL-DOMAIN rows (not slug extraction). Signup creates a `domains` row with `domain = "{slug}.synerivia.tn"`. Phase 0 work item 8 (AuthController::register rewrite) includes this. If wildcard SSL is configured for `*.synerivia.tn`, the only setup per tenant is the domains row insert.
 
 ### Future mobile app — same as Tauri
 
@@ -242,12 +260,14 @@ Desktop apps have no subdomain. Resolution via:
 
 ### Central DB tenant directory
 
-The central `tenants` table must support:
-- `slug` (unique, indexed) — the user-facing tenant_id
-- `database_name` (default `tenant_{slug}` per existing convention)
+The central `tenants` table fields (corrected per round-4: `database_name` is NOT a column — it's the return value of `Tenant::getDatabaseName()` method which composes `tenant_{slug}` at runtime):
+
+- `slug` (unique, indexed) — the user-facing tenant_id (verify exists in current `tenants` table migration; add if missing)
 - `status` (Active, Suspended, PreProvisioned, Pending, Archived)
-- `subscription_state` (via `tenant_subscriptions` table)
 - `created_at`, `updated_at`
+- Subscription state lives in the separate `tenant_subscriptions` table referenced by Pattern A (UUID, no FK across DB boundary post-flip)
+- Companion `domains` table maps `domain` → `tenant_id` (this is the table Stancl actually queries for resolution)
+- Companion `super_admins` table for platform users — VERIFIED EXISTS at `apps/api/database/migrations/2025_12_01_194614_create_super_admins_table.php` (corrected per round-4: NO need to "create if not present"; it's there)
 
 When user enters `tenant_id` at Tauri login, API queries central `tenants` table → resolves database connection → opens tenant DB context → validates credentials. **Login failure modes:**
 - Unknown `tenant_id`: 404 with "tenant not found" (avoid revealing whether the tenant exists vs the email)
@@ -274,7 +294,7 @@ Phase 0 work includes wiring both middleware in `app/Http/Kernel.php` route midd
 
 ---
 
-## 9. Enforcement
+## 10. Enforcement
 
 This contract is enforced via:
 
@@ -284,7 +304,7 @@ This contract is enforced via:
 
 ---
 
-## 10. References
+## 11. References
 
 - `apps/erp/apps/api/config/tenancy.php` — current Stancl config (line 84: `PostgreSQLSchemaManager::class` is the pre-flip default)
 - `apps/erp/docker-compose.staging.yml` — PgBouncer transaction-mode config
