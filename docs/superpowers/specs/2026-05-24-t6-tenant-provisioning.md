@@ -14,7 +14,7 @@
 Current state (verified by reading code):
 
 - `TenantInitializationService` is PRODUCTION (`apps/api/app/Modules/Tenant/Application/Services/TenantInitializationService.php:1-252`): idempotent, country-aware (Tunisia + France), seeds CoA + tax + payment methods + role assignment + trial subscription
-- Stancl is wired with `PostgreSQLSchemaManager` (`config/tenancy.php:84`) — schema-per-tenant today
+- Stancl is wired with `PostgreSQLSchemaManager` (`config/tenancy.php:84`) but it is **effectively unused for isolation** — tenancy today is **row-level** (`tenant_id`/`company_id` columns + query scoping in one shared database; no per-schema separation actually runs, which is why the tenant-isolation sweep was needed). NOT schema-per-tenant. (Also greenfield: no production tenant data, so the flip is a clean-slate code switch with no data migration.)
 - PgBouncer is wired in `docker-compose.staging.yml:124-144` (transaction mode, pool size 20, max 200 connections)
 - Sentry + Horizon production, MonitoringController at `apps/api/app/Modules/Admin/Presentation/Controllers/MonitoringController.php` (corrected from v1 — was wrong path)
 - Country seeders at `apps/api/database/seeders/Tunisia*.php` (corrected from v1 — were wrong namespace)
