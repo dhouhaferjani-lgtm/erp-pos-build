@@ -10,7 +10,7 @@
 > **NO cross-database foreign keys.**
 > A row in any tenant database can never declare a FOREIGN KEY pointing at a row in another database — central or another tenant. References across the DB boundary are stored as UUIDs (plain columns) and resolved at the application layer through Stancl's tenant context.
 
-This rule survives the Stancl `PostgreSQLSchemaManager` → `PostgreSQLDatabaseManager` flip in T6 Phase 1. Before the flip, every table is in one physical database and FKs across the row-level boundary technically work; after the flip, they cannot. **Designing for the post-flip world from day 1 means we never write a constraint we'll have to drop later.**
+This rule survives the Stancl `PostgreSQLSchemaManager` → `PostgreSQLDatabaseManager` flip in T6 Phase 1. **(Note: the `PostgreSQLSchemaManager` is configured but effectively unused — current isolation is row-level via `tenant_id`, NOT real per-schema separation; the flip goes row-level → database-per-tenant. It's also greenfield: no tenant data to migrate.)** Before the flip, every table is in one physical database and FKs across the row-level boundary technically work; after the flip, they cannot. **Designing for the post-flip world from day 1 means we never write a constraint we'll have to drop later.**
 
 ### Consequences (all sprint specs comply)
 

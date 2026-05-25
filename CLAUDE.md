@@ -108,7 +108,7 @@ Read these when working on specific areas:
 | Layer | Technology |
 |-------|------------|
 | Backend | Laravel 12, PHP 8.2+ (strict types) |
-| Database | PostgreSQL 16+ (schema-based multi-tenancy) |
+| Database | PostgreSQL 16+ (**row-level** multi-tenancy via `tenant_id`/`company_id` + query scoping; DB-per-tenant migration planned — the Stancl schema manager is configured but unused) |
 | Cache/Queue | Redis 7+, Laravel Horizon |
 | Search | Meilisearch (infrastructure ready, not yet integrated with Scout) |
 | Desktop | Tauri 2 (IziPOS) |
