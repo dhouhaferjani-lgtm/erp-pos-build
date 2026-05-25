@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\DTOs\AuthUserData;
 use App\Modules\Identity\Application\DTOs\LoginResponseData;
+use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
@@ -24,6 +25,7 @@ use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -67,6 +69,7 @@ class AuthController extends Controller
         private readonly TenantInitializationService $tenantInitializationService,
         private readonly IdentityIndexService $identityIndexService,
         private readonly TenancyResolver $tenancyResolver,
+        private readonly TenantLinkSigner $tenantLinkSigner,
     ) {}
 
     /**
@@ -641,15 +644,52 @@ class AuthController extends Controller
     /**
      * Send a password reset link to the given email.
      */
-    #[CrossTenantRoute(reason: 'Pre-auth: password-reset request — accepts an email and dispatches a Password::sendResetLink (Laravel password broker) which finds the user globally by email and emails a signed reset token. No session/tenant context exists at call time.')]
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset request — resolves the email\'s tenant memberships via the central identity index (central_identities) and issues a tenant-qualified reset link (signed tenant id) for each. Reads across tenants by design; no session/tenant context exists at call time. Generic response prevents enumeration.')]
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $validated = $request->validated();
+        $email = $request->validated()['email'];
 
-        try {
-            Password::sendResetLink(['email' => $validated['email']]);
-        } catch (\Throwable) {
-            // Silently handle errors (e.g., missing route, mail config) to prevent email enumeration
+        // Resolve the email's tenant memberships via the central identity index
+        // and issue a tenant-qualified reset link for each (topology §9.5). The
+        // link carries a signed tenant id so the pre-auth resolver opens the
+        // correct tenant DB before the Password broker consumes the token.
+        //
+        // Phase 0b note: password_reset_tokens is email-keyed and shared today,
+        // so for a multi-tenant email only the last token survives; once the
+        // table moves tenant-side each membership gets its own token.
+        $tenantIds = CentralIdentity::query()->where('email', $email)->pluck('tenant_id')->all();
+
+        foreach ($tenantIds as $tenantId) {
+            /** @var Tenant|null $tenant */
+            $tenant = Tenant::query()->find($tenantId);
+            if ($tenant === null) {
+                continue;
+            }
+
+            $initialized = $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+            try {
+                /** @var User|null $user */
+                $user = User::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('email', $email)
+                    ->first();
+
+                if ($user !== null) {
+                    $token = Password::createToken($user);
+                    $user->notify(new ResetPasswordNotification(
+                        $token,
+                        $email,
+                        $this->tenantLinkSigner->sign($tenantId),
+                    ));
+                }
+            } catch (\Throwable) {
+                // Swallow per-tenant failures so the response stays generic.
+            } finally {
+                if ($initialized) {
+                    tenancy()->end();
+                }
+            }
         }
 
         // Always return success to prevent email enumeration

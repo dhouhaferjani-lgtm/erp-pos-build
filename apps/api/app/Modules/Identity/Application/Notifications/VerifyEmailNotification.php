@@ -16,9 +16,16 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
 
     /**
      * Create a new notification instance.
+     *
+     * @param  string|null  $signedTenant  Tamper-proof tenant qualifier (topology
+     *                                      r7 B1) so the pre-auth resolver can
+     *                                      initialize the correct tenant DB before
+     *                                      the token lookup post-flip. Produced by
+     *                                      TenantLinkSigner in EmailVerificationService.
      */
     public function __construct(
         private readonly string $token,
+        private readonly ?string $signedTenant = null,
     ) {}
 
     /**
@@ -37,7 +44,11 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
-        $verificationUrl = "{$frontendUrl}/verify-email?token={$this->token}";
+        $query = ['token' => $this->token];
+        if ($this->signedTenant !== null) {
+            $query['tenant'] = $this->signedTenant;
+        }
+        $verificationUrl = "{$frontendUrl}/verify-email?".http_build_query($query);
 
         /** @var User $notifiable */
         $locale = $notifiable->preferences['locale'] ?? 'en';

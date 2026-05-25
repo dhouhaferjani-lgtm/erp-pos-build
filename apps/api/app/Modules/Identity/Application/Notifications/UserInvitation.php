@@ -19,10 +19,16 @@ class UserInvitation extends Notification implements ShouldQueue
 
     private string $tenantName;
 
-    public function __construct(string $inviterName, string $tenantName)
+    private ?string $signedTenant;
+
+    public function __construct(string $inviterName, string $tenantName, ?string $signedTenant = null)
     {
         $this->inviterName = $inviterName;
         $this->tenantName = $tenantName;
+        // Tamper-proof tenant qualifier (topology r7 B1) so the set-password
+        // link can pick the right tenant DB post-flip. Signed by TenantLinkSigner
+        // in UserController::store.
+        $this->signedTenant = $signedTenant;
     }
 
     /**
@@ -49,11 +55,15 @@ class UserInvitation extends Notification implements ShouldQueue
         $token = Password::createToken($user);
         $email = $user->email;
 
-        // Build the set password URL
-        $url = config('app.frontend_url', config('app.url')).'/set-password?'.http_build_query([
+        // Build the set password URL (tenant-qualified — topology r7 B1)
+        $query = [
             'token' => $token,
             'email' => $email,
-        ]);
+        ];
+        if ($this->signedTenant !== null) {
+            $query['tenant'] = $this->signedTenant;
+        }
+        $url = config('app.frontend_url', config('app.url')).'/set-password?'.http_build_query($query);
 
         return (new MailMessage)
             ->subject("You've been invited to join {$this->tenantName}")

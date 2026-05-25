@@ -15,6 +15,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\CreateUserRequest;
 use App\Modules\Identity\Presentation\Requests\UpdateUserRequest;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Http\JsonResponse;
@@ -49,6 +50,7 @@ class UserController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly IdentityIndexService $identityIndexService,
+        private readonly TenantLinkSigner $tenantLinkSigner,
     ) {}
 
     /**
@@ -220,7 +222,8 @@ class UserController extends Controller
             try {
                 $user->notify(new UserInvitation(
                     inviterName: $currentUser->name,
-                    tenantName: $tenant->name
+                    tenantName: $tenant->name,
+                    signedTenant: $this->tenantLinkSigner->sign($currentUser->tenant_id),
                 ));
             } catch (\Throwable $e) {
                 report($e);
