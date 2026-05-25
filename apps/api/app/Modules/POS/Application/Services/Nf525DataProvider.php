@@ -263,6 +263,11 @@ final class Nf525DataProvider implements Nf525DataProviderContract
         foreach ($grandTotalsQuery as $grandtotal) {
             $grandTotals[] = $this->mapGrandTotal($grandtotal);
         }
+        foreach ($zReportsQuery as $zReport) {
+            if ($zReport->fiscal_event_id !== null) {
+                $grandTotals[] = $this->mapCanonicalZReportGrandTotal($zReport);
+            }
+        }
 
         // Terminal lifecycle audit events
         $lifecycleQuery = AuditEvent::where('company_id', $companyId)
@@ -1140,6 +1145,14 @@ final class Nf525DataProvider implements Nf525DataProviderContract
 
     private function mapZReport(ZReport $zReport): Nf525ZReportData
     {
+        $reportData = $zReport->report_data ?? [];
+        if ($zReport->fiscal_event_id !== null) {
+            $event = FiscalEvent::query()->find($zReport->fiscal_event_id);
+            if ($event !== null && is_array($event->payload)) {
+                $reportData['canonical_z_report'] = $event->payload;
+            }
+        }
+
         return new Nf525ZReportData(
             id: (string) $zReport->id,
             terminalId: (string) $zReport->terminal_id,
@@ -1147,7 +1160,44 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             fiscalHash: $zReport->fiscal_hash,
             previousZHash: $zReport->previous_z_hash,
             generatedAtIso8601: $zReport->generated_at->toIso8601String(),
-            reportData: $zReport->report_data ?? [],
+            reportData: $reportData,
+        );
+    }
+
+    private function mapCanonicalZReportGrandTotal(ZReport $zReport): Nf525GrandTotalData
+    {
+        $payload = $zReport->report_data['canonical_z_report'] ?? null;
+        if (! is_array($payload) && $zReport->fiscal_event_id !== null) {
+            $event = FiscalEvent::query()->find($zReport->fiscal_event_id);
+            $payload = is_array($event?->payload) ? $event->payload : [];
+        }
+
+        /** @var array<string, mixed> $periodTotals */
+        $periodTotals = [
+            'receipt_totals' => $payload['receipt_totals'] ?? [],
+            'refunds_totals' => $payload['refunds_totals'] ?? [],
+            'voids_totals' => $payload['voids_totals'] ?? [],
+            'vat_breakdown' => $payload['vat_breakdown'] ?? [],
+            'payment_method_totals' => $payload['payment_method_totals'] ?? [],
+        ];
+
+        /** @var array<string, mixed> $perpetualTotals */
+        $perpetualTotals = is_array($payload['grand_totals_after'] ?? null)
+            ? $payload['grand_totals_after']
+            : ($zReport->grand_totals ?? []);
+
+        return new Nf525GrandTotalData(
+            id: 'z-report-'.$zReport->id,
+            terminalId: (string) $zReport->terminal_id,
+            eventType: 'Z_REPORT',
+            sequenceNumber: (int) $zReport->z_number,
+            fiscalHash: $zReport->fiscal_hash,
+            previousHash: $zReport->previous_z_hash,
+            periodStartIso8601: Carbon::parse((string) ($payload['period_start'] ?? $zReport->generated_at))->toIso8601String(),
+            periodEndIso8601: Carbon::parse((string) ($payload['period_end'] ?? $zReport->generated_at))->toIso8601String(),
+            generatedAtIso8601: $zReport->generated_at->toIso8601String(),
+            periodTotals: $periodTotals,
+            perpetualTotals: $perpetualTotals,
         );
     }
 

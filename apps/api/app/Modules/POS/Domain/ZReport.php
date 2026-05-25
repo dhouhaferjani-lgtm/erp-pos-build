@@ -28,6 +28,9 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $report_data JSONB: Complete Z report content
  * @property array<string, mixed>|null $receipt_snapshots JSONB: Receipt snapshots at Z time
  * @property array<string, mixed>|null $grand_totals JSONB: Cumulative lifetime counters
+ * @property string|null $canonical_bytes Canonical Z_REPORT fiscal event bytes
+ * @property string|null $canonical_bytes_hash SHA-256 of canonical_bytes
+ * @property string|null $fiscal_event_id UUID FK → fiscal_events.id for device-authored Z_REPORT rows
  * @property string $generated_by User who generated the report
  * @property Carbon $generated_at
  * @property-read Terminal $terminal
@@ -59,6 +62,9 @@ class ZReport extends Model
         'report_data',
         'receipt_snapshots',
         'grand_totals',
+        'canonical_bytes',
+        'canonical_bytes_hash',
+        'fiscal_event_id',
         'generated_by',
         'generated_at',
     ];
