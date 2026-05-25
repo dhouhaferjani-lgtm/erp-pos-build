@@ -619,7 +619,7 @@ function aggregateReportData(
   // Void/refund counters are always 0 offline — voiding and refunding
   // are server-side operations tracked after sync.
   const refundsCount = 0;
-  let refundsAmount = '0';
+  const refundsAmount = '0';
   const voidedCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
