@@ -33,7 +33,7 @@ final class ZReportServerAuthoringChokepointTest extends TestCase
         $service = $this->read(base_path('app/Modules/POS/Application/Services/ReportGenerationService.php'));
         $this->assertStringContainsString("assertServerReportAuthoringAllowed(\$terminal, 'X_REPORT')", $service);
         $this->assertStringContainsString("assertServerReportAuthoringAllowed(\$terminal, 'Z_REPORT')", $service);
-        $this->assertStringContainsString('fiscal_schema_version ?? 2) >= 4', $service);
+        $this->assertStringContainsString('fiscal_schema_version ?? 2) >= 3', $service);
 
         $controller = $this->read(base_path('app/Modules/POS/Presentation/Controllers/ReportController.php'));
         $this->assertStringContainsString('Z_SESSION_DEVICE_AUTHORITY_REQUIRED', $controller);

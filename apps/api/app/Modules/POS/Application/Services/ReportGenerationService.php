@@ -66,7 +66,7 @@ final class ReportGenerationService
 
     private function assertServerReportAuthoringAllowed(Terminal $terminal, string $operation): void
     {
-        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 4) {
+        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
             throw ServerFiscalAuthoringRetiredException::zSessionDeviceAuthority($terminal->id, $operation);
         }
     }

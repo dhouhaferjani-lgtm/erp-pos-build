@@ -39,7 +39,7 @@ final class ZReportServerAuthoringDispositionTest extends TestCase
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'location_id' => $location->id,
-            'fiscal_schema_version' => 4,
+            'fiscal_schema_version' => 3,
         ]);
 
         $this->user = User::factory()->create(['tenant_id' => $tenant->id]);

@@ -69,7 +69,7 @@ final class ZReportSyncController extends Controller
         $terminal = Terminal::where('company_id', $companyId)
             ->findOrFail($identity['terminal_id']);
 
-        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 4) {
+        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
             return response()->json([
                 'error' => [
                     'code' => 'Z_SESSION_DEVICE_AUTHORITY_REQUIRED',
