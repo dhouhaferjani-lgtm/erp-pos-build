@@ -704,32 +704,69 @@ class AuthController extends Controller
     /**
      * Reset the user's password using a valid token.
      */
-    #[CrossTenantRoute(reason: 'Pre-auth: password-reset token redemption — verifies the signed reset token via Laravel\'s Password broker, updates the user\'s password, and invalidates remember tokens. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset token redemption — decrypts the signed `tenant` qualifier, resolves that tenant, and validates the reset token + updates the password against the (tenant_id, email)-scoped user only. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        $status = Password::reset(
-            [
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'password_confirmation' => $validated['password_confirmation'],
-                'token' => $validated['token'],
-            ],
-            function (User $user, string $password): void {
-                $user->update([
-                    'password' => Hash::make($password),
-                ]);
-
-                // Revoke all existing tokens for security
-                $user->tokens()->delete();
-            }
-        );
-
-        if ($status !== Password::PASSWORD_RESET) {
+        // P1-1 (Codex 2026-05-25): redemption MUST be tenant-bound. In Phase 0a
+        // `password_reset_tokens` is shared and email-keyed, so the stock
+        // email-only broker can resolve and reset the WRONG tenant's user when an
+        // email exists in several tenants. We therefore require + decrypt the
+        // signed `tenant` qualifier, resolve that tenant, and validate the token
+        // and update the password against the (tenant_id, email)-scoped user only.
+        $tenantId = $this->tenantLinkSigner->extract($validated['tenant']);
+        if ($tenantId === null) {
+            // Missing/tampered/undecryptable qualifier → not redeemable.
             throw ValidationException::withMessages([
-                'email' => [__($status)],
+                'tenant' => [__('auth.invalid_reset_link')],
             ]);
+        }
+
+        /** @var Tenant|null $tenant */
+        $tenant = Tenant::query()->find($tenantId);
+        if ($tenant === null) {
+            throw ValidationException::withMessages([
+                'tenant' => [__('auth.invalid_reset_link')],
+            ]);
+        }
+
+        // Open the correct tenant DB before touching `users` so this flow works
+        // unchanged after the Phase 0b flip (flip-agnostic; today a no-op for the
+        // DB switch — see TenancyResolver).
+        $initialized = $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+        try {
+            /** @var User|null $user */
+            $user = User::query()
+                ->where('tenant_id', $tenantId)
+                ->where('email', $validated['email'])
+                ->first();
+
+            // Validate the reset token against THIS exact user via the broker's
+            // token repository (bypasses the email-only default user provider),
+            // then update the password and revoke tokens.
+            $repository = Password::broker()->getRepository();
+
+            if ($user === null || ! $repository->exists($user, $validated['token'])) {
+                throw ValidationException::withMessages([
+                    'email' => [__(Password::INVALID_TOKEN)],
+                ]);
+            }
+
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            // Revoke all existing tokens for security.
+            $user->tokens()->delete();
+
+            // Consume the single-use reset token.
+            $repository->delete($user);
+        } finally {
+            if ($initialized) {
+                tenancy()->end();
+            }
         }
 
         return response()->json([

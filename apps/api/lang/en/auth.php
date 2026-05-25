@@ -33,6 +33,8 @@ return [
     'invalid_credentials' => 'The provided credentials are incorrect.',
     'account_not_active' => 'Your account is not active. Please contact support.',
     'organization_unavailable' => 'This organization is currently unavailable. Please contact support.',
+    // P1-1 — password reset redemption requires a decryptable, tenant-qualified link.
+    'invalid_reset_link' => 'This password reset link is invalid or has expired. Please request a new one.',
 
     // Email verification
     'verify_email_subject' => 'Verify Your Email Address',

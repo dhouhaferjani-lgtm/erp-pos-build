@@ -7,6 +7,7 @@ namespace Tests\Feature\Identity;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -512,11 +513,17 @@ class AuthenticationTest extends TestCase
             'status' => UserStatus::Active,
         ]);
 
+        // P1-1: redemption is tenant-bound; the link carries a valid signed tenant
+        // but the token is bogus, so the broker token repository rejects it.
+        $signedTenant = app(TenantLinkSigner::class)
+            ->sign($this->tenant->id);
+
         $response = $this->postJson('/api/v1/auth/reset-password', [
             'token' => 'invalid-token',
             'email' => 'test@example.com',
             'password' => 'NewStr0ng!Pass',
             'password_confirmation' => 'NewStr0ng!Pass',
+            'tenant' => $signedTenant,
         ]);
 
         $this->assertApiValidationErrors($response, ['email']);
