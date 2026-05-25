@@ -72,6 +72,8 @@ final class ZReportProjection implements FiscalEventProjector
                     ));
                 }
 
+                unset($row['id']);
+
                 $existing->fill($row);
                 $existing->save();
 

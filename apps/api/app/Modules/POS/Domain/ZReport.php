@@ -54,6 +54,7 @@ class ZReport extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'id',
         'terminal_id',
         'shift_id',
         'z_number',

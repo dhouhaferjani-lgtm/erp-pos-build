@@ -79,6 +79,7 @@ final class ZReportProjectionTest extends TestCase
         $report = ZReport::query()->first();
         $this->assertNotNull($report);
         $this->assertSame($event->id, $report->fiscal_event_id);
+        $this->assertSame($event->payload['z_report_uuid'], $report->id);
         $this->assertSame($event->canonical_bytes, $report->canonical_bytes);
         $this->assertSame(hash('sha256', $event->canonical_bytes), $report->canonical_bytes_hash);
         $this->assertSame($event->current_hash, $report->fiscal_hash);
@@ -97,6 +98,35 @@ final class ZReportProjectionTest extends TestCase
         $projector->apply($event);
 
         $this->assertSame(1, ZReport::query()->count());
+    }
+
+    public function test_z_report_projection_backfills_existing_legacy_row_without_replacing_row_id(): void
+    {
+        $legacyId = Str::uuid()->toString();
+        $event = $this->storeZReportFiscalEvent();
+
+        ZReport::query()->create([
+            'id' => $legacyId,
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'z_number' => 2,
+            'fiscal_hash' => str_repeat('c', 64),
+            'previous_z_hash' => null,
+            'report_data' => ['schema_version' => 2],
+            'receipt_snapshots' => [],
+            'grand_totals' => [],
+            'generated_by' => $this->cashier->id,
+            'generated_at' => '2026-05-24 18:00:00',
+        ]);
+
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $this->assertSame(1, ZReport::query()->count());
+        $report = ZReport::query()->firstOrFail();
+        $this->assertSame($legacyId, $report->id);
+        $this->assertSame($event->id, $report->fiscal_event_id);
+        $this->assertSame(3, $report->z_number);
+        $this->assertSame('Z0003', $report->report_data['canonical_z_report']['formatted_z_number']);
     }
 
     public function test_z_report_projection_is_registered_as_fiscal_event_projector_tag(): void

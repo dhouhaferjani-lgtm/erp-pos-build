@@ -57,6 +57,30 @@ final class ZReportSyncController extends Controller
     {
         Gate::authorize('pos.operate_terminal');
 
+        $identity = $request->validate([
+            'terminal_id' => ['required', 'string', 'uuid'],
+        ]);
+        $companyId = $this->companyContext->getCompanyId();
+
+        // Verify terminal belongs to company before running the legacy payload
+        // validator. Cutover terminals sync canonical fiscal events through the
+        // fiscal-event ingest path, not this legacy Z-report mirror endpoint.
+        /** @var Terminal $terminal */
+        $terminal = Terminal::where('company_id', $companyId)
+            ->findOrFail($identity['terminal_id']);
+
+        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 4) {
+            return response()->json([
+                'error' => [
+                    'code' => 'Z_SESSION_DEVICE_AUTHORITY_REQUIRED',
+                    'message' => sprintf(
+                        'Legacy Z-report sync is retired for cutover terminal %s. Sync device-authored Z-session fiscal events instead.',
+                        $terminal->id,
+                    ),
+                ],
+            ], 409);
+        }
+
         $validated = $request->validate([
             // ── Core (v1) fields ──────────────────────────────────────────────
             'id' => ['required', 'string', 'uuid'],
@@ -103,8 +127,6 @@ final class ZReportSyncController extends Controller
             'tolerance_summary.currencyCode' => ['sometimes', 'string', 'size:3'],
         ]);
 
-        $companyId = $this->companyContext->getCompanyId();
-
         /** @var array<int, array<string, mixed>> $cashCountsForValidation */
         $cashCountsForValidation = isset($validated['cash_counts']) && is_array($validated['cash_counts'])
             ? $validated['cash_counts']
@@ -119,11 +141,6 @@ final class ZReportSyncController extends Controller
                 ],
             ], 422);
         }
-
-        // Verify terminal belongs to company
-        /** @var Terminal $terminal */
-        $terminal = Terminal::where('company_id', $companyId)
-            ->findOrFail($validated['terminal_id']);
 
         // Check for duplicate (idempotent sync)
         $existing = ZReport::forTerminal($terminal->id)
