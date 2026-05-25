@@ -23,7 +23,9 @@ use App\Modules\Identity\Presentation\Requests\RegisterRequest;
 use App\Modules\Identity\Presentation\Requests\ResetPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
+use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -65,6 +67,7 @@ class AuthController extends Controller
         private readonly EmailVerificationService $emailVerificationService,
         private readonly TenantInitializationService $tenantInitializationService,
         private readonly IdentityIndexService $identityIndexService,
+        private readonly TenancyResolver $tenancyResolver,
     ) {}
 
     /**
@@ -174,33 +177,106 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $email = $validated['email'];
+        $explicitTenantId = $validated['tenant_id'] ?? null;
 
-        // First check if user exists and is active before attempting auth
-        $user = User::where('email', $validated['email'])->first();
+        // Email-first tenant resolution (topology §9.2). With an explicit
+        // tenant_id (POS device-bound flow or an org picked from the chooser)
+        // we bind that tenant directly; otherwise we look up the central
+        // identity index by email.
+        $tenantIds = $explicitTenantId !== null
+            ? [$explicitTenantId]
+            : CentralIdentity::query()->where('email', $email)->pluck('tenant_id')->all();
 
-        if ($user !== null && ! $user->isActive()) {
+        // 0 memberships → generic "no organizations" (enumeration-aware, §9.7).
+        if ($tenantIds === []) {
             throw ValidationException::withMessages([
-                'email' => ['Your account is not active. Please contact support.'],
+                'email' => [__('auth.no_organizations')],
             ]);
         }
 
-        // Use Auth::attempt() to validate credentials AND establish session
-        // This is required for Sanctum SPA cookie-based authentication
-        if (! Auth::attempt([
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-        ])) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+        // >1 memberships and no explicit choice → return the org picker list
+        // (the Balanced stance — we show memberships for a valid email).
+        if ($explicitTenantId === null && count($tenantIds) > 1) {
+            $organizations = Tenant::query()
+                ->whereIn('id', $tenantIds)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Tenant $tenant): array => [
+                    'tenant_id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'slug' => $tenant->slug,
+                ])
+                ->values();
+
+            return response()->json([
+                'data' => [
+                    'requires_org_selection' => true,
+                    'organizations' => $organizations,
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
             ]);
         }
 
-        // Regenerate session to prevent session fixation attacks
+        $tenantId = $tenantIds[0];
+
+        /** @var Tenant|null $tenant */
+        $tenant = Tenant::query()->find($tenantId);
+
+        // Unknown tenant (e.g. a bad explicit tenant_id) → generic sign-in
+        // failure, same body as bad credentials so slugs aren't enumerable.
+        if ($tenant === null) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.invalid_credentials')],
+            ]);
+        }
+
+        // Initialize tenancy before touching `users` so this flow works
+        // unchanged after the Phase 0b flip (flip-agnostic; today a no-op
+        // because no per-tenant schema exists — see TenancyResolver).
+        $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+        // Validate credentials against the tenant's users. The tenant_id scope
+        // is correct in both phases: today it isolates within the shared DB;
+        // post-flip every user in the tenant DB already carries this tenant_id.
+        /** @var User|null $user */
+        $user = User::query()
+            ->where('tenant_id', $tenantId)
+            ->where('email', $email)
+            ->first();
+
+        if ($user === null || ! Hash::check($validated['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.invalid_credentials')],
+            ]);
+        }
+
+        if (! $user->isActive()) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.account_not_active')],
+            ]);
+        }
+
+        // Suspended / Archived organizations are reachable only once a valid
+        // credential pair is known (§9.7) → clear operator-facing 403.
+        if (in_array($tenant->status, [TenantStatus::Suspended, TenantStatus::Archived], true)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ORGANIZATION_UNAVAILABLE',
+                    'message' => __('auth.organization_unavailable'),
+                ],
+            ], 403);
+        }
+
+        // Establish the SPA session for cookie-based (web back-office) auth and
+        // stamp the tenant_id into the session so the pre-auth resolver's
+        // cookie branch can re-initialize tenancy on subsequent requests.
+        Auth::login($user);
         $request->session()->regenerate();
-
-        // Get the authenticated user (now properly loaded via Auth)
-        /** @var User $user */
-        $user = Auth::user();
+        $request->session()->put('tenant_id', $tenantId);
 
         // Record login
         $user->recordLogin($request->ip() ?? 'unknown');

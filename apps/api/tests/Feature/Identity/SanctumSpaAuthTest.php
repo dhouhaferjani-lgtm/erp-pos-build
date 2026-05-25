@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -74,6 +75,14 @@ class SanctumSpaAuthTest extends TestCase
             'password' => 'password123',
             'status' => UserStatus::Active,
         ]);
+
+        // Email-first login resolves the tenant via central_identities — index
+        // the SPA user so the cookie-based login flow can find its tenant.
+        app(IdentityIndexService::class)->record(
+            $this->user->email,
+            $this->tenant->id,
+            $this->user->id,
+        );
 
         // Create company membership for the user
         UserCompanyMembership::create([

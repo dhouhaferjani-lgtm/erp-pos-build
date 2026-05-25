@@ -28,6 +28,12 @@ return [
     'logout_success' => 'Vous avez été déconnecté avec succès.',
     'login_success' => 'Connexion réussie.',
 
+    // Connexion par e-mail d'abord (topology §9.7 — générique)
+    'no_organizations' => "Aucune organisation trouvée pour cet e-mail. Vérifiez votre e-mail ou contactez votre administrateur.",
+    'invalid_credentials' => 'Les identifiants fournis sont incorrects.',
+    'account_not_active' => "Votre compte n'est pas actif. Veuillez contacter le support.",
+    'organization_unavailable' => "Cette organisation est actuellement indisponible. Veuillez contacter le support.",
+
     // Email verification
     'verify_email_subject' => 'Vérifiez votre adresse e-mail',
     'verify_email_greeting' => 'Bonjour :name,',
