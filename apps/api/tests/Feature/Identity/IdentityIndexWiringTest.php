@@ -11,6 +11,7 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -109,7 +110,7 @@ class IdentityIndexWiringTest extends TestCase
             'password' => 'Password1!',
             'status' => UserStatus::Active,
         ]);
-        app(\App\Modules\Tenant\Application\Services\IdentityIndexService::class)
+        app(IdentityIndexService::class)
             ->record('old@team.com', $tenant->id, $target->id);
 
         $response = $this->actingAs($admin, 'sanctum')->patchJson("/api/v1/users/{$target->id}", [
@@ -138,7 +139,7 @@ class IdentityIndexWiringTest extends TestCase
             'password' => 'Password1!',
             'status' => UserStatus::Active,
         ]);
-        app(\App\Modules\Tenant\Application\Services\IdentityIndexService::class)
+        app(IdentityIndexService::class)
             ->record('delete@team.com', $tenant->id, $target->id);
 
         $response = $this->actingAs($admin, 'sanctum')->deleteJson("/api/v1/users/{$target->id}");
@@ -147,6 +148,64 @@ class IdentityIndexWiringTest extends TestCase
         $this->assertDatabaseMissing('central_identities', [
             'email' => 'delete@team.com',
             'tenant_id' => $tenant->id,
+        ]);
+    }
+
+    public function test_deactivate_endpoint_removes_the_index_row(): void
+    {
+        // P2 (Codex 2026-05-25): the deactivate() endpoint must mirror destroy()
+        // and remove the central_identities row, so a deactivated user no longer
+        // surfaces in email-first org discovery / forgot-password before the
+        // reconcile sweep runs.
+        [$tenant, $admin] = $this->makeTenantWithAdmin();
+        $target = User::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'To Deactivate',
+            'email' => 'deact@team.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        app(IdentityIndexService::class)
+            ->record('deact@team.com', $tenant->id, $target->id);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/v1/users/{$target->id}/deactivate");
+
+        $response->assertOk();
+        $this->assertDatabaseMissing('central_identities', [
+            'email' => 'deact@team.com',
+            'tenant_id' => $tenant->id,
+        ]);
+    }
+
+    public function test_reactivate_endpoint_restores_the_index_row(): void
+    {
+        // P2 symmetry decision: reactivation re-records the index row so the
+        // index lifecycle matches the account lifecycle (reconcile's desired set
+        // is "email present AND status != Inactive").
+        [$tenant, $admin] = $this->makeTenantWithAdmin();
+        $target = User::create([
+            'tenant_id' => $tenant->id,
+            'name' => 'To Reactivate',
+            'email' => 'react@team.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Inactive,
+        ]);
+
+        // Inactive user has no index row (mirrors a prior deactivate).
+        $this->assertDatabaseMissing('central_identities', [
+            'email' => 'react@team.com',
+            'tenant_id' => $tenant->id,
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/v1/users/{$target->id}/activate");
+
+        $response->assertOk();
+        $this->assertDatabaseHas('central_identities', [
+            'email' => 'react@team.com',
+            'tenant_id' => $tenant->id,
+            'user_id' => $target->id,
         ]);
     }
 
@@ -187,7 +246,7 @@ class IdentityIndexWiringTest extends TestCase
             'status' => UserStatus::Active,
         ]);
         $admin->assignRole('admin');
-        app(\App\Modules\Tenant\Application\Services\IdentityIndexService::class)
+        app(IdentityIndexService::class)
             ->record('admin@example.com', $tenant->id, $admin->id);
 
         UserCompanyMembership::create([

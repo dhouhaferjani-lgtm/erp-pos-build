@@ -432,6 +432,12 @@ class UserController extends Controller
             $user->status = UserStatus::Active;
             $user->save();
 
+            // P2 (Codex 2026-05-25): reactivation re-records the central identity
+            // index row (mirror of deactivate's remove()) so the index lifecycle
+            // matches the account lifecycle — reconcile's desired set is users
+            // with an email and status != Inactive. No-op for null-email users.
+            $this->identityIndexService->record($user->email, $currentUser->tenant_id, $user->id);
+
             // Log audit event
             $this->logAuditEvent(
                 eventType: 'user.activated',
@@ -507,6 +513,11 @@ class UserController extends Controller
 
             $user->status = UserStatus::Inactive;
             $user->save();
+
+            // P2 (Codex 2026-05-25): mirror destroy() — remove the central
+            // identity index row so a deactivated user no longer surfaces in
+            // email-first org discovery / forgot-password before reconcile runs.
+            $this->identityIndexService->remove($user->email, $currentUser->tenant_id);
 
             // Log audit event
             $this->logAuditEvent(
