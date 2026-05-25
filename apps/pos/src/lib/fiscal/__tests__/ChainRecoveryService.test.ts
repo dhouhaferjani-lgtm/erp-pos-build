@@ -93,7 +93,7 @@ async function seedTerminalState(
   );
 }
 
-// Task 27B Pass 2A.TS — 27-key Candidate C-v3 payload (synthesis v5 §3).
+// Task 27B Pass 2A.TS — 28-key Candidate C-v3 payload (synthesis v5 §3 + Phase 4).
 // Each call returns a fresh `receipt_uuid` so multiple appends in a row
 // (e.g. priming the chain) don't trip the source-event idempotency path.
 const SR_CASHIER_UUID = '22222222-2222-2222-2222-222222222222';
@@ -108,6 +108,7 @@ function nextSaleReceiptUuid(): string {
 
 function validSaleReceiptPayload(): Record<string, unknown> {
   return {
+    approval_references: [],
     business_date: '2026-05-16',
     buyer: null,
     cashier_id: SR_CASHIER_UUID,
@@ -157,7 +158,7 @@ function validSaleReceiptPayload(): Record<string, unknown> {
       },
       name: 'Cafe Tunis',
       tax_jurisdiction_country_code: 'TN',
-      tax_number: '1234567A/B/C/000',
+      tax_number: '1234567AM000',
     },
     shift_id: SR_SHIFT_UUID,
     subtotal: '10.000',

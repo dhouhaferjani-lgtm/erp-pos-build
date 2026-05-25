@@ -39,6 +39,7 @@ final readonly class IngestionResult
         public ?string $fiscalEventId,
         public bool $sequenceConflict,
         public ?IntegrityExceptionClass $exceptionClass,
+        public ?string $rejectionCode = null,
     ) {}
 
     /**
@@ -51,6 +52,7 @@ final readonly class IngestionResult
             fiscalEventId: $fiscalEventId,
             sequenceConflict: false,
             exceptionClass: null,
+            rejectionCode: null,
         );
     }
 
@@ -66,6 +68,7 @@ final readonly class IngestionResult
             fiscalEventId: $fiscalEventId,
             sequenceConflict: false,
             exceptionClass: $exceptionClass,
+            rejectionCode: null,
         );
     }
 
@@ -79,6 +82,7 @@ final readonly class IngestionResult
             fiscalEventId: $fiscalEventId,
             sequenceConflict: false,
             exceptionClass: null,
+            rejectionCode: null,
         );
     }
 
@@ -92,6 +96,7 @@ final readonly class IngestionResult
             fiscalEventId: null,
             sequenceConflict: true,
             exceptionClass: IntegrityExceptionClass::SequenceConflict,
+            rejectionCode: null,
         );
     }
 
@@ -112,6 +117,18 @@ final readonly class IngestionResult
             fiscalEventId: null,
             sequenceConflict: false,
             exceptionClass: IntegrityExceptionClass::MalformedEnvelope,
+            rejectionCode: null,
+        );
+    }
+
+    public static function rejectedServerOnly(): self
+    {
+        return new self(
+            stored: false,
+            fiscalEventId: null,
+            sequenceConflict: false,
+            exceptionClass: null,
+            rejectionCode: 'SERVER_ONLY_EVENT_TYPE',
         );
     }
 }

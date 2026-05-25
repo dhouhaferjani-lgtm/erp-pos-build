@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Contact\Domain\Contact;
 use App\Modules\Contact\Domain\PartyContact;
 use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
@@ -65,6 +66,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $postal_code
  * @property string|null $country
  * @property bool $is_active
+ * @property CustomerAccountStatus $account_status
+ * @property int $account_status_version
+ * @property Carbon|null $account_status_changed_at
+ * @property string|null $account_status_changed_by
+ * @property string|null $account_status_reason
  * @property Carbon|null $deleted_at
  * @property-read Tenant $tenant
  * @property-read Company $company
@@ -81,6 +87,8 @@ class Partner extends Model
     /** @var array<string, mixed> */
     protected $attributes = [
         'is_active' => true,
+        'account_status' => 'active',
+        'account_status_version' => 1,
     ];
 
     protected $fillable = [
@@ -121,6 +129,11 @@ class Partner extends Model
         'postal_code',
         'country',
         'is_active',
+        'account_status',
+        'account_status_version',
+        'account_status_changed_at',
+        'account_status_changed_by',
+        'account_status_reason',
     ];
 
     /**
@@ -145,6 +158,9 @@ class Partner extends Model
             'payable_balance' => 'decimal:4',
             'balance_updated_at' => 'datetime',
             'is_active' => 'boolean',
+            'account_status' => CustomerAccountStatus::class,
+            'account_status_version' => 'integer',
+            'account_status_changed_at' => 'datetime',
         ];
     }
 

@@ -7,6 +7,8 @@ namespace Tests\Feature\Fiscal;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\OrderStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -21,6 +23,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -191,7 +194,17 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
 
         $response = $this->postJson(
             "/api/v1/pos/receipts/{$receipt->id}/void",
-            ['reason' => 'Test void'],
+            [
+                'reason' => 'Test void',
+            ] + $this->voidReturnApprovalPayload(
+                $receipt,
+                'POS_RECEIPT_VOID',
+                [
+                    'receipt_id' => $receipt->id,
+                    'receipt_number' => $receipt->receipt_number,
+                    'reason' => 'Test void',
+                ],
+            ),
         );
 
         $response->assertStatus(200);
@@ -244,7 +257,16 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
                 'lines' => [
                     ['line_id' => $line->id, 'quantity' => '2'],
                 ],
-            ],
+            ] + $this->voidReturnApprovalPayload(
+                $saleReceipt,
+                'POS_RECEIPT_RETURN',
+                [
+                    'receipt_id' => $saleReceipt->id,
+                    'receipt_number' => $saleReceipt->receipt_number,
+                    'line_ids' => [$line->id],
+                    'reason' => '',
+                ],
+            ),
         );
 
         $response->assertStatus(201);
@@ -347,6 +369,104 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
     // =================================================================
     // Helpers
     // =================================================================
+
+    /**
+     * @param  array<string, mixed>  $target
+     * @return array<string, mixed>
+     */
+    private function voidReturnApprovalPayload(Receipt $receipt, string $targetEventType, array $target): array
+    {
+        $approvalId = Str::uuid()->toString();
+        $approvalEventId = Str::uuid()->toString();
+        $overrideEventId = Str::uuid()->toString();
+
+        $approvalPayload = [
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'cashier_user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => $target['reason'] ?? null,
+            'regime_extensions' => null,
+            'requested_at_device' => now()->toISOString(),
+            'resolved_at_device' => now()->toISOString(),
+            'supervisor_user_id' => $this->user->id,
+            'supervisor_user_snapshot' => ['name' => $this->user->name, 'roles' => ['manager']],
+            'target' => $target,
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $this->terminal->id,
+            'training_flag' => false,
+        ];
+        $this->storeFiscalEvent($approvalEventId, FiscalEventType::OPERATOR_APPROVAL_GRANTED, $approvalPayload);
+
+        $overridePayload = [
+            'approval_event_id' => $approvalEventId,
+            'approval_id' => $approvalId,
+            'approval_scope' => 'void_or_return_override',
+            'company_id' => $this->company->id,
+            'event_time_device' => now()->toISOString(),
+            'override_context' => [
+                'target_event_type' => $targetEventType,
+                'target_reference_id' => $receipt->id,
+            ],
+            'policy_version' => 'pos-void-return-policy-v1',
+            'reason_code' => 'manager_reason',
+            'reason_text' => $target['reason'] ?? null,
+            'supervisor_user_id' => $this->user->id,
+            'target' => $target,
+            'tenant_id' => $this->tenant->id,
+            'terminal_id' => $this->terminal->id,
+            'training_flag' => false,
+        ];
+        $this->storeFiscalEvent(
+            $overrideEventId,
+            FiscalEventType::OVERRIDE_VOID_OR_RETURN,
+            $overridePayload,
+            $approvalEventId,
+        );
+
+        return [
+            'approval_id' => $approvalId,
+            'approval_fiscal_event_id' => $approvalEventId,
+            'approval_scope' => 'void_or_return_override',
+            'approval_supervisor_user_id' => $this->user->id,
+            'approval_override_event_id' => $overrideEventId,
+            'authorized_by_user_id' => $this->user->id,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function storeFiscalEvent(
+        string $id,
+        FiscalEventType $eventType,
+        array $payload,
+        ?string $referenceEventId = null,
+    ): void {
+        FiscalEvent::query()->create([
+            'id' => $id,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'operator_id' => $this->user->id,
+            'event_type' => $eventType->value,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => DB::table('fiscal_events')->count() + 1,
+            'event_time_device' => now(),
+            'business_date' => now()->toDateString(),
+            'server_received_at' => now(),
+            'reference_event_id' => $referenceEventId,
+            'canonical_bytes' => json_encode(['payload' => $payload], JSON_THROW_ON_ERROR),
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => hash('sha256', $id),
+            'payload' => $payload,
+            'payload_parse_status' => 'parsed',
+        ]);
+    }
 
     /**
      * @return array<string, mixed>

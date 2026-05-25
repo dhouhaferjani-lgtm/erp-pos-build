@@ -49,6 +49,8 @@ import type {
   FiscalEventPayloadRegistry,
   FiscalEventTypeValue,
 } from './FiscalEventPayloadRegistry';
+import { ACCOUNT_CHARGE_PAYLOAD_KEYS } from './payloads/AccountChargePayload';
+import { ACCOUNT_PAYMENT_PAYLOAD_KEYS } from './payloads/AccountPaymentPayload';
 
 /** 64-char lowercase hex — the seed / hash invariant from spec §3.1 + v37. */
 const LOWER_HEX_64 = /^[0-9a-f]{64}$/;
@@ -207,7 +209,7 @@ export interface FiscalEventAppendRequest {
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
-// Task 27B Pass 2A.TS — 27-key canonical SALE_RECEIPT shape (Candidate
+// Task 27B Pass 2A.TS — 28-key canonical SALE_RECEIPT shape (Candidate
 // C-v3) per synthesis v5 §3. Mirrors the PHP DTO triad in
 // `apps/api/app/Modules/Fiscal/Domain/DTOs/Canonical/*.php`. Every
 // monetary / quantity field is `string` (bcformat at the relevant
@@ -238,7 +240,7 @@ export interface BuyerBlockInput {
   /** POS-local mirror reference; non-authoritative once the receipt is sealed. */
   readonly customer_id: string | null;
   readonly name: string | null;
-  /** Optional B2C tax number — universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  /** Optional B2C tax number — universal baseline plus Phase 1.5.2 country regex table. */
   readonly tax_number: string | null;
 }
 
@@ -248,7 +250,7 @@ export interface SellerBlockInput {
   readonly name: string;
   /** ISO 3166-1 alpha-2. */
   readonly tax_jurisdiction_country_code: string;
-  /** Universal pattern `^[A-Za-z0-9 \-/.]{4,40}$`. */
+  /** Universal baseline plus Phase 1.5.2 country regex table. */
   readonly tax_number: string;
 }
 
@@ -335,6 +337,7 @@ export interface VoucherRedeemedInput {
  * (the PHP `FiscalPayloadConstraintValidator` is authoritative there).
  */
 export interface SaleReceiptPayloadInput {
+  readonly approval_references: ReadonlyArray<SaleReceiptApprovalReferenceInput>;
   /** `YYYY-MM-DD`. */
   readonly business_date: string;
   readonly buyer: BuyerBlockInput | null;
@@ -378,6 +381,16 @@ export interface SaleReceiptPayloadInput {
   /** Money at `currency_scale`. */
   readonly vat_total: string;
   readonly vouchers_redeemed: ReadonlyArray<VoucherRedeemedInput>;
+}
+
+export interface SaleReceiptApprovalReferenceInput {
+  readonly approval_event_id: string;
+  readonly approval_id: string;
+  readonly approval_scope: 'discount_limit_override' | 'tender_tolerance_override' | 'void_or_return_override';
+  readonly override_event_id: string;
+  readonly policy_version: string;
+  readonly supervisor_user_id: string;
+  readonly target_reference_id: string;
 }
 
 export interface ChainBreakDetectedPayloadInput {
@@ -721,7 +734,7 @@ export class FiscalEventEngine {
    * datetimes, out-of-domain enum values, etc. Closes Task 15 round-2
    * Codex BLOCKER + P1-1.
    *
-   * **Task 27B Pass 2A.TS:** SALE_RECEIPT now validates the full 27-key
+   * **Task 27B Pass 2A.TS:** SALE_RECEIPT now validates the full 28-key
    * Candidate C-v3 shape (synthesis v5 §3) — including nested seller /
    * buyer / line_items / payments / vat_breakdown blocks, the
    * training-flag invariant, discount-reason consistency, and
@@ -749,11 +762,34 @@ export class FiscalEventEngine {
       case 'SALE_RECEIPT':
         validateSaleReceiptPayload(request.payload);
         return;
+      case 'ACCOUNT_PAYMENT':
+        validateAccountPaymentPayload(request.payload);
+        return;
+      case 'ACCOUNT_CHARGE':
+        validateAccountChargePayload(request.payload);
+        return;
       case 'CHAIN_BREAK_DETECTED':
         validateChainBreakDetectedPayload(request.payload);
         return;
       case 'CHAIN_RESTART':
         validateChainRestartPayload(request.payload);
+        return;
+      case 'ACCOUNT_STATUS_CHANGED':
+        validateAccountStatusChangedPayload(request.payload);
+        return;
+      case 'OPERATOR_APPROVAL_GRANTED':
+        validateOperatorApprovalGrantedPayload(request.payload);
+        return;
+      case 'OVERRIDE_CREDIT_LIMIT':
+      case 'OVERRIDE_ACCOUNT_STATUS':
+      case 'OVERRIDE_DISCOUNT_LIMIT':
+      case 'OVERRIDE_TENDER_TOLERANCE':
+      case 'OVERRIDE_VOID_OR_RETURN':
+        validatePhase4OverridePayload(request.payload);
+        return;
+      case 'CASH_OUT':
+      case 'SAFE_DROP':
+        validateCashDrawerMovementPayload(request.payload);
         return;
       default:
         // Server-only types (§11.0) are rejected at Step -1.
@@ -836,6 +872,7 @@ export class FiscalEventEngine {
  * equality without re-implementing the key list.
  */
 export const SALE_RECEIPT_PAYLOAD_KEYS = [
+  'approval_references',
   'business_date',
   'buyer',
   'cashier_id',
@@ -879,6 +916,75 @@ export const CHAIN_RESTART_PAYLOAD_KEYS = [
   'provenance_link',
 ] as const;
 
+const ACCOUNT_STATUS_CHANGED_PAYLOAD_KEYS = [
+  'actor_user_id',
+  'company_id',
+  'event_time_device',
+  'new_status',
+  'old_status',
+  'partner_id',
+  'partner_snapshot',
+  'reason',
+  'status_version',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const OPERATOR_APPROVAL_GRANTED_PAYLOAD_KEYS = [
+  'approval_id',
+  'approval_scope',
+  'cashier_user_id',
+  'company_id',
+  'event_time_device',
+  'policy_version',
+  'reason_code',
+  'reason_text',
+  'regime_extensions',
+  'requested_at_device',
+  'resolved_at_device',
+  'supervisor_user_id',
+  'supervisor_user_snapshot',
+  'target',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const PHASE4_OVERRIDE_PAYLOAD_KEYS = [
+  'approval_event_id',
+  'approval_id',
+  'approval_scope',
+  'company_id',
+  'event_time_device',
+  'override_context',
+  'policy_version',
+  'reason_code',
+  'reason_text',
+  'supervisor_user_id',
+  'target',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
+const CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS = [
+  'approval_event_id',
+  'approval_id',
+  'approval_scope',
+  'amount',
+  'company_id',
+  'event_time_device',
+  'operation_type',
+  'reason',
+  'shift_id',
+  'supervisor_user_id',
+  'target_reference_id',
+  'tenant_id',
+  'terminal_id',
+  'training_flag',
+] as const;
+
 // -------------------------------------------------------------------
 // Format / domain constants — mirror PHP
 // `FiscalPayloadConstraintValidator` `private const` block exactly.
@@ -895,12 +1001,23 @@ const ISO_4217 = /^[A-Z]{3}$/;
 const ISO_3166_ALPHA_2 = /^[A-Z]{2}$/;
 
 /**
- * Universal tax-number regex per synthesis v5 §7 — per-country strict
- * regex deferred to Phase 1.5. Length 4-40 over `[A-Za-z0-9 \-/.]`.
- * Additionally rejected at the validator: empty, control chars,
- * leading/trailing whitespace.
+ * Universal tax-number baseline per synthesis v5 §7. Length 4-40 over
+ * `[A-Za-z0-9 \-/.]`. Country-specific Phase 1.5.2 regexes run after
+ * this baseline.
  */
 const TAX_NUMBER_UNIVERSAL = /^[A-Za-z0-9 \-/.]{4,40}$/;
+
+const TAX_NUMBER_PATTERNS: Readonly<Record<string, RegExp>> = {
+  FR: /^([0-9]{9}|[0-9]{14})$/,
+  TN: /^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/,
+  SA: /^3[0-9]{12}03$/,
+  DE: /^DE[0-9]{9}$/,
+  IT: /^[0-9]{11}$/,
+};
+
+const FR_BUYER_TVA_INTRACOM = /^FR[0-9]{11}$/;
+
+const IT_BUYER_CODICE_FISCALE = /^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/;
 
 /**
  * ISO 8601 with millisecond precision + tz (`Z` or `±HH:MM`).
@@ -942,6 +1059,16 @@ const CONSUMPTION_MODES = ['dine_in', 'takeaway'] as const;
 
 const NON_COLLECTED_SUBTYPES = ['servizi', 'beni', 'omaggio', 'successiva'] as const;
 
+const ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES = ['synced', 'pending_create'] as const;
+
+const ACCOUNT_PAYMENT_ALLOCATION_POLICIES = ['FIFO'] as const;
+
+const ACCOUNT_PAYMENT_STALENESS_REASONS = [
+  'never_synced',
+  'older_than_threshold',
+  'server_conflict_pending',
+] as const;
+
 /**
  * Money regex at the given scale. Non-negative (no `^-?` prefix);
  * refunds are modeled via `invoice_type_code='REFUND'` per v5 §6.A.
@@ -968,7 +1095,7 @@ function isZeroMoney(value: string): boolean {
 }
 
 // -------------------------------------------------------------------
-// SALE_RECEIPT validator — 27-key canonical Candidate C-v3 per
+// SALE_RECEIPT validator — 28-key canonical Candidate C-v3 per
 // synthesis v5 §3. STRUCTURAL conformance only: key set + types +
 // regex + enums + foreign-currency pairing + training-flag invariant
 // + discount-reason consistency. The VAT partition algorithm +
@@ -1070,6 +1197,9 @@ function validateSaleReceiptPayload(payload: unknown): void {
   validateOriginalReceiptReference(p, invoiceTypeCode);
 
   // -- 7. list containers --
+  const approvalReferences = requireList(p, 'approval_references');
+  approvalReferences.forEach((row, idx) => validateSaleReceiptApprovalReference(idx, row));
+
   const lineItems = requireList(p, 'line_items');
   if (lineItems.length === 0) {
     throw new FiscalEventPayloadValidationError(
@@ -1105,6 +1235,156 @@ function validateSaleReceiptPayload(payload: unknown): void {
   // conformance to avoid duplicating BCMath behavior in JS.
 }
 
+function validateSaleReceiptApprovalReference(index: number, row: unknown): void {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_approval_references_${String(index)}_invalid:must be object`,
+    );
+  }
+  const r = row as Record<string, unknown>;
+  const path = `approval_references.${String(index)}`;
+  assertExactKeySetWithPath(r, [
+    'approval_event_id',
+    'approval_id',
+    'approval_scope',
+    'override_event_id',
+    'policy_version',
+    'supervisor_user_id',
+    'target_reference_id',
+  ], path);
+  assertUuidAt(r, 'approval_event_id', `${path}.approval_event_id`);
+  assertUuidAt(r, 'approval_id', `${path}.approval_id`);
+  assertEnum(r, 'approval_scope', [
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+  ]);
+  assertUuidAt(r, 'override_event_id', `${path}.override_event_id`);
+  assertNonEmptyStringAt(r, 'policy_version', `${path}.policy_version`);
+  assertUuidAt(r, 'supervisor_user_id', `${path}.supervisor_user_id`);
+  assertNonEmptyStringAt(r, 'target_reference_id', `${path}.target_reference_id`);
+}
+
+function validateAccountPaymentPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'ACCOUNT_PAYMENT payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  assertExactKeySet(p, ACCOUNT_PAYMENT_PAYLOAD_KEYS, 'ACCOUNT_PAYMENT');
+
+  const scale = p['currency_scale'];
+  if (typeof scale !== 'number' || !Number.isInteger(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_invalid:must be int; got ${typeofTag(scale)}`,
+    );
+  }
+  if (!SUPPORTED_CURRENCY_SCALES.includes(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${scale}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}`,
+    );
+  }
+  const money = moneyRegex(scale);
+
+  const currencyCode = p['currency_code'];
+  if (typeof currencyCode !== 'string' || !ISO_4217.test(currencyCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(currencyCode)}`,
+    );
+  }
+
+  assertUuid(p, 'account_payment_uuid');
+  assertCalendarDate(p, 'business_date');
+  assertUuid(p, 'cashier_id');
+  assertNonEmptyString(p, 'cashier_name');
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertOptionalNonEmptyString(p, 'notes');
+  assertEnum(p, 'receipt_type_code', ['ACCOUNT_PAYMENT'] as const);
+  assertUuid(p, 'shift_id');
+  assertUuid(p, 'terminal_id');
+  const trainingFlag = assertBool(p, 'training_flag');
+  assertEnum(p, 'treasury_allocation_policy', ACCOUNT_PAYMENT_ALLOCATION_POLICIES);
+
+  const sellerCountryCode = validateSeller(p);
+  validateAccountPaymentCustomer(p['customer'], sellerCountryCode);
+  validateAccountPaymentPayment(p['payment'], money, scale, trainingFlag);
+  validateAccountPaymentBalanceSnapshot(p['local_balance_snapshot'], money, scale);
+  validateAccountPaymentStaleness(p['staleness']);
+  validateAccountPaymentReferences(p['references']);
+  validateNullableAssoc(p['regime_extensions'], 'regime_extensions');
+}
+
+function validateAccountChargePayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_invalid:ACCOUNT_CHARGE payload must be an object.',
+    );
+  }
+  const p = payload as Record<string, unknown>;
+
+  assertExactKeySet(p, ACCOUNT_CHARGE_PAYLOAD_KEYS, 'ACCOUNT_CHARGE');
+  rejectAccountChargePaymentsKeyRecursively(p);
+
+  const scale = p['currency_scale'];
+  if (typeof scale !== 'number' || !Number.isInteger(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_invalid:must be int; got ${typeofTag(scale)}`,
+    );
+  }
+  if (!SUPPORTED_CURRENCY_SCALES.includes(scale)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_scale_unsupported:value=${scale}:allowed=${SUPPORTED_CURRENCY_SCALES.join(',')}`,
+    );
+  }
+  const money = moneyRegex(scale);
+
+  const currencyCode = p['currency_code'];
+  if (typeof currencyCode !== 'string' || !ISO_4217.test(currencyCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(currencyCode)}`,
+    );
+  }
+
+  assertUuid(p, 'account_charge_uuid');
+  assertCalendarDate(p, 'business_date');
+  assertUuid(p, 'cashier_id');
+  assertNonEmptyString(p, 'cashier_name');
+  const trainingFlag = assertBool(p, 'training_flag');
+  validateAccountChargeTerms(p['charge_terms']);
+  validateAccountChargeCreditDecision(p['credit_decision'], money, scale, trainingFlag);
+  const sellerCountryCode = validateSeller(p);
+  const customerCategory = validateAccountChargeCustomer(p['customer'], sellerCountryCode);
+  validateBuyer(p);
+  assertIsoDateTimeMs(p, 'event_time_device');
+  const invoiceClassification = assertEnum(
+    p,
+    'invoice_classification',
+    ['b2c_charge_receipt', 'b2b_facture_draft_requested'] as const,
+  );
+  validateAccountChargeLineItems(p, money, scale);
+  validateAccountChargeBalanceSnapshot(p['local_balance_snapshot'], money, scale);
+  assertOptionalNonEmptyString(p, 'notes');
+  assertEnum(p, 'print_profile', ['ACCOUNT_CHARGE_RECEIPT'] as const);
+  assertEnum(p, 'receipt_type_code', ['ACCOUNT_CHARGE'] as const);
+  validateAccountChargeReferences(p['references']);
+  validateNullableAssoc(p['regime_extensions'], 'regime_extensions');
+  assertUuid(p, 'shift_id');
+  validateAccountChargeStaleness(p['staleness']);
+  assertUuid(p, 'terminal_id');
+  validateAccountChargeTotals(p['totals'], money, scale);
+  assertMoneyString(p, 'transaction_discount_amount', money, scale);
+  assertOptionalNonEmptyString(p, 'transaction_discount_reason');
+  validateAccountChargeVatBreakdown(p, money, scale);
+  validateAccountChargeArithmetic(p, scale);
+  if (invoiceClassification === 'b2b_facture_draft_requested' && customerCategory !== 'business') {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_invoice_classification_mismatch:b2b_facture_draft_requested requires customer.customer_category=business',
+    );
+  }
+}
+
 // -------------------------------------------------------------------
 // Nested-object validators
 // -------------------------------------------------------------------
@@ -1126,8 +1406,578 @@ const PAYMENT_KEYS = [
 ] as const;
 const VAT_BREAKDOWN_KEYS = ['gross_amount', 'net_amount', 'rate', 'tax_category_code', 'vat_amount'] as const;
 const VOUCHER_KEYS = ['redeemed_amount', 'voucher_code'] as const;
+const ACCOUNT_PAYMENT_CUSTOMER_KEYS = [
+  'address',
+  'customer_category',
+  'customer_id',
+  'customer_sync_status',
+  'email',
+  'name',
+  'phone',
+  'tax_number',
+] as const;
+const ACCOUNT_PAYMENT_PAYMENT_KEYS = [
+  'amount',
+  'foreign_currency_amount',
+  'foreign_currency_code',
+  'instrument_serial',
+  'instrument_type',
+  'method_code',
+  'repository_id',
+] as const;
+const ACCOUNT_PAYMENT_BALANCE_SNAPSHOT_KEYS = [
+  'balance_updated_at',
+  'credit_balance_before',
+  'net_balance_before',
+  'payment_amount',
+  'projected_credit_balance_after',
+  'projected_net_balance_after',
+  'projected_receivable_balance_after',
+  'receivable_balance_before',
+] as const;
+const ACCOUNT_PAYMENT_STALENESS_KEYS = [
+  'balance_snapshot_stale',
+  'customer_snapshot_stale',
+  'mirror_last_synced_at',
+  'staleness_reason',
+] as const;
+const ACCOUNT_PAYMENT_REFERENCES_KEYS = [
+  'external_reference',
+  'related_sale_receipt_event_id',
+  'server_customer_alias_id',
+] as const;
+const ACCOUNT_CHARGE_CUSTOMER_KEYS = [
+  'account_identifier',
+  'address',
+  'customer_category',
+  'customer_id',
+  'customer_sync_status',
+  'email',
+  'name',
+  'phone',
+  'tax_number',
+] as const;
+const ACCOUNT_CHARGE_LINE_ITEM_KEYS = [
+  'gtin',
+  'line_discount_amount',
+  'line_discount_reason',
+  'line_subtotal',
+  'line_uuid',
+  'line_vat',
+  'name',
+  'non_collected_subtype',
+  'product_id',
+  'quantity',
+  'sku',
+  'tax_category_code',
+  'unit_price',
+  'vat_rate',
+] as const;
+const ACCOUNT_CHARGE_BALANCE_SNAPSHOT_KEYS = [
+  'balance_updated_at',
+  'charge_amount',
+  'credit_balance_before',
+  'net_balance_before',
+  'projected_credit_balance_after',
+  'projected_net_balance_after',
+  'projected_receivable_balance_after',
+  'receivable_balance_before',
+] as const;
+const ACCOUNT_CHARGE_CREDIT_DECISION_KEYS = [
+  'credit_available_after',
+  'credit_available_before',
+  'credit_limit',
+  'decision',
+  'limit_exceeded',
+  'mirror_stale_at_authoring',
+  'override_evidence',
+  'policy_version',
+  'stale_policy_action',
+  'warnings',
+] as const;
+const ACCOUNT_CHARGE_OVERRIDE_EVIDENCE_KEYS = [
+  'approval_event_id',
+  'approval_scope',
+  'override_event_id',
+  'policy_version',
+  'target_account_status',
+  'target_amount',
+  'target_customer_id',
+] as const;
+const ACCOUNT_CHARGE_TERMS_KEYS = [
+  'due_date',
+  'payment_terms_days',
+  'terms_label',
+] as const;
+const ACCOUNT_CHARGE_TOTALS_KEYS = [
+  'amount_charged_to_account',
+  'grand_total_before_charge',
+  'subtotal',
+  'total',
+  'vat_total',
+] as const;
+const ACCOUNT_CHARGE_STALENESS_KEYS = ACCOUNT_PAYMENT_STALENESS_KEYS;
+const ACCOUNT_CHARGE_REFERENCES_KEYS = ACCOUNT_PAYMENT_REFERENCES_KEYS;
 
-function validateSeller(p: Record<string, unknown>): void {
+function validateAccountChargeCustomer(customer: unknown, sellerCountryCode: string): string | null {
+  if (!isPlainObject(customer)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:customer must be object; got ${typeofTag(customer)}`,
+    );
+  }
+  assertExactKeySetWithPath(customer, ACCOUNT_CHARGE_CUSTOMER_KEYS, 'customer');
+  assertOptionalNonEmptyStringAt(customer, 'account_identifier', 'customer.account_identifier');
+  assertUuidAt(customer, 'customer_id', 'customer.customer_id');
+  assertEnum(customer, 'customer_sync_status', ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES);
+  assertNonEmptyStringAt(customer, 'name', 'customer.name');
+  assertOptionalNonEmptyStringAt(customer, 'phone', 'customer.phone');
+  assertOptionalNonEmptyStringAt(customer, 'email', 'customer.email');
+  assertOptionalNonEmptyStringAt(customer, 'customer_category', 'customer.customer_category');
+  validateAddress(customer['address'], 'customer.address', /* required */ false);
+  if (customer['tax_number'] !== null && customer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(
+      customer['tax_number'],
+      countryCodeFromAddress(customer['address']) ?? sellerCountryCode,
+      'customer.tax_number',
+      true,
+    );
+  }
+
+  return typeof customer['customer_category'] === 'string' ? customer['customer_category'] : null;
+}
+
+function validateAccountChargeTerms(terms: unknown): void {
+  if (!isPlainObject(terms)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:charge_terms must be object; got ${typeofTag(terms)}`,
+    );
+  }
+  assertExactKeySetWithPath(terms, ACCOUNT_CHARGE_TERMS_KEYS, 'charge_terms');
+  const days = terms['payment_terms_days'];
+  if (days !== null && (typeof days !== 'number' || !Number.isInteger(days) || days < 0)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:charge_terms.payment_terms_days must be non-negative integer or null; got ${jsonOrType(days)}`,
+    );
+  }
+  if (terms['due_date'] !== null) {
+    assertCalendarDateAt(terms, 'due_date', 'charge_terms.due_date');
+  }
+  if (days !== null && terms['due_date'] === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_terms_invalid:charge_terms.due_date required when payment_terms_days is non-null',
+    );
+  }
+  assertOptionalNonEmptyStringAt(terms, 'terms_label', 'charge_terms.terms_label');
+}
+
+function validateAccountChargeCreditDecision(
+  decision: unknown,
+  money: RegExp,
+  scale: number,
+  training: boolean,
+): void {
+  if (!isPlainObject(decision)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:credit_decision must be object; got ${typeofTag(decision)}`,
+    );
+  }
+  assertExactKeySetWithPath(decision, ACCOUNT_CHARGE_CREDIT_DECISION_KEYS, 'credit_decision');
+  for (const field of ['credit_available_after', 'credit_available_before', 'credit_limit'] as const) {
+    if (decision[field] !== null) {
+      assertMoneyStringAt(decision, field, money, scale, `credit_decision.${field}`);
+    }
+  }
+  const decisionValue = assertEnum(decision, 'decision', ['approved', 'approved_with_override'] as const);
+  const limitExceeded = assertBoolAt(decision, 'limit_exceeded', 'credit_decision.limit_exceeded');
+  assertBoolAt(
+    decision,
+    'mirror_stale_at_authoring',
+    'credit_decision.mirror_stale_at_authoring',
+  );
+  assertNonEmptyStringAt(decision, 'policy_version', 'credit_decision.policy_version');
+  assertEnum(decision, 'stale_policy_action', ['allow', 'warn', 'block'] as const);
+  validateAccountChargeOverrideEvidence(decision['override_evidence'], decisionValue, money, scale);
+  const warnings = decision['warnings'];
+  if (!Array.isArray(warnings)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:credit_decision.warnings must be a JSON list; got ${typeofTag(warnings)}`,
+    );
+  }
+  warnings.forEach((warning, index) => {
+    if (typeof warning !== 'string' || warning === '') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_field_invalid:credit_decision.warnings[${index}] must be non-empty string; got ${jsonOrType(warning)}`,
+      );
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(warning)) {
+      throw new FiscalEventPayloadValidationError(
+        `payload_account_charge_credit_decision_invalid:warnings[${index}] must be a stable lower_snake_case code`,
+      );
+    }
+  });
+  const sortedWarnings = [...warnings].sort();
+  if (warnings.some((warning, index) => warning !== sortedWarnings[index])) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_credit_decision_invalid:warnings must be sorted stable codes',
+    );
+  }
+  if (!training && limitExceeded && decisionValue !== 'approved_with_override') {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_credit_decision_invalid:limit_exceeded requires training_flag=true',
+    );
+  }
+}
+
+function validateAccountChargeOverrideEvidence(
+  evidence: unknown,
+  decision: 'approved' | 'approved_with_override',
+  money: RegExp,
+  scale: number,
+): void {
+  if (decision === 'approved') {
+    if (evidence !== null) {
+      throw new FiscalEventPayloadValidationError(
+        'payload_account_charge_credit_decision_invalid:override_evidence must be null for approved decisions',
+      );
+    }
+    return;
+  }
+
+  if (!isPlainObject(evidence)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:credit_decision.override_evidence must be object; got ${typeofTag(evidence)}`,
+    );
+  }
+  assertExactKeySetWithPath(
+    evidence,
+    ACCOUNT_CHARGE_OVERRIDE_EVIDENCE_KEYS,
+    'credit_decision.override_evidence',
+  );
+  assertUuidAt(evidence, 'approval_event_id', 'credit_decision.override_evidence.approval_event_id');
+  assertEnum(
+    evidence,
+    'approval_scope',
+    ['credit_limit_override', 'account_status_override'] as const,
+  );
+  assertUuidAt(evidence, 'override_event_id', 'credit_decision.override_evidence.override_event_id');
+  assertNonEmptyStringAt(evidence, 'policy_version', 'credit_decision.override_evidence.policy_version');
+  assertEnum(
+    evidence,
+    'target_account_status',
+    ['active', 'suspended', 'closed', 'disputed'] as const,
+  );
+  assertMoneyStringAt(evidence, 'target_amount', money, scale, 'credit_decision.override_evidence.target_amount');
+  assertUuidAt(evidence, 'target_customer_id', 'credit_decision.override_evidence.target_customer_id');
+}
+
+function validateAccountChargeLineItems(
+  p: Record<string, unknown>,
+  money: RegExp,
+  scale: number,
+): void {
+  const lineItems = requireList(p, 'line_items');
+  if (lineItems.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_line_items_empty:line_items must have >= 1 row',
+    );
+  }
+  lineItems.forEach((row, index) => validateAccountChargeLineItem(index, row, money, scale));
+}
+
+function validateAccountChargeLineItem(
+  index: number,
+  row: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(row)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_invalid:line_items[${index}] must be object; got ${typeofTag(row)}`,
+    );
+  }
+  const path = `line_items[${index}]`;
+  assertExactKeySetWithPath(row, ACCOUNT_CHARGE_LINE_ITEM_KEYS, path);
+  assertUuidAt(row, 'line_uuid', `${path}.line_uuid`);
+  assertMoneyStringAt(row, 'unit_price', money, scale, `${path}.unit_price`);
+  assertMoneyStringAt(row, 'line_subtotal', money, scale, `${path}.line_subtotal`);
+  assertMoneyStringAt(row, 'line_vat', money, scale, `${path}.line_vat`);
+  assertMoneyStringAt(row, 'line_discount_amount', money, scale, `${path}.line_discount_amount`);
+  assertMoneyStringAt(row, 'quantity', moneyRegex(QUANTITY_SCALE), QUANTITY_SCALE, `${path}.quantity`);
+  assertMoneyStringAt(row, 'vat_rate', moneyRegex(VAT_RATE_SCALE), VAT_RATE_SCALE, `${path}.vat_rate`);
+  assertNonEmptyStringAt(row, 'name', `${path}.name`);
+  assertNonEmptyStringAt(row, 'product_id', `${path}.product_id`);
+  assertOptionalNonEmptyStringAt(row, 'sku', `${path}.sku`);
+  assertOptionalNonEmptyStringAt(row, 'gtin', `${path}.gtin`);
+  assertOptionalNonEmptyStringAt(row, 'line_discount_reason', `${path}.line_discount_reason`);
+  assertOptionalEnumAt(row, 'non_collected_subtype', NON_COLLECTED_SUBTYPES, `${path}.non_collected_subtype`);
+  assertOptionalTaxCategoryCode(row['tax_category_code'], `${path}.tax_category_code`);
+}
+
+function validateAccountChargeBalanceSnapshot(
+  snapshot: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(snapshot)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:local_balance_snapshot must be object; got ${typeofTag(snapshot)}`,
+    );
+  }
+  assertExactKeySetWithPath(
+    snapshot,
+    ACCOUNT_CHARGE_BALANCE_SNAPSHOT_KEYS,
+    'local_balance_snapshot',
+  );
+  for (const field of [
+    'charge_amount',
+    'credit_balance_before',
+    'net_balance_before',
+    'projected_credit_balance_after',
+    'projected_net_balance_after',
+    'projected_receivable_balance_after',
+    'receivable_balance_before',
+  ] as const) {
+    assertMoneyStringAt(snapshot, field, money, scale, `local_balance_snapshot.${field}`);
+  }
+  assertIsoDateTimeMsAt(
+    snapshot,
+    'balance_updated_at',
+    'local_balance_snapshot.balance_updated_at',
+  );
+}
+
+function validateAccountChargeReferences(references: unknown): void {
+  if (references === null) {
+    return;
+  }
+  if (!isPlainObject(references)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:references must be object; got ${typeofTag(references)}`,
+    );
+  }
+  assertExactKeySetWithPath(references, ACCOUNT_CHARGE_REFERENCES_KEYS, 'references');
+  assertOptionalNonEmptyStringAt(references, 'external_reference', 'references.external_reference');
+  assertOptionalNonEmptyStringAt(
+    references,
+    'related_sale_receipt_event_id',
+    'references.related_sale_receipt_event_id',
+  );
+  if (references['related_sale_receipt_event_id'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_reference_forbidden:references.related_sale_receipt_event_id is reserved for post-v1 split-sale links',
+    );
+  }
+  if (references['server_customer_alias_id'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for server reconciliation',
+    );
+  }
+}
+
+function validateAccountChargeStaleness(staleness: unknown): void {
+  if (!isPlainObject(staleness)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:staleness must be object; got ${typeofTag(staleness)}`,
+    );
+  }
+  assertExactKeySetWithPath(staleness, ACCOUNT_CHARGE_STALENESS_KEYS, 'staleness');
+  const customerStale = assertBoolAt(
+    staleness,
+    'customer_snapshot_stale',
+    'staleness.customer_snapshot_stale',
+  );
+  const balanceStale = assertBoolAt(
+    staleness,
+    'balance_snapshot_stale',
+    'staleness.balance_snapshot_stale',
+  );
+  if (staleness['mirror_last_synced_at'] !== null) {
+    assertIsoDateTimeMsAt(
+      staleness,
+      'mirror_last_synced_at',
+      'staleness.mirror_last_synced_at',
+    );
+  }
+  assertOptionalEnumAt(
+    staleness,
+    'staleness_reason',
+    ACCOUNT_PAYMENT_STALENESS_REASONS,
+    'staleness.staleness_reason',
+  );
+  const reason = staleness['staleness_reason'];
+  const stale = customerStale || balanceStale;
+  if (stale && reason === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_staleness_reason_required:staleness_reason required when any stale flag is true',
+    );
+  }
+  if (!stale && reason !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_staleness_reason_mismatch:staleness_reason must be null when stale flags are false',
+    );
+  }
+}
+
+function validateAccountChargeTotals(
+  totals: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(totals)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:totals must be object; got ${typeofTag(totals)}`,
+    );
+  }
+  assertExactKeySetWithPath(totals, ACCOUNT_CHARGE_TOTALS_KEYS, 'totals');
+  for (const field of ACCOUNT_CHARGE_TOTALS_KEYS) {
+    assertMoneyStringAt(totals, field, money, scale, `totals.${field}`);
+  }
+}
+
+function validateAccountChargeVatBreakdown(
+  p: Record<string, unknown>,
+  money: RegExp,
+  scale: number,
+): void {
+  const vatBreakdown = requireList(p, 'vat_breakdown');
+  if (vatBreakdown.length === 0) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_vat_breakdown_empty:vat_breakdown must have >= 1 row',
+    );
+  }
+  vatBreakdown.forEach((row, index) => validateVatBreakdownRow(index, row, money, scale));
+}
+
+function validateAccountChargeArithmetic(
+  payload: Record<string, unknown>,
+  scale: number,
+): void {
+  const totals = payload['totals'];
+  const snapshot = payload['local_balance_snapshot'];
+  if (!isPlainObject(totals) || !isPlainObject(snapshot)) {
+    return;
+  }
+
+  const subtotal = accountChargeMinorUnits(totals['subtotal'] as string, scale);
+  const vatTotal = accountChargeMinorUnits(totals['vat_total'] as string, scale);
+  const total = accountChargeMinorUnits(totals['total'] as string, scale);
+  const discount = accountChargeMinorUnits(payload['transaction_discount_amount'] as string, scale);
+  const grandTotalBeforeCharge = accountChargeMinorUnits(
+    totals['grand_total_before_charge'] as string,
+    scale,
+  );
+  if (grandTotalBeforeCharge !== total) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:grand_total_before_charge must equal totals.total',
+    );
+  }
+  if (subtotal + vatTotal !== total + discount) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:subtotal_plus_vat must equal total_plus_discount',
+    );
+  }
+
+  const amountCharged = accountChargeMinorUnits(
+    totals['amount_charged_to_account'] as string,
+    scale,
+  );
+  if (amountCharged !== total) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:amount_charged_to_account must equal totals.total',
+    );
+  }
+  const chargeAmount = accountChargeMinorUnits(snapshot['charge_amount'] as string, scale);
+  if (chargeAmount !== amountCharged) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_charge_amount_mismatch:local_balance_snapshot.charge_amount must equal totals.amount_charged_to_account',
+    );
+  }
+
+  const receivableBefore = accountChargeMinorUnits(
+    snapshot['receivable_balance_before'] as string,
+    scale,
+  );
+  const projectedReceivable = accountChargeMinorUnits(
+    snapshot['projected_receivable_balance_after'] as string,
+    scale,
+  );
+  const expectedReceivable = receivableBefore + chargeAmount;
+  if (expectedReceivable !== projectedReceivable) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_charge_balance_mismatch:projected_receivable_balance_after expected ${accountChargeFormatMinorUnits(expectedReceivable, scale)} got ${snapshot['projected_receivable_balance_after'] as string}`,
+    );
+  }
+
+  const projectedCredit = accountChargeMinorUnits(
+    snapshot['projected_credit_balance_after'] as string,
+    scale,
+  );
+  const projectedNet = accountChargeMinorUnits(
+    snapshot['projected_net_balance_after'] as string,
+    scale,
+  );
+  const expectedNet = projectedReceivable > projectedCredit
+    ? projectedReceivable - projectedCredit
+    : 0n;
+  if (expectedNet !== projectedNet) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_charge_balance_mismatch:projected_net_balance_after expected ${accountChargeFormatMinorUnits(expectedNet, scale)} got ${snapshot['projected_net_balance_after'] as string}`,
+    );
+  }
+}
+
+function accountChargeMinorUnits(value: string, scale: number): bigint {
+  if (scale === 0) {
+    return BigInt(value);
+  }
+
+  const [whole = '0', fractional = ''] = value.split('.');
+  return BigInt(`${whole}${fractional.padEnd(scale, '0')}`);
+}
+
+function accountChargeFormatMinorUnits(value: bigint, scale: number): string {
+  if (scale === 0) {
+    return value.toString();
+  }
+
+  const denominator = 10n ** BigInt(scale);
+  const whole = value / denominator;
+  const fractional = (value % denominator).toString().padStart(scale, '0');
+
+  return `${whole}.${fractional}`;
+}
+
+function rejectAccountChargePaymentsKeyRecursively(value: unknown, path = 'payload'): void {
+  if (!isPlainObject(value) && !Array.isArray(value)) {
+    return;
+  }
+  const entries = Array.isArray(value) ? value.entries() : Object.entries(value);
+  for (const [key, child] of entries) {
+    const segment = typeof key === 'number' ? `[${key}]` : `.${key}`;
+    if (key === 'payments') {
+      throw new FiscalEventPayloadValidationError(
+        `payload_account_charge_payments_forbidden:payments is not valid anywhere on ACCOUNT_CHARGE at ${path}${segment}`,
+      );
+    }
+    rejectAccountChargePaymentsKeyRecursively(child, `${path}${segment}`);
+  }
+}
+
+function assertOptionalTaxCategoryCode(value: unknown, path: string): void {
+  if (value === null) return;
+  if (typeof value !== 'string') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path} must be string or null; got ${typeofTag(value)}`,
+    );
+  }
+  if (value !== '' && !TAX_CATEGORY_CODE.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_line_item_tax_category_invalid:${path} must match ^[A-Z0-9_-]+$ or null; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
+function validateSeller(p: Record<string, unknown>): string {
   const seller = p['seller'];
   if (!isPlainObject(seller)) {
     throw new FiscalEventPayloadValidationError(
@@ -1145,8 +1995,10 @@ function validateSeller(p: Record<string, unknown>): void {
     );
   }
 
-  assertTaxNumber(seller['tax_number'], 'seller.tax_number');
+  assertTaxNumberForCountry(seller['tax_number'], jurisdiction, 'seller.tax_number');
   validateAddress(seller['address'], 'seller.address', /* required */ true);
+
+  return jurisdiction;
 }
 
 function validateBuyer(p: Record<string, unknown>): void {
@@ -1170,11 +2022,17 @@ function validateBuyer(p: Record<string, unknown>): void {
     }
   }
 
-  if (buyer['tax_number'] !== null && buyer['tax_number'] !== undefined) {
-    assertTaxNumber(buyer['tax_number'], 'buyer.tax_number');
+  validateAddress(buyer['address'], 'buyer.address', /* required */ false);
+  const buyerCountryCode =
+    countryCodeFromAddress(buyer['address']) ?? sellerCountryCodeFromPayload(p);
+
+  if (buyer['codice_fiscale'] !== null && buyer['codice_fiscale'] !== undefined) {
+    assertBuyerCodiceFiscale(buyer['codice_fiscale']);
   }
 
-  validateAddress(buyer['address'], 'buyer.address', /* required */ false);
+  if (buyer['tax_number'] !== null && buyer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(buyer['tax_number'], buyerCountryCode, 'buyer.tax_number', true);
+  }
 }
 
 function validateAddress(address: unknown, path: string, required: boolean): void {
@@ -1199,6 +2057,187 @@ function validateAddress(address: unknown, path: string, required: boolean): voi
   if (typeof cc !== 'string' || !ISO_3166_ALPHA_2.test(cc)) {
     throw new FiscalEventPayloadValidationError(
       `payload_address_country_code_invalid:${path}.country_code must be ISO 3166-1 alpha-2; got ${jsonOrType(cc)}`,
+    );
+  }
+}
+
+function validateAccountPaymentCustomer(customer: unknown, sellerCountryCode: string): void {
+  if (!isPlainObject(customer)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:customer must be object; got ${typeofTag(customer)}`,
+    );
+  }
+  assertExactKeySetWithPath(customer, ACCOUNT_PAYMENT_CUSTOMER_KEYS, 'customer');
+  assertUuidAt(customer, 'customer_id', 'customer.customer_id');
+  assertEnum(
+    customer,
+    'customer_sync_status',
+    ACCOUNT_PAYMENT_CUSTOMER_SYNC_STATUSES,
+  );
+  assertNonEmptyStringAt(customer, 'name', 'customer.name');
+  assertOptionalNonEmptyStringAt(customer, 'phone', 'customer.phone');
+  assertOptionalNonEmptyStringAt(customer, 'email', 'customer.email');
+  assertOptionalNonEmptyStringAt(customer, 'customer_category', 'customer.customer_category');
+  validateAddress(customer['address'], 'customer.address', /* required */ false);
+  if (customer['tax_number'] !== null && customer['tax_number'] !== undefined) {
+    assertTaxNumberForCountry(
+      customer['tax_number'],
+      countryCodeFromAddress(customer['address']) ?? sellerCountryCode,
+      'customer.tax_number',
+      true,
+    );
+  }
+}
+
+function validateAccountPaymentPayment(
+  payment: unknown,
+  money: RegExp,
+  scale: number,
+  training: boolean,
+): void {
+  if (!isPlainObject(payment)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:payment must be object; got ${typeofTag(payment)}`,
+    );
+  }
+  assertExactKeySetWithPath(payment, ACCOUNT_PAYMENT_PAYMENT_KEYS, 'payment');
+  assertMoneyStringAt(payment, 'amount', money, scale, 'payment.amount');
+  if (!training && isZeroMoney(payment['amount'] as string)) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_payment_amount_zero:payment.amount must be greater than zero unless training_flag=true',
+    );
+  }
+  assertNonEmptyStringAt(payment, 'method_code', 'payment.method_code');
+  assertOptionalNonEmptyStringAt(payment, 'repository_id', 'payment.repository_id');
+  assertOptionalNonEmptyStringAt(payment, 'instrument_serial', 'payment.instrument_serial');
+  assertOptionalNonEmptyStringAt(payment, 'instrument_type', 'payment.instrument_type');
+
+  const foreignAmount = payment['foreign_currency_amount'];
+  const foreignCode = payment['foreign_currency_code'];
+  if (foreignAmount === null && foreignCode === null) {
+    return;
+  }
+  if (foreignAmount === null || foreignCode === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_payment_foreign_currency_pair_invalid:payment foreign_currency_amount and foreign_currency_code must both be null or both non-null',
+    );
+  }
+  if (typeof foreignCode !== 'string' || !ISO_4217.test(foreignCode)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_payment_foreign_currency_code_invalid:payment.foreign_currency_code must be ISO 4217 alpha-3 uppercase; got ${jsonOrType(foreignCode)}`,
+    );
+  }
+  const foreignScale = CURRENCY_SCALES[foreignCode];
+  if (foreignScale === undefined) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_account_payment_foreign_currency_unknown:payment.foreign_currency_code=${foreignCode} has no registered scale`,
+    );
+  }
+  assertMoneyStringAt(
+    payment,
+    'foreign_currency_amount',
+    moneyRegex(foreignScale),
+    foreignScale,
+    'payment.foreign_currency_amount',
+  );
+}
+
+function validateAccountPaymentBalanceSnapshot(
+  snapshot: unknown,
+  money: RegExp,
+  scale: number,
+): void {
+  if (!isPlainObject(snapshot)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:local_balance_snapshot must be object; got ${typeofTag(snapshot)}`,
+    );
+  }
+  assertExactKeySetWithPath(
+    snapshot,
+    ACCOUNT_PAYMENT_BALANCE_SNAPSHOT_KEYS,
+    'local_balance_snapshot',
+  );
+  for (const field of [
+    'credit_balance_before',
+    'net_balance_before',
+    'payment_amount',
+    'projected_credit_balance_after',
+    'projected_net_balance_after',
+    'projected_receivable_balance_after',
+    'receivable_balance_before',
+  ] as const) {
+    assertMoneyStringAt(snapshot, field, money, scale, `local_balance_snapshot.${field}`);
+  }
+  assertIsoDateTimeMsAt(
+    snapshot,
+    'balance_updated_at',
+    'local_balance_snapshot.balance_updated_at',
+  );
+}
+
+function validateAccountPaymentStaleness(staleness: unknown): void {
+  if (!isPlainObject(staleness)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:staleness must be object; got ${typeofTag(staleness)}`,
+    );
+  }
+  assertExactKeySetWithPath(staleness, ACCOUNT_PAYMENT_STALENESS_KEYS, 'staleness');
+  const customerStale = assertBoolAt(
+    staleness,
+    'customer_snapshot_stale',
+    'staleness.customer_snapshot_stale',
+  );
+  const balanceStale = assertBoolAt(
+    staleness,
+    'balance_snapshot_stale',
+    'staleness.balance_snapshot_stale',
+  );
+  if (staleness['mirror_last_synced_at'] !== null) {
+    assertIsoDateTimeMsAt(
+      staleness,
+      'mirror_last_synced_at',
+      'staleness.mirror_last_synced_at',
+    );
+  }
+  assertOptionalEnumAt(
+    staleness,
+    'staleness_reason',
+    ACCOUNT_PAYMENT_STALENESS_REASONS,
+    'staleness.staleness_reason',
+  );
+  const reason = staleness['staleness_reason'];
+  const stale = customerStale || balanceStale;
+  if (stale && reason === null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_payment_staleness_reason_required:staleness_reason required when any stale flag is true',
+    );
+  }
+  if (!stale && reason !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_payment_staleness_reason_mismatch:staleness_reason must be null when stale flags are false',
+    );
+  }
+}
+
+function validateAccountPaymentReferences(references: unknown): void {
+  if (references === null) {
+    return;
+  }
+  if (!isPlainObject(references)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:references must be object; got ${typeofTag(references)}`,
+    );
+  }
+  assertExactKeySetWithPath(references, ACCOUNT_PAYMENT_REFERENCES_KEYS, 'references');
+  assertOptionalNonEmptyStringAt(references, 'external_reference', 'references.external_reference');
+  assertOptionalNonEmptyStringAt(
+    references,
+    'related_sale_receipt_event_id',
+    'references.related_sale_receipt_event_id',
+  );
+  if (references['server_customer_alias_id'] !== null) {
+    throw new FiscalEventPayloadValidationError(
+      'payload_account_payment_server_customer_alias_forbidden:references.server_customer_alias_id is reserved for ACCOUNT_PAYMENT_RECONCILED',
     );
   }
 }
@@ -1512,11 +2551,30 @@ function assertOptionalEnum<T extends string>(
   }
 }
 
+function assertOptionalEnumAt<T extends string>(
+  bag: Record<string, unknown>,
+  field: string,
+  allowed: ReadonlyArray<T>,
+  path: string,
+): void {
+  const value = bag[field];
+  if (value === null) return;
+  if (typeof value !== 'string' || !(allowed as ReadonlyArray<string>).includes(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_field_invalid:${path} must be null or one of ${allowed.join('|')}; got ${jsonOrType(value)}`,
+    );
+  }
+}
+
 function assertBool(bag: Record<string, unknown>, field: string): boolean {
+  return assertBoolAt(bag, field, field);
+}
+
+function assertBoolAt(bag: Record<string, unknown>, field: string, path: string): boolean {
   const value = bag[field];
   if (typeof value !== 'boolean') {
     throw new FiscalEventPayloadValidationError(
-      `payload_field_invalid:${field} must be boolean; got ${typeofTag(value)}`,
+      `payload_field_invalid:${path} must be boolean; got ${typeofTag(value)}`,
     );
   }
   return value;
@@ -1549,11 +2607,19 @@ function assertNonEmptyStringAt(bag: Record<string, unknown>, field: string, pat
 }
 
 function assertOptionalNonEmptyString(bag: Record<string, unknown>, field: string): void {
+  assertOptionalNonEmptyStringAt(bag, field, field);
+}
+
+function assertOptionalNonEmptyStringAt(
+  bag: Record<string, unknown>,
+  field: string,
+  path: string,
+): void {
   const value = bag[field];
   if (value === null) return;
   if (typeof value !== 'string' || value === '') {
     throw new FiscalEventPayloadValidationError(
-      `payload_field_invalid:${field} must be non-empty string or null; got ${jsonOrType(value)}`,
+      `payload_field_invalid:${path} must be non-empty string or null; got ${jsonOrType(value)}`,
     );
   }
 }
@@ -1572,10 +2638,18 @@ function assertCalendarDateAt(bag: Record<string, unknown>, field: string, path:
 }
 
 function assertIsoDateTimeMs(bag: Record<string, unknown>, field: string): void {
+  assertIsoDateTimeMsAt(bag, field, field);
+}
+
+function assertIsoDateTimeMsAt(
+  bag: Record<string, unknown>,
+  field: string,
+  path: string,
+): void {
   const value = bag[field];
   if (typeof value !== 'string' || !ISO_8601_DATETIME_MS.test(value)) {
     throw new FiscalEventPayloadValidationError(
-      `payload_field_invalid:${field} must be ISO 8601 with ms + tz offset (e.g. 2026-05-16T10:00:00.000Z); got ${jsonOrType(value)}`,
+      `payload_field_invalid:${path} must be ISO 8601 with ms + tz offset (e.g. 2026-05-16T10:00:00.000Z); got ${jsonOrType(value)}`,
     );
   }
 }
@@ -1609,7 +2683,62 @@ function assertMoneyStringAt(
   }
 }
 
-function assertTaxNumber(value: unknown, path: string): void {
+function assertTaxNumberForCountry(
+  value: unknown,
+  countryCode: string,
+  path: string,
+  buyer = false,
+): void {
+  const taxNumber = assertTaxNumberBaseline(value, path);
+  const normalized = normalizeTaxNumberForCountry(taxNumber, countryCode);
+  const patterns: RegExp[] = [];
+  const countryPattern = TAX_NUMBER_PATTERNS[countryCode];
+  if (countryPattern) patterns.push(countryPattern);
+  if (buyer && countryCode === 'FR') patterns.push(FR_BUYER_TVA_INTRACOM);
+
+  if (patterns.length === 0) return;
+
+  if (patterns.some((pattern) => pattern.test(normalized))) return;
+
+  throw new FiscalEventPayloadValidationError(
+    `payload_tax_number_format_mismatch:field=${path}:country=${countryCode}:value=${taxNumber}`,
+  );
+}
+
+function assertBuyerCodiceFiscale(value: unknown): void {
+  if (typeof value !== 'string' || value === '') {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_codice_fiscale_invalid:must be non-empty string or null; got ${jsonOrType(value)}`,
+    );
+  }
+  if (!IT_BUYER_CODICE_FISCALE.test(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_buyer_codice_fiscale_format_mismatch:field=buyer.codice_fiscale:value=${value}`,
+    );
+  }
+}
+
+function normalizeTaxNumberForCountry(value: string, countryCode: string): string {
+  if (countryCode === 'TN') return value.replace(/\//g, '');
+  return value;
+}
+
+function sellerCountryCodeFromPayload(payload: Record<string, unknown>): string {
+  const seller = payload['seller'];
+  if (isPlainObject(seller) && typeof seller['tax_jurisdiction_country_code'] === 'string') {
+    return seller['tax_jurisdiction_country_code'];
+  }
+  return '';
+}
+
+function countryCodeFromAddress(address: unknown): string | null {
+  if (isPlainObject(address) && typeof address['country_code'] === 'string') {
+    return address['country_code'];
+  }
+  return null;
+}
+
+function assertTaxNumberBaseline(value: unknown, path: string): string {
   if (typeof value !== 'string') {
     throw new FiscalEventPayloadValidationError(
       `payload_tax_number_invalid:${path} must be string; got ${typeofTag(value)}`,
@@ -1638,6 +2767,19 @@ function assertTaxNumber(value: unknown, path: string): void {
   if (!TAX_NUMBER_UNIVERSAL.test(value)) {
     throw new FiscalEventPayloadValidationError(
       `payload_tax_number_invalid:${path} must match ^[A-Za-z0-9 \\-/.]{4,40}$; got ${jsonOrType(value)}`,
+    );
+  }
+
+  return value;
+}
+
+function validateNullableAssoc(value: unknown, path: string): void {
+  if (value === null) {
+    return;
+  }
+  if (!isPlainObject(value)) {
+    throw new FiscalEventPayloadValidationError(
+      `payload_object_invalid:${path} must be object; got ${typeofTag(value)}`,
     );
   }
 }
@@ -1753,6 +2895,138 @@ function validateChainRestartPayload(payload: unknown): void {
   const anchor = p['last_good_anchor'] as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(anchor, 'hash')) {
     assertHashField(anchor, 'hash', 'CHAIN_RESTART.last_good_anchor.hash');
+  }
+}
+
+function validatePhase4Common(p: Record<string, unknown>, label: string): void {
+  assertUuid(p, 'tenant_id');
+  assertUuid(p, 'company_id');
+  assertUuid(p, 'terminal_id');
+  assertIsoDateTimeMs(p, 'event_time_device');
+  assertBoolAt(p, 'training_flag', `${label}.training_flag`);
+}
+
+function validateAccountStatusChangedPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('ACCOUNT_STATUS_CHANGED payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, ACCOUNT_STATUS_CHANGED_PAYLOAD_KEYS, 'ACCOUNT_STATUS_CHANGED');
+  validatePhase4Common(p, 'ACCOUNT_STATUS_CHANGED');
+  assertUuid(p, 'actor_user_id');
+  assertUuid(p, 'partner_id');
+  assertEnum(p, 'old_status', ['active', 'suspended', 'closed', 'disputed']);
+  assertEnum(p, 'new_status', ['active', 'suspended', 'closed', 'disputed']);
+  assertNonEmptyString(p, 'reason');
+  if (typeof p['status_version'] !== 'number' || !Number.isInteger(p['status_version']) || p['status_version'] < 1) {
+    throw new FiscalEventPayloadValidationError('payload_field_invalid:status_version must be positive integer');
+  }
+  assertNonEmptyAssoc(p, 'partner_snapshot', 'ACCOUNT_STATUS_CHANGED.partner_snapshot');
+}
+
+function validateOperatorApprovalGrantedPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('OPERATOR_APPROVAL_GRANTED payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, OPERATOR_APPROVAL_GRANTED_PAYLOAD_KEYS, 'OPERATOR_APPROVAL_GRANTED');
+  validatePhase4Common(p, 'OPERATOR_APPROVAL_GRANTED');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', [
+    'close_shift_variance',
+    'credit_limit_override',
+    'account_status_override',
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+    'cash_drawer_control',
+  ]);
+  assertUuid(p, 'cashier_user_id');
+  assertUuid(p, 'supervisor_user_id');
+  assertNonEmptyString(p, 'policy_version');
+  assertNonEmptyString(p, 'reason_code');
+  assertOptionalNonEmptyString(p, 'reason_text');
+  assertIsoDateTimeMs(p, 'requested_at_device');
+  assertIsoDateTimeMs(p, 'resolved_at_device');
+  validateSupervisorUserSnapshot(p, 'OPERATOR_APPROVAL_GRANTED.supervisor_user_snapshot');
+  validatePhase4TargetObject(p, 'OPERATOR_APPROVAL_GRANTED.target');
+  const regimeExtensions = p['regime_extensions'];
+  if (regimeExtensions !== null && (typeof regimeExtensions !== 'object' || Array.isArray(regimeExtensions))) {
+    throw new FiscalEventPayloadValidationError('payload_field_invalid:regime_extensions must be object or null');
+  }
+}
+
+function validatePhase4OverridePayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('OVERRIDE payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, PHASE4_OVERRIDE_PAYLOAD_KEYS, 'OVERRIDE');
+  validatePhase4Common(p, 'OVERRIDE');
+  assertUuid(p, 'approval_event_id');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', [
+    'credit_limit_override',
+    'account_status_override',
+    'discount_limit_override',
+    'tender_tolerance_override',
+    'void_or_return_override',
+  ]);
+  assertNonEmptyString(p, 'policy_version');
+  assertNonEmptyString(p, 'reason_code');
+  assertOptionalNonEmptyString(p, 'reason_text');
+  assertUuid(p, 'supervisor_user_id');
+  validateOverrideContext(p, 'OVERRIDE.override_context');
+  validatePhase4TargetObject(p, 'OVERRIDE.target');
+}
+
+function validateCashDrawerMovementPayload(payload: unknown): void {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    throw new FiscalEventPayloadValidationError('Cash drawer movement payload must be an object.');
+  }
+  const p = payload as Record<string, unknown>;
+  assertExactKeySet(p, CASH_DRAWER_MOVEMENT_PAYLOAD_KEYS, 'CASH_DRAWER_MOVEMENT');
+  validatePhase4Common(p, 'CASH_DRAWER_MOVEMENT');
+  assertUuid(p, 'approval_event_id');
+  assertUuid(p, 'approval_id');
+  assertEnum(p, 'approval_scope', ['cash_drawer_control']);
+  assertMoneyString(p, 'amount', moneyRegex(3), 3);
+  assertEnum(p, 'operation_type', ['DEPOSIT', 'PAYOUT']);
+  assertNonEmptyString(p, 'reason');
+  assertUuid(p, 'shift_id');
+  assertUuid(p, 'supervisor_user_id');
+  assertUuid(p, 'target_reference_id');
+}
+
+function validateSupervisorUserSnapshot(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'supervisor_user_snapshot', path);
+  const snapshot = payload['supervisor_user_snapshot'] as Record<string, unknown>;
+  assertNonEmptyStringAt(snapshot, 'name', `${path}.name`);
+  const roles = snapshot['roles'];
+  if (!Array.isArray(roles)) {
+    throw new FiscalEventPayloadValidationError(`payload_field_invalid:${path}.roles must be array`);
+  }
+  roles.forEach((role, index) => {
+    if (typeof role !== 'string' || role === '') {
+      throw new FiscalEventPayloadValidationError(`payload_field_invalid:${path}.roles.${String(index)}`);
+    }
+  });
+}
+
+function validateOverrideContext(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'override_context', path);
+  const context = payload['override_context'] as Record<string, unknown>;
+  assertNonEmptyStringAt(context, 'target_event_type', `${path}.target_event_type`);
+  assertNonEmptyStringAt(context, 'target_reference_id', `${path}.target_reference_id`);
+}
+
+function validatePhase4TargetObject(payload: Record<string, unknown>, path: string): void {
+  assertNonEmptyAssoc(payload, 'target', path);
+  const target = payload['target'] as Record<string, unknown>;
+  for (const scopeField of ['tenant_id', 'company_id', 'terminal_id'] as const) {
+    if (scopeField in target && target[scopeField] !== payload[scopeField]) {
+      throw new FiscalEventPayloadValidationError(`payload_scope_mismatch:${path}.${scopeField}`);
+    }
   }
 }
 

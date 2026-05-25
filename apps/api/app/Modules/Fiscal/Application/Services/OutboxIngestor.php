@@ -151,6 +151,10 @@ final class OutboxIngestor
             return $this->quarantineMalformedEnvelope($envelope, $shapeException);
         }
 
+        if ($envelope->eventType->isServerOnly()) {
+            return IngestionResult::rejectedServerOnly();
+        }
+
         // ---- Step 1: validate against the envelope, BEFORE any insert ----
         // T19-P2: server_received_at is driver-fetched (PG NOW() / SQLite
         // CURRENT_TIMESTAMP) so the persisted timestamp doesn't vary

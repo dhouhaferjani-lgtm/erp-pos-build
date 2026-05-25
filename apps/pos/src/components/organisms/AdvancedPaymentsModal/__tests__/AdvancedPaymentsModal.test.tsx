@@ -546,6 +546,32 @@ describe('AdvancedPaymentsModal — B3-followup Finding 1: voucher tender wiring
     expect(screen.getByText('advancedPayments.remaining')).toBeInTheDocument();
   });
 
+  it('under-tender checkout can complete only when a manager PIN is supplied for tender tolerance approval', async () => {
+    mockVoucherTenders = [];
+    const { onComplete } = renderModal({ total: 50 });
+
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByTestId('numpad-set-25'));
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    const completeBtn = screen.getByText('advancedPayments.completeTransaction').closest('button');
+    expect(completeBtn).toBeDisabled();
+    expect(screen.getByText('advancedPayments.tenderTolerancePinLabel')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('advancedPayments.tenderTolerancePinLabel'), {
+      target: { value: '1234' },
+    });
+
+    expect(completeBtn).not.toBeDisabled();
+    fireEvent.click(completeBtn!);
+    await Promise.resolve();
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(vi.mocked(onComplete).mock.calls[0]![1]).toEqual({
+      tenderTolerancePin: '1234',
+    });
+  });
+
   it('Complete merges voucher tenders into AdvancedPaymentLine[] with instrument_type + instrument_serial', async () => {
     mockVoucherTenders = [
       { code: 'SV-2026-0099', amount: '50.00' },

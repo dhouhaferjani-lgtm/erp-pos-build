@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -36,6 +39,8 @@ final class ManagerPinControllerTest extends TestCase
 
     private const PIN = '9876';
 
+    private const TARGET_REFERENCE_ID = '44444444-4444-4444-8444-444444444444';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -45,6 +50,8 @@ final class ManagerPinControllerTest extends TestCase
 
     /** Manager with the variance permission and a known PIN */
     private User $manager;
+
+    private Terminal $terminal;
 
     protected function setUp(): void
     {
@@ -66,6 +73,14 @@ final class ManagerPinControllerTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
+        ]);
+
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'type' => TerminalType::Physical,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -108,7 +123,7 @@ final class ManagerPinControllerTest extends TestCase
         ]);
 
         // Clear any leftover rate-limiter state between tests.
-        RateLimiter::clear('verify-manager-pin:127.0.0.1:'.$this->manager->id);
+        RateLimiter::clear($this->rateLimitKey($this->manager->id));
     }
 
     /**
@@ -117,10 +132,10 @@ final class ManagerPinControllerTest extends TestCase
     public function test_valid_pin_returns_valid_true_with_user_name(): void
     {
         $response = $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => self::PIN,
-            ]);
+            ]));
 
         $response->assertOk();
         $response->assertJsonPath('data.valid', true);
@@ -134,10 +149,10 @@ final class ManagerPinControllerTest extends TestCase
     public function test_wrong_pin_returns_valid_false(): void
     {
         $response = $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => '0000',
-            ]);
+            ]));
 
         $response->assertOk();
         $response->assertJsonPath('data.valid', false);
@@ -166,10 +181,10 @@ final class ManagerPinControllerTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $noPermUser->id,
                 'pin' => self::PIN,
-            ]);
+            ]));
 
         $response->assertOk();
         $response->assertJsonPath('data.valid', false);
@@ -181,8 +196,14 @@ final class ManagerPinControllerTest extends TestCase
     public function test_rate_limit_blocks_fourth_attempt(): void
     {
         $payload = [
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
             'user_id' => $this->manager->id,
             'pin' => '0000',
+            'approval_scope' => 'close_shift_variance',
+            'target_event_type' => 'Z_REPORT',
+            'target_reference_id' => self::TARGET_REFERENCE_ID,
+            'reason' => 'Variance approval',
         ];
 
         // First 3 attempts are allowed (wrong PIN, but still processed).
@@ -236,14 +257,129 @@ final class ManagerPinControllerTest extends TestCase
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
 
         $response = $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $crossTenantManager->id,
+                'pin' => self::PIN,
+            ]));
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('user_id', $errors);
+    }
+
+    public function test_approval_verification_requires_target_context(): void
+    {
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->postJson('/api/v1/pos/verify-manager-pin', [
+                'user_id' => $this->manager->id,
                 'pin' => self::PIN,
             ]);
 
         $response->assertStatus(422);
         $errors = $response->json('error.errors');
         $this->assertIsArray($errors);
-        $this->assertArrayHasKey('user_id', $errors);
+        $this->assertArrayHasKey('company_id', $errors);
+        $this->assertArrayHasKey('terminal_id', $errors);
+        $this->assertArrayHasKey('approval_scope', $errors);
+        $this->assertArrayHasKey('target_event_type', $errors);
+        $this->assertArrayHasKey('target_reference_id', $errors);
+        $this->assertArrayHasKey('reason', $errors);
+    }
+
+    public function test_same_tenant_different_company_manager_returns_scope_mismatch_before_pin_check(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Shop',
+            'legal_name' => 'Other Shop LLC',
+            'tax_id' => 'TAX888',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+        ]);
+
+        $scopedManager = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company Manager',
+            'email' => 'other-manager@mgr-pin-test.local',
+            'password' => bcrypt('password'),
+            'pos_pin' => Hash::make(self::PIN),
+            'status' => UserStatus::Active,
+        ]);
+        $scopedManager->givePermissionTo(self::VARIANCE_PERMISSION);
+
+        UserCompanyMembership::create([
+            'user_id' => $scopedManager->id,
+            'company_id' => $otherCompany->id,
+            'role' => 'manager',
+        ]);
+
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
+                'user_id' => $scopedManager->id,
+                'pin' => self::PIN,
+            ]));
+
+        $response->assertOk();
+        $response->assertJsonPath('data.valid', false);
+        $response->assertJsonPath('data.failure_code', 'scope_mismatch');
+    }
+
+    public function test_approval_verification_rejects_unknown_terminal_before_pin_check(): void
+    {
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
+                'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            ]));
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('terminal_id', $errors);
+    }
+
+    public function test_approval_verification_rejects_virtual_admin_terminal(): void
+    {
+        $virtualTerminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->terminal->location_id,
+            'type' => TerminalType::VirtualAdmin,
+        ]);
+
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
+                'terminal_id' => $virtualTerminal->id,
+            ]));
+
+        $response->assertStatus(422);
+        $errors = $response->json('error.errors');
+        $this->assertIsArray($errors);
+        $this->assertArrayHasKey('terminal_id', $errors);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function approvalPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'user_id' => $this->manager->id,
+            'pin' => self::PIN,
+            'approval_scope' => 'close_shift_variance',
+            'target_event_type' => 'Z_REPORT',
+            'target_reference_id' => self::TARGET_REFERENCE_ID,
+            'reason' => 'Variance approval',
+        ], $overrides);
+    }
+
+    private function rateLimitKey(string $userId): string
+    {
+        return 'verify-manager-pin:'.$this->tenant->id.':'.$this->terminal->id.':'.$userId.':close_shift_variance';
     }
 }

@@ -182,6 +182,7 @@ const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/Expens
 const FraudSettingsPage = lazy(() => import('../features/compliance/pages/FraudSettingsPage').then((m) => ({ default: m.FraudSettingsPage })))
 const FraudAlertsPage = lazy(() => import('../features/compliance/pages/FraudAlertsPage').then((m) => ({ default: m.FraudAlertsPage })))
 const ComplianceExportPage = lazy(() => import('../features/compliance/pages/ComplianceExportPage').then((m) => ({ default: m.ComplianceExportPage })))
+const QuarantineResolveAssistPage = lazy(() => import('../features/compliance/pages/QuarantineResolveAssistPage').then((m) => ({ default: m.QuarantineResolveAssistPage })))
 
 // Catalog module (Composite Items & Modifiers)
 const CompositeItemListPage = lazy(() => import('../features/catalog').then((m) => ({ default: m.CompositeItemListPage })))
@@ -1969,6 +1970,16 @@ export function AppRoutes() {
               <RequirePermission moduleKey="pos">
                 <SuspenseWrapper>
                   <ComplianceExportPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="compliance/quarantine-resolution"
+            element={
+              <RequirePermission permission="fiscal.events.resolve_quarantine">
+                <SuspenseWrapper>
+                  <QuarantineResolveAssistPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

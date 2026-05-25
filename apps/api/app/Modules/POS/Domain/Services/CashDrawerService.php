@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Domain\Services;
 
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Events\CashDrawerOperationRecorded;
+use App\Modules\POS\Domain\Services\Fiscal\V3\CanonicalJsonEncoder;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Service for managing cash drawer operations.
@@ -25,16 +29,164 @@ use Illuminate\Database\Eloquent\Collection;
  * - Closing balance (CLOSING)
  *
  * All operations are immutable once created (audit trail).
+ *
+ * @phpstan-type CashDrawerApprovalEvidence array{
+ *     approval_id?: string|null,
+ *     approval_fiscal_event_id?: string|null,
+ *     approval_scope?: string|null,
+ *     approval_supervisor_user_id?: string|null,
+ *     approval_target_hash?: string|null
+ * }
  */
 final class CashDrawerService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly CanonicalJsonEncoder $canonicalJsonEncoder,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
+     * @return array<string, string|null>
+     */
+    private function approvalAttributes(?array $approvalEvidence): array
+    {
+        if ($approvalEvidence === null) {
+            return [
+                'approval_id' => null,
+                'approval_fiscal_event_id' => null,
+                'approval_scope' => null,
+                'approval_supervisor_user_id' => null,
+                'approval_target_hash' => null,
+            ];
+        }
+
+        return [
+            'approval_id' => $approvalEvidence['approval_id'] ?? null,
+            'approval_fiscal_event_id' => $approvalEvidence['approval_fiscal_event_id'] ?? null,
+            'approval_scope' => $approvalEvidence['approval_scope'] ?? null,
+            'approval_supervisor_user_id' => $approvalEvidence['approval_supervisor_user_id'] ?? null,
+            'approval_target_hash' => $approvalEvidence['approval_target_hash'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
+     *
+     * @throws ValidationException
+     */
+    private function assertCashDrawerApproval(
+        Shift $shift,
+        string $operationType,
+        string $amount,
+        User $user,
+        string $reason,
+        ?array $approvalEvidence,
+        ?string $idempotencyKey,
+    ): void {
+        $terminal = $shift->terminal;
+
+        if ($approvalEvidence === null) {
+            throw ValidationException::withMessages([
+                'approval_id' => ['Manager approval evidence is required for cash drawer operations.'],
+            ]);
+        }
+
+        $approvalId = $approvalEvidence['approval_id'] ?? null;
+        $approvalFiscalEventId = $approvalEvidence['approval_fiscal_event_id'] ?? null;
+        $approvalScope = $approvalEvidence['approval_scope'] ?? null;
+        $supervisorUserId = $approvalEvidence['approval_supervisor_user_id'] ?? null;
+        $targetHash = $approvalEvidence['approval_target_hash'] ?? null;
+
+        if (
+            ! is_string($approvalId)
+            || ! is_string($approvalFiscalEventId)
+            || ! is_string($approvalScope)
+            || ! is_string($supervisorUserId)
+            || ! is_string($targetHash)
+            || $approvalScope !== 'cash_drawer_control'
+        ) {
+            throw ValidationException::withMessages([
+                'approval_id' => ['Invalid cash drawer approval evidence.'],
+            ]);
+        }
+
+        $approvalEvent = FiscalEvent::query()
+            ->where('id', $approvalFiscalEventId)
+            ->where('tenant_id', $terminal->tenant_id)
+            ->where('company_id', $terminal->company_id)
+            ->where('terminal_id', $terminal->id)
+            ->where('event_type', FiscalEventType::OPERATOR_APPROVAL_GRANTED->value)
+            ->first();
+
+        if ($approvalEvent === null) {
+            throw ValidationException::withMessages([
+                'approval_fiscal_event_id' => ['Cash drawer approval fiscal event was not found.'],
+            ]);
+        }
+
+        $payload = $this->approvalPayload($approvalEvent);
+        $target = $payload['target'] ?? null;
+        if (! is_array($target)) {
+            throw ValidationException::withMessages([
+                'approval_fiscal_event_id' => ['Cash drawer approval target is missing.'],
+            ]);
+        }
+
+        $expectedTargetReferenceId = $idempotencyKey ?? (string) ($target['target_reference_id'] ?? '');
+        $expectedTarget = [
+            'amount' => $amount,
+            'operation_type' => $operationType,
+            'reason' => $reason,
+            'shift_id' => $shift->id,
+            'target_reference_id' => $expectedTargetReferenceId,
+        ];
+        $expectedTargetHash = hash('sha256', $this->canonicalJsonEncoder->encode($expectedTarget));
+
+        if (
+            ($payload['approval_id'] ?? null) !== $approvalId
+            || ($payload['approval_scope'] ?? null) !== 'cash_drawer_control'
+            || ($payload['cashier_user_id'] ?? null) !== $user->id
+            || ($payload['supervisor_user_id'] ?? null) !== $supervisorUserId
+            || ($payload['tenant_id'] ?? null) !== $terminal->tenant_id
+            || ($payload['company_id'] ?? null) !== $terminal->company_id
+            || ($payload['terminal_id'] ?? null) !== $terminal->id
+            || ($target['target_hash'] ?? null) !== $targetHash
+            || $targetHash !== $expectedTargetHash
+            || ($target['operation_type'] ?? null) !== $operationType
+            || ($target['amount'] ?? null) !== $amount
+            || ($target['reason'] ?? null) !== $reason
+            || ($target['shift_id'] ?? null) !== $shift->id
+            || ($target['target_reference_id'] ?? null) !== $expectedTargetReferenceId
+        ) {
+            throw ValidationException::withMessages([
+                'approval_fiscal_event_id' => ['Cash drawer approval evidence does not match this operation.'],
+            ]);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function approvalPayload(FiscalEvent $approvalEvent): array
+    {
+        if (is_array($approvalEvent->payload)) {
+            return $approvalEvent->payload;
+        }
+
+        $decoded = json_decode($approvalEvent->canonical_bytes, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $payload = $decoded['payload'] ?? null;
+
+        return is_array($payload) ? $payload : [];
     }
 
     /**
@@ -95,13 +247,18 @@ final class CashDrawerService
      * @param  string  $amount  Amount deposited to safe (positive decimal)
      * @param  User  $user  User performing the deposit
      * @param  string  $reason  Reason for deposit
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
      */
     public function recordDeposit(
         Shift $shift,
         string $amount,
         User $user,
-        string $reason
+        string $reason,
+        ?array $approvalEvidence = null,
+        ?string $idempotencyKey = null,
     ): CashDrawerOperation {
+        $this->assertCashDrawerApproval($shift, 'DEPOSIT', $amount, $user, $reason, $approvalEvidence, $idempotencyKey);
+
         $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
             'operation_type' => 'DEPOSIT',
@@ -109,7 +266,8 @@ final class CashDrawerService
             'user_id' => $user->id,
             'reason' => $reason,
             'receipt_id' => null,
-        ]);
+            'idempotency_key' => $idempotencyKey,
+        ] + $this->approvalAttributes($approvalEvidence));
 
         $this->dispatchOperationEvent($operation, $shift);
 
@@ -126,13 +284,18 @@ final class CashDrawerService
      * @param  string  $amount  Amount paid out (positive decimal)
      * @param  User  $user  User performing the payout
      * @param  string  $reason  Reason for payout
+     * @param  CashDrawerApprovalEvidence|null  $approvalEvidence
      */
     public function recordPayout(
         Shift $shift,
         string $amount,
         User $user,
-        string $reason
+        string $reason,
+        ?array $approvalEvidence = null,
+        ?string $idempotencyKey = null,
     ): CashDrawerOperation {
+        $this->assertCashDrawerApproval($shift, 'PAYOUT', $amount, $user, $reason, $approvalEvidence, $idempotencyKey);
+
         $operation = CashDrawerOperation::create([
             'shift_id' => $shift->id,
             'operation_type' => 'PAYOUT',
@@ -140,7 +303,8 @@ final class CashDrawerService
             'user_id' => $user->id,
             'reason' => $reason,
             'receipt_id' => null,
-        ]);
+            'idempotency_key' => $idempotencyKey,
+        ] + $this->approvalAttributes($approvalEvidence));
 
         $this->dispatchOperationEvent($operation, $shift);
 

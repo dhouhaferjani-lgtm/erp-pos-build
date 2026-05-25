@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Events\ManagerOverrideAuthorized;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -43,6 +46,8 @@ final class ManagerOverrideAuditTest extends TestCase
 
     private const PIN = '9876';
 
+    private const TARGET_REFERENCE_ID = '44444444-4444-4444-8444-444444444444';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -52,6 +57,8 @@ final class ManagerOverrideAuditTest extends TestCase
 
     /** Manager with the variance permission and a known PIN. */
     private User $manager;
+
+    private Terminal $terminal;
 
     protected function setUp(): void
     {
@@ -73,6 +80,14 @@ final class ManagerOverrideAuditTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'currency' => 'TND',
+        ]);
+
+        $location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'type' => TerminalType::Physical,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -107,7 +122,7 @@ final class ManagerOverrideAuditTest extends TestCase
             'role' => 'manager',
         ]);
 
-        RateLimiter::clear('verify-manager-pin:127.0.0.1:'.$this->manager->id);
+        RateLimiter::clear($this->rateLimitKey($this->manager->id));
     }
 
     public function test_manager_override_authorized_event_is_persisted_by_subscriber(): void
@@ -144,10 +159,10 @@ final class ManagerOverrideAuditTest extends TestCase
     public function test_successful_pin_verification_persists_audit_event_end_to_end(): void
     {
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => self::PIN,
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', true);
 
@@ -172,10 +187,10 @@ final class ManagerOverrideAuditTest extends TestCase
     public function test_wrong_pin_leaves_no_audit_event(): void
     {
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $this->manager->id,
                 'pin' => '0000',
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', false);
 
@@ -203,10 +218,10 @@ final class ManagerOverrideAuditTest extends TestCase
         ]);
 
         $this->actingAs($this->cashier, 'sanctum')
-            ->postJson('/api/v1/pos/verify-manager-pin', [
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
                 'user_id' => $noPermManager->id,
                 'pin' => self::PIN,
-            ])
+            ]))
             ->assertOk()
             ->assertJsonPath('data.valid', false);
 
@@ -215,5 +230,26 @@ final class ManagerOverrideAuditTest extends TestCase
             AuditEvent::where('event_type', 'pos.manager_override.authorized')->count(),
             'A verification rejected on the permission check must not leave an audit_events row.',
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function approvalPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'company_id' => $this->company->id,
+            'terminal_id' => $this->terminal->id,
+            'approval_scope' => 'close_shift_variance',
+            'target_event_type' => 'Z_REPORT',
+            'target_reference_id' => self::TARGET_REFERENCE_ID,
+            'reason' => 'Variance approval',
+        ], $overrides);
+    }
+
+    private function rateLimitKey(string $userId): string
+    {
+        return 'verify-manager-pin:'.$this->tenant->id.':'.$this->terminal->id.':'.$userId.':close_shift_variance';
     }
 }

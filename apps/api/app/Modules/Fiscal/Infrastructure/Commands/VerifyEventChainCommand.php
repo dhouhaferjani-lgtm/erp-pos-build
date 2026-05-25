@@ -61,7 +61,7 @@ use Throwable;
  * surfaces a transient failure (exit 2), and exits — never crashes the
  * operator's terminal mid-report.
  *
- * @cross-tenant-by-design Operator/CI integrity command verifies a specific chain selected by required --tenant and --terminal options after an actor permission gate; it intentionally runs without CompanyContext.
+ * @cross-tenant-by-design Operator diagnostic command runs outside request tenant middleware but requires explicit tenant/terminal filters and an actor permission gate.
  */
 final class VerifyEventChainCommand extends Command
 {

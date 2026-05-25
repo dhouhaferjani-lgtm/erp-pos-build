@@ -239,6 +239,28 @@ final class FiscalEventIngestionEndpointTest extends TestCase
         $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
     }
 
+    public function test_endpoint_rejects_server_only_event_type_before_insert(): void
+    {
+        Sanctum::actingAs($this->user);
+
+        $envWire = $this->validEnvelopeWire([
+            'event_type' => FiscalEventType::ACCOUNT_STATUS_CHANGED->value,
+            'event_version' => 1,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$envWire],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SERVER_ONLY_EVENT_TYPE');
+        $this->assertSame(
+            0,
+            DB::table('fiscal_events')->where('event_type', FiscalEventType::ACCOUNT_STATUS_CHANGED->value)->count(),
+        );
+        $this->assertSame(0, DB::table('fiscal_event_quarantine')->count());
+    }
+
     /**
      * Mixed-batch tenant-boundary check — even when only ONE envelope in a
      * batch claims a foreign tenant, the entire batch is rejected with 403
@@ -461,7 +483,7 @@ final class FiscalEventIngestionEndpointTest extends TestCase
      * @return array<string, mixed>
      */
     /**
-     * Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+     * Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
      * synthesis v5 §3. Hand-balanced totals: subtotal 10.00 + vat_total
      * 0.00 = total 10.00 + transaction_discount_amount 0.00.
      *
@@ -471,6 +493,7 @@ final class FiscalEventIngestionEndpointTest extends TestCase
     {
         return [
             'business_date' => '2026-05-20',
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',

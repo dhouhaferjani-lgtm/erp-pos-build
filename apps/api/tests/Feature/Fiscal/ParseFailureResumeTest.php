@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\ParseFailureResolutionService;
@@ -22,7 +23,6 @@ use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCo
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
-use App\Shared\Contracts\Fiscal\FiscalEventProjector;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Contracts\Console\Kernel;
@@ -674,7 +674,7 @@ final class ParseFailureResumeTest extends TestCase
     }
 
     /**
-     * Pass 2A.PHP.2 — 27-key Candidate C-v3 SALE_RECEIPT payload per
+     * Pass 2A.PHP.2 — 28-key Candidate C-v3 SALE_RECEIPT payload per
      * synthesis v5 §3. Hand-balanced totals at scale 2.
      *
      * @return array<string, mixed>
@@ -683,6 +683,7 @@ final class ParseFailureResumeTest extends TestCase
     {
         return [
             'business_date' => '2026-05-20',
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',
