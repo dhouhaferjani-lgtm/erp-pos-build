@@ -231,17 +231,6 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(20)->by((string) $key);
         });
 
-        // Email-availability check - 10 per minute per IP. The pre-auth
-        // checkEmail endpoint discloses whether an email is registered
-        // (accept-with-doc per the 2026-05-13 CrossTenantRoute triage),
-        // and the broader `login` limiter keys on email-or-IP, which an
-        // attacker can defeat by rotating emails. A dedicated per-IP
-        // limiter slows the enumeration channel without affecting
-        // normal users (who check one email). F.3.
-        RateLimiter::for('check-email', function (Request $request): Limit {
-            return Limit::perMinute(10)->by($request->ip() ?? 'unknown');
-        });
-
         // General API - 100 requests per minute per user/IP
         RateLimiter::for('api', function (Request $request): Limit {
             $user = $request->user();

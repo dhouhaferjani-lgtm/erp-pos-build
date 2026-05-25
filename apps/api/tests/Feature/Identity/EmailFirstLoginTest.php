@@ -19,6 +19,17 @@ class EmailFirstLoginTest extends TestCase
     use AssertsApiValidation;
     use RefreshDatabase;
 
+    public function test_check_email_route_is_removed(): void
+    {
+        // Email uniqueness is per-tenant now; collision surfaces at register
+        // submit. The global check-email endpoint is gone (topology §9.2).
+        $response = $this->postJson('/api/v1/auth/check-email', [
+            'email' => 'whoever@example.com',
+        ]);
+
+        $response->assertNotFound();
+    }
+
     public function test_single_tenant_email_logs_in_without_a_tenant_id(): void
     {
         $this->makeIndexedUser('solo', 'solo@example.com');

@@ -16,7 +16,6 @@ use App\Modules\Identity\Application\DTOs\LoginResponseData;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Identity\Presentation\Requests\CheckEmailRequest;
 use App\Modules\Identity\Presentation\Requests\ForgotPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
@@ -506,30 +505,6 @@ class AuthController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
-    }
-
-    /**
-     * Check if an email is available for registration.
-     *
-     * Security note: this endpoint deliberately discloses email
-     * existence (the registration UX needs to redirect users to login
-     * rather than re-register). The enumeration risk is mitigated by
-     * the dedicated `throttle:check-email` per-IP limiter (10/min) —
-     * see RateLimiter::for('check-email', ...) in AppServiceProvider.
-     * F.3 narrowed the limiter from `throttle:login` (which keys on
-     * email-or-IP and is defeated by rotating emails) to a hard IP
-     * cap.
-     */
-    #[CrossTenantRoute(reason: 'Pre-auth: email-availability lookup before registration; queries User::where(email) globally to detect any pre-existing account (any tenant) so the registration flow can present a "sign in" CTA instead of "register". Mounted public on the unauthenticated route group; no tenant context exists at call time. Existence-disclosure mitigated by F.3 dedicated per-IP rate limit.')]
-    public function checkEmail(CheckEmailRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        $exists = User::where('email', $validated['email'])->exists();
-
-        return response()->json([
-            'available' => ! $exists,
-        ]);
     }
 
     /**
