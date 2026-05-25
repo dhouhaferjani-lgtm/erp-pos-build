@@ -43,7 +43,6 @@ return new class extends Migration
 
             // For Reversed event: FK to the ledger row being reversed
             $table->uuid('reverses_voucher_ledger_id')->nullable();
-            $table->foreign('reverses_voucher_ledger_id')->references('id')->on('voucher_ledger');
 
             $table->timestamp('occurred_at');
 
@@ -53,6 +52,17 @@ return new class extends Migration
             // Ledger projection indexes
             $table->index(['voucher_id', 'occurred_at'], 'voucher_ledger_voucher_occurred_idx');
             $table->index(['tenant_id', 'event', 'occurred_at'], 'voucher_ledger_tenant_event_occurred_idx');
+        });
+
+        // Self-referential FK is added AFTER table creation so the primary key
+        // on `id` is guaranteed to exist first. Laravel's PostgreSQL grammar
+        // emits `add primary key` AFTER `add foreign key` when both are declared
+        // inside the same Schema::create() closure, which makes a same-table FK
+        // fail on a fresh PostgreSQL migrate (SQLSTATE 42830: "no unique
+        // constraint matching given keys"). Deferring it keeps the final schema
+        // identical while making `migrate:fresh` work on PostgreSQL.
+        Schema::table('voucher_ledger', function (Blueprint $table): void {
+            $table->foreign('reverses_voucher_ledger_id')->references('id')->on('voucher_ledger');
         });
 
         // Enforce append-only semantics via PostgreSQL trigger.
