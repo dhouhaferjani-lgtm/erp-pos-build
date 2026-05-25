@@ -18,10 +18,10 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
      * Create a new notification instance.
      *
      * @param  string|null  $signedTenant  Tamper-proof tenant qualifier (topology
-     *                                      r7 B1) so the pre-auth resolver can
-     *                                      initialize the correct tenant DB before
-     *                                      the token lookup post-flip. Produced by
-     *                                      TenantLinkSigner in EmailVerificationService.
+     *                                     r7 B1) so the pre-auth resolver can
+     *                                     initialize the correct tenant DB before
+     *                                     the token lookup post-flip. Produced by
+     *                                     TenantLinkSigner in EmailVerificationService.
      */
     public function __construct(
         private readonly string $token,

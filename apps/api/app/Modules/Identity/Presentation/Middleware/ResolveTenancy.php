@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Middleware;
 
 use App\Modules\Tenant\Application\Services\TenancyResolver;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Tenant;
 use Closure;
 use Illuminate\Http\Request;
@@ -32,7 +33,7 @@ use Symfony\Component\HttpFoundation\Response;
  *   2. Web SPA cookie: AuthController::login stamps `tenant_id` into the session;
  *      this branch reads it back.
  *   3. Signed link param (`tenant`): tenant-qualified verify-email / reset links
- *      carry a signed tenant id; see {@see \App\Modules\Tenant\Application\Services\TenantLinkSigner}.
+ *      carry a signed tenant id; see {@see TenantLinkSigner}.
  *
  * The client never sends `X-Tenant-ID` — the tenant travels with the token
  * ability, the session, or the signed link, server-side.
@@ -72,7 +73,7 @@ class ResolveTenancy
         // 1. Signed link param (pre-auth verify-email / reset-password).
         $signed = $request->input('tenant');
         if (is_string($signed) && $signed !== '') {
-            $fromLink = app(\App\Modules\Tenant\Application\Services\TenantLinkSigner::class)->extract($signed);
+            $fromLink = app(TenantLinkSigner::class)->extract($signed);
             if ($fromLink !== null) {
                 return $fromLink;
             }

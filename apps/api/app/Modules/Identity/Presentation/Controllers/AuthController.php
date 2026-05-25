@@ -200,16 +200,15 @@ class AuthController extends Controller
         // >1 memberships and no explicit choice → return the org picker list
         // (the Balanced stance — we show memberships for a valid email).
         if ($explicitTenantId === null && count($tenantIds) > 1) {
-            $organizations = Tenant::query()
-                ->whereIn('id', $tenantIds)
-                ->orderBy('name')
-                ->get()
-                ->map(fn (Tenant $tenant): array => [
+            $organizations = [];
+            /** @var Tenant $tenant */
+            foreach (Tenant::query()->whereIn('id', $tenantIds)->orderBy('name')->get() as $tenant) {
+                $organizations[] = [
                     'tenant_id' => $tenant->id,
                     'name' => $tenant->name,
                     'slug' => $tenant->slug,
-                ])
-                ->values();
+                ];
+            }
 
             return response()->json([
                 'data' => [

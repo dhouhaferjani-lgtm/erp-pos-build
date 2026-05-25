@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Domain;
 
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * Central identity index row (topology contract §9.1).
@@ -15,14 +17,14 @@ use Illuminate\Database\Eloquent\Model;
  * tenant's `users` table). Answers "which tenant DB(s) do I open for this
  * email?" and nothing more.
  *
- * The single writer is {@see \App\Modules\Tenant\Application\Services\IdentityIndexService}.
+ * The single writer is {@see IdentityIndexService}.
  *
  * @property string $id
  * @property string $email
  * @property string $tenant_id
  * @property string|null $user_id
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class CentralIdentity extends Model
 {
