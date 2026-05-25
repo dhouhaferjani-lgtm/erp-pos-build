@@ -7,6 +7,7 @@ use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
+use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
@@ -60,10 +61,25 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureFrontendRequestsAreStateful::class,
         ]);
 
+        // Pre-auth tenancy resolver (topology §9.4). Runs as part of the `api`
+        // and Identity `web` groups, which expand BEFORE route-level
+        // `auth:sanctum`, so the tenant is bound before the authenticated User
+        // is resolved. Covers EVERY auth:sanctum surface, not just /auth/*.
+        // It runs before SecurityHeaders/SetLocale/CompanyContext so any
+        // tenant-scoped resolution downstream sees the initialized tenant
+        // (a no-op DB switch today; a real one post-flip — see TenancyResolver).
         $middleware->appendToGroup('api', [
+            ResolveTenancy::class,
             SecurityHeaders::class,
             SetLocale::class,
             CompanyContextMiddleware::class,
+        ]);
+
+        // The Identity auth routes (login/register/verify-email/reset) sit under
+        // the `web` group; wire the resolver there too so the tenant-qualified
+        // pre-auth link flows initialize their tenant before the token lookup.
+        $middleware->appendToGroup('web', [
+            ResolveTenancy::class,
         ]);
 
         // Ensure API requests get JSON responses for auth failures
