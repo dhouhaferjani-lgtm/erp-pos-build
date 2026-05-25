@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Identity;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Application\Notifications\UserInvitation;
 use App\Modules\Identity\Application\Notifications\VerifyEmailNotification;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
+use App\Modules\Identity\Domain\EmailVerificationToken;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
@@ -17,6 +24,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 class TenantQualifiedLinksTest extends TestCase
@@ -89,7 +97,7 @@ class TenantQualifiedLinksTest extends TestCase
         // Create a real token by sending (faked) then reading it from the DB.
         Notification::fake();
         $service->sendVerificationEmail($user);
-        $token = \App\Modules\Identity\Domain\EmailVerificationToken::where('user_id', $user->id)->firstOrFail()->token;
+        $token = EmailVerificationToken::where('user_id', $user->id)->firstOrFail()->token;
 
         $signed = app(TenantLinkSigner::class)->sign($tenant->id);
 
@@ -110,7 +118,7 @@ class TenantQualifiedLinksTest extends TestCase
         $this->postJson('/api/v1/auth/forgot-password', ['email' => 'fp@example.com'])
             ->assertOk();
 
-        Notification::assertSentTo($user, \App\Modules\Identity\Application\Notifications\ResetPasswordNotification::class, function ($n) use ($user, $tenant) {
+        Notification::assertSentTo($user, ResetPasswordNotification::class, function ($n) use ($user, $tenant) {
             $url = $n->toMail($user)->actionUrl;
 
             return $this->extractTenantFromUrl($url) === $tenant->id;
@@ -156,11 +164,11 @@ class TenantQualifiedLinksTest extends TestCase
     {
         [$tenant, $admin] = $this->makeUser('inv', 'admin-inv@example.com');
 
-        app(\Spatie\Permission\PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
         $admin->assignRole('admin');
 
-        $company = \App\Modules\Company\Domain\Company::create([
+        $company = Company::create([
             'tenant_id' => $tenant->id,
             'name' => 'Inv Co',
             'legal_name' => 'Inv Co',
@@ -170,16 +178,16 @@ class TenantQualifiedLinksTest extends TestCase
             'timezone' => 'Europe/Paris',
             'date_format' => 'd/m/Y',
             'fiscal_year_start_month' => 1,
-            'status' => \App\Modules\Company\Domain\Enums\CompanyStatus::Active,
+            'status' => CompanyStatus::Active,
             'is_headquarters' => true,
         ]);
 
-        \App\Modules\Company\Domain\UserCompanyMembership::create([
+        UserCompanyMembership::create([
             'user_id' => $admin->id,
             'company_id' => $company->id,
-            'role' => \App\Modules\Company\Domain\Enums\MembershipRole::Owner,
+            'role' => MembershipRole::Owner,
             'is_primary' => true,
-            'status' => \App\Modules\Company\Domain\Enums\MembershipStatus::Active,
+            'status' => MembershipStatus::Active,
             'accepted_at' => now(),
         ]);
 
