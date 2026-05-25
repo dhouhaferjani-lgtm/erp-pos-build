@@ -25,6 +25,10 @@ export function VerifyEmailPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token')
+  // T6 Phase 0a: the verification link carries a signed tenant qualifier so the
+  // pre-auth resolver opens the correct tenant DB before the token lookup
+  // (topology r7 B1). Round-trip it back to the API.
+  const tenant = searchParams.get('tenant')
   const setUser = useAuthStore((state) => state.setUser)
   const user = useAuthStore((state) => state.user)
   const [verificationAttempted, setVerificationAttempted] = useState(false)
@@ -33,6 +37,7 @@ export function VerifyEmailPage() {
     mutationFn: async (verificationToken: string) => {
       const response = await api.post<VerifyResponse>('/auth/verify-email', {
         token: verificationToken,
+        ...(tenant ? { tenant } : {}),
       })
       return response.data.data
     },

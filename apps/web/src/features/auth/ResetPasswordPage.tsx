@@ -24,6 +24,10 @@ export function ResetPasswordPage() {
 
   const token = searchParams.get('token')
   const email = searchParams.get('email')
+  // T6 Phase 0a: the reset link carries a signed tenant qualifier so the
+  // pre-auth resolver can open the correct tenant DB before the password
+  // broker runs (topology r7 B1). Round-trip it back to the API.
+  const tenant = searchParams.get('tenant')
 
   const [formData, setFormData] = useState<ResetFormData>({
     password: '',
@@ -52,6 +56,7 @@ export function ResetPasswordPage() {
         email,
         password: data.password,
         password_confirmation: data.password_confirmation,
+        ...(tenant ? { tenant } : {}),
       })
     },
     onError: (error: unknown) => {
