@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Application\Services;
 
+use App\Modules\Tenant\Domain\Exceptions\TenantUnavailableException;
 use App\Modules\Tenant\Domain\Tenant;
 use Throwable;
 
@@ -34,24 +35,61 @@ class TenancyResolver
      * Initialize tenancy for the tenant IF its database/schema has been
      * provisioned. Returns true when the connection was switched, false when
      * the tenant is not yet provisioned (current single-schema reality).
+     *
+     * P1-4 (Codex 2026-05-25): the silent fall-back to the un-switched
+     * connection is gated behind the explicit single-schema-compat flag
+     * (`tenancy_resolver.db_per_tenant === false`, the Phase 0a default). When
+     * DB-per-tenant mode is active (Phase 0b), a PRESENT tenant whose database
+     * does not exist or fails to initialize FAILS CLOSED
+     * ({@see TenantUnavailableException} -> 503) before any downstream
+     * middleware, so the request never authenticates/queries against the wrong
+     * connection.
+     *
+     * @throws TenantUnavailableException when DB-per-tenant mode is active and a
+     *                                    present tenant cannot be initialized.
      */
     public function initializeIfProvisioned(Tenant $tenant): bool
     {
+        $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant', false);
+
         try {
             if (tenancy()->initialized && tenant()?->getTenantKey() === $tenant->getTenantKey()) {
                 return true;
             }
 
             if (! $tenant->database()->manager()->databaseExists($tenant->getDatabaseName())) {
+                if ($dbPerTenant) {
+                    // DB mode: a present tenant with no provisioned database must
+                    // not silently continue on the default connection.
+                    throw new TenantUnavailableException(
+                        'Tenant database is not provisioned.',
+                    );
+                }
+
+                // Single-schema compat (Phase 0a): no per-tenant DB exists yet,
+                // so the DB switch is a deliberate no-op; callers keep querying
+                // the shared DB scoped by tenant_id.
                 return false;
             }
 
             tenancy()->initialize($tenant);
 
             return true;
-        } catch (Throwable) {
-            // A resolver must never take down a request: if the existence probe
-            // or initialization fails, fall back to the un-switched connection.
+        } catch (TenantUnavailableException $e) {
+            // Already a fail-closed signal — re-throw unchanged.
+            throw $e;
+        } catch (Throwable $e) {
+            if ($dbPerTenant) {
+                // DB mode: an existence-probe / initialization fault must fail
+                // closed rather than degrade to the wrong connection.
+                throw new TenantUnavailableException(
+                    'Tenant could not be initialized.',
+                    $e,
+                );
+            }
+
+            // Single-schema compat: a resolver must never take down a request
+            // today — fall back to the un-switched (shared) connection.
             return false;
         }
     }
