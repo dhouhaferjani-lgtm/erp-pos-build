@@ -22,7 +22,9 @@ use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
 use App\Modules\Identity\Presentation\Requests\ResetPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
+use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -62,6 +64,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly EmailVerificationService $emailVerificationService,
         private readonly TenantInitializationService $tenantInitializationService,
+        private readonly IdentityIndexService $identityIndexService,
     ) {}
 
     /**
@@ -352,6 +355,28 @@ class AuthController extends Controller
                 'status' => MembershipStatus::Active,
                 'accepted_at' => now(),
             ]);
+
+            // 4.5. Create the Stancl domains row for the optional subdomain
+            // shortcut ({slug}.synerivia.tn) — previously only CreateTenantCommand
+            // did this. With wildcard SSL on *.synerivia.tn the only per-tenant
+            // setup is this insert (topology §9.2).
+            Domain::create([
+                'tenant_id' => $tenant->id,
+                // Domains are case-insensitive; lowercase so the stored value
+                // round-trips with the subdomain resolver lookup.
+                'domain' => strtolower($tenant->slug).'.synerivia.tn',
+                'is_primary' => true,
+                'is_verified' => true,
+            ]);
+
+            // 4.6. Write the central identity index row (topology §9.1) so the
+            // owner can do email-first login / org recovery. NOTE (Phase 0b):
+            // post-flip the central row and the tenant-DB users row live in
+            // different databases and cannot share this transaction — the
+            // ordering becomes "central rows first, then tenant user, compensate
+            // on failure". Today everything is on the default connection so the
+            // single-transaction write is correct.
+            $this->identityIndexService->record($user->email, $tenant->id, $user->id);
 
             // 5. Initialize tenant with country-specific data
             // This assigns the 'admin' Spatie role (for sidebar access) and seeds:
