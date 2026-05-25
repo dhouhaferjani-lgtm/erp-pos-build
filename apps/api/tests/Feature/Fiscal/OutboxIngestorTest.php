@@ -238,6 +238,51 @@ final class OutboxIngestorTest extends TestCase
         );
     }
 
+    public function test_z_session_movement_without_session_open_is_quarantined(): void
+    {
+        $env = $this->validEnvelope([
+            'chain_context' => 'z_session',
+            'event_type' => FiscalEventType::CASH_IN,
+            'payload' => $this->minimalCashMovementPayload(),
+            'sequence_number' => 1,
+        ]);
+
+        $result = $this->ingest($env);
+
+        $this->assertTrue($result->stored);
+        $row = DB::table('fiscal_events')->where('id', $result->fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertSame('sequence_gap', $row->integrity_exception_class);
+        $reason = is_string($row->integrity_exception_reason) ? $row->integrity_exception_reason : '';
+        $this->assertStringContainsString('z_session_lifecycle:missing_session_open', $reason);
+        $this->assertSame(0, DB::table('fiscal_event_projections')->count());
+    }
+
+    public function test_session_open_source_id_must_match_payload_session_id(): void
+    {
+        $env = $this->validEnvelope([
+            'id' => Str::uuid()->toString(),
+            'chain_context' => 'z_session',
+            'event_type' => FiscalEventType::SESSION_OPEN,
+            'payload' => $this->minimalSessionOpenPayload(),
+            'sequence_number' => 1,
+            'source_event_class' => 'pos_session',
+            'source_event_id' => Str::uuid()->toString(),
+        ]);
+
+        $result = $this->ingest($env);
+
+        $this->assertTrue($result->stored);
+        $row = DB::table('fiscal_events')->where('id', $result->fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertSame('sequence_gap', $row->integrity_exception_class);
+        $reason = is_string($row->integrity_exception_reason) ? $row->integrity_exception_reason : '';
+        $this->assertStringContainsString('z_session_lifecycle:session_open_source_mismatch', $reason);
+        $this->assertSame(0, DB::table('fiscal_event_projections')->count());
+    }
+
     public function test_verified_event_stores_with_zero_projection_rows_when_no_projector_is_active(): void
     {
         // Simulated zero-active-projector state — `untagAllProjectors()`
@@ -316,6 +361,26 @@ final class OutboxIngestorTest extends TestCase
         );
     }
 
+    public function test_outer_envelope_must_match_sealed_canonical_coordinates(): void
+    {
+        $env = $this->validEnvelope(['sequence_number' => 1]);
+        $env->businessDate = '2026-05-21';
+
+        $result = $this->ingest($env);
+
+        $this->assertTrue($result->stored);
+
+        $row = DB::table('fiscal_events')->where('id', $result->fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertSame('canonical_parse_failure', $row->integrity_exception_class);
+        $this->assertNull($row->payload);
+        $this->assertSame('failed', $row->payload_parse_status);
+        $reason = is_string($row->integrity_exception_reason) ? $row->integrity_exception_reason : '';
+        $this->assertStringContainsString('sealed_coordinate_mismatch:field=business_date', $reason);
+        $this->assertSame(0, DB::table('fiscal_event_projections')->count());
+    }
+
     public function test_idempotent_redelivery_of_same_event_returns_existing_no_redispatch(): void
     {
         $env = $this->validEnvelope(['sequence_number' => 1]);
@@ -360,6 +425,7 @@ final class OutboxIngestorTest extends TestCase
             ->first();
         $this->assertNotNull($q, 'sequence_conflict envelope must land in fiscal_event_quarantine');
         $this->assertSame('sequence_conflict', $q->integrity_exception_class);
+        $this->assertSame('operational', $q->chain_context);
         $this->assertNotNull($q->canonical_bytes);
         $this->assertNotNull($q->raw_envelope);
         $this->assertNotNull($q->integrity_exception_reason);
@@ -936,6 +1002,31 @@ final class OutboxIngestorTest extends TestCase
             'shift_id' => '22222222-2222-4222-8222-222222222222',
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'terminal_label' => 'T01',
+            'training_flag' => false,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function minimalCashMovementPayload(): array
+    {
+        return [
+            'amount' => '10.00',
+            'approval' => null,
+            'business_date' => '2026-05-20',
+            'cash_drawer_operation_id' => null,
+            'currency_code' => 'EUR',
+            'currency_scale' => 2,
+            'event_time_device' => '2026-05-20T08:30:00.000Z',
+            'movement_id' => '55555555-5555-4555-8555-555555555555',
+            'movement_type' => 'CASH_IN',
+            'operator_id' => '11111111-1111-4111-8111-111111111111',
+            'operator_name' => 'Default Cashier',
+            'reason_code' => 'cash_drawer_deposit',
+            'reason_text' => null,
+            'session_id' => '77777777-7777-4777-8777-777777777777',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
             'training_flag' => false,
         ];
     }

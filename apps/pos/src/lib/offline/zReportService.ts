@@ -67,6 +67,7 @@ export interface GenerateZReportOpts {
   operatorId?: string;
   operatorName?: string;
   isTraining?: boolean;
+  requireFiscalEvents?: boolean;
   /** Fraud-settings thresholds. When provided, variance_severity is computed
    *  from the aggregated per-tender variances and stamped into shift_fields. */
   fraudSettings?: CashCountThresholds | null;
@@ -115,6 +116,7 @@ export async function generateZReport(
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const companyId = authState.companyId;
+  assertRequiredFiscalCloseContext(companyId, opts);
 
   // 1. Guard: check no Z-report already exists for this shift
   const existing = await getZReportByShift(db, shiftId);
@@ -388,6 +390,27 @@ export async function generateZReport(
   }
 
   return zReport;
+}
+
+function assertRequiredFiscalCloseContext(companyId: string | null, opts: GenerateZReportOpts): void {
+  if (opts.requireFiscalEvents !== true) {
+    return;
+  }
+
+  const missing: string[] = [];
+  if (companyId === null) missing.push('companyId');
+  if (opts.tenantId === undefined) missing.push('tenantId');
+  if (opts.fiscalShiftId === undefined) missing.push('fiscalShiftId');
+  if (opts.fiscalSessionId === undefined) missing.push('fiscalSessionId');
+  if (opts.terminalLabel === undefined) missing.push('terminalLabel');
+  if (opts.operatorId === undefined) missing.push('operatorId');
+  if (opts.operatorName === undefined) missing.push('operatorName');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot generate cutover Z-report without fiscal event close context: missing ${missing.join(', ')}.`,
+    );
+  }
 }
 
 interface FiscalCloseInputContext {

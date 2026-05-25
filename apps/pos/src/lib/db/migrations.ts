@@ -1079,6 +1079,39 @@ export const migrations: Migration[] = [
           }
         }
       }
+      await db.execute(`
+        UPDATE terminal_state
+           SET fiscal_event_genesis_seed = CASE
+                 WHEN fiscal_event_genesis_seed = '' THEN genesis_seed
+                 ELSE fiscal_event_genesis_seed
+               END,
+               z_chain_genesis_seed = CASE
+                 WHEN z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE z_chain_genesis_seed
+               END,
+               training_fiscal_event_genesis_seed = CASE
+                 WHEN training_fiscal_event_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_fiscal_event_genesis_seed
+               END,
+               training_z_chain_genesis_seed = CASE
+                 WHEN training_z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN z_chain_genesis_seed <> '' THEN z_chain_genesis_seed
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_z_chain_genesis_seed
+               END
+         WHERE genesis_seed <> ''
+      `);
 
       // ----- offline_receipts.canonical_bytes ----------------------------
       // Nullable — projection-only callers continue to function until
@@ -1345,6 +1378,36 @@ export const migrations: Migration[] = [
           }
         }
       }
+
+      await db.execute(`
+        UPDATE terminal_state
+           SET z_chain_genesis_seed = CASE
+                 WHEN z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE z_chain_genesis_seed
+               END,
+               training_fiscal_event_genesis_seed = CASE
+                 WHEN training_fiscal_event_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_fiscal_event_genesis_seed
+               END,
+               training_z_chain_genesis_seed = CASE
+                 WHEN training_z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN z_chain_genesis_seed <> '' THEN z_chain_genesis_seed
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_z_chain_genesis_seed
+               END
+         WHERE genesis_seed <> ''
+      `);
 
       await db.execute('DROP INDEX IF EXISTS idx_fiscal_events_chain_unique');
       await db.execute(`

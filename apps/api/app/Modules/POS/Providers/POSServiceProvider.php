@@ -9,6 +9,7 @@ use App\Modules\POS\Application\Projections\AccountChargeReceiptProjection;
 use App\Modules\POS\Application\Projections\AccountPaymentReceiptProjection;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Projections\ZReportProjection;
+use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
@@ -50,6 +51,7 @@ final class POSServiceProvider extends ServiceProvider
                 AccountPaymentReceiptProjection::class,
                 AccountChargeReceiptProjection::class,
                 ZReportProjection::class,
+                ZSessionLifecycleProjection::class,
             ],
             FiscalEventProjector::class,
         );

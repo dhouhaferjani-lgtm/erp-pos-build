@@ -17,6 +17,7 @@ import {
   buildOpeningFloatPayload,
   buildSessionOpenPayload,
   buildSessionClosePayload,
+  ZSessionLifecycleError,
   type AuthorXReportInput,
   type AuthorZCashDrawerMovementInput,
   type AuthorZSessionCloseInput,
@@ -42,6 +43,7 @@ const SHIFT_ID = '33333333-3333-4333-8333-333333333333';
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 const MOVEMENT_ID = '55555555-5555-4555-8555-555555555555';
 const GENESIS_SEED = 'a'.repeat(64);
+const SECOND_SESSION_ID = '12121212-1212-4212-8212-121212121212';
 
 async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number): Promise<void> {
   for (const migration of migrations) {
@@ -381,14 +383,21 @@ d('zSessionAuthoring', () => {
     expect(result.movementEvent.reference_event_id).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
   });
 
+  it('rejects Z-session movement authoring before SESSION_OPEN exists', async () => {
+    await expect(appendZCashDrawerMovement(adapter, engine, movementInput()))
+      .rejects
+      .toBeInstanceOf(ZSessionLifecycleError);
+  });
+
   it('authors X_REPORT on the z_session chain without closing the session', async () => {
-    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    const open = await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
 
     const result = await appendXReport(adapter, engine, xReportInput());
 
     expect(result.xReportEvent.event_type).toBe('X_REPORT');
     expect(result.xReportEvent.chain_context).toBe('z_session');
     expect(result.xReportEvent.sequence_number).toBe(3);
+    expect(result.xReportEvent.reference_event_id).toBe(open.sessionOpenEvent.id);
   });
 
   it('authors SESSION_CLOSE followed by Z_REPORT on the z_session chain', async () => {
@@ -404,5 +413,61 @@ d('zSessionAuthoring', () => {
     expect(result.zReportEvent.sequence_number).toBe(4);
     expect(result.zReportEvent.previous_hash).toBe(result.sessionCloseEvent.current_hash);
     expect(result.zReportEvent.reference_event_id).toBe(result.sessionCloseEvent.id);
+  });
+
+  it('computes Z_REPORT session_event_range from the matching SESSION_OPEN event', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+    await authorZSessionOpenWithOpeningFloatOnDb(
+      adapter,
+      engine,
+      input({
+        sessionId: SECOND_SESSION_ID,
+        openingFloatMovementId: '13131313-1313-4313-8313-131313131313',
+      }),
+    );
+
+    const result = await appendZSessionCloseAndZReport(
+      adapter,
+      engine,
+      closeInput({
+        sessionId: SECOND_SESSION_ID,
+        sessionCloseUuid: '14141414-1414-4414-8414-141414141414',
+        zReportUuid: '15151515-1515-4515-8515-151515151515',
+      }),
+    );
+
+    const rows = await adapter.select<Array<{ canonical_bytes: string }>>(
+      'SELECT canonical_bytes FROM fiscal_events WHERE id = $1',
+      [result.zReportEvent.id],
+    );
+    const envelope = JSON.parse(rows[0]!.canonical_bytes) as {
+      payload: { session_event_range: Record<string, unknown> };
+    };
+
+    expect(envelope.payload.session_event_range).toMatchObject({
+      first_sequence: 5,
+      last_sequence: 7,
+      session_open_event_id: expect.any(String),
+      session_close_event_id: result.sessionCloseEvent.id,
+    });
+  });
+
+  it('rejects a second Z_REPORT for the same session', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+
+    await expect(
+      appendZSessionCloseAndZReport(
+        adapter,
+        engine,
+        closeInput({
+          sessionCloseUuid: '16161616-1616-4616-8616-161616161616',
+          zReportUuid: '17171717-1717-4717-8717-171717171717',
+        }),
+      ),
+    )
+      .rejects
+      .toBeInstanceOf(ZSessionLifecycleError);
   });
 });

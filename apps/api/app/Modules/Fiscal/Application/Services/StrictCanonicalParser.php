@@ -231,7 +231,7 @@ final class StrictCanonicalParser
             return ParseResult::failure('sub_array_shape:'.$e->getMessage());
         }
 
-        return ParseResult::ok($payload);
+        return ParseResult::ok($payload, $envelope);
     }
 
     /**

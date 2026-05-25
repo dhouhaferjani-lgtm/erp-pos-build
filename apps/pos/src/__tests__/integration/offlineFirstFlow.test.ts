@@ -423,6 +423,7 @@ describe('offline-first POS lifecycle (integration)', () => {
         name: 'Counter 1',
         type: 'fixed',
         is_active: true,
+        fiscal_schema_version: 2,
         is_training_mode: false,
         hardware_identifier: null,
         location: { id: 'loc1', name: 'Main', code: 'MAIN' },

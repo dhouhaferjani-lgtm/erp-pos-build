@@ -14,11 +14,13 @@ use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Projections\ZReportProjection;
+use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
+use App\Modules\POS\Domain\ZSessionEvent;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -141,6 +143,63 @@ final class ZReportProjectionTest extends TestCase
         $this->assertContains('pos_core_z_report', $names);
     }
 
+    public function test_z_session_lifecycle_projection_records_cash_movement_events(): void
+    {
+        $event = $this->storeZSessionFiscalEvent(FiscalEventType::CASH_IN, $this->cashMovementPayload());
+
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        $this->assertSame(1, ZSessionEvent::query()->count());
+        $row = ZSessionEvent::query()->firstOrFail();
+        $this->assertSame($event->id, $row->fiscal_event_id);
+        $this->assertSame('CASH_IN', $row->event_type);
+        $this->assertSame($this->shift->id, $row->shift_id);
+        $this->assertSame('44444444-4444-4444-8444-444444444444', $row->session_id);
+        $this->assertSame('25.000', $row->payload['amount']);
+    }
+
+    public function test_z_session_lifecycle_projection_ignores_operational_cash_events(): void
+    {
+        $event = $this->storeZSessionFiscalEvent(FiscalEventType::CASH_OUT, $this->cashMovementPayload());
+        $event->forceFill(['chain_context' => 'operational']);
+
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        $this->assertSame(0, ZSessionEvent::query()->count());
+    }
+
+    public function test_z_session_lifecycle_projection_is_registered_as_fiscal_event_projector_tag(): void
+    {
+        /** @var list<FiscalEventProjector> $tagged */
+        $tagged = iterator_to_array($this->app->tagged(FiscalEventProjector::class), false);
+        $names = array_map(
+            static fn (FiscalEventProjector $projector): string => $projector->name(),
+            $tagged,
+        );
+
+        $this->assertContains('pos_core_z_session_lifecycle', $names);
+    }
+
+    public function test_nf525_export_includes_canonical_z_session_cash_movements(): void
+    {
+        $event = $this->storeZSessionFiscalEvent(FiscalEventType::CASH_IN, $this->cashMovementPayload());
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        /** @var Nf525DataProvider $provider */
+        $provider = $this->app->make(Nf525DataProvider::class);
+        $snapshot = $provider->buildExportSnapshot(
+            $this->companyId,
+            Carbon::parse('2026-05-24')->startOfDay(),
+            Carbon::parse('2026-05-24')->endOfDay(),
+        );
+
+        $this->assertCount(1, $snapshot->cashDrawerOperations);
+        $this->assertSame($event->id, $snapshot->cashDrawerOperations[0]->id);
+        $this->assertSame('CASH_IN', $snapshot->cashDrawerOperations[0]->operationType);
+        $this->assertSame('25.000', $snapshot->cashDrawerOperations[0]->amount);
+    }
+
     public function test_nf525_export_uses_canonical_z_report_for_grand_totals(): void
     {
         $event = $this->storeZReportFiscalEvent();
@@ -188,6 +247,46 @@ final class ZReportProjectionTest extends TestCase
             'reference_document_id' => null,
             'source_event_class' => 'z_report',
             'source_event_id' => $payload['z_report_uuid'],
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $this->canonicalEncode($payload),
+            'previous_hash' => str_repeat('a', 64),
+            'current_hash' => str_repeat('b', 64),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'integrity_exception_class' => null,
+            'integrity_exception_reason' => null,
+            'payload' => $payload,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ])->refresh();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function storeZSessionFiscalEvent(FiscalEventType $type, array $payload): FiscalEvent
+    {
+        $eventId = Str::uuid()->toString();
+
+        return FiscalEvent::query()->create([
+            'id' => $eventId,
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminal->id,
+            'operator_id' => $this->cashier->id,
+            'event_type' => $type,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => 3,
+            'event_time_device' => '2026-05-24 10:00:00',
+            'business_date' => '2026-05-24',
+            'chain_context' => 'z_session',
+            'last_server_time_seen' => null,
+            'server_received_at' => '2026-05-24 10:00:01',
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => 'z_cash_drawer_movement',
+            'source_event_id' => $payload['movement_id'] ?? Str::uuid()->toString(),
             'partner_id' => null,
             'partner_identity_snapshot' => null,
             'canonical_bytes' => $this->canonicalEncode($payload),
@@ -260,6 +359,31 @@ final class ZReportProjectionTest extends TestCase
             'voids_totals' => ['count' => 0],
             'z_number' => 3,
             'z_report_uuid' => '66666666-6666-4666-8666-666666666666',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function cashMovementPayload(): array
+    {
+        return [
+            'amount' => '25.000',
+            'approval' => null,
+            'business_date' => '2026-05-24',
+            'cash_drawer_operation_id' => null,
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'event_time_device' => '2026-05-24T10:00:00.000Z',
+            'movement_id' => '55555555-5555-4555-8555-555555555555',
+            'movement_type' => 'CASH_IN',
+            'operator_id' => $this->cashier->id,
+            'operator_name' => 'Default Cashier',
+            'reason_code' => 'cash_drawer_deposit',
+            'reason_text' => 'Change refill',
+            'session_id' => '44444444-4444-4444-8444-444444444444',
+            'shift_id' => $this->shift->id,
+            'training_flag' => false,
         ];
     }
 

@@ -232,6 +232,7 @@ export function Header() {
       operatorId: shift.user.id,
       operatorName: shift.user.name,
       isTraining: terminal.is_training_mode === true,
+      requireFiscalEvents: terminal.fiscal_schema_version === 3,
     };
     const zOpts: GenerateZReportOpts = cashCountPayload != null
       ? {

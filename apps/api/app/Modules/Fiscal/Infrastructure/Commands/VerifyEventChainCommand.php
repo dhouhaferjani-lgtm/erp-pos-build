@@ -157,7 +157,7 @@ final class VerifyEventChainCommand extends Command
         // ---- Walk the chain ----
         try {
             $incidents = $this->walkChain($tenantId, $terminalId, $chainContext, $fromSequence);
-            $quarantineIncidents = $this->reportQuarantineIncidents($tenantId, $terminalId);
+            $quarantineIncidents = $this->reportQuarantineIncidents($tenantId, $terminalId, $chainContext);
         } catch (Throwable $e) {
             // Fail-closed (Task 18 F1) — a DB outage mid-walk is a
             // transient failure. Surface as exit 2 so an automation
@@ -354,18 +354,20 @@ final class VerifyEventChainCommand extends Command
      *
      * @return list<string>
      */
-    private function reportQuarantineIncidents(string $tenantId, string $terminalId): array
+    private function reportQuarantineIncidents(string $tenantId, string $terminalId, string $chainContext): array
     {
         $incidents = [];
 
         $rows = FiscalEventQuarantine::query()
             ->where('tenant_id', $tenantId)
             ->where('terminal_id', $terminalId)
+            ->where('chain_context', $chainContext)
             ->whereNull('resolved_at')
             ->orderBy('claimed_sequence_number')
             ->get([
                 'envelope_event_id',
                 'claimed_sequence_number',
+                'chain_context',
                 'current_hash',
                 'conflicting_event_id',
                 'integrity_exception_class',
@@ -374,7 +376,8 @@ final class VerifyEventChainCommand extends Command
 
         foreach ($rows as $row) {
             $incidents[] = sprintf(
-                'QUARANTINE INCIDENT at claimed_sequence_number %d: class=%s, envelope_event_id=%s, current_hash=%s, conflicting_event_id=%s, reason=%s',
+                'QUARANTINE INCIDENT at chain_context %s claimed_sequence_number %d: class=%s, envelope_event_id=%s, current_hash=%s, conflicting_event_id=%s, reason=%s',
+                $row->chain_context,
                 $row->claimed_sequence_number,
                 $row->integrity_exception_class->value,
                 $row->envelope_event_id,

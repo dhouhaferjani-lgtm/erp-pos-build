@@ -197,6 +197,26 @@ describe('generateZReport', () => {
       expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
     });
 
+    it('rejects cutover Z-report generation before legacy rows when fiscal close context is missing', async () => {
+      mockQueryAll(db, makeReceiptRows());
+
+      await expect(
+        generateZReport(
+          db,
+          'term-1',
+          'shift-1',
+          '2026-04-23T08:00:00+00:00',
+          '100.00',
+          { requireFiscalEvents: true },
+        ),
+      ).rejects.toThrow(/fiscal event close context/);
+
+      expect(insertZReport).not.toHaveBeenCalled();
+      expect(advanceZChain).not.toHaveBeenCalled();
+      expect(getFiscalEventEngine).not.toHaveBeenCalled();
+      expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
+    });
+
     it('T2.7: filters offline_receipts WHERE is_training = 0 (training rows excluded from Z totals)', async () => {
       // Mirrors the server-side `Terminal::scopeProduction()` exclusion that
       // NF525 / ReportGenerationService apply on the canonical reporting path.

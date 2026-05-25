@@ -50,6 +50,7 @@ final class FiscalEventQuarantineTableTest extends TestCase
             'claimed_sequence_number',
             'event_time_device',
             'business_date',
+            'chain_context',
             'last_server_time_seen',
             // Cross-event references
             'reference_event_id',
@@ -151,6 +152,7 @@ final class FiscalEventQuarantineTableTest extends TestCase
         // fiscal_events_tenant_terminal_sequence_unique).
         $this->assertStringContainsString('tenant_id', $row->indexdef);
         $this->assertStringContainsString('terminal_id', $row->indexdef);
+        $this->assertStringContainsString('chain_context', $row->indexdef);
         $this->assertStringContainsString('claimed_sequence_number', $row->indexdef);
     }
 
@@ -183,6 +185,7 @@ final class FiscalEventQuarantineTableTest extends TestCase
             'previous_hash' => ['data_type' => 'character', 'is_nullable' => 'NO'],
             'event_version' => ['data_type' => 'smallint', 'is_nullable' => 'NO'],
             'business_date' => ['data_type' => 'date', 'is_nullable' => 'NO'],
+            'chain_context' => ['data_type' => 'character varying', 'is_nullable' => 'NO'],
             'integrity_exception_reason' => ['data_type' => 'text', 'is_nullable' => 'NO'],
             'resolved_at' => ['data_type' => 'timestamp with time zone', 'is_nullable' => 'YES'],
             'resolved_by' => ['data_type' => 'uuid', 'is_nullable' => 'YES'],
@@ -219,6 +222,7 @@ final class FiscalEventQuarantineTableTest extends TestCase
             // Driver-portable literals.
             'event_time_device' => now()->toDateTimeString(),
             'business_date' => now()->toDateString(),
+            'chain_context' => 'operational',
             'previous_hash' => str_repeat('0', 64),
             'current_hash' => str_repeat('a', 64),
             'canonical_bytes' => '{}',

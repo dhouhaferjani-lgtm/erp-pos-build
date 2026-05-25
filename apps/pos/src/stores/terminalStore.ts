@@ -27,6 +27,7 @@ export interface Terminal {
   name: string;
   type: string;
   is_active: boolean;
+  fiscal_schema_version: 2 | 3;
   /**
    * T2.5 — when true, the cashier is using a "training" terminal:
    * receipts persist as normal DB rows but skip the fiscal hash chain

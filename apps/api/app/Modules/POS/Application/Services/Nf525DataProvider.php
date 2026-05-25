@@ -25,6 +25,7 @@ use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
+use App\Modules\POS\Domain\ZSessionEvent;
 use App\Shared\Contracts\Compliance\DTOs\Nf525CashDrawerOperationData;
 use App\Shared\Contracts\Compliance\DTOs\Nf525ChainVerificationResult;
 use App\Shared\Contracts\Compliance\DTOs\Nf525CompanyHeaderData;
@@ -251,6 +252,14 @@ final class Nf525DataProvider implements Nf525DataProviderContract
                 ->get();
             foreach ($cashOps as $op) {
                 $cashDrawerOperations[] = $this->mapCashDrawerOperation($op);
+            }
+
+            $canonicalCashOps = ZSessionEvent::whereIn('shift_id', $shiftIds)
+                ->whereIn('event_type', ['OPENING_FLOAT', 'CASH_IN', 'CASH_OUT', 'SAFE_DROP', 'CASH_CORRECTION'])
+                ->orderBy('event_time_device')
+                ->get();
+            foreach ($canonicalCashOps as $op) {
+                $cashDrawerOperations[] = $this->mapCanonicalCashDrawerOperation($op);
             }
         }
 
@@ -1228,6 +1237,22 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             userId: (string) $op->user_id,
             reason: $op->reason,
             createdAtIso8601: $op->created_at->toIso8601String(),
+        );
+    }
+
+    private function mapCanonicalCashDrawerOperation(ZSessionEvent $op): Nf525CashDrawerOperationData
+    {
+        /** @var array<string, mixed> $payload */
+        $payload = $op->payload;
+
+        return new Nf525CashDrawerOperationData(
+            id: (string) $op->fiscal_event_id,
+            shiftId: (string) $op->shift_id,
+            operationType: (string) ($payload['movement_type'] ?? $op->event_type),
+            amount: (string) ($payload['amount'] ?? '0'),
+            userId: (string) ($payload['operator_id'] ?? ''),
+            reason: is_string($payload['reason_text'] ?? null) ? $payload['reason_text'] : null,
+            createdAtIso8601: $op->event_time_device->toIso8601String(),
         );
     }
 

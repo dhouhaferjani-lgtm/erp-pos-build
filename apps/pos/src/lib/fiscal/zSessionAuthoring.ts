@@ -2,6 +2,7 @@ import type Database from '@tauri-apps/plugin-sql';
 
 import { getDatabase } from '@/lib/db';
 import type {
+  FiscalChainContext,
   FiscalEventAppendRequest,
   FiscalEventAppendResult,
   SqlSurface,
@@ -166,6 +167,19 @@ export interface ZSessionFiscalEventEngine {
   ): Promise<FiscalEventAppendResult>;
 }
 
+interface ZSessionAnchorEvent {
+  id: string;
+  current_hash: string;
+  sequence_number: number;
+}
+
+export class ZSessionLifecycleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ZSessionLifecycleError';
+  }
+}
+
 function isoSecondsUtc(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
@@ -176,6 +190,89 @@ function formatMoney(amount: string, scale: 0 | 2 | 3): string {
 
 function zChainContext(isTraining: boolean): 'z_session' | 'training_z_session' {
   return isTraining ? 'training_z_session' : 'z_session';
+}
+
+async function findSessionOpenEvent(
+  db: Database | SqlSurface,
+  tenantId: string,
+  terminalId: string,
+  chainContext: FiscalChainContext,
+  sessionId: string,
+): Promise<ZSessionAnchorEvent | null> {
+  const rows = await db.select<ZSessionAnchorEvent[]>(
+    `SELECT id, current_hash, sequence_number
+       FROM fiscal_events
+      WHERE tenant_id = $1
+        AND terminal_id = $2
+        AND chain_context = $3
+        AND event_type = 'SESSION_OPEN'
+        AND source_event_class = 'pos_session'
+        AND source_event_id = $4
+      ORDER BY sequence_number ASC
+      LIMIT 1`,
+    [tenantId, terminalId, chainContext, sessionId],
+  );
+  return rows[0] ?? null;
+}
+
+async function requireSessionOpenEvent(
+  db: Database | SqlSurface,
+  input: Pick<
+    AuthorXReportInput | AuthorZCashDrawerMovementInput | AuthorZSessionCloseInput,
+    'tenantId' | 'terminalId' | 'sessionId' | 'isTraining'
+  >,
+): Promise<ZSessionAnchorEvent> {
+  const chainContext = zChainContext(input.isTraining);
+  const sessionOpen = await findSessionOpenEvent(
+    db,
+    input.tenantId,
+    input.terminalId,
+    chainContext,
+    input.sessionId,
+  );
+  if (sessionOpen === null) {
+    throw new ZSessionLifecycleError(
+      `Z-session ${input.sessionId} on terminal ${input.terminalId} cannot append to ${chainContext} before SESSION_OPEN.`,
+    );
+  }
+  return sessionOpen;
+}
+
+function canonicalSessionId(canonicalBytes: string): string | null {
+  try {
+    const decoded = JSON.parse(canonicalBytes) as { payload?: unknown };
+    const payload = decoded.payload;
+    if (payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+      const sessionId = (payload as { session_id?: unknown }).session_id;
+      return typeof sessionId === 'string' ? sessionId : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function assertNoZReportForSession(
+  db: Database | SqlSurface,
+  input: Pick<AuthorZSessionCloseInput, 'tenantId' | 'terminalId' | 'sessionId' | 'isTraining'>,
+): Promise<void> {
+  const chainContext = zChainContext(input.isTraining);
+  const rows = await db.select<Array<{ id: string; canonical_bytes: string }>>(
+    `SELECT id, canonical_bytes
+       FROM fiscal_events
+      WHERE tenant_id = $1
+        AND terminal_id = $2
+        AND chain_context = $3
+        AND event_type = 'Z_REPORT'
+      ORDER BY sequence_number ASC`,
+    [input.tenantId, input.terminalId, chainContext],
+  );
+  const existing = rows.find((row) => canonicalSessionId(row.canonical_bytes) === input.sessionId);
+  if (existing !== undefined) {
+    throw new ZSessionLifecycleError(
+      `Z-session ${input.sessionId} on terminal ${input.terminalId} already has Z_REPORT ${existing.id}.`,
+    );
+  }
 }
 
 export function buildSessionOpenPayload(input: AuthorZSessionOpenInput, openedAtDevice: Date): Record<string, unknown> {
@@ -448,6 +545,7 @@ export async function appendXReport(
   input: AuthorXReportInput,
 ): Promise<AuthorXReportResult> {
   const generatedAtDevice = input.generatedAtDevice ?? new Date();
+  const sessionOpen = await requireSessionOpenEvent(db, input);
   const xReportEvent = await engine.append(db, {
     event_type: 'X_REPORT',
     tenant_id: input.tenantId,
@@ -458,6 +556,7 @@ export async function appendXReport(
     business_date: input.businessDate,
     chain_context: zChainContext(input.isTraining),
     payload: buildXReportPayload(input, generatedAtDevice),
+    reference_event_id: sessionOpen.id,
     source_event_class: 'x_report',
     source_event_id: input.xReportUuid,
   });
@@ -472,6 +571,7 @@ export async function appendZCashDrawerMovement(
 ): Promise<AuthorZCashDrawerMovementResult> {
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
   const movementId = input.movementId ?? crypto.randomUUID();
+  await requireSessionOpenEvent(db, input);
   const movementEvent = await engine.append(db, {
     event_type: input.movementType,
     tenant_id: input.tenantId,
@@ -498,6 +598,8 @@ export async function appendZSessionCloseAndZReport(
   const closedAtDevice = input.closedAtDevice ?? new Date();
   const sessionCloseUuid = input.sessionCloseUuid ?? crypto.randomUUID();
   const chainContext = zChainContext(input.isTraining);
+  const sessionOpen = await requireSessionOpenEvent(db, input);
+  await assertNoZReportForSession(db, input);
 
   const sessionCloseEvent = await engine.append(db, {
     event_type: 'SESSION_CLOSE',
@@ -514,8 +616,10 @@ export async function appendZSessionCloseAndZReport(
   });
 
   const sessionEventRange = {
-    first_sequence: 1,
+    first_sequence: sessionOpen.sequence_number,
     last_sequence: sessionCloseEvent.sequence_number,
+    session_open_event_id: sessionOpen.id,
+    session_open_hash: sessionOpen.current_hash,
     session_close_event_id: sessionCloseEvent.id,
     session_close_hash: sessionCloseEvent.current_hash,
   };

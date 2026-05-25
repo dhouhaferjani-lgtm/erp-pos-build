@@ -31,10 +31,14 @@ export async function depositCash(data: {
   idempotencyKey?: string;
 }): Promise<void> {
   const idempotencyKey = data.idempotencyKey ?? crypto.randomUUID();
-  const payload = cashDrawerPayload(data, idempotencyKey);
   const { companyId } = useAuthStore.getState();
   await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
-  await authorCashDrawerMovement('deposit', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+  if (isCutoverTerminal()) {
+    await authorCashDrawerMovement('deposit', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    return;
+  }
+
+  const payload = cashDrawerPayload(data, idempotencyKey);
   try {
     return await apiPost<void>('/pos/cash-drawer/deposit', payload);
   } catch (error) {
@@ -52,10 +56,14 @@ export async function payoutCash(data: {
   idempotencyKey?: string;
 }): Promise<void> {
   const idempotencyKey = data.idempotencyKey ?? crypto.randomUUID();
-  const payload = cashDrawerPayload(data, idempotencyKey);
   const { companyId } = useAuthStore.getState();
   await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
-  await authorCashDrawerMovement('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+  if (isCutoverTerminal()) {
+    await authorCashDrawerMovement('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    return;
+  }
+
+  const payload = cashDrawerPayload(data, idempotencyKey);
   try {
     return await apiPost<void>('/pos/cash-drawer/payout', payload);
   } catch (error) {
@@ -64,6 +72,10 @@ export async function payoutCash(data: {
     }
     await saveOfflineCashDrawerOp('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey, idempotencyKey);
   }
+}
+
+function isCutoverTerminal(): boolean {
+  return useTerminalStore.getState().terminal?.fiscal_schema_version === 3;
 }
 
 export async function fetchDrawerBalance(shiftId: string): Promise<{ balance: string }> {
