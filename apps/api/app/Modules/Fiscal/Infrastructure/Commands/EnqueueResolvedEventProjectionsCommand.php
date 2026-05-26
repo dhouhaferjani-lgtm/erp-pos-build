@@ -23,8 +23,6 @@ use Throwable;
 /**
  * `fiscal:enqueue-resolved-event-projections` — spec v7 §15.2 + Task 24.
  *
- * @cross-tenant-by-design Operator recovery command resolves tenant scope per fiscal event row and supports explicit --tenant narrowing; it is system-scoped because projection recovery must inspect durable fiscal outbox state across tenants when requested.
- *
  * Named recovery path for the "the resolution transaction committed
  * (`payload_parse_status = parsed`) but the after-commit enqueue never
  * ran" crash window. Also runnable by an operator any time the projection

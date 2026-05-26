@@ -19,8 +19,6 @@ use Throwable;
 /**
  * `fiscal:verify-event-chain` — spec v7 §12 (plan §31).
  *
- * @cross-tenant-by-design Operator/CI chain verification command is intentionally system-scoped and requires explicit --tenant and --terminal arguments before reading fiscal event chain rows.
- *
  * Operator + CI command that walks `fiscal_events` for a single terminal in
  * `sequence_number` order and asserts the hash chain is intact end-to-end.
  *
