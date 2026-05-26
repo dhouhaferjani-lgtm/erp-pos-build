@@ -270,18 +270,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // never crash the projector job. If a fiscal event's terminal_id has
         // no matching row (deleted terminal, mis-routed event), apply()
         // returns cleanly with NO pos_receipts row written.
-        $event = $this->storeSaleReceiptFiscalEvent();
-
-        // Mutate the persisted fiscal_events row's terminal_id to a UUID
-        // that no terminal owns. The integrity hash is not re-validated
-        // by the projector (the event was already verified in Task 19),
-        // so this is a clean test of the projector's terminal-lookup gate.
         $orphanTerminalId = Str::uuid()->toString();
-        FiscalEvent::query()->where('id', $event->id)->update(['terminal_id' => $orphanTerminalId]);
-        $refreshed = FiscalEvent::query()->find($event->id);
-        $this->assertNotNull($refreshed);
+        $event = $this->storeSaleReceiptFiscalEvent(terminalId: $orphanTerminalId);
 
-        $this->app->make(PosCoreReceiptProjection::class)->apply($refreshed);
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         $this->assertSame(0, DB::table('pos_receipts')->count());
         $this->assertSame(0, DB::table('pos_receipt_payments')->count());
@@ -1230,6 +1222,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
         ?array $buyer = null,
         string $invoiceTypeCode = 'SALE',
         ?array $originalReceiptReference = null,
+        ?string $terminalId = null,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -1353,7 +1346,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'sequence_number' => $sequenceNumber,
             'signature_version' => 'hash-chain-integrity-v1',
             'tenant_id' => $this->tenantId,
-            'terminal_id' => $this->terminalId,
+            'terminal_id' => $terminalId ?? $this->terminalId,
         ];
 
         $canonicalBytes = $this->canonicalEncode($canonicalArray);
@@ -1364,7 +1357,7 @@ final class PosCoreReceiptProjectionTest extends TestCase
             'id' => $eventId,
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
-            'terminal_id' => $this->terminalId,
+            'terminal_id' => $terminalId ?? $this->terminalId,
             'operator_id' => $this->operatorId,
             'event_type' => FiscalEventType::SALE_RECEIPT,
             'event_version' => 1,

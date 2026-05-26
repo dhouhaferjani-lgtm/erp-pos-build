@@ -225,6 +225,7 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
             'sequence_number' => 1,
             'event_time_device' => $eventTimeDevice,
             'business_date' => $businessDate,
+            'chain_context' => 'operational',
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,
@@ -235,6 +236,7 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
 
         $canonicalArray = [
             'business_date' => $base['business_date'],
+            'chain_context' => $base['chain_context'],
             'company_id' => $base['company_id'],
             'event_time_device' => $base['event_time_device'],
             'event_type' => $base['event_type'],

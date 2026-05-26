@@ -408,6 +408,7 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             'sequence_number' => $sequence,
             'event_time_device' => $eventTime->format('Y-m-d\TH:i:s\Z'),
             'business_date' => $businessDate,
+            'chain_context' => 'operational',
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,
@@ -418,6 +419,7 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
 
         $canonicalArray = [
             'business_date' => $base['business_date'],
+            'chain_context' => $base['chain_context'],
             'company_id' => $base['company_id'],
             'event_time_device' => $base['event_time_device'],
             'event_type' => $base['event_type'],

@@ -200,6 +200,26 @@ class Receipt extends Model
         'training_flag',
     ];
 
+    public function getCanonicalBytesAttribute(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_resource($value)) {
+            $meta = stream_get_meta_data($value);
+            if ($meta['seekable'] === true) {
+                rewind($value);
+            }
+
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return (string) $value;
+    }
+
     /**
      * @return array<string, string>
      */

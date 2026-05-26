@@ -20,10 +20,8 @@ use Illuminate\Console\Command;
  * reconciles drift: it backfills missing rows and prunes stale ones (rows for
  * deactivated/deleted users or orphan rows pointing at no user).
  *
- * Flip-agnostic note: today every tenant's users live on the default
- * connection, so users are queried directly by tenant_id. Post-flip this loop
- * is the natural place to `tenancy()->initialize($tenant)` per iteration; the
- * reconcile contract (which emails map to which tenant) is unchanged.
+ * @cross-tenant-by-design Reconciles the central identity index by explicitly
+ * iterating tenant databases and writing central index rows.
  */
 class ReconcileIdentitiesCommand extends Command
 {
@@ -42,17 +40,7 @@ class ReconcileIdentitiesCommand extends Command
 
         foreach ($tenants as $tenant) {
             /** @var Tenant $tenant */
-            // Desired index emails: users with an email that are not deactivated.
-            $desired = User::query()
-                ->where('tenant_id', $tenant->id)
-                ->whereNotNull('email')
-                ->where('status', '!=', UserStatus::Inactive->value)
-                ->get(['id', 'email']);
-
-            $desiredEmails = [];
-            foreach ($desired as $user) {
-                $desiredEmails[(string) $user->email] = (string) $user->id;
-            }
+            $desiredEmails = $this->desiredTenantEmails($tenant);
 
             // Backfill missing / refresh user_id pointers.
             foreach ($desiredEmails as $email => $userId) {
@@ -84,5 +72,40 @@ class ReconcileIdentitiesCommand extends Command
         $this->info("Reconciled central identities: {$added} added, {$pruned} pruned across {$tenants->count()} tenant(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function desiredTenantEmails(Tenant $tenant): array
+    {
+        $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant');
+
+        if ($dbPerTenant) {
+            tenancy()->initialize($tenant);
+        }
+
+        try {
+            $query = User::query()
+                ->whereNotNull('email')
+                ->where('status', '!=', UserStatus::Inactive->value);
+
+            if (! $dbPerTenant) {
+                $query->where('tenant_id', $tenant->id);
+            }
+
+            $desired = $query->get(['id', 'email']);
+        } finally {
+            if ($dbPerTenant) {
+                tenancy()->end();
+            }
+        }
+
+        $desiredEmails = [];
+        foreach ($desired as $user) {
+            $desiredEmails[(string) $user->email] = (string) $user->id;
+        }
+
+        return $desiredEmails;
     }
 }

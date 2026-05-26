@@ -22,7 +22,7 @@ final class BestEffortPayloadParserTest extends TestCase
 
         $this->assertSame([], $result->defects);
         $this->assertSame('SALE', $result->parsed['invoice_type_code']);
-        $this->assertCount(27, $result->parsed);
+        $this->assertCount(28, $result->parsed);
     }
 
     public function test_prefills_present_contract_keys_and_reports_invalid_fields(): void
@@ -82,6 +82,7 @@ final class BestEffortPayloadParserTest extends TestCase
     {
         $fields = [
             'business_date' => '2026-05-20',
+            'chain_context' => 'operational',
             'company_id' => '00000000-0000-4000-8000-000000000002',
             'event_time_device' => '2026-05-20T14:30:00Z',
             'event_type' => $eventType,
@@ -108,6 +109,7 @@ final class BestEffortPayloadParserTest extends TestCase
     {
         return [
             'business_date' => '2026-05-20',
+            'approval_references' => [],
             'buyer' => null,
             'cashier_id' => '11111111-1111-4111-8111-111111111111',
             'cashier_name' => 'Default Cashier',
