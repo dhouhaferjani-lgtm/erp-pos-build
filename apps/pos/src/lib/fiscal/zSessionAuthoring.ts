@@ -546,6 +546,7 @@ export async function appendXReport(
 ): Promise<AuthorXReportResult> {
   const generatedAtDevice = input.generatedAtDevice ?? new Date();
   const sessionOpen = await requireSessionOpenEvent(db, input);
+  await assertNoZReportForSession(db, input);
   const xReportEvent = await engine.append(db, {
     event_type: 'X_REPORT',
     tenant_id: input.tenantId,
@@ -572,6 +573,7 @@ export async function appendZCashDrawerMovement(
   const eventTimeDevice = input.eventTimeDevice ?? new Date();
   const movementId = input.movementId ?? crypto.randomUUID();
   await requireSessionOpenEvent(db, input);
+  await assertNoZReportForSession(db, input);
   const movementEvent = await engine.append(db, {
     event_type: input.movementType,
     tenant_id: input.tenantId,

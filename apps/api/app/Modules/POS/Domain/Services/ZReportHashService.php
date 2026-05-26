@@ -6,7 +6,9 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
+use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\ConnectionInterface;
 
 /**
  * Service for calculating and verifying Z report hash chains.
@@ -190,7 +192,17 @@ final class ZReportHashService
      */
     public function verifyZReportChain(Terminal $terminal): bool
     {
+        if (! $this->verifyFiscalEventsArm($terminal)) {
+            return false;
+        }
+
+        return $this->verifyLegacyArm($terminal);
+    }
+
+    private function verifyLegacyArm(Terminal $terminal): bool
+    {
         $zReports = ZReport::where('terminal_id', $terminal->id)
+            ->whereNull('fiscal_event_id')
             ->orderBy('z_number')
             ->get();
 
@@ -217,6 +229,66 @@ final class ZReportHashService
         }
 
         return true;
+    }
+
+    private function verifyFiscalEventsArm(Terminal $terminal): bool
+    {
+        if (! ZReport::where('terminal_id', $terminal->id)->whereNotNull('fiscal_event_id')->exists()) {
+            return true;
+        }
+
+        /** @var ConnectionInterface $db */
+        $db = app(ConnectionInterface::class);
+        /** @var FiscalIntegrityProvider $integrityProvider */
+        $integrityProvider = app(FiscalIntegrityProvider::class);
+
+        foreach (['z_session', 'training_z_session'] as $chainContext) {
+            $rows = $db->table('fiscal_events')
+                ->where('terminal_id', $terminal->id)
+                ->where('chain_context', $chainContext)
+                ->orderBy('sequence_number')
+                ->get(['sequence_number', 'canonical_bytes', 'previous_hash', 'current_hash']);
+
+            if ($rows->isEmpty()) {
+                continue;
+            }
+
+            $expectedPrevious = (string) $terminal->genesis_seed;
+            if (strlen($expectedPrevious) !== 64) {
+                return false;
+            }
+
+            foreach ($rows as $row) {
+                $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
+                $expectedCurrent = $integrityProvider->computeHash($canonicalBytes);
+                if (! hash_equals(strtolower($expectedCurrent), strtolower((string) $row->current_hash))) {
+                    return false;
+                }
+
+                if (! hash_equals(strtolower($expectedPrevious), strtolower((string) $row->previous_hash))) {
+                    return false;
+                }
+
+                $expectedPrevious = (string) $row->current_hash;
+            }
+        }
+
+        return true;
+    }
+
+    private function stringifyCanonicalBytes(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return (string) $value;
     }
 
     /**

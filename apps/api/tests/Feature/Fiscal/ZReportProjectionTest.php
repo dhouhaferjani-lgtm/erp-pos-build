@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
@@ -17,6 +18,7 @@ use App\Modules\POS\Application\Projections\ZReportProjection;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
+use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
@@ -102,6 +104,19 @@ final class ZReportProjectionTest extends TestCase
         $this->assertSame(1, ZReport::query()->count());
     }
 
+    public function test_z_report_projection_skips_quarantined_events(): void
+    {
+        $event = $this->storeZReportFiscalEvent([
+            'integrity_status' => IntegrityStatus::Quarantined,
+            'integrity_exception_class' => IntegrityExceptionClass::CanonicalHashMismatch,
+            'integrity_exception_reason' => 'canonical_hash_mismatch:sha256(canonical_bytes)!=current_hash',
+        ]);
+
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $this->assertSame(0, ZReport::query()->count());
+    }
+
     public function test_z_report_projection_backfills_existing_legacy_row_without_replacing_row_id(): void
     {
         $legacyId = Str::uuid()->toString();
@@ -169,6 +184,19 @@ final class ZReportProjectionTest extends TestCase
         $this->assertSame(0, ZSessionEvent::query()->count());
     }
 
+    public function test_z_session_lifecycle_projection_skips_quarantined_events(): void
+    {
+        $event = $this->storeZSessionFiscalEvent(FiscalEventType::CASH_IN, $this->cashMovementPayload(), [
+            'integrity_status' => IntegrityStatus::Quarantined,
+            'integrity_exception_class' => IntegrityExceptionClass::SequenceGap,
+            'integrity_exception_reason' => 'sequence_gap:missing_prior',
+        ]);
+
+        $this->app->make(ZSessionLifecycleProjection::class)->apply($event);
+
+        $this->assertSame(0, ZSessionEvent::query()->count());
+    }
+
     public function test_z_session_lifecycle_projection_is_registered_as_fiscal_event_projector_tag(): void
     {
         /** @var list<FiscalEventProjector> $tagged */
@@ -219,16 +247,83 @@ final class ZReportProjectionTest extends TestCase
         $canonicalGrandTotal = collect($snapshot->grandTotals)
             ->first(static fn ($row): bool => $row->eventType === 'Z_REPORT');
         $this->assertNotNull($canonicalGrandTotal);
-        $this->assertSame(str_repeat('b', 64), $canonicalGrandTotal->fiscalHash);
+        $this->assertSame($event->current_hash, $canonicalGrandTotal->fiscalHash);
         $this->assertSame('550.000', $canonicalGrandTotal->perpetualTotals['cumulative_sales']);
     }
 
-    private function storeZReportFiscalEvent(): FiscalEvent
+    public function test_nf525_verify_z_report_chain_accepts_canonical_z_session_chain(): void
+    {
+        $this->terminal->forceFill(['genesis_seed' => str_repeat('9', 64)])->save();
+
+        $open = $this->storeCanonicalFiscalEvent(
+            type: FiscalEventType::SESSION_OPEN,
+            payload: [
+                'business_date' => '2026-05-24',
+                'company_id' => $this->companyId,
+                'currency_code' => 'TND',
+                'currency_scale' => 3,
+                'opened_at_device' => '2026-05-24T08:00:00.000Z',
+                'operator_id' => $this->cashier->id,
+                'operator_name' => 'Default Cashier',
+                'session_id' => '44444444-4444-4444-8444-444444444444',
+                'shift_id' => $this->shift->id,
+                'terminal_id' => $this->terminal->id,
+                'terminal_label' => 'T001',
+                'training_flag' => false,
+            ],
+            sequenceNumber: 1,
+            previousHash: str_repeat('9', 64),
+            sourceClass: 'pos_session',
+            sourceId: '44444444-4444-4444-8444-444444444444',
+        );
+        $close = $this->storeCanonicalFiscalEvent(
+            type: FiscalEventType::SESSION_CLOSE,
+            payload: [
+                'business_date' => '2026-05-24',
+                'closed_at_device' => '2026-05-24T18:00:00.000Z',
+                'operator_id' => $this->cashier->id,
+                'operator_name' => 'Default Cashier',
+                'session_id' => '44444444-4444-4444-8444-444444444444',
+                'shift_id' => $this->shift->id,
+                'terminal_id' => $this->terminal->id,
+                'training_flag' => false,
+            ],
+            sequenceNumber: 2,
+            previousHash: $open->current_hash,
+            sourceClass: 'pos_session_close',
+            sourceId: '77777777-7777-4777-8777-777777777777',
+        );
+        $zReport = $this->storeCanonicalFiscalEvent(
+            type: FiscalEventType::Z_REPORT,
+            payload: $this->zReportPayload(),
+            sequenceNumber: 3,
+            previousHash: $close->current_hash,
+            sourceClass: 'z_report',
+            sourceId: '66666666-6666-4666-8666-666666666666',
+            referenceEventId: $close->id,
+        );
+
+        $this->app->make(ZReportProjection::class)->apply($zReport);
+
+        /** @var Nf525DataProvider $provider */
+        $provider = $this->app->make(Nf525DataProvider::class);
+        $providerResult = $provider->verifyZReportChain($this->terminal->id);
+        $serviceResult = $this->app->make(ZReportHashService::class)->verifyZReportChain($this->terminal);
+
+        $this->assertTrue($providerResult->isValid, (string) $providerResult->error);
+        $this->assertTrue($serviceResult);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function storeZReportFiscalEvent(array $overrides = []): FiscalEvent
     {
         $payload = $this->zReportPayload();
         $eventId = Str::uuid()->toString();
+        $canonicalBytes = $this->canonicalEncode($payload);
 
-        return FiscalEvent::query()->create([
+        return FiscalEvent::query()->create(array_merge([
             'id' => $eventId,
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
@@ -249,26 +344,28 @@ final class ZReportProjectionTest extends TestCase
             'source_event_id' => $payload['z_report_uuid'],
             'partner_id' => null,
             'partner_identity_snapshot' => null,
-            'canonical_bytes' => $this->canonicalEncode($payload),
+            'canonical_bytes' => $canonicalBytes,
             'previous_hash' => str_repeat('a', 64),
-            'current_hash' => str_repeat('b', 64),
+            'current_hash' => hash('sha256', $canonicalBytes),
             'signature_status' => SignatureStatus::NotRequired,
             'integrity_status' => IntegrityStatus::Verified,
             'integrity_exception_class' => null,
             'integrity_exception_reason' => null,
             'payload' => $payload,
             'payload_parse_status' => PayloadParseStatus::Parsed,
-        ])->refresh();
+        ], $overrides))->refresh();
     }
 
     /**
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $overrides
      */
-    private function storeZSessionFiscalEvent(FiscalEventType $type, array $payload): FiscalEvent
+    private function storeZSessionFiscalEvent(FiscalEventType $type, array $payload, array $overrides = []): FiscalEvent
     {
         $eventId = Str::uuid()->toString();
+        $canonicalBytes = $this->canonicalEncode($payload);
 
-        return FiscalEvent::query()->create([
+        return FiscalEvent::query()->create(array_merge([
             'id' => $eventId,
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
@@ -289,9 +386,56 @@ final class ZReportProjectionTest extends TestCase
             'source_event_id' => $payload['movement_id'] ?? Str::uuid()->toString(),
             'partner_id' => null,
             'partner_identity_snapshot' => null,
-            'canonical_bytes' => $this->canonicalEncode($payload),
+            'canonical_bytes' => $canonicalBytes,
             'previous_hash' => str_repeat('a', 64),
-            'current_hash' => str_repeat('b', 64),
+            'current_hash' => hash('sha256', $canonicalBytes),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'integrity_exception_class' => null,
+            'integrity_exception_reason' => null,
+            'payload' => $payload,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ], $overrides))->refresh();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function storeCanonicalFiscalEvent(
+        FiscalEventType $type,
+        array $payload,
+        int $sequenceNumber,
+        string $previousHash,
+        string $sourceClass,
+        string $sourceId,
+        ?string $referenceEventId = null,
+    ): FiscalEvent {
+        $canonicalBytes = $this->canonicalEncode($payload);
+
+        return FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminal->id,
+            'operator_id' => $this->cashier->id,
+            'event_type' => $type,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $sequenceNumber,
+            'event_time_device' => '2026-05-24 18:00:00',
+            'business_date' => '2026-05-24',
+            'chain_context' => 'z_session',
+            'last_server_time_seen' => null,
+            'server_received_at' => '2026-05-24 18:00:01',
+            'reference_event_id' => $referenceEventId,
+            'reference_document_id' => null,
+            'source_event_class' => $sourceClass,
+            'source_event_id' => $sourceId,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => $previousHash,
+            'current_hash' => hash('sha256', $canonicalBytes),
             'signature_status' => SignatureStatus::NotRequired,
             'integrity_status' => IntegrityStatus::Verified,
             'integrity_exception_class' => null,

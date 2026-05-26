@@ -10,6 +10,8 @@ use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\VatBreakdownDTO;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\CashDrawerOperation;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -228,6 +230,9 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             ->get();
         $zReports = [];
         foreach ($zReportsQuery as $zReport) {
+            if (! $this->isTrustedZReport($zReport)) {
+                continue;
+            }
             $zReports[] = $this->mapZReport($zReport);
         }
 
@@ -259,6 +264,9 @@ final class Nf525DataProvider implements Nf525DataProviderContract
                 ->orderBy('event_time_device')
                 ->get();
             foreach ($canonicalCashOps as $op) {
+                if (! $this->isTrustedFiscalEvent($op->fiscal_event_id, null)) {
+                    continue;
+                }
                 $cashDrawerOperations[] = $this->mapCanonicalCashDrawerOperation($op);
             }
         }
@@ -273,7 +281,7 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $grandTotals[] = $this->mapGrandTotal($grandtotal);
         }
         foreach ($zReportsQuery as $zReport) {
-            if ($zReport->fiscal_event_id !== null) {
+            if ($zReport->fiscal_event_id !== null && $this->isTrustedZReport($zReport)) {
                 $grandTotals[] = $this->mapCanonicalZReportGrandTotal($zReport);
             }
         }
@@ -454,39 +462,22 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             );
         }
 
-        $verified = 0;
-        $previousHash = null;
-
-        foreach ($zReports as $zReport) {
-            if ($zReport->previous_z_hash !== $previousHash) {
-                return new Nf525ChainVerificationResult(
-                    isValid: false,
-                    totalRows: $zReports->count(),
-                    verifiedRows: $verified,
-                    failedAtSequence: (int) $zReport->z_number,
-                    error: 'Chain linkage broken: previous_z_hash mismatch',
-                );
-            }
-
-            $expected = $this->zReportHashService->calculateHash($zReport, $previousHash);
-            if ($expected !== $zReport->fiscal_hash) {
-                return new Nf525ChainVerificationResult(
-                    isValid: false,
-                    totalRows: $zReports->count(),
-                    verifiedRows: $verified,
-                    failedAtSequence: (int) $zReport->z_number,
-                    error: 'Fiscal hash mismatch: Z-report data may have been tampered with',
-                );
-            }
-
-            $previousHash = $zReport->fiscal_hash;
-            $verified++;
+        /** @var Terminal|null $terminal */
+        $terminal = Terminal::find($terminalId);
+        if ($terminal === null || ! $this->zReportHashService->verifyZReportChain($terminal)) {
+            return new Nf525ChainVerificationResult(
+                isValid: false,
+                totalRows: $zReports->count(),
+                verifiedRows: 0,
+                failedAtSequence: null,
+                error: 'Z-report chain break: canonical z_session chain or legacy Z-report linkage mismatch',
+            );
         }
 
         return new Nf525ChainVerificationResult(
             isValid: true,
             totalRows: $zReports->count(),
-            verifiedRows: $verified,
+            verifiedRows: $zReports->count(),
             failedAtSequence: null,
             error: null,
         );
@@ -1150,6 +1141,51 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             printMethod: $print->print_method->value,
             printedAtIso8601: $print->printed_at->toIso8601String(),
         );
+    }
+
+    private function isTrustedZReport(ZReport $zReport): bool
+    {
+        if ($zReport->fiscal_event_id === null) {
+            return true;
+        }
+
+        return $this->isTrustedFiscalEvent($zReport->fiscal_event_id, FiscalEventType::Z_REPORT);
+    }
+
+    private function isTrustedFiscalEvent(?string $fiscalEventId, ?FiscalEventType $type): bool
+    {
+        if ($fiscalEventId === null) {
+            return false;
+        }
+
+        $event = FiscalEvent::query()->find($fiscalEventId);
+        if ($event === null || $event->integrity_status !== IntegrityStatus::Verified) {
+            return false;
+        }
+
+        if ($type !== null && $event->event_type !== $type) {
+            return false;
+        }
+
+        return hash_equals(
+            strtolower($event->current_hash),
+            strtolower($this->integrityProvider->computeHash($this->canonicalBytesToString($event->canonical_bytes))),
+        );
+    }
+
+    private function canonicalBytesToString(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return (string) $value;
     }
 
     private function mapZReport(ZReport $zReport): Nf525ZReportData

@@ -180,7 +180,11 @@ final class OutboxIngestor
 
         $linkageVerdict = $this->verifyLinkage($envelope, $prior);
         $lifecycleVerdict = $this->verifyZSessionLifecycle($envelope, $parseResult);
-        $linkageVerdict ??= $lifecycleVerdict;
+        if ($lifecycleVerdict !== null) {
+            $linkageVerdict = $linkageVerdict === null
+                ? $lifecycleVerdict
+                : $linkageVerdict.'|'.$lifecycleVerdict;
+        }
         $clockVerdict = $this->verifyClock($envelope, $prior, $serverReceivedAt);
 
         // Priority ordering — every quarantine class is independent, but a

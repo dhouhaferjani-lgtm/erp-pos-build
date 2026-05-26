@@ -625,14 +625,21 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       };
     }
 
-    try {
-      const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
-      await setStoredValue(StorageKeys.SHIFT, fiscalShift);
-      set({ shift: fiscalShift, isLoading: false });
-    } catch (error) {
-      set({ isLoading: false });
-      throw error;
+    if (terminal.fiscal_schema_version === 3) {
+      try {
+        const fiscalShift = await authorShiftOpenFiscalEvents(terminal, shift, openingCash);
+        await setStoredValue(StorageKeys.SHIFT, fiscalShift);
+        set({ shift: fiscalShift, isLoading: false });
+      } catch (error) {
+        set({ isLoading: false });
+        throw error;
+      }
+
+      return;
     }
+
+    await setStoredValue(StorageKeys.SHIFT, shift);
+    set({ shift, isLoading: false });
   },
 
   closeShift: async (actualCash: string) => {

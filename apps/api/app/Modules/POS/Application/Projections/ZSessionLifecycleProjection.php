@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Projections;
 
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\ZSessionEvent;
 use RuntimeException;
@@ -43,6 +44,10 @@ final class ZSessionLifecycleProjection implements FiscalEventProjector
 
     public function apply(FiscalEvent $event): void
     {
+        if ($event->integrity_status !== IntegrityStatus::Verified) {
+            return;
+        }
+
         if (! in_array($event->chain_context, ['z_session', 'training_z_session'], true)) {
             return;
         }

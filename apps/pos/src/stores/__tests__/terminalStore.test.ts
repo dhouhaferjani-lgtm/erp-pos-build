@@ -205,8 +205,18 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().isLoading).toBe(false);
   });
 
-  it('openShift authors Z-session opening fiscal events', async () => {
-    useTerminalStore.setState({ terminal: mockTerminal });
+  it('openShift does not author Z-session opening fiscal events for pre-cutover terminals', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 2 } });
+    vi.mocked(apiPost).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(authorZSessionOpenWithOpeningFloat).not.toHaveBeenCalled();
+    expect(useTerminalStore.getState().shift).toEqual(expect.objectContaining(mockShift));
+  });
+
+  it('openShift authors Z-session opening fiscal events for cutover terminals', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
     vi.mocked(apiPost).mockResolvedValue(mockShift);
 
     await useTerminalStore.getState().openShift('100.00');

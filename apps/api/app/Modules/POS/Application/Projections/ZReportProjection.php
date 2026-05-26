@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Projections;
 
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\ZReport;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,10 @@ final class ZReportProjection implements FiscalEventProjector
 
     public function apply(FiscalEvent $event): void
     {
+        if ($event->integrity_status !== IntegrityStatus::Verified) {
+            return;
+        }
+
         if (ZReport::query()->where('fiscal_event_id', $event->id)->exists()) {
             return;
         }

@@ -7,6 +7,7 @@ import { bcadd, bcformat } from '@/lib/decimal';
 import { appendXReport } from '@/lib/fiscal/zSessionAuthoring';
 import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { useAuthStore } from '@/stores/authStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
 import type { GenerateZReportOpts } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
@@ -164,7 +165,14 @@ export async function generateZReport(
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const db = await getDatabase(companyId);
-  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, opts);
+  const terminal = useTerminalStore.getState().terminal;
+  const requiresFiscalEvents = opts.requireFiscalEvents ?? (
+    terminal?.id === terminalId && terminal.fiscal_schema_version === 3
+  );
+  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, {
+    ...opts,
+    requireFiscalEvents: requiresFiscalEvents,
+  });
   return localZReportToResponse(localReport, decimals);
 }
 

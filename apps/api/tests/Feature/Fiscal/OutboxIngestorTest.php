@@ -259,6 +259,29 @@ final class OutboxIngestorTest extends TestCase
         $this->assertSame(0, DB::table('fiscal_event_projections')->count());
     }
 
+    public function test_z_session_lifecycle_reason_is_preserved_when_linkage_also_fails(): void
+    {
+        $env = $this->validEnvelope([
+            'chain_context' => 'z_session',
+            'event_type' => FiscalEventType::CASH_IN,
+            'payload' => $this->minimalCashMovementPayload(),
+            'previous_hash' => str_repeat('f', 64),
+            'sequence_number' => 2,
+        ]);
+
+        $result = $this->ingest($env);
+
+        $this->assertTrue($result->stored);
+        $row = DB::table('fiscal_events')->where('id', $result->fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('quarantined', $row->integrity_status);
+        $this->assertSame('sequence_gap', $row->integrity_exception_class);
+        $reason = is_string($row->integrity_exception_reason) ? $row->integrity_exception_reason : '';
+        $this->assertStringContainsString('no_prior_row_but_sequence=2_must_be_1', $reason);
+        $this->assertStringContainsString('z_session_lifecycle:missing_session_open', $reason);
+        $this->assertSame(0, DB::table('fiscal_event_projections')->count());
+    }
+
     public function test_session_open_source_id_must_match_payload_session_id(): void
     {
         $env = $this->validEnvelope([

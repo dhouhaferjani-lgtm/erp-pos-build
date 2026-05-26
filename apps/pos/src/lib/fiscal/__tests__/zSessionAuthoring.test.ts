@@ -470,4 +470,22 @@ d('zSessionAuthoring', () => {
       .rejects
       .toBeInstanceOf(ZSessionLifecycleError);
   });
+
+  it('rejects X_REPORT authoring after the session has a Z_REPORT', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+
+    await expect(appendXReport(adapter, engine, xReportInput()))
+      .rejects
+      .toBeInstanceOf(ZSessionLifecycleError);
+  });
+
+  it('rejects cash drawer movements after the session has a Z_REPORT', async () => {
+    await authorZSessionOpenWithOpeningFloatOnDb(adapter, engine, input());
+    await appendZSessionCloseAndZReport(adapter, engine, closeInput());
+
+    await expect(appendZCashDrawerMovement(adapter, engine, movementInput()))
+      .rejects
+      .toBeInstanceOf(ZSessionLifecycleError);
+  });
 });
