@@ -32,6 +32,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
+use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -745,8 +746,12 @@ class AuthController extends Controller
 
             // Validate the reset token against THIS exact user via the broker's
             // token repository (bypasses the email-only default user provider),
-            // then update the password and revoke tokens.
-            $repository = Password::broker()->getRepository();
+            // then update the password and revoke tokens. Narrow to the concrete
+            // broker: the PasswordBroker *contract* does not declare getRepository(),
+            // but the default implementation (what Password::broker() returns) does.
+            /** @var PasswordBroker $broker */
+            $broker = Password::broker();
+            $repository = $broker->getRepository();
 
             if ($user === null || ! $repository->exists($user, $validated['token'])) {
                 throw ValidationException::withMessages([
