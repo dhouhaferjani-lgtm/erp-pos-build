@@ -26,6 +26,10 @@ class VerifyEmailRequest extends FormRequest
     {
         return [
             'token' => ['required', 'string', 'size:64'],
+            // Tamper-proof tenant qualifier from the verification link
+            // (topology r7 B1); read by the pre-auth ResolveTenancy middleware
+            // before the token lookup.
+            'tenant' => ['nullable', 'string'],
         ];
     }
 }

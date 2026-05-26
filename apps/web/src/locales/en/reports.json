@@ -41,5 +41,53 @@
     "high": "High (60-89 days)",
     "medium": "Medium (30-59 days)",
     "low": "Low (1-29 days)"
+  },
+  "ownerDashboard": {
+    "title": "Owner Dashboard",
+    "subtitle": "Sales, stock, payments, and cash controls across locations.",
+    "loading": "Loading report...",
+    "error": "Report unavailable.",
+    "noData": "No data for this period.",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "granularity": "Group by",
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "salesByLocation": {
+      "title": "Sales by Location",
+      "axis": "Sales"
+    },
+    "topSkus": {
+      "title": "Top SKUs",
+      "revenue": "Revenue",
+      "quantity": "Quantity"
+    },
+    "lowStock": {
+      "title": "Low Stock Alerts"
+    },
+    "revenueByCategory": {
+      "title": "Revenue by Category"
+    },
+    "paymentMethods": {
+      "title": "Payment Method Breakdown",
+      "amount": "Amount",
+      "percentage": "Percentage"
+    },
+    "cashReconciliation": {
+      "title": "Cash Register Reconciliation"
+    },
+    "columns": {
+      "product": "Product",
+      "quantity": "Quantity",
+      "revenue": "Revenue",
+      "date": "Date",
+      "location": "Location",
+      "expected": "Expected",
+      "counted": "Counted",
+      "variance": "Variance"
+    }
   }
 }

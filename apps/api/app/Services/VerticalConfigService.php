@@ -85,6 +85,21 @@ class VerticalConfigService
     }
 
     /**
+     * Get default product attributes for a vertical.
+     *
+     * @return array{requires_batch_tracking: bool}
+     */
+    public function getProductDefaults(Vertical $vertical): array
+    {
+        $config = $this->getVerticalConfig($vertical);
+        $defaults = (array) ($config['product_defaults'] ?? []);
+
+        return [
+            'requires_batch_tracking' => (bool) ($defaults['requires_batch_tracking'] ?? false),
+        ];
+    }
+
+    /**
      * Get all verticals for a specific product
      *
      * @return array<int, Vertical>

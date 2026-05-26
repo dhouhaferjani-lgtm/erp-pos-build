@@ -41,5 +41,53 @@
     "high": "Élevé (60-89 jours)",
     "medium": "Moyen (30-59 jours)",
     "low": "Faible (1-29 jours)"
+  },
+  "ownerDashboard": {
+    "title": "Tableau de Bord Propriétaire",
+    "subtitle": "Ventes, stock, paiements et contrôle caisse par site.",
+    "loading": "Chargement du rapport...",
+    "error": "Rapport indisponible.",
+    "noData": "Aucune donnée pour cette période.",
+    "filters": {
+      "from": "Du",
+      "to": "Au",
+      "granularity": "Grouper par",
+      "day": "Jour",
+      "week": "Semaine",
+      "month": "Mois"
+    },
+    "salesByLocation": {
+      "title": "Ventes par Site",
+      "axis": "Ventes"
+    },
+    "topSkus": {
+      "title": "Meilleurs SKU",
+      "revenue": "Revenu",
+      "quantity": "Quantité"
+    },
+    "lowStock": {
+      "title": "Alertes Stock Bas"
+    },
+    "revenueByCategory": {
+      "title": "Revenu par Catégorie"
+    },
+    "paymentMethods": {
+      "title": "Répartition des Paiements",
+      "amount": "Montant",
+      "percentage": "Pourcentage"
+    },
+    "cashReconciliation": {
+      "title": "Rapprochement Caisse"
+    },
+    "columns": {
+      "product": "Produit",
+      "quantity": "Quantité",
+      "revenue": "Revenu",
+      "date": "Date",
+      "location": "Site",
+      "expected": "Attendu",
+      "counted": "Compté",
+      "variance": "Écart"
+    }
   }
 }

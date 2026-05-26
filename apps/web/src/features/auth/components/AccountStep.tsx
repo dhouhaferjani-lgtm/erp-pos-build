@@ -1,10 +1,8 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMutation } from '@tanstack/react-query'
 import { Eye, EyeOff } from 'lucide-react'
 import { FormField } from '@/components/atoms/FormField/FormField'
 import { Input } from '@/components/atoms/Input/Input'
-import { api } from '@/lib/api'
 import { PasswordStrength } from './PasswordStrength'
 import type { RegisterFormData } from '../hooks/useRegisterForm'
 
@@ -14,49 +12,15 @@ interface AccountStepProps {
   updateField: <K extends keyof RegisterFormData>(field: K, value: RegisterFormData[K]) => void
 }
 
+// T6 Phase 0a: the global /auth/check-email availability probe was removed.
+// Email uniqueness is per-tenant now (the same email may belong to several
+// organizations), so a global "is this email taken?" check is meaningless —
+// collisions surface per-tenant at register submit.
 export function AccountStep({ formData, errors, updateField }: AccountStepProps) {
   const { t } = useTranslation(['auth'])
   const [showPassword, setShowPassword] = useState(false)
-  const [emailCheckError, setEmailCheckError] = useState<string | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const checkEmailMutation = useMutation({
-    mutationFn: async (email: string) => {
-      const response = await api.post<{ data: { available: boolean } }>('/auth/check-email', { email })
-      return response.data.data
-    },
-    onSuccess: (data) => {
-      if (!data.available) {
-        setEmailCheckError(t('auth:register.emailTaken'))
-      } else {
-        setEmailCheckError(null)
-      }
-    },
-    onError: () => {
-      // Silently ignore — registration will catch duplicates
-      setEmailCheckError(null)
-    },
-  })
-
-  const handleEmailChange = useCallback(
-    (value: string) => {
-      updateField('email', value)
-      setEmailCheckError(null)
-
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-      }
-
-      if (value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-        debounceRef.current = setTimeout(() => {
-          checkEmailMutation.mutate(value)
-        }, 500)
-      }
-    },
-    [updateField, checkEmailMutation],
-  )
-
-  const emailError = errors['email'] ?? emailCheckError ?? undefined
+  const emailError = errors['email'] ?? undefined
 
   return (
     <div className="space-y-4">
@@ -76,7 +40,7 @@ export function AccountStep({ formData, errors, updateField }: AccountStepProps)
           type="email"
           autoComplete="email"
           value={formData.email}
-          onChange={(e) => { handleEmailChange(e.target.value) }}
+          onChange={(e) => { updateField('email', e.target.value) }}
           error={!!emailError}
         />
       </FormField>

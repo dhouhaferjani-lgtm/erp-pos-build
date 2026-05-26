@@ -88,7 +88,10 @@ echo "=================================="
 
 REPO_ROOT="$ROOT_DIR"
 echo -e "\n${YELLOW}Checking fiscal v3 fixture parity...${NC}"
-if ! "$REPO_ROOT/apps/pos/scripts/check-fiscal-fixture-parity.sh"; then
+FISCAL_FIXTURE_PARITY_SCRIPT="$REPO_ROOT/apps/pos/scripts/check-fiscal-fixture-parity.sh"
+if [ ! -x "$FISCAL_FIXTURE_PARITY_SCRIPT" ]; then
+    echo -e "${YELLOW}↷ Fiscal v3 POS fixture parity script not present; skipping retired POS parity gate.${NC}"
+elif ! "$FISCAL_FIXTURE_PARITY_SCRIPT"; then
     echo -e "${RED}✗ Fiscal v3 fixture parity check failed (see output above)${NC}"
     exit 1
 fi

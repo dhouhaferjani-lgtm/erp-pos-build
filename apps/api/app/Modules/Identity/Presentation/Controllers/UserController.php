@@ -9,13 +9,15 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Application\DTOs\UserData;
+use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Application\Notifications\UserInvitation;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\CreateUserRequest;
 use App\Modules\Identity\Presentation\Requests\UpdateUserRequest;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Tenant;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -47,6 +49,8 @@ class UserController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly IdentityIndexService $identityIndexService,
+        private readonly TenantLinkSigner $tenantLinkSigner,
     ) {}
 
     /**
@@ -192,6 +196,11 @@ class UserController extends Controller
                 $user->update(['status' => UserStatus::Active]);
             }
 
+            // Maintain the central identity index (topology §9.1) so invited
+            // users can do email-first login / org recovery. No-op for PIN-only
+            // cashiers (null email).
+            $this->identityIndexService->record($user->email, $currentUser->tenant_id, $user->id);
+
             // Log audit event
             $this->logAuditEvent(
                 eventType: 'user.created',
@@ -213,7 +222,8 @@ class UserController extends Controller
             try {
                 $user->notify(new UserInvitation(
                     inviterName: $currentUser->name,
-                    tenantName: $tenant->name
+                    tenantName: $tenant->name,
+                    signedTenant: $this->tenantLinkSigner->sign($currentUser->tenant_id),
                 ));
             } catch (\Throwable $e) {
                 report($e);
@@ -252,6 +262,7 @@ class UserController extends Controller
 
         return DB::transaction(function () use ($user, $validated, $currentUser, $request) {
             $changes = [];
+            $previousEmail = $user->email;
 
             // Update basic fields
             $fieldsToUpdate = ['name', 'email', 'phone', 'locale', 'timezone', 'can_discount', 'max_discount_percent'];
@@ -277,6 +288,16 @@ class UserController extends Controller
             }
 
             $user->save();
+
+            // Keep the central identity index in sync on email change
+            // (topology §9.1). syncEmail() is a no-op when the email is
+            // unchanged and idempotent otherwise.
+            $this->identityIndexService->syncEmail(
+                $previousEmail,
+                $user->email,
+                $currentUser->tenant_id,
+                $user->id,
+            );
 
             // Log audit event
             $this->logAuditEvent(
@@ -345,6 +366,10 @@ class UserController extends Controller
             $user->status = UserStatus::Inactive;
             $user->save();
 
+            // Remove the central identity index row (topology §9.1) so a
+            // deactivated user no longer surfaces in email-first org discovery.
+            $this->identityIndexService->remove($user->email, $currentUser->tenant_id);
+
             // Log audit event
             $this->logAuditEvent(
                 eventType: 'user.deleted',
@@ -406,6 +431,12 @@ class UserController extends Controller
         return DB::transaction(function () use ($user, $currentUser, $request) {
             $user->status = UserStatus::Active;
             $user->save();
+
+            // P2 (Codex 2026-05-25): reactivation re-records the central identity
+            // index row (mirror of deactivate's remove()) so the index lifecycle
+            // matches the account lifecycle — reconcile's desired set is users
+            // with an email and status != Inactive. No-op for null-email users.
+            $this->identityIndexService->record($user->email, $currentUser->tenant_id, $user->id);
 
             // Log audit event
             $this->logAuditEvent(
@@ -482,6 +513,11 @@ class UserController extends Controller
 
             $user->status = UserStatus::Inactive;
             $user->save();
+
+            // P2 (Codex 2026-05-25): mirror destroy() — remove the central
+            // identity index row so a deactivated user no longer surfaces in
+            // email-first org discovery / forgot-password before reconcile runs.
+            $this->identityIndexService->remove($user->email, $currentUser->tenant_id);
 
             // Log audit event
             $this->logAuditEvent(
@@ -631,9 +667,18 @@ class UserController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        // Send password reset notification
+        // Send password reset notification.
+        //
+        // P1-2 (Codex 2026-05-25): use the tenant-qualified notification so the
+        // link carries a signed `tenant` param. The stock Illuminate
+        // ResetPassword carries no tenant, so its token-only link could not pick
+        // the right tenant DB post-flip and feeds the email-only broker today.
         $token = Password::createToken($user);
-        $user->notify(new ResetPassword($token));
+        $user->notify(new ResetPasswordNotification(
+            $token,
+            (string) $user->email,
+            $this->tenantLinkSigner->sign($currentUser->tenant_id),
+        ));
 
         // Log audit event
         $this->logAuditEvent(

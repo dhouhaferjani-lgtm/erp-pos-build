@@ -20,6 +20,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { OwnerDashboardPage } from '../owner-dashboard'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
 
 interface DashboardStats {
@@ -309,6 +310,8 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      <OwnerDashboardPage />
 
       {/* Recent Activity */}
       <div className="grid gap-6 lg:grid-cols-2">

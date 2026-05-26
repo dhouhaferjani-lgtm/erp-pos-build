@@ -129,6 +129,7 @@ class PermissionSeeder extends Seeder
             'journal.post',
             'ledger.view',
             'reports.view',
+            'dashboard.owner',
 
             // Pricing
             'pricing.view',

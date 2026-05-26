@@ -39,6 +39,14 @@ class RegisterRequest extends FormRequest
         return [
             // User fields
             'name' => ['required', 'string', 'max:255'],
+            // INTENTIONAL EXCEPTION to the email-first multi-tenant identity model
+            // (Codex review S2; owner decision 2026-05-25, LOCKED). Self-signup
+            // (register) keeps GLOBAL uniqueness: one self-registered organization
+            // per email — this limits self-serve tenant spam. The same email CAN
+            // still belong to multiple tenants, but only via INVITATION
+            // (CreateUserRequest uses tenant-scoped uniqueness). Do NOT relax this
+            // to per-tenant without re-opening the product decision.
+            // See docs/sessions/2026-05-25-t6-phase0a-status.md (Deviations §1).
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', Password::defaults(), 'confirmed'],
 

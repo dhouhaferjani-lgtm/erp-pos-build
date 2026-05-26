@@ -9,8 +9,10 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -240,10 +242,41 @@ class UserActionsTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.message', 'Password reset email sent');
 
-        // Verify password reset notification was sent
+        // P1-2: admin-triggered reset must use the tenant-qualified notification,
+        // NOT the stock Illuminate ResetPassword (which carries no tenant param).
         Notification::assertSentTo(
             $this->targetUser,
-            ResetPassword::class
+            ResetPasswordNotification::class
+        );
+        Notification::assertNotSentTo($this->targetUser, ResetPassword::class);
+    }
+
+    public function test_admin_reset_link_carries_a_decryptable_tenant_qualifier(): void
+    {
+        Notification::fake();
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->postJson("/api/v1/users/{$this->targetUser->id}/reset-password")
+            ->assertOk();
+
+        $tenantId = $this->tenant->id;
+
+        Notification::assertSentTo(
+            $this->targetUser,
+            ResetPasswordNotification::class,
+            function (ResetPasswordNotification $n) use ($tenantId): bool {
+                $url = $n->toMail($this->targetUser)->actionUrl;
+                $query = parse_url($url, PHP_URL_QUERY) ?: '';
+                parse_str($query, $params);
+                $signed = $params['tenant'] ?? null;
+
+                if (! is_string($signed)) {
+                    return false;
+                }
+
+                return app(TenantLinkSigner::class)
+                    ->extract($signed) === $tenantId;
+            }
         );
     }
 

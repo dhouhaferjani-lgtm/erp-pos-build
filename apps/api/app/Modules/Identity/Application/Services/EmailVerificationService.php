@@ -7,6 +7,7 @@ namespace App\Modules\Identity\Application\Services;
 use App\Modules\Identity\Application\Notifications\VerifyEmailNotification;
 use App\Modules\Identity\Domain\EmailVerificationToken;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use Illuminate\Support\Str;
 
 class EmailVerificationService
@@ -15,6 +16,10 @@ class EmailVerificationService
      * Token expiry in hours.
      */
     private const TOKEN_EXPIRY_HOURS = 24;
+
+    public function __construct(
+        private readonly TenantLinkSigner $tenantLinkSigner,
+    ) {}
 
     /**
      * Create a verification token for a user and send the email.
@@ -27,8 +32,12 @@ class EmailVerificationService
         // Create new token
         $token = $this->createToken($user);
 
-        // Send verification email
-        $user->notify(new VerifyEmailNotification($token->token));
+        // Send verification email with a tenant-qualified link (topology r7 B1)
+        // so the pre-auth resolver can open the right tenant DB post-flip.
+        $user->notify(new VerifyEmailNotification(
+            $token->token,
+            $this->tenantLinkSigner->sign($user->tenant_id),
+        ));
     }
 
     /**

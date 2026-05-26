@@ -101,6 +101,25 @@ amount: string;
 level: number;
 is_parent: boolean;
 };
+export type CashReconciliationData = {
+date: string;
+location_id: string;
+location_name: string;
+terminal_id: string;
+terminal_name: string;
+shift_id: string;
+expected_cash: string;
+counted_cash: string;
+variance: string;
+variance_severity: string;
+};
+export type CategoryRevenueData = {
+category_id: number | null;
+category_name: string;
+revenue: string;
+percentage: string;
+quantity: string;
+};
 export type LedgerData = {
 opening_balance: string;
 closing_balance: string;
@@ -126,6 +145,13 @@ balance: string;
 source_type: string | null;
 source_id: string | null;
 };
+export type PaymentMethodBreakdownData = {
+payment_type: string;
+payment_method_name: string;
+amount: string;
+percentage: string;
+transaction_count: number;
+};
 export type ProfitLossData = {
 revenue: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
 expenses: Array<App.Modules.Accounting.Application.DTOs.Reports.ProfitLossLineData>;
@@ -142,6 +168,32 @@ account_type: string;
 amount: string;
 level: number;
 is_parent: boolean;
+};
+export type SalesByLocationData = {
+period: string;
+company_id: string;
+company_name: string;
+location_id: string;
+location_name: string;
+gross_sales: string;
+receipt_count: number;
+};
+export type StockAlertData = {
+product_id: string;
+product_name: string;
+location_id: string;
+location_name: string;
+quantity: string;
+min_quantity: string;
+threshold_pct: number;
+severity: string;
+};
+export type TopSkuData = {
+product_id: string | null;
+product_name: string;
+sku: string | null;
+revenue: string;
+quantity: string;
 };
 export type TrialBalanceData = {
 lines: Array<App.Modules.Accounting.Application.DTOs.Reports.TrialBalanceLineData>;
