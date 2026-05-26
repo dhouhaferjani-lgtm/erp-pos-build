@@ -1,5 +1,7 @@
 import { ApiRequestError, apiGet, apiPost } from '@/lib/api';
+import { getCurrencyDecimals } from '@/lib/currency';
 import { getDatabase } from '@/lib/db';
+import { authorZCashDrawerMovement } from '@/lib/fiscal/zSessionAuthoring';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -29,16 +31,21 @@ export async function depositCash(data: {
   idempotencyKey?: string;
 }): Promise<void> {
   const idempotencyKey = data.idempotencyKey ?? crypto.randomUUID();
+  const { companyId } = useAuthStore.getState();
+  await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
+  if (isCutoverTerminal()) {
+    await authorCashDrawerMovement('deposit', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    return;
+  }
+
   const payload = cashDrawerPayload(data, idempotencyKey);
   try {
-    const { companyId } = useAuthStore.getState();
-    await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
     return await apiPost<void>('/pos/cash-drawer/deposit', payload);
   } catch (error) {
     if (error instanceof ApiRequestError && error.status < 500) {
       throw error;
     }
-    await saveOfflineCashDrawerOp('deposit', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    await saveOfflineCashDrawerOp('deposit', data.amount, data.reason, data.approvalEvidence, idempotencyKey, idempotencyKey);
   }
 }
 
@@ -49,17 +56,26 @@ export async function payoutCash(data: {
   idempotencyKey?: string;
 }): Promise<void> {
   const idempotencyKey = data.idempotencyKey ?? crypto.randomUUID();
+  const { companyId } = useAuthStore.getState();
+  await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
+  if (isCutoverTerminal()) {
+    await authorCashDrawerMovement('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    return;
+  }
+
   const payload = cashDrawerPayload(data, idempotencyKey);
   try {
-    const { companyId } = useAuthStore.getState();
-    await ensureApprovalFiscalEventsSynced(companyId ?? '', [data.approvalEvidence.approval_fiscal_event_id]);
     return await apiPost<void>('/pos/cash-drawer/payout', payload);
   } catch (error) {
     if (error instanceof ApiRequestError && error.status < 500) {
       throw error;
     }
-    await saveOfflineCashDrawerOp('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey);
+    await saveOfflineCashDrawerOp('payout', data.amount, data.reason, data.approvalEvidence, idempotencyKey, idempotencyKey);
   }
+}
+
+function isCutoverTerminal(): boolean {
+  return useTerminalStore.getState().terminal?.fiscal_schema_version === 3;
 }
 
 export async function fetchDrawerBalance(shiftId: string): Promise<{ balance: string }> {
@@ -87,6 +103,7 @@ async function saveOfflineCashDrawerOp(
   reason: string,
   approvalEvidence: CashDrawerApprovalEvidence,
   idempotencyKey: string,
+  operationId: string,
 ): Promise<void> {
   const db = await getDb();
   const { shift, terminal } = useTerminalStore.getState();
@@ -97,7 +114,7 @@ async function saveOfflineCashDrawerOp(
   }
 
   await insertCashDrawerOp(db, {
-    id: crypto.randomUUID(),
+    id: operationId,
     idempotency_key: idempotencyKey,
     type,
     amount,
@@ -113,6 +130,65 @@ async function saveOfflineCashDrawerOp(
     approval_supervisor_user_id: approvalEvidence.approval_supervisor_user_id,
     approval_target_hash: approvalEvidence.approval_target_hash,
   });
+}
+
+async function authorCashDrawerMovement(
+  type: 'deposit' | 'payout',
+  amount: string,
+  reason: string,
+  approvalEvidence: CashDrawerApprovalEvidence,
+  movementId: string,
+): Promise<void> {
+  const auth = useAuthStore.getState();
+  const { shift, terminal } = useTerminalStore.getState();
+  const operator = useOperatorStore.getState().operator;
+
+  if (!auth.user?.tenantId || !auth.companyId) {
+    throw new Error('Cannot author cash drawer movement without active tenant and company.');
+  }
+  if (!shift || !terminal || !shift.fiscal_shift_id || !shift.fiscal_session_id) {
+    throw new Error('Cannot author cash drawer movement without an active fiscal session.');
+  }
+  if (!operator) {
+    throw new Error('Cannot author cash drawer movement without an active operator.');
+  }
+
+  const company = auth.companies.find((candidate) => candidate.id === auth.companyId);
+  const currencyCode = company?.currency ?? 'EUR';
+  const currencyScale = fiscalCurrencyScale(currencyCode);
+  await authorZCashDrawerMovement({
+    tenantId: auth.user.tenantId,
+    companyId: auth.companyId,
+    terminalId: terminal.id,
+    shiftId: shift.fiscal_shift_id,
+    sessionId: shift.fiscal_session_id,
+    businessDate: shift.opened_at.slice(0, 10),
+    operatorId: operator.id,
+    operatorName: operator.name,
+    movementType: type === 'deposit' ? 'CASH_IN' : 'CASH_OUT',
+    amount,
+    currencyCode,
+    currencyScale,
+    reasonCode: type === 'deposit' ? 'cash_drawer_deposit' : 'cash_drawer_payout',
+    reasonText: reason,
+    cashDrawerOperationId: movementId,
+    approval: {
+      approval_event_id: approvalEvidence.approval_fiscal_event_id,
+      approval_id: approvalEvidence.approval_id,
+      policy_version: 'pos-cash-drawer-policy-v1',
+      scope: approvalEvidence.approval_scope,
+      supervisor_user_id: approvalEvidence.approval_supervisor_user_id,
+      target_hash: approvalEvidence.approval_target_hash,
+    },
+    isTraining: terminal.is_training_mode === true,
+    movementId,
+  });
+}
+
+function fiscalCurrencyScale(currencyCode: string): 0 | 2 | 3 {
+  const scale = getCurrencyDecimals(currencyCode);
+  if (scale === 0 || scale === 2 || scale === 3) return scale;
+  throw new Error(`Unsupported fiscal currency scale ${scale} for ${currencyCode}`);
 }
 
 function cashDrawerPayload(data: {

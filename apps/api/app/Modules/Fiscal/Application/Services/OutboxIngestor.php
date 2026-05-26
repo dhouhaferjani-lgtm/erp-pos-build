@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\IngestionResult;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
@@ -163,15 +164,27 @@ final class OutboxIngestor
 
         $hashOk = $this->verifyHash($envelope);
         $parseResult = $this->parser->parse($envelope->canonicalBytes, $envelope->eventType);
+        $sealedCoordinateFailure = $this->validateSealedCoordinates($envelope, $parseResult);
+        if ($sealedCoordinateFailure !== null) {
+            $parseResult = ParseResult::failure($sealedCoordinateFailure);
+        }
 
         /** @var stdClass|null $prior */
         $prior = $this->db->table('fiscal_events')
             ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
             ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
             ->orderByDesc('sequence_number')
             ->first();
 
         $linkageVerdict = $this->verifyLinkage($envelope, $prior);
+        $lifecycleVerdict = $this->verifyZSessionLifecycle($envelope, $parseResult);
+        if ($lifecycleVerdict !== null) {
+            $linkageVerdict = $linkageVerdict === null
+                ? $lifecycleVerdict
+                : $linkageVerdict.'|'.$lifecycleVerdict;
+        }
         $clockVerdict = $this->verifyClock($envelope, $prior, $serverReceivedAt);
 
         // Priority ordering — every quarantine class is independent, but a
@@ -196,7 +209,7 @@ final class OutboxIngestor
         $row = $this->buildInsertRow($envelope, $serverReceivedAt, $integrityStatus, $exceptionClass, $exceptionReason, $payload, $payloadParseStatus);
 
         try {
-            return $this->db->transaction(function () use ($envelope, $row, $integrityStatus, $exceptionClass, $serverReceivedAt, $payloadParseStatus, $parseResult): IngestionResult {
+            return $this->db->transaction(function () use ($envelope, $row, $integrityStatus, $exceptionClass, $exceptionReason, $serverReceivedAt, $payloadParseStatus, $parseResult): IngestionResult {
                 // T19-B1: raw INSERT ... ON CONFLICT ON CONSTRAINT
                 // fiscal_events_tenant_terminal_sequence_unique DO NOTHING
                 // RETURNING id. Empty result => slot occupied; the
@@ -219,7 +232,7 @@ final class OutboxIngestor
                 }
 
                 // ---- Step 3: inserted — dispatch projection rows ----
-                $this->dispatchProjections($inserted, $envelope, $integrityStatus, $exceptionClass);
+                $this->dispatchProjections($inserted, $envelope, $integrityStatus, $exceptionClass, $exceptionReason);
 
                 if ($integrityStatus === IntegrityStatus::Quarantined && $exceptionClass !== null) {
                     return IngestionResult::quarantined($inserted, $exceptionClass);
@@ -368,6 +381,61 @@ final class OutboxIngestor
         return $this->integrity->verify($envelope->canonicalBytes, $envelope->currentHash);
     }
 
+    private function validateSealedCoordinates(FiscalEventEnvelope $envelope, ParseResult $parseResult): ?string
+    {
+        if (! $parseResult->ok || $parseResult->envelope === null) {
+            return null;
+        }
+
+        $expected = [
+            'tenant_id' => $envelope->tenantId,
+            'company_id' => $envelope->companyId,
+            'terminal_id' => $envelope->terminalId,
+            'operator_id' => $envelope->operatorId,
+            'event_type' => $envelope->eventType->value,
+            'event_version' => $envelope->eventVersion,
+            'signature_version' => $envelope->signatureVersion,
+            'sequence_number' => $envelope->sequenceNumber,
+            'event_time_device' => $envelope->eventTimeDevice,
+            'business_date' => $envelope->businessDate,
+            'chain_context' => $envelope->chainContext,
+            'reference_event_id' => $envelope->referenceEventId,
+            'reference_document_id' => $envelope->referenceDocumentId,
+            'previous_hash' => $envelope->previousHash,
+        ];
+
+        foreach ($expected as $field => $outerValue) {
+            $sealedValue = $parseResult->envelope[$field] ?? null;
+            if ($sealedValue !== $outerValue) {
+                return sprintf(
+                    'sealed_coordinate_mismatch:field=%s,outer=%s,canonical=%s',
+                    $field,
+                    $this->forensicScalar($outerValue),
+                    $this->forensicScalar($sealedValue),
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private function forensicScalar(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_int($value) || is_float($value) || is_string($value)) {
+            $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            return is_string($encoded) ? $encoded : get_debug_type($value);
+        }
+
+        return get_debug_type($value);
+    }
+
     /**
      * Verify chain linkage (§7.2 line 337).
      *
@@ -437,6 +505,121 @@ final class OutboxIngestor
         }
 
         return $errors === [] ? null : 'sequence_gap:'.implode('|', $errors);
+    }
+
+    private function verifyZSessionLifecycle(FiscalEventEnvelope $envelope, ParseResult $parseResult): ?string
+    {
+        if (! in_array($envelope->chainContext, ['z_session', 'training_z_session'], true)) {
+            return null;
+        }
+        if (! $parseResult->ok || $parseResult->payload === null) {
+            return null;
+        }
+
+        $sessionId = $parseResult->payload['session_id'] ?? null;
+        if (! is_string($sessionId) || $sessionId === '') {
+            return 'z_session_lifecycle:missing_session_id';
+        }
+
+        if ($envelope->eventType === FiscalEventType::SESSION_OPEN) {
+            if ($envelope->sourceEventClass !== 'pos_session' || $envelope->sourceEventId !== $sessionId) {
+                return 'z_session_lifecycle:session_open_source_mismatch';
+            }
+
+            $existingOpen = $this->findZSessionOpen($envelope, $sessionId);
+
+            return $existingOpen === null
+                ? null
+                : 'z_session_lifecycle:duplicate_session_open';
+        }
+
+        $sessionOpen = $this->findZSessionOpen($envelope, $sessionId);
+        if ($sessionOpen === null) {
+            return 'z_session_lifecycle:missing_session_open';
+        }
+
+        if ($this->hasZReportForSession($envelope, $sessionId)) {
+            return 'z_session_lifecycle:session_already_z_reported';
+        }
+
+        if ($envelope->eventType === FiscalEventType::Z_REPORT) {
+            $sessionCloseEventId = $this->sessionCloseEventIdFromPayload($parseResult->payload);
+            if ($sessionCloseEventId === null) {
+                return 'z_session_lifecycle:missing_session_close_reference';
+            }
+            if (! $this->sessionCloseExists($envelope, $sessionId, $sessionCloseEventId)) {
+                return 'z_session_lifecycle:missing_session_close';
+            }
+        }
+
+        return null;
+    }
+
+    private function findZSessionOpen(FiscalEventEnvelope $envelope, string $sessionId): ?stdClass
+    {
+        /** @var stdClass|null $row */
+        $row = $this->db->table('fiscal_events')
+            ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
+            ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
+            ->where('event_type', FiscalEventType::SESSION_OPEN->value)
+            ->where('payload->session_id', $sessionId)
+            ->first(['id']);
+
+        return $row;
+    }
+
+    private function hasZReportForSession(FiscalEventEnvelope $envelope, string $sessionId): bool
+    {
+        $rows = $this->db->table('fiscal_events')
+            ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
+            ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
+            ->where('event_type', FiscalEventType::Z_REPORT->value)
+            ->get(['payload']);
+
+        foreach ($rows as $row) {
+            $payload = $row->payload ?? null;
+            if (is_string($payload)) {
+                /** @var mixed $decoded */
+                $decoded = json_decode($payload, true);
+                $payload = $decoded;
+            }
+            if (is_array($payload) && ($payload['session_id'] ?? null) === $sessionId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function sessionCloseEventIdFromPayload(array $payload): ?string
+    {
+        $range = $payload['session_event_range'] ?? null;
+        if (! is_array($range)) {
+            return null;
+        }
+        $eventId = $range['session_close_event_id'] ?? null;
+
+        return is_string($eventId) && $eventId !== '' ? $eventId : null;
+    }
+
+    private function sessionCloseExists(FiscalEventEnvelope $envelope, string $sessionId, string $sessionCloseEventId): bool
+    {
+        return $this->db->table('fiscal_events')
+            ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
+            ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
+            ->where('event_type', FiscalEventType::SESSION_CLOSE->value)
+            ->where('id', $sessionCloseEventId)
+            ->where('payload->session_id', $sessionId)
+            ->exists();
     }
 
     /** Sentinel returned by `fetchGenesisSeed()` when the DB lookup throws. */
@@ -622,6 +805,7 @@ final class OutboxIngestor
             'sequence_number' => $envelope->sequenceNumber,
             'event_time_device' => $envelope->eventTimeDevice,
             'business_date' => $envelope->businessDate,
+            'chain_context' => $envelope->chainContext,
             'last_server_time_seen' => $envelope->lastServerTimeSeen,
             'server_received_at' => $serverReceivedAt->toDateTimeString(),
             'reference_event_id' => $envelope->referenceEventId,
@@ -679,12 +863,12 @@ final class OutboxIngestor
                 $placeholders,
             );
         } else {
-            // SQLite + others — explicit conflict-target on (tenant_id,
-            // terminal_id, sequence_number) so a source-event-id
-            // collision still propagates as a QueryException.
+            // SQLite + others — explicit conflict-target on the chain slot
+            // so a source-event-id collision still propagates as a
+            // QueryException.
             $sql = sprintf(
                 'INSERT INTO "fiscal_events" (%s) VALUES (%s) '.
-                'ON CONFLICT (tenant_id, terminal_id, sequence_number) '.
+                'ON CONFLICT (tenant_id, company_id, terminal_id, chain_context, sequence_number) '.
                 'DO NOTHING RETURNING id',
                 $columnList,
                 $placeholders,
@@ -729,9 +913,13 @@ final class OutboxIngestor
         FiscalEventEnvelope $envelope,
         IntegrityStatus $integrityStatus,
         ?IntegrityExceptionClass $exceptionClass,
+        ?string $exceptionReason,
     ): void {
         if ($exceptionClass === IntegrityExceptionClass::CanonicalParseFailure) {
             // §7.5 suppression — no trusted payload to project.
+            return;
+        }
+        if ($exceptionReason !== null && str_contains($exceptionReason, 'z_session_lifecycle:')) {
             return;
         }
         unset($integrityStatus); // marker for future spec change — every other quarantine class still projects
@@ -802,7 +990,9 @@ final class OutboxIngestor
         /** @var stdClass|null $existing */
         $existing = $this->db->table('fiscal_events')
             ->where('tenant_id', $envelope->tenantId)
+            ->where('company_id', $envelope->companyId)
             ->where('terminal_id', $envelope->terminalId)
+            ->where('chain_context', $envelope->chainContext)
             ->where('sequence_number', $envelope->sequenceNumber)
             ->first();
 
@@ -947,6 +1137,7 @@ final class OutboxIngestor
             'claimed_sequence_number' => $envelope->sequenceNumber,
             'event_time_device' => $envelope->eventTimeDevice,
             'business_date' => $envelope->businessDate,
+            'chain_context' => $envelope->chainContext,
             'last_server_time_seen' => $envelope->lastServerTimeSeen,
             'reference_event_id' => $envelope->referenceEventId,
             'reference_document_id' => $envelope->referenceDocumentId,
@@ -984,6 +1175,7 @@ final class OutboxIngestor
             'sequence_number' => $envelope->sequenceNumber,
             'event_time_device' => $envelope->eventTimeDevice,
             'business_date' => $envelope->businessDate,
+            'chain_context' => $envelope->chainContext,
             'last_server_time_seen' => $envelope->lastServerTimeSeen,
             'reference_event_id' => $envelope->referenceEventId,
             'reference_document_id' => $envelope->referenceDocumentId,

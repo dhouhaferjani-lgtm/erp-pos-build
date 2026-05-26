@@ -144,6 +144,7 @@ final class QuarantineBestEffortParseControllerTest extends TestCase
             'claimed_sequence_number' => 1,
             'event_time_device' => now()->utc(),
             'business_date' => now()->toDateString(),
+            'chain_context' => 'operational',
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,

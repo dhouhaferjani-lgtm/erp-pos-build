@@ -18,6 +18,7 @@ function makeTerminal(over: Partial<Terminal> = {}): Terminal {
     name: 'Main',
     type: 'shop',
     is_active: true,
+    fiscal_schema_version: 2,
     is_training_mode: false,
     hardware_identifier: null,
     location: { id: 'l-1', name: 'Main', code: 'MAIN' },
