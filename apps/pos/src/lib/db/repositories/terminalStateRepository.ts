@@ -54,6 +54,9 @@ export interface TerminalHashState {
    */
   fiscal_schema_version: 2 | 3;
   fiscal_event_genesis_seed?: string;
+  z_chain_genesis_seed?: string;
+  training_fiscal_event_genesis_seed?: string;
+  training_z_chain_genesis_seed?: string;
 }
 
 /**
@@ -150,13 +153,25 @@ export async function upsertTerminalState(
   db: Database,
   state: TerminalHashState,
 ): Promise<void> {
-  const current = await queryOne<{ hash_sequence: number; fiscal_event_genesis_seed: string }>(
+  const current = await queryOne<{
+    hash_sequence: number;
+    fiscal_event_genesis_seed: string;
+    z_chain_genesis_seed: string;
+    training_fiscal_event_genesis_seed: string;
+    training_z_chain_genesis_seed: string;
+  }>(
     db,
-    'SELECT hash_sequence, fiscal_event_genesis_seed FROM terminal_state WHERE terminal_id = $1',
+    `SELECT hash_sequence, fiscal_event_genesis_seed, z_chain_genesis_seed,
+            training_fiscal_event_genesis_seed, training_z_chain_genesis_seed
+       FROM terminal_state
+      WHERE terminal_id = $1`,
     [state.terminal_id],
   );
   const before = current?.hash_sequence ?? null;
   const incomingFiscalSeed = state.fiscal_event_genesis_seed ?? state.genesis_seed;
+  const incomingZSeed = state.z_chain_genesis_seed ?? incomingFiscalSeed;
+  const incomingTrainingFiscalSeed = state.training_fiscal_event_genesis_seed ?? incomingFiscalSeed;
+  const incomingTrainingZSeed = state.training_z_chain_genesis_seed ?? incomingZSeed;
 
   if (before !== null && state.hash_sequence < before) {
     logFiscal({
@@ -198,9 +213,11 @@ export async function upsertTerminalState(
     db,
     `INSERT INTO terminal_state (
        terminal_id, terminal_code, location_code, genesis_seed, last_hash,
-       hash_sequence, fiscal_schema_version, fiscal_event_genesis_seed, updated_at
+       hash_sequence, fiscal_schema_version, fiscal_event_genesis_seed,
+       z_chain_genesis_seed, training_fiscal_event_genesis_seed,
+       training_z_chain_genesis_seed, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, datetime('now'))
      ON CONFLICT(terminal_id) DO UPDATE SET
        terminal_code = excluded.terminal_code,
        location_code = excluded.location_code,
@@ -212,6 +229,18 @@ export async function upsertTerminalState(
          WHEN terminal_state.fiscal_event_genesis_seed = '' THEN excluded.fiscal_event_genesis_seed
          ELSE terminal_state.fiscal_event_genesis_seed
        END,
+       z_chain_genesis_seed = CASE
+         WHEN terminal_state.z_chain_genesis_seed = '' THEN excluded.z_chain_genesis_seed
+         ELSE terminal_state.z_chain_genesis_seed
+       END,
+       training_fiscal_event_genesis_seed = CASE
+         WHEN terminal_state.training_fiscal_event_genesis_seed = '' THEN excluded.training_fiscal_event_genesis_seed
+         ELSE terminal_state.training_fiscal_event_genesis_seed
+       END,
+       training_z_chain_genesis_seed = CASE
+         WHEN terminal_state.training_z_chain_genesis_seed = '' THEN excluded.training_z_chain_genesis_seed
+         ELSE terminal_state.training_z_chain_genesis_seed
+       END,
        updated_at = datetime('now')`,
     [
       state.terminal_id,
@@ -222,6 +251,9 @@ export async function upsertTerminalState(
       state.hash_sequence,
       state.fiscal_schema_version,
       incomingFiscalSeed,
+      incomingZSeed,
+      incomingTrainingFiscalSeed,
+      incomingTrainingZSeed,
     ],
   );
 

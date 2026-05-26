@@ -24,23 +24,26 @@ final readonly class ParseResult
 {
     /**
      * @param  array<string, mixed>|null  $payload
+     * @param  array<string, mixed>|null  $envelope
      */
     private function __construct(
         public bool $ok,
         public ?array $payload,
         public ?string $failureReason,
+        public ?array $envelope,
     ) {}
 
     /**
      * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $envelope
      */
-    public static function ok(array $payload): self
+    public static function ok(array $payload, array $envelope): self
     {
-        return new self(true, $payload, null);
+        return new self(true, $payload, null, $envelope);
     }
 
     public static function failure(string $reason): self
     {
-        return new self(false, null, $reason);
+        return new self(false, null, $reason, null);
     }
 }

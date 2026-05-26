@@ -36,8 +36,25 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: {
-    getState: vi.fn(() => ({ companyId: 'company-1', token: 'token-1' })),
+    getState: vi.fn(() => ({
+      companyId: 'company-1',
+      token: 'token-1',
+      user: {
+        id: '22222222-2222-4222-8222-222222222222',
+        name: 'Jane',
+        tenantId: 'tenant-1',
+      },
+      companies: [{ id: 'company-1', currency: 'EUR' }],
+    })),
   },
+}));
+
+vi.mock('@/lib/fiscal/zSessionAuthoring', () => ({
+  authorZSessionOpenWithOpeningFloat: vi.fn().mockResolvedValue({
+    sessionOpenEvent: { id: 'session-open-event' },
+    openingFloatEvent: { id: 'opening-float-event' },
+    openingFloatMovementId: 'movement-1',
+  }),
 }));
 
 vi.mock('@/stores/paymentStore', () => ({
@@ -69,6 +86,7 @@ vi.mock('@/stores/operatorStore', () => ({
 import { apiGet, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { invalidateTerminalDiscountPermissions } from '@/lib/db/repositories/operatorPinRepository';
+import { authorZSessionOpenWithOpeningFloat } from '@/lib/fiscal/zSessionAuthoring';
 import { getStoredValue, setStoredValue, removeStoredValue } from '@/lib/storage';
 
 const mockDb = {
@@ -83,6 +101,7 @@ const mockTerminal: Terminal = {
   name: 'Register 1',
   type: 'pos',
   is_active: true,
+  fiscal_schema_version: 2,
   is_training_mode: false,
   hardware_identifier: 'device-abc',
   location: { id: 'loc-1', name: 'Main Store', code: 'LOC-001' },
@@ -182,8 +201,41 @@ describe('terminalStore', () => {
 
     await useTerminalStore.getState().openShift('100.00');
 
-    expect(useTerminalStore.getState().shift).toEqual(mockShift);
+    expect(useTerminalStore.getState().shift).toEqual(expect.objectContaining(mockShift));
     expect(useTerminalStore.getState().isLoading).toBe(false);
+  });
+
+  it('openShift does not author Z-session opening fiscal events for pre-cutover terminals', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 2 } });
+    vi.mocked(apiPost).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(authorZSessionOpenWithOpeningFloat).not.toHaveBeenCalled();
+    expect(useTerminalStore.getState().shift).toEqual(expect.objectContaining(mockShift));
+  });
+
+  it('openShift authors Z-session opening fiscal events for cutover terminals', async () => {
+    useTerminalStore.setState({ terminal: { ...mockTerminal, fiscal_schema_version: 3 } });
+    vi.mocked(apiPost).mockResolvedValue(mockShift);
+
+    await useTerminalStore.getState().openShift('100.00');
+
+    expect(authorZSessionOpenWithOpeningFloat).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      companyId: 'company-1',
+      terminalId: 'term-1',
+      terminalLabel: 'T001',
+      shiftId: expect.any(String),
+      sessionId: expect.any(String),
+      businessDate: '2026-03-12',
+      operatorId: 'user-1',
+      operatorName: 'Jane',
+      currencyCode: 'EUR',
+      currencyScale: 2,
+      openingFloatAmount: '100.00',
+      isTraining: false,
+    }));
   });
 
   it('openShift throws when no terminal configured', async () => {
@@ -227,7 +279,7 @@ describe('terminalStore', () => {
 
     await useTerminalStore.getState().openShift('100.00');
 
-    expect(setStoredValue).toHaveBeenCalledWith('current_shift', mockShift);
+    expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining(mockShift));
   });
 
   it('openShift creates local shift when API fails (offline)', async () => {
@@ -242,6 +294,8 @@ describe('terminalStore', () => {
     expect(state.shift!.opening_cash).toBe('100.00');
     expect(state.shift!.status).toBe('OPEN');
     expect(state.shift!.id).toMatch(/^offline-/);
+    expect(state.shift!.fiscal_shift_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(state.shift!.fiscal_session_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(state.isLoading).toBe(false);
     expect(setStoredValue).toHaveBeenCalledWith('current_shift', expect.objectContaining({
       terminal_id: 'term-1',

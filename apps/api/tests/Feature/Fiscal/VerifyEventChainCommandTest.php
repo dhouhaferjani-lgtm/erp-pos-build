@@ -455,6 +455,7 @@ final class VerifyEventChainCommandTest extends TestCase
             'claimed_sequence_number' => $claimedSequence,
             'event_time_device' => Carbon::now('UTC'),
             'business_date' => Carbon::now('UTC')->startOfDay(),
+            'chain_context' => 'operational',
             'last_server_time_seen' => null,
             'reference_event_id' => null,
             'reference_document_id' => null,

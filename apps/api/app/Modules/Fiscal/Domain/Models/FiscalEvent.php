@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property int $sequence_number
  * @property Carbon $event_time_device
  * @property Carbon $business_date
+ * @property string $chain_context
  * @property Carbon|null $last_server_time_seen
  * @property Carbon $server_received_at
  * @property string|null $reference_event_id
@@ -101,6 +102,7 @@ final class FiscalEvent extends Model
         'sequence_number',
         'event_time_device',
         'business_date',
+        'chain_context',
         'last_server_time_seen',
         'server_received_at',
         'reference_event_id',

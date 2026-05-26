@@ -38,6 +38,7 @@ return new class extends Migration
             $table->bigInteger('sequence_number');
             $table->timestampTz('event_time_device');
             $table->date('business_date');
+            $table->string('chain_context', 32)->default('operational');
             $table->timestampTz('last_server_time_seen')->nullable();
 
             // Server ingestion timestamp — set explicitly by OutboxIngestor (§7, §10).
@@ -89,7 +90,7 @@ return new class extends Migration
 
             // Inline indexes that don't need partial / WHERE clauses.
             $table->unique(
-                ['tenant_id', 'terminal_id', 'sequence_number'],
+                ['tenant_id', 'company_id', 'terminal_id', 'chain_context', 'sequence_number'],
                 'fiscal_events_tenant_terminal_sequence_unique',
             );
         });
@@ -121,6 +122,7 @@ return new class extends Migration
 
             // CHECK constraints — invariants enforced at the DB layer.
             DB::statement('ALTER TABLE fiscal_events ADD CONSTRAINT fiscal_events_sequence_positive CHECK (sequence_number > 0)');
+            DB::statement("ALTER TABLE fiscal_events ADD CONSTRAINT fiscal_events_chain_context_allowed CHECK (chain_context IN ('operational', 'z_session', 'training_operational', 'training_z_session'))");
             DB::statement("ALTER TABLE fiscal_events ADD CONSTRAINT fiscal_events_current_hash_format CHECK (current_hash ~ '^[0-9a-f]{64}\$')");
             DB::statement("ALTER TABLE fiscal_events ADD CONSTRAINT fiscal_events_previous_hash_format CHECK (previous_hash ~ '^[0-9a-f]{64}\$')");
             DB::statement(<<<'SQL'

@@ -930,6 +930,7 @@ export const migrations: Migration[] = [
           sequence_number             INTEGER NOT NULL,
           event_time_device           TEXT NOT NULL,
           business_date               TEXT NOT NULL,
+          chain_context               TEXT NOT NULL DEFAULT 'operational',
           last_server_time_seen       TEXT,
           reference_event_id          TEXT,
           reference_document_id       TEXT,
@@ -965,6 +966,7 @@ export const migrations: Migration[] = [
           -- node:sqlite probe in the Task 13 round-2 dual review.
           CHECK (length(current_hash)  = 64 AND current_hash  NOT GLOB '*[^0-9a-f]*'),
           CHECK (length(previous_hash) = 64 AND previous_hash NOT GLOB '*[^0-9a-f]*'),
+          CHECK (chain_context IN ('operational', 'z_session', 'training_operational', 'training_z_session')),
           CHECK (sync_status IN ('pending', 'syncing', 'synced', 'failed')),
           CHECK (signature_status IN ('not_required', 'pending', 'signed', 'failed')),
           CHECK (
@@ -974,11 +976,12 @@ export const migrations: Migration[] = [
         );
       `);
 
-      // Chain-integrity UNIQUE — the (tenant_id, terminal_id, sequence_number)
-      // triple is the authoritative chain key. Matches server-side spec §3.2.
+      // Chain-integrity UNIQUE — sequence slots are scoped by explicit
+      // chain_context so the same terminal can maintain operational,
+      // session/Z, and training streams independently.
       await db.execute(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_chain_unique
-          ON fiscal_events(tenant_id, terminal_id, sequence_number);
+          ON fiscal_events(tenant_id, company_id, terminal_id, chain_context, sequence_number);
       `);
 
       // Source-event idempotency — partial unique index excludes NULL pairs.
@@ -1022,7 +1025,7 @@ export const migrations: Migration[] = [
         BEFORE UPDATE OF
           id, tenant_id, company_id, terminal_id, operator_id,
           event_type, event_version, signature_version, sequence_number,
-          event_time_device, business_date, last_server_time_seen,
+          event_time_device, business_date, chain_context, last_server_time_seen,
           reference_event_id, reference_document_id,
           source_event_class, source_event_id,
           partner_id, partner_identity_snapshot,
@@ -1056,6 +1059,15 @@ export const migrations: Migration[] = [
         "ALTER TABLE terminal_state ADD COLUMN fiscal_event_genesis_seed TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE terminal_state ADD COLUMN fiscal_event_last_hash TEXT NOT NULL DEFAULT ''",
         'ALTER TABLE terminal_state ADD COLUMN fiscal_event_sequence INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE terminal_state ADD COLUMN z_chain_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN z_chain_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN z_chain_sequence INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_sequence INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE terminal_state ADD COLUMN training_z_chain_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN training_z_chain_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN training_z_chain_sequence INTEGER NOT NULL DEFAULT 0',
       ];
       for (const stmt of terminalStateColumns) {
         try {
@@ -1067,6 +1079,39 @@ export const migrations: Migration[] = [
           }
         }
       }
+      await db.execute(`
+        UPDATE terminal_state
+           SET fiscal_event_genesis_seed = CASE
+                 WHEN fiscal_event_genesis_seed = '' THEN genesis_seed
+                 ELSE fiscal_event_genesis_seed
+               END,
+               z_chain_genesis_seed = CASE
+                 WHEN z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE z_chain_genesis_seed
+               END,
+               training_fiscal_event_genesis_seed = CASE
+                 WHEN training_fiscal_event_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_fiscal_event_genesis_seed
+               END,
+               training_z_chain_genesis_seed = CASE
+                 WHEN training_z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN z_chain_genesis_seed <> '' THEN z_chain_genesis_seed
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_z_chain_genesis_seed
+               END
+         WHERE genesis_seed <> ''
+      `);
 
       // ----- offline_receipts.canonical_bytes ----------------------------
       // Nullable — projection-only callers continue to function until
@@ -1288,6 +1333,109 @@ export const migrations: Migration[] = [
           }
         }
       }
+    },
+  },
+  {
+    // Z-report rebuild — first-class fiscal chain contexts.
+    version: 45,
+    name: 'add_fiscal_event_chain_context',
+    sql: '',
+    async run(db) {
+      const fiscalEventColumns = [
+        "ALTER TABLE fiscal_events ADD COLUMN chain_context TEXT NOT NULL DEFAULT 'operational'",
+      ];
+
+      for (const stmt of fiscalEventColumns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+
+      const terminalStateColumns = [
+        "ALTER TABLE terminal_state ADD COLUMN z_chain_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN z_chain_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN z_chain_sequence INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN training_fiscal_event_sequence INTEGER NOT NULL DEFAULT 0',
+        "ALTER TABLE terminal_state ADD COLUMN training_z_chain_genesis_seed TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE terminal_state ADD COLUMN training_z_chain_last_hash TEXT NOT NULL DEFAULT ''",
+        'ALTER TABLE terminal_state ADD COLUMN training_z_chain_sequence INTEGER NOT NULL DEFAULT 0',
+      ];
+
+      for (const stmt of terminalStateColumns) {
+        try {
+          await db.execute(stmt);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : '';
+          if (!msg.includes('duplicate column')) {
+            throw error;
+          }
+        }
+      }
+
+      await db.execute(`
+        UPDATE terminal_state
+           SET z_chain_genesis_seed = CASE
+                 WHEN z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE z_chain_genesis_seed
+               END,
+               training_fiscal_event_genesis_seed = CASE
+                 WHEN training_fiscal_event_genesis_seed = '' THEN
+                   CASE
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_fiscal_event_genesis_seed
+               END,
+               training_z_chain_genesis_seed = CASE
+                 WHEN training_z_chain_genesis_seed = '' THEN
+                   CASE
+                     WHEN z_chain_genesis_seed <> '' THEN z_chain_genesis_seed
+                     WHEN fiscal_event_genesis_seed <> '' THEN fiscal_event_genesis_seed
+                     ELSE genesis_seed
+                   END
+                 ELSE training_z_chain_genesis_seed
+               END
+         WHERE genesis_seed <> ''
+      `);
+
+      await db.execute('DROP INDEX IF EXISTS idx_fiscal_events_chain_unique');
+      await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_fiscal_events_chain_unique
+          ON fiscal_events(tenant_id, company_id, terminal_id, chain_context, sequence_number);
+      `);
+
+      await db.execute('DROP TRIGGER IF EXISTS fiscal_events_block_update');
+      await db.execute(`
+        CREATE TRIGGER IF NOT EXISTS fiscal_events_block_update
+        BEFORE UPDATE OF
+          id, tenant_id, company_id, terminal_id, operator_id,
+          event_type, event_version, signature_version, sequence_number,
+          event_time_device, business_date, chain_context, last_server_time_seen,
+          reference_event_id, reference_document_id,
+          source_event_class, source_event_id,
+          partner_id, partner_identity_snapshot,
+          canonical_bytes, previous_hash, current_hash,
+          signature_status, signature_algorithm, signature_value,
+          signature_counter, signature_provider, signing_device_id,
+          certificate_id, signed_payload_ref,
+          time_source_value, time_format, provider_transaction_id,
+          created_at
+        ON fiscal_events
+        BEGIN
+          SELECT RAISE(ABORT, 'fiscal_events is append-only; only sync_status/sync_error/synced_at may be updated');
+        END;
+      `);
     },
   },
 ];

@@ -11,6 +11,7 @@ use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
 use App\Modules\POS\Application\Services\ReportGenerationService;
 use App\Modules\POS\Domain\DTOs\CashCountInputDTO;
+use App\Modules\POS\Domain\Exceptions\ServerFiscalAuthoringRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
@@ -96,6 +97,8 @@ final class ReportController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 409);
+        } catch (ServerFiscalAuthoringRetiredException $e) {
+            return $this->deviceAuthorityRetiredResponse($e);
         }
     }
 
@@ -186,7 +189,19 @@ final class ReportController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 403);
+        } catch (ServerFiscalAuthoringRetiredException $e) {
+            return $this->deviceAuthorityRetiredResponse($e);
         }
+    }
+
+    private function deviceAuthorityRetiredResponse(ServerFiscalAuthoringRetiredException $e): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'Z_SESSION_DEVICE_AUTHORITY_REQUIRED',
+                'message' => $e->getMessage(),
+            ],
+        ], 409);
     }
 
     /**
