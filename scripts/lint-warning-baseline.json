@@ -4,7 +4,7 @@
   "apps": {
     "@autoerp/web": {
       "errors": 0,
-      "warnings": 11338
+      "warnings": 11343
     },
     "@autoerp/pos": {
       "errors": 0,
