@@ -9,12 +9,8 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: vi.fn(),
-    isPending: false,
-  }),
-}))
+// T6 Phase 0a removed the global check-email debounce probe from AccountStep,
+// so the component no longer uses @tanstack/react-query. No mock needed.
 
 describe('AccountStep', () => {
   const defaultProps = {

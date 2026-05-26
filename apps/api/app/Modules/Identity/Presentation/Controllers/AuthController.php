@@ -13,20 +13,26 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Application\DTOs\AuthUserData;
 use App\Modules\Identity\Application\DTOs\LoginResponseData;
+use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Application\Services\EmailVerificationService;
 use App\Modules\Identity\Domain\Device;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Identity\Presentation\Requests\CheckEmailRequest;
 use App\Modules\Identity\Presentation\Requests\ForgotPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\LoginRequest;
 use App\Modules\Identity\Presentation\Requests\RegisterRequest;
 use App\Modules\Identity\Presentation\Requests\ResetPasswordRequest;
 use App\Modules\Identity\Presentation\Requests\VerifyEmailRequest;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
+use App\Modules\Tenant\Domain\CentralIdentity;
+use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
+use Illuminate\Auth\Passwords\PasswordBroker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -62,6 +68,9 @@ class AuthController extends Controller
     public function __construct(
         private readonly EmailVerificationService $emailVerificationService,
         private readonly TenantInitializationService $tenantInitializationService,
+        private readonly IdentityIndexService $identityIndexService,
+        private readonly TenancyResolver $tenancyResolver,
+        private readonly TenantLinkSigner $tenantLinkSigner,
     ) {}
 
     /**
@@ -171,33 +180,105 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $validated = $request->validated();
+        $email = $validated['email'];
+        $explicitTenantId = $validated['tenant_id'] ?? null;
 
-        // First check if user exists and is active before attempting auth
-        $user = User::where('email', $validated['email'])->first();
+        // Email-first tenant resolution (topology §9.2). With an explicit
+        // tenant_id (POS device-bound flow or an org picked from the chooser)
+        // we bind that tenant directly; otherwise we look up the central
+        // identity index by email.
+        $tenantIds = $explicitTenantId !== null
+            ? [$explicitTenantId]
+            : CentralIdentity::query()->where('email', $email)->pluck('tenant_id')->all();
 
-        if ($user !== null && ! $user->isActive()) {
+        // 0 memberships → generic "no organizations" (enumeration-aware, §9.7).
+        if ($tenantIds === []) {
             throw ValidationException::withMessages([
-                'email' => ['Your account is not active. Please contact support.'],
+                'email' => [__('auth.no_organizations')],
             ]);
         }
 
-        // Use Auth::attempt() to validate credentials AND establish session
-        // This is required for Sanctum SPA cookie-based authentication
-        if (! Auth::attempt([
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-        ])) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+        // >1 memberships and no explicit choice → return the org picker list
+        // (the Balanced stance — we show memberships for a valid email).
+        if ($explicitTenantId === null && count($tenantIds) > 1) {
+            $organizations = [];
+            /** @var Tenant $tenant */
+            foreach (Tenant::query()->whereIn('id', $tenantIds)->orderBy('name')->get() as $tenant) {
+                $organizations[] = [
+                    'tenant_id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'slug' => $tenant->slug,
+                ];
+            }
+
+            return response()->json([
+                'data' => [
+                    'requires_org_selection' => true,
+                    'organizations' => $organizations,
+                ],
+                'meta' => [
+                    'timestamp' => now()->toIso8601String(),
+                    'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                ],
             ]);
         }
 
-        // Regenerate session to prevent session fixation attacks
+        $tenantId = $tenantIds[0];
+
+        /** @var Tenant|null $tenant */
+        $tenant = Tenant::query()->find($tenantId);
+
+        // Unknown tenant (e.g. a bad explicit tenant_id) → generic sign-in
+        // failure, same body as bad credentials so slugs aren't enumerable.
+        if ($tenant === null) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.invalid_credentials')],
+            ]);
+        }
+
+        // Initialize tenancy before touching `users` so this flow works
+        // unchanged after the Phase 0b flip (flip-agnostic; today a no-op
+        // because no per-tenant schema exists — see TenancyResolver).
+        $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+        // Validate credentials against the tenant's users. The tenant_id scope
+        // is correct in both phases: today it isolates within the shared DB;
+        // post-flip every user in the tenant DB already carries this tenant_id.
+        /** @var User|null $user */
+        $user = User::query()
+            ->where('tenant_id', $tenantId)
+            ->where('email', $email)
+            ->first();
+
+        if ($user === null || ! Hash::check($validated['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.invalid_credentials')],
+            ]);
+        }
+
+        if (! $user->isActive()) {
+            throw ValidationException::withMessages([
+                'email' => [__('auth.account_not_active')],
+            ]);
+        }
+
+        // Suspended / Archived organizations are reachable only once a valid
+        // credential pair is known (§9.7) → clear operator-facing 403.
+        if (in_array($tenant->status, [TenantStatus::Suspended, TenantStatus::Archived], true)) {
+            return response()->json([
+                'error' => [
+                    'code' => 'ORGANIZATION_UNAVAILABLE',
+                    'message' => __('auth.organization_unavailable'),
+                ],
+            ], 403);
+        }
+
+        // Establish the SPA session for cookie-based (web back-office) auth and
+        // stamp the tenant_id into the session so the pre-auth resolver's
+        // cookie branch can re-initialize tenancy on subsequent requests.
+        Auth::login($user);
         $request->session()->regenerate();
-
-        // Get the authenticated user (now properly loaded via Auth)
-        /** @var User $user */
-        $user = Auth::user();
+        $request->session()->put('tenant_id', $tenantId);
 
         // Record login
         $user->recordLogin($request->ip() ?? 'unknown');
@@ -353,6 +434,28 @@ class AuthController extends Controller
                 'accepted_at' => now(),
             ]);
 
+            // 4.5. Create the Stancl domains row for the optional subdomain
+            // shortcut ({slug}.synerivia.tn) — previously only CreateTenantCommand
+            // did this. With wildcard SSL on *.synerivia.tn the only per-tenant
+            // setup is this insert (topology §9.2).
+            Domain::create([
+                'tenant_id' => $tenant->id,
+                // Domains are case-insensitive; lowercase so the stored value
+                // round-trips with the subdomain resolver lookup.
+                'domain' => strtolower($tenant->slug).'.synerivia.tn',
+                'is_primary' => true,
+                'is_verified' => true,
+            ]);
+
+            // 4.6. Write the central identity index row (topology §9.1) so the
+            // owner can do email-first login / org recovery. NOTE (Phase 0b):
+            // post-flip the central row and the tenant-DB users row live in
+            // different databases and cannot share this transaction — the
+            // ordering becomes "central rows first, then tenant user, compensate
+            // on failure". Today everything is on the default connection so the
+            // single-transaction write is correct.
+            $this->identityIndexService->record($user->email, $tenant->id, $user->id);
+
             // 5. Initialize tenant with country-specific data
             // This assigns the 'admin' Spatie role (for sidebar access) and seeds:
             // - Country-specific chart of accounts (Tunisia/France)
@@ -405,30 +508,6 @@ class AuthController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ], 201);
-    }
-
-    /**
-     * Check if an email is available for registration.
-     *
-     * Security note: this endpoint deliberately discloses email
-     * existence (the registration UX needs to redirect users to login
-     * rather than re-register). The enumeration risk is mitigated by
-     * the dedicated `throttle:check-email` per-IP limiter (10/min) —
-     * see RateLimiter::for('check-email', ...) in AppServiceProvider.
-     * F.3 narrowed the limiter from `throttle:login` (which keys on
-     * email-or-IP and is defeated by rotating emails) to a hard IP
-     * cap.
-     */
-    #[CrossTenantRoute(reason: 'Pre-auth: email-availability lookup before registration; queries User::where(email) globally to detect any pre-existing account (any tenant) so the registration flow can present a "sign in" CTA instead of "register". Mounted public on the unauthenticated route group; no tenant context exists at call time. Existence-disclosure mitigated by F.3 dedicated per-IP rate limit.')]
-    public function checkEmail(CheckEmailRequest $request): JsonResponse
-    {
-        $validated = $request->validated();
-
-        $exists = User::where('email', $validated['email'])->exists();
-
-        return response()->json([
-            'available' => ! $exists,
-        ]);
     }
 
     /**
@@ -565,15 +644,52 @@ class AuthController extends Controller
     /**
      * Send a password reset link to the given email.
      */
-    #[CrossTenantRoute(reason: 'Pre-auth: password-reset request — accepts an email and dispatches a Password::sendResetLink (Laravel password broker) which finds the user globally by email and emails a signed reset token. No session/tenant context exists at call time.')]
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset request — resolves the email\'s tenant memberships via the central identity index (central_identities) and issues a tenant-qualified reset link (signed tenant id) for each. Reads across tenants by design; no session/tenant context exists at call time. Generic response prevents enumeration.')]
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $validated = $request->validated();
+        $email = $request->validated()['email'];
 
-        try {
-            Password::sendResetLink(['email' => $validated['email']]);
-        } catch (\Throwable) {
-            // Silently handle errors (e.g., missing route, mail config) to prevent email enumeration
+        // Resolve the email's tenant memberships via the central identity index
+        // and issue a tenant-qualified reset link for each (topology §9.5). The
+        // link carries a signed tenant id so the pre-auth resolver opens the
+        // correct tenant DB before the Password broker consumes the token.
+        //
+        // Phase 0b note: password_reset_tokens is email-keyed and shared today,
+        // so for a multi-tenant email only the last token survives; once the
+        // table moves tenant-side each membership gets its own token.
+        $tenantIds = CentralIdentity::query()->where('email', $email)->pluck('tenant_id')->all();
+
+        foreach ($tenantIds as $tenantId) {
+            /** @var Tenant|null $tenant */
+            $tenant = Tenant::query()->find($tenantId);
+            if ($tenant === null) {
+                continue;
+            }
+
+            $initialized = $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+            try {
+                /** @var User|null $user */
+                $user = User::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('email', $email)
+                    ->first();
+
+                if ($user !== null) {
+                    $token = Password::createToken($user);
+                    $user->notify(new ResetPasswordNotification(
+                        $token,
+                        $email,
+                        $this->tenantLinkSigner->sign($tenantId),
+                    ));
+                }
+            } catch (\Throwable) {
+                // Swallow per-tenant failures so the response stays generic.
+            } finally {
+                if ($initialized) {
+                    tenancy()->end();
+                }
+            }
         }
 
         // Always return success to prevent email enumeration
@@ -589,32 +705,73 @@ class AuthController extends Controller
     /**
      * Reset the user's password using a valid token.
      */
-    #[CrossTenantRoute(reason: 'Pre-auth: password-reset token redemption — verifies the signed reset token via Laravel\'s Password broker, updates the user\'s password, and invalidates remember tokens. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
+    #[CrossTenantRoute(reason: 'Pre-auth: password-reset token redemption — decrypts the signed `tenant` qualifier, resolves that tenant, and validates the reset token + updates the password against the (tenant_id, email)-scoped user only. Token-bearer is the implicit subject; no Sanctum auth at this entry point.')]
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        $status = Password::reset(
-            [
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'password_confirmation' => $validated['password_confirmation'],
-                'token' => $validated['token'],
-            ],
-            function (User $user, string $password): void {
-                $user->update([
-                    'password' => Hash::make($password),
-                ]);
-
-                // Revoke all existing tokens for security
-                $user->tokens()->delete();
-            }
-        );
-
-        if ($status !== Password::PASSWORD_RESET) {
+        // P1-1 (Codex 2026-05-25): redemption MUST be tenant-bound. In Phase 0a
+        // `password_reset_tokens` is shared and email-keyed, so the stock
+        // email-only broker can resolve and reset the WRONG tenant's user when an
+        // email exists in several tenants. We therefore require + decrypt the
+        // signed `tenant` qualifier, resolve that tenant, and validate the token
+        // and update the password against the (tenant_id, email)-scoped user only.
+        $tenantId = $this->tenantLinkSigner->extract($validated['tenant']);
+        if ($tenantId === null) {
+            // Missing/tampered/undecryptable qualifier → not redeemable.
             throw ValidationException::withMessages([
-                'email' => [__($status)],
+                'tenant' => [__('auth.invalid_reset_link')],
             ]);
+        }
+
+        /** @var Tenant|null $tenant */
+        $tenant = Tenant::query()->find($tenantId);
+        if ($tenant === null) {
+            throw ValidationException::withMessages([
+                'tenant' => [__('auth.invalid_reset_link')],
+            ]);
+        }
+
+        // Open the correct tenant DB before touching `users` so this flow works
+        // unchanged after the Phase 0b flip (flip-agnostic; today a no-op for the
+        // DB switch — see TenancyResolver).
+        $initialized = $this->tenancyResolver->initializeIfProvisioned($tenant);
+
+        try {
+            /** @var User|null $user */
+            $user = User::query()
+                ->where('tenant_id', $tenantId)
+                ->where('email', $validated['email'])
+                ->first();
+
+            // Validate the reset token against THIS exact user via the broker's
+            // token repository (bypasses the email-only default user provider),
+            // then update the password and revoke tokens. Narrow to the concrete
+            // broker: the PasswordBroker *contract* does not declare getRepository(),
+            // but the default implementation (what Password::broker() returns) does.
+            /** @var PasswordBroker $broker */
+            $broker = Password::broker();
+            $repository = $broker->getRepository();
+
+            if ($user === null || ! $repository->exists($user, $validated['token'])) {
+                throw ValidationException::withMessages([
+                    'email' => [__(Password::INVALID_TOKEN)],
+                ]);
+            }
+
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+
+            // Revoke all existing tokens for security.
+            $user->tokens()->delete();
+
+            // Consume the single-use reset token.
+            $repository->delete($user);
+        } finally {
+            if ($initialized) {
+                tenancy()->end();
+            }
         }
 
         return response()->json([

@@ -11,6 +11,7 @@ import { useProductConfig } from '../../contexts/ProductConfigContext'
 interface LoginFormData {
   email: string
   password: string
+  tenant_id?: string
 }
 
 interface LoginResponseUser {
@@ -22,12 +23,20 @@ interface LoginResponseUser {
   emailVerifiedAt: string | null
 }
 
+interface Organization {
+  tenant_id: string
+  name: string
+  slug: string
+}
+
+// Email-first login (T6 Phase 0a) returns either an authenticated session or,
+// when the email belongs to more than one organization, an org picker.
+type LoginResult =
+  | { user: LoginResponseUser; token: string; tokenType: string }
+  | { requires_org_selection: true; organizations: Organization[] }
+
 interface LoginResponse {
-  data: {
-    user: LoginResponseUser
-    token: string
-    tokenType: string
-  }
+  data: LoginResult
 }
 
 interface FormErrors {
@@ -49,6 +58,8 @@ export function LoginPage() {
     password: '',
   })
   const [errors, setErrors] = useState<FormErrors>({})
+  // Org picker state: populated when the email belongs to >1 organization.
+  const [organizations, setOrganizations] = useState<Organization[] | null>(null)
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
@@ -59,6 +70,12 @@ export function LoginPage() {
       return response.data.data
     },
     onSuccess: (data) => {
+      // Email-first multi-tenant: show the org picker instead of authenticating.
+      if ('requires_org_selection' in data) {
+        setOrganizations(data.organizations)
+        return
+      }
+
       // Map tenantId to tenant_id for store compatibility
       const user = {
         id: data.user.id,
@@ -115,6 +132,12 @@ export function LoginPage() {
     }
   }
 
+  // The user picked an organization from the multi-tenant chooser: re-submit
+  // the same credentials bound to that tenant.
+  const selectOrganization = (tenantId: string) => {
+    loginMutation.mutate({ ...formData, tenant_id: tenantId })
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -125,6 +148,35 @@ export function LoginPage() {
           </h2>
         </div>
 
+        {organizations ? (
+          <div className="mt-8 space-y-4" data-testid="org-picker">
+            <p className="text-center text-sm text-gray-600">
+              {t('login.selectOrganization', { defaultValue: 'Select your organization' })}
+            </p>
+            <ul className="space-y-2">
+              {organizations.map((org) => (
+                <li key={org.tenant_id}>
+                  <button
+                    type="button"
+                    onClick={() => { selectOrganization(org.tenant_id) }}
+                    disabled={loginMutation.isPending}
+                    className="w-full text-left rounded-lg border border-gray-300 px-4 py-3 hover:border-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    <span className="block text-sm font-medium text-gray-900">{org.name}</span>
+                    <span className="block text-xs text-gray-500">{org.slug}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => { setOrganizations(null) }}
+              className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-500"
+            >
+              {t('forgotPassword.backToLogin', { defaultValue: 'Back to login' })}
+            </button>
+          </div>
+        ) : (
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {errors.general && (
             <div className="rounded-md bg-red-50 p-4">
@@ -215,6 +267,7 @@ export function LoginPage() {
             </Link>
           </p>
         </form>
+        )}
       </div>
     </div>
   )

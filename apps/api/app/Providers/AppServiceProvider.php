@@ -182,11 +182,26 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(30)->by((string) $key);
         });
 
-        // User login - 5 attempts per minute per email/IP
-        RateLimiter::for('login', function (Request $request): Limit {
-            $email = $request->input('email', '');
+        // User login — two stacked limits:
+        //   1. Per (normalized email + IP): 5/min — slows credential brute force
+        //      against a single account from a single origin.
+        //   2. Per IP (global): 20/min — restores the email-enumeration mitigation
+        //      lost when the check-email endpoint + its per-IP limiter were removed
+        //      (P1-3, Codex 2026-05-25). The new email-first login returns the
+        //      org-picker for a valid email BEFORE password validation, so without
+        //      a per-IP cap an attacker could rotate distinct emails (each its own
+        //      per-email bucket) and enumerate memberships unbounded. The per-IP
+        //      cap stops rotating-email enumeration while staying well above normal
+        //      single-user login traffic.
+        RateLimiter::for('login', function (Request $request): array {
+            $ip = $request->ip() ?? 'unknown';
+            $email = strtolower(trim((string) $request->input('email', '')));
+            $perEmailKey = $email !== '' ? $email.'|'.$ip : $ip;
 
-            return Limit::perMinute(5)->by($email ?: ($request->ip() ?? 'unknown'));
+            return [
+                Limit::perMinute(5)->by('login:email:'.$perEmailKey),
+                Limit::perMinute(20)->by('login:ip:'.$ip),
+            ];
         });
 
         // Registration - 5 per 15 minutes per IP (prevent mass account creation)
@@ -229,17 +244,6 @@ class AppServiceProvider extends ServiceProvider
             $key = $user !== null ? $user->getAuthIdentifier() : ($request->ip() ?? 'unknown');
 
             return Limit::perMinute(20)->by((string) $key);
-        });
-
-        // Email-availability check - 10 per minute per IP. The pre-auth
-        // checkEmail endpoint discloses whether an email is registered
-        // (accept-with-doc per the 2026-05-13 CrossTenantRoute triage),
-        // and the broader `login` limiter keys on email-or-IP, which an
-        // attacker can defeat by rotating emails. A dedicated per-IP
-        // limiter slows the enumeration channel without affecting
-        // normal users (who check one email). F.3.
-        RateLimiter::for('check-email', function (Request $request): Limit {
-            return Limit::perMinute(10)->by($request->ip() ?? 'unknown');
         });
 
         // General API - 100 requests per minute per user/IP

@@ -28,6 +28,14 @@ return [
     'logout_success' => 'You have been logged out successfully.',
     'login_success' => 'Login successful.',
 
+    // Email-first login (topology §9.7 — generic, enumeration-aware)
+    'no_organizations' => 'No organizations found for that email. Check your email or contact your administrator.',
+    'invalid_credentials' => 'The provided credentials are incorrect.',
+    'account_not_active' => 'Your account is not active. Please contact support.',
+    'organization_unavailable' => 'This organization is currently unavailable. Please contact support.',
+    // P1-1 — password reset redemption requires a decryptable, tenant-qualified link.
+    'invalid_reset_link' => 'This password reset link is invalid or has expired. Please request a new one.',
+
     // Email verification
     'verify_email_subject' => 'Verify Your Email Address',
     'verify_email_greeting' => 'Hello :name,',

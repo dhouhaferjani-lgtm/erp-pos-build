@@ -6,6 +6,8 @@ namespace Tests\Feature\Identity;
 
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Tenant\Application\Services\IdentityIndexService;
+use App\Modules\Tenant\Application\Services\TenantLinkSigner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -38,6 +40,16 @@ class AuthenticationTest extends TestCase
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
         ]);
+
+        // Email-first login resolves the tenant via central_identities, so any
+        // user created in this test class needs an index row. This test-scoped
+        // hook mirrors what IdentityIndexService does for every user created
+        // through the production controllers (register / invite). It is NOT a
+        // production observer: post-flip the central write must run outside the
+        // tenant-DB transaction, which is why production uses explicit calls.
+        User::created(function (User $user): void {
+            app(IdentityIndexService::class)->record($user->email, $user->tenant_id, $user->id);
+        });
     }
 
     public function test_user_can_login_with_valid_credentials(): void
@@ -501,11 +513,17 @@ class AuthenticationTest extends TestCase
             'status' => UserStatus::Active,
         ]);
 
+        // P1-1: redemption is tenant-bound; the link carries a valid signed tenant
+        // but the token is bogus, so the broker token repository rejects it.
+        $signedTenant = app(TenantLinkSigner::class)
+            ->sign($this->tenant->id);
+
         $response = $this->postJson('/api/v1/auth/reset-password', [
             'token' => 'invalid-token',
             'email' => 'test@example.com',
             'password' => 'NewStr0ng!Pass',
             'password_confirmation' => 'NewStr0ng!Pass',
+            'tenant' => $signedTenant,
         ]);
 
         $this->assertApiValidationErrors($response, ['email']);
