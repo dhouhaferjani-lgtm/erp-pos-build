@@ -630,7 +630,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test -c phpunit-pgsql.xml \
-            --filter="TenantStanclFlipTest|TenantDatabaseIsolationTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest"
+            --filter="TenantStanclFlipTest|TenantDatabaseIsolationTest|TenantProvisioningServiceTest|TenantReferenceDataSeedingTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest"
 
   frontend-lint:
     name: Frontend Lint (ESLint)
