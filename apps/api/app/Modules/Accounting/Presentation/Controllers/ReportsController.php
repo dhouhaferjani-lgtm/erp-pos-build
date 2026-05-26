@@ -12,15 +12,24 @@ use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
+use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
+use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
+use App\Modules\Accounting\Application\Services\Reports\StockAlertReportService;
 use App\Modules\Accounting\Application\Services\Reports\TrialBalanceService;
 use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
+use App\Modules\Accounting\Presentation\Requests\GetOwnerCashReconciliationRequest;
+use App\Modules\Accounting\Presentation\Requests\GetOwnerSalesReportRequest;
+use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 
@@ -68,7 +77,113 @@ class ReportsController extends Controller
         private readonly BalanceSheetService $balanceSheetService,
         private readonly AgedReceivablesService $agedReceivablesService,
         private readonly AgedPayablesService $agedPayablesService,
+        private readonly OwnerReportScope $ownerReportScope,
+        private readonly SalesReportService $salesReportService,
+        private readonly StockAlertReportService $stockAlertReportService,
+        private readonly CashRegisterReportService $cashRegisterReportService,
     ) {}
+
+    public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->salesReportService->salesByLocation(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+                granularity: $request->granularity(),
+            ),
+        ]);
+    }
+
+    public function topSkus(GetOwnerSalesReportRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->salesReportService->topSkus(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+                limit: $request->limit(),
+                sortBy: $request->sortBy(),
+            ),
+        ]);
+    }
+
+    public function revenueByCategory(GetOwnerSalesReportRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->salesReportService->revenueByCategory(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+            ),
+        ]);
+    }
+
+    public function paymentMethodBreakdown(GetOwnerSalesReportRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->salesReportService->paymentMethodBreakdown(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+            ),
+        ]);
+    }
+
+    public function stockAlerts(GetOwnerStockAlertsRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds($request->companyIds(), $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->stockAlertReportService->lowStockAcrossLocations(
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+                thresholdPct: $request->thresholdPct(),
+            ),
+        ]);
+    }
+
+    public function cashRegisterReconciliation(GetOwnerCashReconciliationRequest $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds(null, $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, $request->locationIds(), $user);
+
+        return response()->json([
+            'data' => $this->cashRegisterReportService->reconciliationSummary(
+                range: $request->dateRange(),
+                companyIds: $companyIds,
+                locationIds: $locationIds,
+            ),
+        ]);
+    }
+
+    private function ownerUser(?Authenticatable $user): User
+    {
+        if (! $user instanceof User) {
+            abort(401, 'Authenticated owner user required.');
+        }
+
+        return $user;
+    }
 
     /**
      * Generate a Trial Balance report.

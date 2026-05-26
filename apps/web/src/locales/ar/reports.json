@@ -1,0 +1,50 @@
+{
+  "ownerDashboard": {
+    "title": "لوحة تحكم المالك",
+    "subtitle": "المبيعات والمخزون والمدفوعات ومراقبة الصندوق حسب الموقع.",
+    "loading": "جار تحميل التقرير...",
+    "error": "التقرير غير متاح.",
+    "noData": "لا توجد بيانات لهذه الفترة.",
+    "filters": {
+      "from": "من",
+      "to": "إلى",
+      "granularity": "تجميع حسب",
+      "day": "يوم",
+      "week": "أسبوع",
+      "month": "شهر"
+    },
+    "salesByLocation": {
+      "title": "المبيعات حسب الموقع",
+      "axis": "المبيعات"
+    },
+    "topSkus": {
+      "title": "أفضل رموز المنتجات",
+      "revenue": "الإيراد",
+      "quantity": "الكمية"
+    },
+    "lowStock": {
+      "title": "تنبيهات انخفاض المخزون"
+    },
+    "revenueByCategory": {
+      "title": "الإيراد حسب الفئة"
+    },
+    "paymentMethods": {
+      "title": "توزيع طرق الدفع",
+      "amount": "المبلغ",
+      "percentage": "النسبة"
+    },
+    "cashReconciliation": {
+      "title": "مطابقة صندوق النقد"
+    },
+    "columns": {
+      "product": "المنتج",
+      "quantity": "الكمية",
+      "revenue": "الإيراد",
+      "date": "التاريخ",
+      "location": "الموقع",
+      "expected": "المتوقع",
+      "counted": "المعدود",
+      "variance": "الفرق"
+    }
+  }
+}

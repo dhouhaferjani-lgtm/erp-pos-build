@@ -53,6 +53,7 @@ export const PERMISSIONS = {
 
   // Dashboard (everyone can view)
   'dashboard.view': ['admin', 'sales', 'purchases', 'inventory', 'treasury', 'accountant', 'manager', 'user'],
+  'dashboard.owner': ['admin', 'manager'],
 
   // Vehicles
   'vehicles.view': ['admin', 'sales', 'manager'],

@@ -178,4 +178,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/reports/aged-payables', [ReportsController::class, 'agedPayables'])
         ->middleware('can:reports.view')
         ->name('reports.aged-payables');
+
+    // Owner Reporting MVP
+    Route::get('/reports/sales/by-location', [ReportsController::class, 'salesByLocation'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.by-location');
+
+    Route::get('/reports/sales/top-skus', [ReportsController::class, 'topSkus'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.top-skus');
+
+    Route::get('/reports/sales/revenue-by-category', [ReportsController::class, 'revenueByCategory'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.revenue-by-category');
+
+    Route::get('/reports/sales/payment-method-breakdown', [ReportsController::class, 'paymentMethodBreakdown'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.payment-method-breakdown');
+
+    Route::get('/reports/stock/alerts', [ReportsController::class, 'stockAlerts'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.stock.alerts');
+
+    Route::get('/reports/cash-register/reconciliation', [ReportsController::class, 'cashRegisterReconciliation'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.cash-register.reconciliation');
 });

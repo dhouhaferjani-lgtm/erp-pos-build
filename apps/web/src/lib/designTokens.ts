@@ -119,6 +119,21 @@ export const borderColors = {
 }
 
 /**
+ * Chart color values for ECharts and other canvas/SVG renderers.
+ * Tailwind class tokens above cannot be passed into chart options, so chart
+ * surfaces consume these semantic values from the same token module.
+ */
+export const chartColors = {
+  primary: '#2563eb',
+  success: '#16a34a',
+  warning: '#ca8a04',
+  danger: '#dc2626',
+  neutral: '#64748b',
+  cyan: '#0891b2',
+  violet: '#7c3aed',
+}
+
+/**
  * Spacing scale (consistent with Tailwind)
  */
 export const spacing = {
