@@ -26,6 +26,7 @@ use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
 use App\Modules\Tenant\Application\Services\TenantLinkSigner;
+use App\Modules\Tenant\Application\Services\TenantProvisioningService;
 use App\Modules\Tenant\Domain\CentralIdentity;
 use App\Modules\Tenant\Domain\Domain;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -71,6 +72,7 @@ class AuthController extends Controller
         private readonly IdentityIndexService $identityIndexService,
         private readonly TenancyResolver $tenancyResolver,
         private readonly TenantLinkSigner $tenantLinkSigner,
+        private readonly TenantProvisioningService $tenantProvisioningService,
     ) {}
 
     /**
@@ -342,154 +344,166 @@ class AuthController extends Controller
         $tokenExpiresAt = $this->tokenExpiresAt($request);
         $tokenAbilities = $this->tokenAbilities($request);
 
-        $result = DB::transaction(function () use ($validated, $tokenExpiresAt, $tokenAbilities) {
-            // 1. Create Tenant (subscription account)
-            $timezone = $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']);
-            $locale = $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']);
-            $dateFormat = 'd/m/Y';
+        // T6 Phase 0b: under database-per-tenant the tenant + user span two
+        // databases and the tenant DB must be created first, so the persistence
+        // is orchestrated by TenantProvisioningService (central rows -> create &
+        // migrate the tenant DB -> tenant rows + init, with compensation). The
+        // shared-DB compat path below is unchanged. Both return the same shape.
+        $result = config('tenancy_resolver.db_per_tenant')
+            ? $this->tenantProvisioningService->provisionForRegistration(
+                $validated,
+                $tokenExpiresAt,
+                $tokenAbilities,
+                fn (User $u): ?Device => $this->handleDevice($u, $validated),
+            )
+            : DB::transaction(function () use ($validated, $tokenExpiresAt, $tokenAbilities) {
+                // 1. Create Tenant (subscription account)
+                $timezone = $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']);
+                $locale = $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']);
+                $dateFormat = 'd/m/Y';
 
-            $tenant = Tenant::create([
-                'name' => $validated['company_name'],
-                'slug' => Str::slug($validated['company_name']).'-'.Str::random(6),
-                'vertical' => $validated['vertical'], // Selected business vertical
-                'enabled_extras' => [],
-                'status' => TenantStatus::Active,
-                'plan' => SubscriptionPlan::Trial,
-                'country_code' => strtoupper($validated['country_code']),
-                'currency_code' => $validated['currency'] ?? $this->getDefaultCurrency($validated['country_code']),
-                'timezone' => $timezone,
-                'locale' => $locale,
-                'date_format' => $dateFormat,
-                'settings' => [
+                $tenant = Tenant::create([
+                    'name' => $validated['company_name'],
+                    'slug' => Str::slug($validated['company_name']).'-'.Str::random(6),
+                    'vertical' => $validated['vertical'], // Selected business vertical
+                    'enabled_extras' => [],
+                    'status' => TenantStatus::Active,
+                    'plan' => SubscriptionPlan::Trial,
+                    'country_code' => strtoupper($validated['country_code']),
+                    'currency_code' => $validated['currency'] ?? $this->getDefaultCurrency($validated['country_code']),
                     'timezone' => $timezone,
                     'locale' => $locale,
                     'date_format' => $dateFormat,
-                    'fiscal_year_start' => '01-01',
-                ],
-                'trial_ends_at' => now()->addDays(14),
-                'subscription_ends_at' => null,
-            ]);
+                    'settings' => [
+                        'timezone' => $timezone,
+                        'locale' => $locale,
+                        'date_format' => $dateFormat,
+                        'fiscal_year_start' => '01-01',
+                    ],
+                    'trial_ends_at' => now()->addDays(14),
+                    'subscription_ends_at' => null,
+                ]);
 
-            // 2. Create User
-            $user = User::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $tenant->id,
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
-                'status' => 'active',
-                'email_verified_at' => null, // Requires email verification
-                'preferences' => [],
-            ]);
+                // 2. Create User
+                $user = User::create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $tenant->id,
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'password' => Hash::make($validated['password']),
+                    'status' => 'active',
+                    'email_verified_at' => null, // Requires email verification
+                    'preferences' => [],
+                ]);
 
-            // 3. Create Company (legal entity)
-            $company = Company::create([
-                'tenant_id' => $tenant->id,
-                'name' => $validated['company_name'],
-                'legal_name' => $validated['company_legal_name'] ?? $validated['company_name'],
-                'country_code' => strtoupper($validated['country_code']),
-                'tax_id' => $validated['tax_id'] ?? null,
-                'phone' => $validated['phone'] ?? null,
-                'currency' => $validated['currency'] ?? $this->getDefaultCurrency($validated['country_code']),
-                'locale' => $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']),
-                'timezone' => $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']),
-                'date_format' => 'd/m/Y',
-                'fiscal_year_start_month' => 1,
-                'status' => CompanyStatus::Active,
-                'is_headquarters' => true,
+                // 3. Create Company (legal entity)
+                $company = Company::create([
+                    'tenant_id' => $tenant->id,
+                    'name' => $validated['company_name'],
+                    'legal_name' => $validated['company_legal_name'] ?? $validated['company_name'],
+                    'country_code' => strtoupper($validated['country_code']),
+                    'tax_id' => $validated['tax_id'] ?? null,
+                    'phone' => $validated['phone'] ?? null,
+                    'currency' => $validated['currency'] ?? $this->getDefaultCurrency($validated['country_code']),
+                    'locale' => $validated['locale'] ?? $this->getDefaultLocale($validated['country_code']),
+                    'timezone' => $validated['timezone'] ?? $this->getDefaultTimezone($validated['country_code']),
+                    'date_format' => 'd/m/Y',
+                    'fiscal_year_start_month' => 1,
+                    'status' => CompanyStatus::Active,
+                    'is_headquarters' => true,
 
-                // Address fields from signup form
-                'address_street' => $validated['address_street'] ?? null,
-                'address_city' => $validated['address_city'] ?? null,
-                'address_postal_code' => $validated['address_postal_code'] ?? null,
-                'address_state' => $validated['address_state'] ?? null,
-                'email' => $validated['email'], // Use user email as company email
-            ]);
+                    // Address fields from signup form
+                    'address_street' => $validated['address_street'] ?? null,
+                    'address_city' => $validated['address_city'] ?? null,
+                    'address_postal_code' => $validated['address_postal_code'] ?? null,
+                    'address_state' => $validated['address_state'] ?? null,
+                    'email' => $validated['email'], // Use user email as company email
+                ]);
 
-            // 3.5. Create default location (always needed for operations)
-            Location::create([
-                'id' => Str::uuid()->toString(),
-                'company_id' => $company->id,
-                'name' => 'Main Location',
-                'code' => 'MAIN',
-                'type' => 'shop',
-                'is_default' => true,
-                'is_active' => true,
-                'pos_enabled' => false,
-                'address_street' => $company->address_street,
-                'address_city' => $company->address_city,
-                'address_postal_code' => $company->address_postal_code,
-                'address_country' => $company->country_code,
-                'phone' => $company->phone,
-                'email' => $company->email,
-            ]);
+                // 3.5. Create default location (always needed for operations)
+                Location::create([
+                    'id' => Str::uuid()->toString(),
+                    'company_id' => $company->id,
+                    'name' => 'Main Location',
+                    'code' => 'MAIN',
+                    'type' => 'shop',
+                    'is_default' => true,
+                    'is_active' => true,
+                    'pos_enabled' => false,
+                    'address_street' => $company->address_street,
+                    'address_city' => $company->address_city,
+                    'address_postal_code' => $company->address_postal_code,
+                    'address_country' => $company->country_code,
+                    'phone' => $company->phone,
+                    'email' => $company->email,
+                ]);
 
-            // 4. Create UserCompanyMembership (owner role)
-            UserCompanyMembership::create([
-                'user_id' => $user->id,
-                'company_id' => $company->id,
-                'role' => MembershipRole::Owner,
-                'is_primary' => true,
-                'status' => MembershipStatus::Active,
-                'accepted_at' => now(),
-            ]);
+                // 4. Create UserCompanyMembership (owner role)
+                UserCompanyMembership::create([
+                    'user_id' => $user->id,
+                    'company_id' => $company->id,
+                    'role' => MembershipRole::Owner,
+                    'is_primary' => true,
+                    'status' => MembershipStatus::Active,
+                    'accepted_at' => now(),
+                ]);
 
-            // 4.5. Create the Stancl domains row for the optional subdomain
-            // shortcut ({slug}.synerivia.tn) — previously only CreateTenantCommand
-            // did this. With wildcard SSL on *.synerivia.tn the only per-tenant
-            // setup is this insert (topology §9.2).
-            Domain::create([
-                'tenant_id' => $tenant->id,
-                // Domains are case-insensitive; lowercase so the stored value
-                // round-trips with the subdomain resolver lookup.
-                'domain' => strtolower($tenant->slug).'.synerivia.tn',
-                'is_primary' => true,
-                'is_verified' => true,
-            ]);
+                // 4.5. Create the Stancl domains row for the optional subdomain
+                // shortcut ({slug}.synerivia.tn) — previously only CreateTenantCommand
+                // did this. With wildcard SSL on *.synerivia.tn the only per-tenant
+                // setup is this insert (topology §9.2).
+                Domain::create([
+                    'tenant_id' => $tenant->id,
+                    // Domains are case-insensitive; lowercase so the stored value
+                    // round-trips with the subdomain resolver lookup.
+                    'domain' => strtolower($tenant->slug).'.synerivia.tn',
+                    'is_primary' => true,
+                    'is_verified' => true,
+                ]);
 
-            // 4.6. Write the central identity index row (topology §9.1) so the
-            // owner can do email-first login / org recovery. NOTE (Phase 0b):
-            // post-flip the central row and the tenant-DB users row live in
-            // different databases and cannot share this transaction — the
-            // ordering becomes "central rows first, then tenant user, compensate
-            // on failure". Today everything is on the default connection so the
-            // single-transaction write is correct.
-            $this->identityIndexService->record($user->email, $tenant->id, $user->id);
+                // 4.6. Write the central identity index row (topology §9.1) so the
+                // owner can do email-first login / org recovery. NOTE (Phase 0b):
+                // post-flip the central row and the tenant-DB users row live in
+                // different databases and cannot share this transaction — the
+                // ordering becomes "central rows first, then tenant user, compensate
+                // on failure". Today everything is on the default connection so the
+                // single-transaction write is correct.
+                $this->identityIndexService->record($user->email, $tenant->id, $user->id);
 
-            // 5. Initialize tenant with country-specific data
-            // This assigns the 'admin' Spatie role (for sidebar access) and seeds:
-            // - Country-specific chart of accounts (Tunisia/France)
-            // - Fiscal years and periods
-            // - Standard payment methods
-            $this->tenantInitializationService->initializeForNewRegistration(
-                $tenant,
-                $company,
-                $user
-            );
+                // 5. Initialize tenant with country-specific data
+                // This assigns the 'admin' Spatie role (for sidebar access) and seeds:
+                // - Country-specific chart of accounts (Tunisia/France)
+                // - Fiscal years and periods
+                // - Standard payment methods
+                $this->tenantInitializationService->initializeForNewRegistration(
+                    $tenant,
+                    $company,
+                    $user
+                );
 
-            // Handle device registration if provided
-            $device = $this->handleDevice($user, $validated);
+                // Handle device registration if provided
+                $device = $this->handleDevice($user, $validated);
 
-            // Create auth token. T1.4 — same per-client branching as
-            // login: POS-tauri → 12mo + `['pos:*']` abilities, default →
-            // NULL expiry + `['*']` abilities (global policy).
-            // Tenant-isolation Invariant D (master plan §15): prepend a
-            // `tenant:<uuid>` ability so EnforceTokenTenantClaim can reject
-            // stale tokens after a user's tenant_id changes.
-            $tokenName = $validated['device_name'] ?? 'api-token';
-            $token = $user->createToken(
-                $tokenName,
-                array_merge(['tenant:'.$user->tenant_id], $tokenAbilities),
-                $tokenExpiresAt,
-            );
+                // Create auth token. T1.4 — same per-client branching as
+                // login: POS-tauri → 12mo + `['pos:*']` abilities, default →
+                // NULL expiry + `['*']` abilities (global policy).
+                // Tenant-isolation Invariant D (master plan §15): prepend a
+                // `tenant:<uuid>` ability so EnforceTokenTenantClaim can reject
+                // stale tokens after a user's tenant_id changes.
+                $tokenName = $validated['device_name'] ?? 'api-token';
+                $token = $user->createToken(
+                    $tokenName,
+                    array_merge(['tenant:'.$user->tenant_id], $tokenAbilities),
+                    $tokenExpiresAt,
+                );
 
-            return [
-                'user' => $user,
-                'company' => $company,
-                'token' => $token->plainTextToken,
-                'device' => $device,
-            ];
-        });
+                return [
+                    'user' => $user,
+                    'company' => $company,
+                    'token' => $token->plainTextToken,
+                    'device' => $device,
+                ];
+            });
 
         // Send verification email asynchronously (after transaction)
         $this->emailVerificationService->sendVerificationEmail($result['user']);
