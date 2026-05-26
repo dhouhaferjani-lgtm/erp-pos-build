@@ -13,6 +13,11 @@ use App\Modules\Fiscal\Domain\DTOs\OverrideCreditLimitPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
+use App\Modules\Fiscal\Domain\DTOs\SessionClosePayload;
+use App\Modules\Fiscal\Domain\DTOs\SessionOpenPayload;
+use App\Modules\Fiscal\Domain\DTOs\XReportPayload;
+use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
+use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use LogicException;
 use RuntimeException;
@@ -286,8 +291,15 @@ final class FiscalPayloadConstraintValidator
         'OVERRIDE_DISCOUNT_LIMIT' => OverrideDiscountLimitPayload::PAYLOAD_KEYS,
         'OVERRIDE_TENDER_TOLERANCE' => OverrideTenderTolerancePayload::PAYLOAD_KEYS,
         'OVERRIDE_VOID_OR_RETURN' => OverrideVoidOrReturnPayload::PAYLOAD_KEYS,
+        'OPENING_FLOAT' => ZCashDrawerMovementPayload::PAYLOAD_KEYS,
+        'CASH_IN' => ZCashDrawerMovementPayload::PAYLOAD_KEYS,
         'CASH_OUT' => CashDrawerMovementPayload::PAYLOAD_KEYS,
         'SAFE_DROP' => CashDrawerMovementPayload::PAYLOAD_KEYS,
+        'CASH_CORRECTION' => ZCashDrawerMovementPayload::PAYLOAD_KEYS,
+        'SESSION_OPEN' => SessionOpenPayload::PAYLOAD_KEYS,
+        'SESSION_CLOSE' => SessionClosePayload::PAYLOAD_KEYS,
+        'X_REPORT' => XReportPayload::PAYLOAD_KEYS,
+        'Z_REPORT' => ZReportPayload::PAYLOAD_KEYS,
     ];
 
     /**
@@ -297,11 +309,20 @@ final class FiscalPayloadConstraintValidator
      *
      * @param  array<string, mixed>  $payload
      */
-    public function validatePayloadKeySet(FiscalEventType $type, array $payload): ?string
-    {
+    public function validatePayloadKeySet(
+        FiscalEventType $type,
+        array $payload,
+        string $chainContext = 'operational',
+    ): ?string {
         $expected = self::PAYLOAD_KEYS[$type->value] ?? null;
         if ($expected === null) {
             return 'event_type_unimplemented:'.$type->value;
+        }
+        if (
+            in_array($type, [FiscalEventType::CASH_OUT, FiscalEventType::SAFE_DROP], true)
+            && in_array($chainContext, ['z_session', 'training_z_session'], true)
+        ) {
+            $expected = ZCashDrawerMovementPayload::PAYLOAD_KEYS;
         }
 
         if ($type === FiscalEventType::ACCOUNT_CHARGE && array_key_exists('payments', $payload)) {
@@ -333,8 +354,11 @@ final class FiscalPayloadConstraintValidator
      * @throws LogicException when invoked with a Phase 1 event type that
      *                        has no matching per-event clause (planning defect)
      */
-    public function validatePerEventConstraints(FiscalEventType $type, array $payload): void
-    {
+    public function validatePerEventConstraints(
+        FiscalEventType $type,
+        array $payload,
+        string $chainContext = 'operational',
+    ): void {
         match ($type) {
             FiscalEventType::SALE_RECEIPT => $this->validateSaleReceiptPayload($payload),
             FiscalEventType::CHAIN_BREAK_DETECTED => $this->validateChainBreakDetectedPayload($payload),
@@ -350,7 +374,16 @@ final class FiscalPayloadConstraintValidator
             FiscalEventType::OVERRIDE_TENDER_TOLERANCE,
             FiscalEventType::OVERRIDE_VOID_OR_RETURN => $this->validateOverridePayload($payload),
             FiscalEventType::CASH_OUT,
-            FiscalEventType::SAFE_DROP => $this->validateCashDrawerMovementPayload($payload),
+            FiscalEventType::SAFE_DROP => in_array($chainContext, ['z_session', 'training_z_session'], true)
+                ? $this->validateZCashDrawerMovementPayload($payload)
+                : $this->validateCashDrawerMovementPayload($payload),
+            FiscalEventType::OPENING_FLOAT,
+            FiscalEventType::CASH_IN,
+            FiscalEventType::CASH_CORRECTION => $this->validateZCashDrawerMovementPayload($payload),
+            FiscalEventType::SESSION_OPEN => $this->validateSessionOpenPayload($payload),
+            FiscalEventType::SESSION_CLOSE,
+            FiscalEventType::X_REPORT,
+            FiscalEventType::Z_REPORT => $this->validateZReportFamilyPayload($payload),
             default => throw new LogicException(
                 'FiscalPayloadConstraintValidator missing per-event clause for FiscalEventType::'.$type->name
             ),
@@ -465,6 +498,58 @@ final class FiscalPayloadConstraintValidator
         $this->assertUuid($payload, 'shift_id');
         $this->assertUuid($payload, 'supervisor_user_id');
         $this->assertUuid($payload, 'target_reference_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateSessionOpenPayload(array $payload): void
+    {
+        $this->assertUuid($payload, 'session_id');
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertIsoDateTimeWithMs($payload, 'opened_at_device');
+        $this->assertUuid($payload, 'operator_id');
+        $this->assertNonEmptyString($payload, 'operator_name');
+        $this->assertUuid($payload, 'terminal_id');
+        $this->assertNonEmptyString($payload, 'terminal_label');
+        $this->assertCurrency($payload);
+        $this->assertMoneyString($payload, 'opening_float_amount', $this->moneyRegex((int) $payload['currency_scale']), (int) $payload['currency_scale']);
+        $this->assertBool($payload, 'training_flag');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateZCashDrawerMovementPayload(array $payload): void
+    {
+        $this->assertUuid($payload, 'movement_id');
+        $this->assertUuid($payload, 'session_id');
+        $this->assertUuid($payload, 'shift_id');
+        $this->assertEnum($payload, 'movement_type', ['OPENING_FLOAT', 'CASH_IN', 'CASH_OUT', 'SAFE_DROP', 'CASH_CORRECTION']);
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertIsoDateTimeWithMs($payload, 'event_time_device');
+        $this->assertUuid($payload, 'operator_id');
+        $this->assertNonEmptyString($payload, 'operator_name');
+        $this->assertCurrency($payload);
+        $this->assertMoneyString($payload, 'amount', $this->moneyRegex((int) $payload['currency_scale']), (int) $payload['currency_scale']);
+        $this->assertNonEmptyString($payload, 'reason_code');
+        $this->assertOptionalNullableString($payload, 'reason_text');
+        $this->assertOptionalNullableString($payload, 'cash_drawer_operation_id');
+        $this->assertNullableObject($payload, 'approval');
+        $this->assertBool($payload, 'training_flag');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateZReportFamilyPayload(array $payload): void
+    {
+        foreach (['session_id', 'shift_id', 'operator_id', 'terminal_id'] as $field) {
+            $this->assertUuid($payload, $field);
+        }
+        $this->assertIsoDate($payload, 'business_date');
+        $this->assertBool($payload, 'training_flag');
     }
 
     /**
@@ -1873,6 +1958,33 @@ final class FiscalPayloadConstraintValidator
         }
         if (array_is_list($value)) {
             throw new RuntimeException("$key must be an object, not a list");
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function assertCurrency(array $payload): void
+    {
+        $currencyCode = $payload['currency_code'] ?? null;
+        if (! is_string($currencyCode) || preg_match(self::ISO_4217, $currencyCode) !== 1) {
+            throw new RuntimeException('payload_currency_code_invalid:must be ISO 4217 alpha-3 uppercase; got '.var_export($currencyCode, true));
+        }
+
+        $scale = $payload['currency_scale'] ?? null;
+        if (! is_int($scale) || ! in_array($scale, self::SUPPORTED_CURRENCY_SCALES, true)) {
+            throw new RuntimeException('payload_currency_scale_unsupported:value='.var_export($scale, true));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $bag
+     */
+    private function assertNullableObject(array $bag, string $field): void
+    {
+        $value = $bag[$field] ?? null;
+        if ($value !== null && (! is_array($value) || array_is_list($value))) {
+            throw new RuntimeException('payload_object_or_null_required:'.$field);
         }
     }
 

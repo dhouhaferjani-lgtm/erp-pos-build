@@ -15,6 +15,7 @@ use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\POS\Domain\Events\ZReportGenerated;
+use App\Modules\POS\Domain\Exceptions\ServerFiscalAuthoringRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\CashDrawerService;
@@ -63,6 +64,13 @@ final class ReportGenerationService
         return $this->scaleResolver->getScale();
     }
 
+    private function assertServerReportAuthoringAllowed(Terminal $terminal, string $operation): void
+    {
+        if ((int) ($terminal->fiscal_schema_version ?? 2) >= 3) {
+            throw ServerFiscalAuthoringRetiredException::zSessionDeviceAuthority($terminal->id, $operation);
+        }
+    }
+
     /**
      * Generate X report (mid-shift snapshot)
      *
@@ -85,6 +93,8 @@ final class ReportGenerationService
         Terminal $terminal,
         User $generatedBy
     ): XReport {
+        $this->assertServerReportAuthoringAllowed($terminal, 'X_REPORT');
+
         // Get current open shift
         $shift = $this->shiftManagementService->getCurrentShift($terminal);
 
@@ -152,6 +162,8 @@ final class ReportGenerationService
         ?string $managerOverrideBy = null,
         bool $blindCountUsed = false,
     ): ZReport {
+        $this->assertServerReportAuthoringAllowed($terminal, 'Z_REPORT');
+
         return DB::transaction(function () use (
             $terminal,
             $generatedBy,

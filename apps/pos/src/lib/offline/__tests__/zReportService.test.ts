@@ -10,6 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Hoist mocks before any imports ──────────────────────────────────────────
 
+const fiscalMocks = vi.hoisted(() => ({
+  engine: { append: vi.fn() },
+}));
+
 vi.mock('@/lib/db', () => ({
   queryAll: vi.fn(),
 }));
@@ -29,6 +33,18 @@ vi.mock('@/stores/authStore', () => ({
 
 vi.mock('@/lib/fiscal/zReportHashService', () => ({
   computeZReportHash: vi.fn().mockResolvedValue('mock-fiscal-hash'),
+}));
+
+vi.mock('@/lib/fiscal/instance', () => ({
+  getFiscalEventEngine: vi.fn().mockResolvedValue(fiscalMocks.engine),
+}));
+
+vi.mock('@/lib/fiscal/zSessionAuthoring', () => ({
+  appendZSessionCloseAndZReport: vi.fn().mockResolvedValue({
+    sessionCloseEvent: { id: 'session-close-event-1' },
+    sessionCloseUuid: 'session-close-uuid-1',
+    zReportEvent: { id: 'z-report-event-1' },
+  }),
 }));
 
 vi.mock('@/lib/db/repositories/zReportRepository', () => ({
@@ -70,6 +86,8 @@ import { queryAll } from '@/lib/db';
 import { insertZReport } from '@/lib/db/repositories/zReportRepository';
 import { insertZReportCounts } from '@/lib/db/repositories/zReportCountRepository';
 import { advanceZChain, updateGrandTotals } from '@/lib/db/repositories/terminalStateRepository';
+import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import { appendZSessionCloseAndZReport } from '@/lib/fiscal/zSessionAuthoring';
 
 import type Database from '@tauri-apps/plugin-sql';
 
@@ -168,6 +186,35 @@ describe('generateZReport', () => {
       await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
 
       expect(insertZReportCounts).not.toHaveBeenCalled();
+    });
+
+    it('does NOT author fiscal close events until fiscal session context is supplied', async () => {
+      mockQueryAll(db, makeReceiptRows());
+
+      await generateZReport(db, 'term-1', 'shift-1', '2026-04-23T08:00:00+00:00', '100.00');
+
+      expect(getFiscalEventEngine).not.toHaveBeenCalled();
+      expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
+    });
+
+    it('rejects cutover Z-report generation before legacy rows when fiscal close context is missing', async () => {
+      mockQueryAll(db, makeReceiptRows());
+
+      await expect(
+        generateZReport(
+          db,
+          'term-1',
+          'shift-1',
+          '2026-04-23T08:00:00+00:00',
+          '100.00',
+          { requireFiscalEvents: true },
+        ),
+      ).rejects.toThrow(/fiscal event close context/);
+
+      expect(insertZReport).not.toHaveBeenCalled();
+      expect(advanceZChain).not.toHaveBeenCalled();
+      expect(getFiscalEventEngine).not.toHaveBeenCalled();
+      expect(appendZSessionCloseAndZReport).not.toHaveBeenCalled();
     });
 
     it('T2.7: filters offline_receipts WHERE is_training = 0 (training rows excluded from Z totals)', async () => {
@@ -412,6 +459,82 @@ describe('generateZReport', () => {
       expect(insertZReportCounts).toHaveBeenCalledOnce();
       expect(advanceZChain).toHaveBeenCalledOnce();
       expect(updateGrandTotals).toHaveBeenCalledOnce();
+    });
+
+    it('authors SESSION_CLOSE and Z_REPORT fiscal events when fiscal session context is supplied', async () => {
+      mockQueryAll(db, makeReceiptRows());
+
+      const report = await generateZReport(
+        db,
+        'term-1',
+        'shift-1',
+        '2026-04-23T08:00:00+00:00',
+        '100.00',
+        {
+          cashCounts,
+          tenantId: 'tenant-1',
+          fiscalShiftId: '33333333-3333-4333-8333-333333333333',
+          fiscalSessionId: '44444444-4444-4444-8444-444444444444',
+          terminalLabel: 'T001',
+          operatorId: '22222222-2222-4222-8222-222222222222',
+          operatorName: 'Alice',
+          isTraining: false,
+        },
+      );
+
+      expect(getFiscalEventEngine).toHaveBeenCalledWith('co-1', db);
+      expect(appendZSessionCloseAndZReport).toHaveBeenCalledOnce();
+      const [calledDb, calledEngine, closeInput] = vi.mocked(appendZSessionCloseAndZReport).mock.calls[0]!;
+      expect(calledDb).toBe(db);
+      expect(calledEngine).toBe(fiscalMocks.engine);
+      expect(closeInput).toMatchObject({
+        tenantId: 'tenant-1',
+        companyId: 'co-1',
+        terminalId: 'term-1',
+        terminalLabel: 'T001',
+        shiftId: '33333333-3333-4333-8333-333333333333',
+        sessionId: '44444444-4444-4444-8444-444444444444',
+        businessDate: '2026-04-23',
+        operatorId: '22222222-2222-4222-8222-222222222222',
+        operatorName: 'Alice',
+        currencyCode: 'EUR',
+        currencyScale: 2,
+        zReportUuid: report.id,
+        zNumber: 3,
+        formattedZNumber: 'Z0003',
+        expectedCash: '150.00',
+        countedCash: '148.00',
+        varianceAmount: '-2.00',
+        varianceDirection: 'under',
+        reportTotals: {
+          sales_count: 1,
+          gross_sales: '50.00',
+          net_sales: '42.00',
+          tax_amount: '8.00',
+        },
+        operationalEventRange: {
+          first_receipt_hash: 'h1',
+          first_receipt_sequence: 1,
+          last_receipt_hash: 'h1',
+          last_receipt_sequence: 1,
+          receipt_count: 1,
+        },
+      });
+      expect(closeInput.cashCountLines).toHaveLength(1);
+      expect(closeInput.grandTotalsBefore).toMatchObject({
+        cumulative_sales: '500.00',
+        receipt_count_lifetime: 10,
+      });
+      expect(closeInput.grandTotalsAfter).toMatchObject({
+        cumulative_sales: '550.000',
+        receipt_count_lifetime: 11,
+      });
+      expect(closeInput.legacyReportReference).toMatchObject({
+        fiscal_hash: 'mock-fiscal-hash',
+        hash_sequence: 3,
+        local_z_report_id: report.id,
+        shift_id: 'shift-1',
+      });
     });
   });
 });

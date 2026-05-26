@@ -158,6 +158,7 @@ function makeFiscalEvent(overrides: Partial<LocalFiscalEvent> = {}): LocalFiscal
     sequence_number: 1,
     event_time_device: '2026-05-20T12:00:00Z',
     business_date: '2026-05-20',
+    chain_context: 'operational',
     last_server_time_seen: null,
     reference_event_id: null,
     reference_document_id: null,
@@ -230,8 +231,9 @@ describe('syncService', () => {
           envelopes: [
             expect.objectContaining({
               envelope_id: 'fe-1',
-              idempotency_key: 'terminal-1:1',
+              idempotency_key: 'terminal-1:operational:1',
               payload: expect.objectContaining({
+                chain_context: 'operational',
                 canonical_bytes: '{"event_type":"SALE_RECEIPT"}',
                 current_hash: 'current-hash',
                 source_event_class: 'offline_receipts',

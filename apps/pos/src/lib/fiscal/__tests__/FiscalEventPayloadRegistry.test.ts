@@ -22,8 +22,15 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.isImplemented('OVERRIDE_DISCOUNT_LIMIT')).toBe(true);
     expect(registry.isImplemented('OVERRIDE_TENDER_TOLERANCE')).toBe(true);
     expect(registry.isImplemented('OVERRIDE_VOID_OR_RETURN')).toBe(true);
+    expect(registry.isImplemented('OPENING_FLOAT')).toBe(true);
+    expect(registry.isImplemented('CASH_IN')).toBe(true);
     expect(registry.isImplemented('CASH_OUT')).toBe(true);
     expect(registry.isImplemented('SAFE_DROP')).toBe(true);
+    expect(registry.isImplemented('CASH_CORRECTION')).toBe(true);
+    expect(registry.isImplemented('SESSION_OPEN')).toBe(true);
+    expect(registry.isImplemented('SESSION_CLOSE')).toBe(true);
+    expect(registry.isImplemented('X_REPORT')).toBe(true);
+    expect(registry.isImplemented('Z_REPORT')).toBe(true);
   });
 
   it('marks reserved-not-implemented types as unimplemented', () => {
@@ -34,13 +41,6 @@ describe('FiscalEventPayloadRegistry', () => {
       'REFUND_RECEIPT',
       'PARTIAL_REFUND',
       'RETURN_WITHOUT_RECEIPT',
-      'OPENING_FLOAT',
-      'CASH_IN',
-      'CASH_CORRECTION',
-      'SESSION_OPEN',
-      'SESSION_CLOSE',
-      'X_REPORT',
-      'Z_REPORT',
       'REPRINT_COPY',
       'ACCOUNT_REFUND',
       'ACCOUNT_PAYMENT_RECONCILED',
@@ -69,8 +69,15 @@ describe('FiscalEventPayloadRegistry', () => {
     expect(registry.eventVersionFor('OVERRIDE_DISCOUNT_LIMIT')).toBe(1);
     expect(registry.eventVersionFor('OVERRIDE_TENDER_TOLERANCE')).toBe(1);
     expect(registry.eventVersionFor('OVERRIDE_VOID_OR_RETURN')).toBe(1);
+    expect(registry.eventVersionFor('OPENING_FLOAT')).toBe(1);
+    expect(registry.eventVersionFor('CASH_IN')).toBe(1);
     expect(registry.eventVersionFor('CASH_OUT')).toBe(1);
     expect(registry.eventVersionFor('SAFE_DROP')).toBe(1);
+    expect(registry.eventVersionFor('CASH_CORRECTION')).toBe(1);
+    expect(registry.eventVersionFor('SESSION_OPEN')).toBe(1);
+    expect(registry.eventVersionFor('SESSION_CLOSE')).toBe(1);
+    expect(registry.eventVersionFor('X_REPORT')).toBe(1);
+    expect(registry.eventVersionFor('Z_REPORT')).toBe(1);
   });
 
   it('implements ACCOUNT_PAYMENT at version 1 without changing server-only types', () => {
@@ -98,7 +105,7 @@ describe('FiscalEventPayloadRegistry', () => {
       FiscalEventTypeNotImplementedError,
     );
     expect(() => registry.eventVersionFor('SALE_VOID')).toThrow(FiscalEventTypeNotImplementedError);
-    expect(() => registry.eventVersionFor('Z_REPORT')).toThrow(FiscalEventTypeNotImplementedError);
+    expect(() => registry.eventVersionFor('REPRINT_COPY')).toThrow(FiscalEventTypeNotImplementedError);
   });
 
   it('throws with a message that names the reserved type', () => {
@@ -128,8 +135,15 @@ describe('FiscalEventPayloadRegistry', () => {
         'OVERRIDE_DISCOUNT_LIMIT',
         'OVERRIDE_TENDER_TOLERANCE',
         'OVERRIDE_VOID_OR_RETURN',
+        'OPENING_FLOAT',
+        'CASH_IN',
         'CASH_OUT',
         'SAFE_DROP',
+        'CASH_CORRECTION',
+        'SESSION_OPEN',
+        'SESSION_CLOSE',
+        'X_REPORT',
+        'Z_REPORT',
       ]),
     );
   });

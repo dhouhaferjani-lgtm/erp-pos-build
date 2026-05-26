@@ -67,6 +67,18 @@ async function runMigrationsUpTo(adapter: SqliteTestAdapter, maxVersion: number)
   }
 }
 
+async function runSingleMigration(adapter: SqliteTestAdapter, version: number): Promise<void> {
+  const migration = migrations.find((candidate) => candidate.version === version);
+  if (!migration) {
+    throw new Error(`Migration ${version} not found`);
+  }
+  if (migration.run) {
+    await migration.run(adapter);
+  } else if (migration.sql) {
+    await adapter.execute(migration.sql);
+  }
+}
+
 async function runAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
   await runMigrationsUpTo(adapter, Infinity);
 }
@@ -153,6 +165,49 @@ d('Schema integration — migration v21 widens REAL monetary columns to TEXT', (
     // _migrations table isn't populated unless we simulate that.
     // Skip this assertion — column-type check above is sufficient proof that v21 ran.
     expect(true).toBe(true);
+  });
+});
+
+d('Schema integration — migration v45 backfills Z-chain seeds for upgraded terminals', () => {
+  let adapter: SqliteTestAdapter;
+
+  beforeEach(async () => {
+    adapter = new SqliteTestAdapter();
+  });
+
+  afterEach(() => {
+    adapter.close();
+  });
+
+  it('populates Z-session seed columns when v37 already ran before v45', async () => {
+    await runMigrationsUpTo(adapter, 37);
+    await adapter.execute(
+      `INSERT INTO terminal_state (
+         terminal_id, terminal_code, genesis_seed, last_hash,
+         fiscal_event_genesis_seed, z_chain_genesis_seed,
+         training_fiscal_event_genesis_seed, training_z_chain_genesis_seed
+       ) VALUES ($1, 'T001', $2, 'GENESIS', $2, '', '', '')`,
+      [TERMINAL_ID, 'a'.repeat(64)],
+    );
+
+    await runSingleMigration(adapter, 45);
+
+    const rows = await adapter.select<Array<{
+      z_chain_genesis_seed: string;
+      training_fiscal_event_genesis_seed: string;
+      training_z_chain_genesis_seed: string;
+    }>>(
+      `SELECT z_chain_genesis_seed, training_fiscal_event_genesis_seed, training_z_chain_genesis_seed
+         FROM terminal_state
+        WHERE terminal_id = $1`,
+      [TERMINAL_ID],
+    );
+
+    expect(rows[0]).toEqual({
+      z_chain_genesis_seed: 'a'.repeat(64),
+      training_fiscal_event_genesis_seed: 'a'.repeat(64),
+      training_z_chain_genesis_seed: 'a'.repeat(64),
+    });
   });
 });
 
