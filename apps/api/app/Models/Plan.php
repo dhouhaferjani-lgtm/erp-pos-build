@@ -6,9 +6,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 class Plan extends Model
 {
+    // T6 Phase 0b: central table — always read/write the central connection,
+    // even when the default connection is swapped to a tenant database.
+    use CentralConnection;
     use HasUuids;
 
     public const UPDATED_AT = null;

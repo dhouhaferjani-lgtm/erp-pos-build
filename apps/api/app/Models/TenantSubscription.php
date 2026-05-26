@@ -9,9 +9,14 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 class TenantSubscription extends Model
 {
+    // T6 Phase 0b: central table — pinned to the central connection so it is
+    // read/written there even when initializeForNewRegistration runs in tenant
+    // context after the database-per-tenant flip.
+    use CentralConnection;
     use HasUuids;
 
     /**

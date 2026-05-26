@@ -8,6 +8,7 @@ use App\Modules\Tenant\Application\Services\IdentityIndexService;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * Central identity index row (topology contract §9.1).
@@ -28,6 +29,9 @@ use Illuminate\Support\Carbon;
  */
 class CentralIdentity extends Model
 {
+    // T6 Phase 0b: central table — pinned so the email→tenant index is always
+    // read/written on the central connection.
+    use CentralConnection;
     use HasUuids;
 
     protected $table = 'central_identities';
