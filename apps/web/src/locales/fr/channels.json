@@ -1,0 +1,64 @@
+{
+  "title": "Canaux",
+  "subtitle": "Gérez les canaux de vente externes et l'état de synchronisation générique.",
+  "noAdapters": {
+    "title": "Aucun adaptateur disponible pour le moment",
+    "body": "L'infrastructure des canaux est prête. Les modules d'adaptation concrets arriveront dans une prochaine version."
+  },
+  "empty": {
+    "title": "Aucun canal configuré",
+    "body": "Créez un canal après l'installation d'un module d'adaptation."
+  },
+  "fields": {
+    "name": "Nom",
+    "adapter": "Adaptateur",
+    "lastSync": "Dernière synchro",
+    "never": "Jamais"
+  },
+  "connectionStatus": {
+    "pending": "En attente",
+    "connected": "Connecté",
+    "failed": "Échec",
+    "suspended": "Suspendu"
+  },
+  "create": {
+    "title": "Créer un canal",
+    "subtitle": "Configurez un canal générique et ses identifiants.",
+    "action": "Nouveau canal",
+    "namePlaceholder": "Boutique en ligne principale",
+    "noAdapterOption": "Aucun adaptateur enregistré",
+    "adaptersComing": "Les modules d'adaptation arriveront dans la prochaine version.",
+    "testConnection": "Tester la connexion"
+  },
+  "mappings": {
+    "title": "Correspondances produits",
+    "subtitle": "Contrôlez les produits publiés sur le canal sélectionné.",
+    "syncSelected": "Synchroniser la sélection",
+    "product": "Produit",
+    "externalId": "ID externe",
+    "priceOverride": "Prix forcé",
+    "quantityCap": "Plafond quantité",
+    "empty": "Aucune correspondance produit pour le moment."
+  },
+  "sync": {
+    "title": "État de synchronisation",
+    "subtitle": "Consultez les opérations sortantes, reprises et alertes d'écart.",
+    "operation": "Opération",
+    "attempts": "Tentatives",
+    "nextRetry": "Prochaine reprise",
+    "empty": "Aucune opération de synchronisation enregistrée.",
+    "filters": {
+      "all": "Tous les statuts",
+      "pending": "En attente",
+      "failed": "Échec"
+    }
+  },
+  "orders": {
+    "title": "Commandes canal",
+    "subtitle": "Vérifiez les commandes entrantes avant promotion.",
+    "externalId": "ID externe",
+    "receivedAt": "Reçue",
+    "document": "Document",
+    "empty": "Aucune commande en attente."
+  }
+}

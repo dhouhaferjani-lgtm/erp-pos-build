@@ -55,6 +55,7 @@ import {
   Calendar,
   Download,
   ShieldAlert,
+  Cable,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts'
@@ -106,6 +107,7 @@ const MODULE_NAME_MAP: Record<string, string | string[]> = {
   inventory: 'Inventory',
   inventoryAndCatalog: ['Inventory', 'CompositeItems'],
   products: 'Inventory',
+  channels: 'Inventory',
   categories: ['Inventory', 'CompositeItems'],
   stockLevels: 'Inventory',
   stockMovements: 'Inventory',
@@ -166,6 +168,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
     { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
     { key: 'enrichmentQueue', href: '/inventory/enrichment-results', icon: Sparkles },
+    { key: 'channels', href: '/channels', icon: Cable, module: 'channels' },
     { key: 'priceLists', href: '/pricing/price-lists', icon: Tag, module: 'pricing' },
     { key: 'compositeItems', href: '/catalog/composite-items', icon: Combine, module: 'composite-items' },
     { key: 'modifierGroups', href: '/catalog/modifier-groups', icon: Layers, module: 'modifier-groups' },

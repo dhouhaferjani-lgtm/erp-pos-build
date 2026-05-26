@@ -377,6 +377,13 @@ export type ProductionType = 'made_to_order' | 'batch' | 'stock';
 export type SelectionType = 'single' | 'multiple';
 export type VerticalType = 'fnb' | 'manufacturing' | 'sewing' | 'bakery' | 'generic';
 }
+declare namespace App.Modules.Channel.Domain.Enums {
+export type ChannelConnectionStatus = 'pending' | 'connected' | 'failed' | 'suspended';
+export type ChannelOrderStatus = 'pending' | 'processed' | 'failed' | 'ignored';
+export type CredentialType = 'oauth_token' | 'api_key' | 'consumer_key_secret' | 'custom';
+export type SyncOperationStatus = 'pending' | 'acknowledged' | 'failed' | 'retried';
+export type SyncOperationType = 'product_push' | 'stock_push' | 'price_update' | 'order_status_update';
+}
 declare namespace App.Modules.Company.Domain.Enums {
 export type CompanyStatus = 'active' | 'suspended' | 'closed';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';

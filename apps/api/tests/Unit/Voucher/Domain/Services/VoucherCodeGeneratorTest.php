@@ -127,6 +127,15 @@ final class VoucherCodeGeneratorTest extends TestCase
         $this->markTestSkipped('Could not find a code with differing adjacent body chars after 20 attempts (extremely unlikely).');
     }
 
+    public function test_known_adjacent_transposition_regression_fails_validation(): void
+    {
+        $code = 'OTSP-N654Q63JRU7Z-5';
+        $transposed = 'OTSP-6N54Q63JRU7Z-5';
+
+        $this->assertTrue($this->generator->isValid($code));
+        $this->assertFalse($this->generator->isValid($transposed));
+    }
+
     // -------------------------------------------------------------------------
     // Alphabet exclusions
     // -------------------------------------------------------------------------

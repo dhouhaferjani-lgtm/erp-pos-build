@@ -1,0 +1,64 @@
+{
+  "title": "Channels",
+  "subtitle": "Manage external sales channels and adapter-agnostic sync status.",
+  "noAdapters": {
+    "title": "No adapters available yet",
+    "body": "Channel infrastructure is ready. Concrete adapter modules ship in a follow-up release."
+  },
+  "empty": {
+    "title": "No channels configured",
+    "body": "Create a channel after an adapter module has been installed."
+  },
+  "fields": {
+    "name": "Name",
+    "adapter": "Adapter",
+    "lastSync": "Last sync",
+    "never": "Never"
+  },
+  "connectionStatus": {
+    "pending": "Pending",
+    "connected": "Connected",
+    "failed": "Failed",
+    "suspended": "Suspended"
+  },
+  "create": {
+    "title": "Create channel",
+    "subtitle": "Configure a generic channel record and credentials.",
+    "action": "New channel",
+    "namePlaceholder": "Main online store",
+    "noAdapterOption": "No adapters registered",
+    "adaptersComing": "Adapter modules coming in next release.",
+    "testConnection": "Test connection"
+  },
+  "mappings": {
+    "title": "Product mappings",
+    "subtitle": "Control which products publish to the selected channel.",
+    "syncSelected": "Sync selected",
+    "product": "Product",
+    "externalId": "External ID",
+    "priceOverride": "Price override",
+    "quantityCap": "Quantity cap",
+    "empty": "No product mappings yet."
+  },
+  "sync": {
+    "title": "Sync status",
+    "subtitle": "Review outbound operations, retries, and drift alerts.",
+    "operation": "Operation",
+    "attempts": "Attempts",
+    "nextRetry": "Next retry",
+    "empty": "No sync operations recorded.",
+    "filters": {
+      "all": "All statuses",
+      "pending": "Pending",
+      "failed": "Failed"
+    }
+  },
+  "orders": {
+    "title": "Channel orders",
+    "subtitle": "Review staged inbound orders before promotion.",
+    "externalId": "External ID",
+    "receivedAt": "Received",
+    "document": "Document",
+    "empty": "No staged orders received."
+  }
+}

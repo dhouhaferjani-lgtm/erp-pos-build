@@ -18,8 +18,8 @@ use InvalidArgumentException;
  * - Check digit: 1 char from ALPHABET, computed via a Damm-style algorithm over
  *   a totally anti-symmetric quasigroup (TASG) of order 32.
  *
- * The quasigroup is defined by multiplication in GF(2^5) with primitive polynomial
- * x^5 + x^2 + 1 (0x25), which is a known TASG. This catches all single-character
+ * The quasigroup is defined by multiplication by x in GF(2^5) with primitive polynomial
+ * x^5 + x^2 + 1 (0x25). The multiplier has no nonzero fixed points, which catches single-character
  * substitution errors and all adjacent transpositions.
  *
  * Algorithm: start with interim = 0; for each character c (mapped to index 0–31),
@@ -44,7 +44,7 @@ final class VoucherCodeGenerator
     /**
      * Damm permutation table over GF(2^5) (base 32).
      *
-     * Entry [n] = n * 3 mod p(x) in GF(2^5), primitive polynomial x^5+x^2+1 (0x25).
+     * Entry [n] = n * x mod p(x) in GF(2^5), primitive polynomial x^5+x^2+1 (0x25).
      * The step function is: interim = TABLE[interim XOR char_index].
      *
      * The resulting operation satisfies the TASG property required by Damm's algorithm:
@@ -54,8 +54,8 @@ final class VoucherCodeGenerator
      * @var array<int, int>
      */
     private const TABLE = [
-        0,  3,  6,  5, 12, 15, 10,  9, 24, 27, 30, 29, 20, 23, 18, 17,
-        16, 19, 22, 21, 28, 31, 26, 25,  8, 11, 14, 13,  4,  7,  2,  1,
+        0,  2,  4,  6,  8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+        5,  7,  1,  3, 13, 15,  9, 11, 21, 23, 17, 19, 29, 31, 25, 27,
     ];
 
     /**

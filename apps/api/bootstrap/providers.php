@@ -5,6 +5,7 @@ use App\Modules\BatchExpiry\BatchExpiryServiceProvider;
 use App\Modules\Billing\Providers\BillingServiceProvider;
 use App\Modules\Cart\Providers\CartServiceProvider;
 use App\Modules\Catalog\Providers\CatalogServiceProvider;
+use App\Modules\Channel\Providers\ChannelServiceProvider;
 use App\Modules\Company\CompanyServiceProvider;
 use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Contact\Providers\ContactServiceProvider;
@@ -82,6 +83,7 @@ return [
     LoyaltyServiceProvider::class,
     VoucherServiceProvider::class,
     CatalogServiceProvider::class,
+    ChannelServiceProvider::class,
     MenuServiceProvider::class,
     PromotionServiceProvider::class,
     CouponServiceProvider::class,
