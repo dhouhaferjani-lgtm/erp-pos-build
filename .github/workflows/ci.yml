@@ -535,6 +535,103 @@ jobs:
           php artisan test \
             --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest"
 
+  t6-phase0b-pgsql:
+    name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)
+    runs-on: ubuntu-latest
+    # T6 Phase 0b GATE: the row-level -> database-per-tenant flip must be proven
+    # on real PostgreSQL (per-tenant database creation, central Sanctum PAT,
+    # cross-DB FK audit, fail-closed resolver) before merge to dev OR main —
+    # SQLite cannot host any of these. Kept SEPARATE from the broader
+    # backend-test-pgsql fiscal-invariant filter so this gate reflects ONLY the
+    # Phase 0b surface and stays green independent of pre-existing fiscal debt.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.base_ref == 'dev' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: autoerp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env.testing
+          # The single-connection test suite points `central` at the default DB.
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_test/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      - name: Run T6 Phase 0b PostgreSQL tests
+        # phpunit-pgsql.xml forces DB_CONNECTION=pgsql. The flip test creates real
+        # per-tenant databases (the POSTGRES_USER is the container superuser and
+        # may CREATE/DROP DATABASE).
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: autoerp_test
+          DB_CENTRAL_DATABASE: autoerp_test
+          DB_USERNAME: autoerp
+          DB_PASSWORD: secret
+        run: |
+          php artisan test -c phpunit-pgsql.xml \
+            --filter="TenantStanclFlipTest|TenantDatabaseIsolationTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest"
+
   frontend-lint:
     name: Frontend Lint (ESLint)
     runs-on: ubuntu-latest

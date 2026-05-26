@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    T6 Phase 0b — PostgreSQL test configuration.
+
+    SQLite (the default phpunit.xml) cannot host the PostgreSQLDatabaseManager
+    Stancl flip, real per-tenant database creation, partial unique indexes, or
+    the CHECK-constraint / append-only-trigger invariant tests. This config
+    forces the run onto PostgreSQL.
+
+    Connection params (host/port/user/password/database) come from the
+    environment (.env.testing locally, the job/step env in CI) so the same file
+    works for both. Only DB_CONNECTION is forced to pgsql here; DB_CENTRAL_DATABASE
+    defaults to synerivia_central and can be overridden by the environment.
+
+    Run locally:   php artisan test -c phpunit-pgsql.xml
+    Run in CI:     see .github/workflows/ci.yml backend-test-pgsql job
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="Architecture">
+            <directory>tests/Architecture</directory>
+        </testsuite>
+    </testsuites>
+    <groups>
+        <exclude>
+            <group>sweep-progress</group>
+        </exclude>
+    </groups>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <ini name="memory_limit" value="2G"/>
+        <ini name="max_execution_time" value="0"/>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_DEBUG" value="false"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <!-- Force PostgreSQL; connection params resolved from the environment. -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <!-- DB_CENTRAL_DATABASE is intentionally NOT pinned here: in the test
+             suite the named `central` connection tracks the default database
+             (falls back to DB_DATABASE) so the compat suite runs on one physical
+             database. .env.testing (local) / the CI step env set it explicitly. -->
+        <!-- Compat suite runs on a single connection. DB-per-tenant fail-closed
+             tests opt in via config(['tenancy_resolver.db_per_tenant' => true]). -->
+        <env name="TENANCY_DB_PER_TENANT" value="false" force="true"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="SENTRY_LARAVEL_DSN" value=""/>
+        <env name="SENTRY_DSN" value=""/>
+    </php>
+</phpunit>

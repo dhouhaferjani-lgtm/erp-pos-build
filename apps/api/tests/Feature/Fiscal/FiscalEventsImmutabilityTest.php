@@ -57,11 +57,14 @@ final class FiscalEventsImmutabilityTest extends TestCase
     {
         $this->skipUnlessPostgres();
 
+        // insertEvent() seeds current_hash = str_repeat('a', 64); the update must
+        // change it to a DIFFERENT value, otherwise the trigger's
+        // `IS DISTINCT FROM` guard correctly sees no change and does not raise.
         $e = $this->insertEvent();
 
         $this->expectException(QueryException::class);
         DB::table('fiscal_events')->where('id', $e)->update([
-            'current_hash' => str_repeat('a', 64),
+            'current_hash' => str_repeat('b', 64),
         ]);
     }
 

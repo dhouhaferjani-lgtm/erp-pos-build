@@ -102,6 +102,43 @@ return [
             ] : [],
         ],
 
+        /*
+         * Central connection (T6 Phase 0b — migration topology contract Pattern A).
+         *
+         * Under database-per-tenant, central tables (tenants, domains, plans,
+         * tenant_subscriptions, super_admins, central_identities,
+         * personal_access_tokens) live in a dedicated central database, while the
+         * default connection is swapped to a per-tenant database mid-request by
+         * Stancl's DatabaseTenancyBootstrapper. This named connection is NEVER
+         * swapped, so `DB::connection('central')` (and Sanctum's
+         * CentralPersonalAccessToken, which pins $connection='central') always
+         * reach the central database regardless of the active tenant.
+         *
+         * In production set DB_CONNECTION=central so the app default AND Stancl's
+         * tenancy.database.central_connection (env('DB_CONNECTION','central'))
+         * resolve to this same connection. In the test suite DB_CONNECTION stays
+         * pgsql (central_connection='pgsql') so the compat suite runs on a single
+         * connection; DB_CENTRAL_DATABASE then points this connection at the same
+         * physical database as the default.
+         */
+        'central' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_CENTRAL_URL', env('DB_URL')),
+            'host' => env('DB_CENTRAL_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_CENTRAL_PORT', env('DB_PORT', '5432')),
+            'database' => env('DB_CENTRAL_DATABASE', env('DB_DATABASE', 'synerivia_central')),
+            'username' => env('DB_CENTRAL_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('DB_CENTRAL_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+            'options' => env('DB_PGBOUNCER', false) ? [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ] : [],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

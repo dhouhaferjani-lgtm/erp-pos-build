@@ -48,11 +48,13 @@ use App\Modules\Workshop\WorkOrder\Infrastructure\WorkshopWorkOrderServiceProvid
 use App\Providers\AppServiceProvider;
 use App\Providers\BroadcastServiceProvider;
 use App\Providers\EventServiceProvider;
+use App\Providers\TenancyServiceProvider;
 
 return [
     AppServiceProvider::class,
     BroadcastServiceProvider::class,
     EventServiceProvider::class,
+    TenancyServiceProvider::class,
     IdentityServiceProvider::class,
     TenantServiceProvider::class,
     CompanyServiceProvider::class,

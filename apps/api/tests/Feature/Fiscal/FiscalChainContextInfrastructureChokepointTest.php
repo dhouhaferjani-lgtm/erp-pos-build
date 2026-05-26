@@ -22,7 +22,7 @@ final class FiscalChainContextInfrastructureChokepointTest extends TestCase
         $this->assertStringContainsString('tenant_id, company_id, terminal_id, chain_context, sequence_number', $ingestor);
         $this->assertStringContainsString("'chain_context' => \$envelope->chainContext", $ingestor);
 
-        $migration = $this->read($root.'/database/migrations/2026_05_14_100001_create_fiscal_events_table.php');
+        $migration = $this->read($root.'/database/migrations/tenant/2026_05_14_100001_create_fiscal_events_table.php');
         $this->assertStringContainsString("\$table->string('chain_context', 32)", $migration);
         $this->assertStringContainsString("'tenant_id', 'company_id', 'terminal_id', 'chain_context', 'sequence_number'", $migration);
 

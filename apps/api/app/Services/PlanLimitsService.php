@@ -74,8 +74,11 @@ class PlanLimitsService
             'companies' => DB::table('companies')
                 ->where('tenant_id', $tenant->id)
                 ->count(),
+            // `locations` is company-scoped (no tenant_id column); count the
+            // tenant's locations through their companies.
             'locations' => DB::table('locations')
-                ->where('tenant_id', $tenant->id)
+                ->join('companies', 'locations.company_id', '=', 'companies.id')
+                ->where('companies.tenant_id', $tenant->id)
                 ->count(),
             'users' => DB::table('users')
                 ->where('tenant_id', $tenant->id)
