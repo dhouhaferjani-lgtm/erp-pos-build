@@ -17,7 +17,12 @@ use App\Modules\Fiscal\Domain\DTOs\OverrideDiscountLimitPayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideTenderTolerancePayload;
 use App\Modules\Fiscal\Domain\DTOs\OverrideVoidOrReturnPayload;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
+use App\Modules\Fiscal\Domain\DTOs\SessionClosePayload;
+use App\Modules\Fiscal\Domain\DTOs\SessionOpenPayload;
 use App\Modules\Fiscal\Domain\DTOs\TerminalRegistrySnapshotPayload;
+use App\Modules\Fiscal\Domain\DTOs\XReportPayload;
+use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
+use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
 
@@ -58,8 +63,15 @@ final class FiscalEventPayloadRegistry
         FiscalEventType::OVERRIDE_DISCOUNT_LIMIT->value => [OverrideDiscountLimitPayload::class, 1],
         FiscalEventType::OVERRIDE_TENDER_TOLERANCE->value => [OverrideTenderTolerancePayload::class, 1],
         FiscalEventType::OVERRIDE_VOID_OR_RETURN->value => [OverrideVoidOrReturnPayload::class, 1],
+        FiscalEventType::OPENING_FLOAT->value => [ZCashDrawerMovementPayload::class, 1],
+        FiscalEventType::CASH_IN->value => [ZCashDrawerMovementPayload::class, 1],
         FiscalEventType::CASH_OUT->value => [CashDrawerMovementPayload::class, 1],
         FiscalEventType::SAFE_DROP->value => [CashDrawerMovementPayload::class, 1],
+        FiscalEventType::CASH_CORRECTION->value => [ZCashDrawerMovementPayload::class, 1],
+        FiscalEventType::SESSION_OPEN->value => [SessionOpenPayload::class, 1],
+        FiscalEventType::SESSION_CLOSE->value => [SessionClosePayload::class, 1],
+        FiscalEventType::X_REPORT->value => [XReportPayload::class, 1],
+        FiscalEventType::Z_REPORT->value => [ZReportPayload::class, 1],
     ];
 
     /**

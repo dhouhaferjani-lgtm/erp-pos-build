@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Application\Services;
 
+use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\DTOs\ParseResult;
+use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
 use RuntimeException;
@@ -74,6 +76,7 @@ final class StrictCanonicalParser
     /** The 14 canonical envelope keys per spec §4 (alphabetical). */
     private const ENVELOPE_KEYS = [
         'business_date',
+        'chain_context',
         'company_id',
         'event_time_device',
         'event_type',
@@ -87,6 +90,36 @@ final class StrictCanonicalParser
         'signature_version',
         'tenant_id',
         'terminal_id',
+    ];
+
+    private const OPERATIONAL_CHAIN_EVENT_TYPES = [
+        'SALE_RECEIPT',
+        'ACCOUNT_PAYMENT',
+        'ACCOUNT_CHARGE',
+        'ACCOUNT_STATUS_CHANGED',
+        'CHAIN_BREAK_DETECTED',
+        'CHAIN_RESTART',
+        'TERMINAL_REGISTRY_SNAPSHOT',
+        'OPERATOR_APPROVAL_GRANTED',
+        'OVERRIDE_CREDIT_LIMIT',
+        'OVERRIDE_ACCOUNT_STATUS',
+        'OVERRIDE_DISCOUNT_LIMIT',
+        'OVERRIDE_TENDER_TOLERANCE',
+        'OVERRIDE_VOID_OR_RETURN',
+        'CASH_OUT',
+        'SAFE_DROP',
+    ];
+
+    private const Z_SESSION_CHAIN_EVENT_TYPES = [
+        'SESSION_OPEN',
+        'OPENING_FLOAT',
+        'CASH_IN',
+        'CASH_OUT',
+        'SAFE_DROP',
+        'CASH_CORRECTION',
+        'SESSION_CLOSE',
+        'X_REPORT',
+        'Z_REPORT',
     ];
 
     private string $bytes = '';
@@ -170,25 +203,91 @@ final class StrictCanonicalParser
 
         /** @var array<string, mixed> $payload */
         $payload = $envelope['payload'];
+        $chainContext = $envelope['chain_context'];
+        if (! is_string($chainContext)) {
+            return ParseResult::failure('envelope_chain_context_invalid:got='.get_debug_type($chainContext));
+        }
+
+        $contextError = $this->validateChainContext($type, $chainContext, $payload);
+        if ($contextError !== null) {
+            return ParseResult::failure($contextError);
+        }
 
         try {
-            $dtoClass::fromArray($payload);
+            $effectiveDtoClass = $this->dtoClassForEnvelope($type, $chainContext, $dtoClass);
+            $effectiveDtoClass::fromArray($payload);
         } catch (Throwable $e) {
             return ParseResult::failure('schema_violation:'.$e->getMessage());
         }
 
-        $extrasError = $this->constraintValidator->validatePayloadKeySet($type, $payload);
+        $extrasError = $this->constraintValidator->validatePayloadKeySet($type, $payload, $chainContext);
         if ($extrasError !== null) {
             return ParseResult::failure($extrasError);
         }
 
         try {
-            $this->constraintValidator->validatePerEventConstraints($type, $payload);
+            $this->constraintValidator->validatePerEventConstraints($type, $payload, $chainContext);
         } catch (RuntimeException $e) {
             return ParseResult::failure('sub_array_shape:'.$e->getMessage());
         }
 
-        return ParseResult::ok($payload);
+        return ParseResult::ok($payload, $envelope);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateChainContext(
+        FiscalEventType $type,
+        string $chainContext,
+        array $payload,
+    ): ?string {
+        $isZSessionContext = in_array($chainContext, ['z_session', 'training_z_session'], true);
+        $allowedTypes = $isZSessionContext
+            ? self::Z_SESSION_CHAIN_EVENT_TYPES
+            : self::OPERATIONAL_CHAIN_EVENT_TYPES;
+
+        if (! in_array($type->value, $allowedTypes, true)) {
+            return sprintf(
+                'envelope_chain_context_event_type_mismatch:event_type=%s,chain_context=%s',
+                $type->value,
+                $chainContext,
+            );
+        }
+
+        $trainingFlag = $payload['training_flag'] ?? null;
+        if (! is_bool($trainingFlag)) {
+            return null;
+        }
+
+        $isTrainingContext = in_array($chainContext, ['training_operational', 'training_z_session'], true);
+        if ($trainingFlag && ! $isTrainingContext) {
+            return 'envelope_chain_context_training_mismatch:training_flag=true requires training context; got '.$chainContext;
+        }
+        if (! $trainingFlag && $isTrainingContext) {
+            return 'envelope_chain_context_training_mismatch:training_flag=false requires production context; got '.$chainContext;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  class-string  $registryDtoClass
+     * @return class-string
+     */
+    private function dtoClassForEnvelope(
+        FiscalEventType $type,
+        string $chainContext,
+        string $registryDtoClass,
+    ): string {
+        if (
+            in_array($type, [FiscalEventType::CASH_OUT, FiscalEventType::SAFE_DROP], true)
+            && in_array($chainContext, ['z_session', 'training_z_session'], true)
+        ) {
+            return ZCashDrawerMovementPayload::class;
+        }
+
+        return $registryDtoClass;
     }
 
     // -----------------------------------------------------------------
@@ -544,6 +643,10 @@ final class StrictCanonicalParser
         // business_date: ISO 8601 date.
         if (! is_string($envelope['business_date']) || preg_match(self::ISO_8601_DATE, $envelope['business_date']) !== 1) {
             return 'envelope_business_date_invalid:must be ISO 8601 date';
+        }
+
+        if (! is_string($envelope['chain_context']) || ! in_array($envelope['chain_context'], FiscalEventEnvelope::CHAIN_CONTEXTS, true)) {
+            return 'envelope_chain_context_invalid:got='.var_export($envelope['chain_context'], true);
         }
 
         // Non-empty string IDs.

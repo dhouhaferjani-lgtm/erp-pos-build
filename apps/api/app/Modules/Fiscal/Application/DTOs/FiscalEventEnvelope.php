@@ -58,6 +58,14 @@ final class FiscalEventEnvelope
     /** ISO-8601 calendar date `YYYY-MM-DD`. */
     public const ISO_8601_DATE_REGEX = '/^\d{4}-\d{2}-\d{2}$/';
 
+    /** Fiscal chain contexts introduced by the Z-report rebuild. */
+    public const CHAIN_CONTEXTS = [
+        'operational',
+        'z_session',
+        'training_operational',
+        'training_z_session',
+    ];
+
     public function __construct(
         /** Wire-envelope id (the controller-generated request envelope id; not a fiscal_events.id). */
         public string $envelopeId,
@@ -80,6 +88,7 @@ final class FiscalEventEnvelope
         public string $eventTimeDevice,
         /** ISO 8601 date — `YYYY-MM-DD`. */
         public string $businessDate,
+        public string $chainContext,
         /** Server-time seen on device — nullable; pre-session-1 events may not carry one. */
         public ?string $lastServerTimeSeen,
         public ?string $referenceEventId,
@@ -124,6 +133,7 @@ final class FiscalEventEnvelope
         $sequenceNumber = FiscalPayloadArrayGuards::requireInt($data, 'sequence_number');
         $eventTimeDevice = FiscalPayloadArrayGuards::requireString($data, 'event_time_device');
         $businessDate = FiscalPayloadArrayGuards::requireString($data, 'business_date');
+        $chainContext = FiscalPayloadArrayGuards::requireString($data, 'chain_context');
         $lastServerTimeSeen = FiscalPayloadArrayGuards::optionalString($data, 'last_server_time_seen');
         $referenceEventId = FiscalPayloadArrayGuards::optionalString($data, 'reference_event_id');
         $referenceDocumentId = FiscalPayloadArrayGuards::optionalString($data, 'reference_document_id');
@@ -158,6 +168,7 @@ final class FiscalEventEnvelope
             sequenceNumber: $sequenceNumber,
             eventTimeDevice: $eventTimeDevice,
             businessDate: $businessDate,
+            chainContext: $chainContext,
             lastServerTimeSeen: $lastServerTimeSeen,
             referenceEventId: $referenceEventId,
             referenceDocumentId: $referenceDocumentId,
@@ -198,6 +209,13 @@ final class FiscalEventEnvelope
         $this->assertMatches('current_hash', $this->currentHash, self::HEX_64_REGEX, '64-char lowercase hex');
         $this->assertMatches('event_time_device', $this->eventTimeDevice, self::ISO_8601_UTC_SECONDS_REGEX, 'ISO-8601 UTC seconds (YYYY-MM-DDTHH:MM:SSZ)');
         $this->assertMatches('business_date', $this->businessDate, self::ISO_8601_DATE_REGEX, 'ISO-8601 date (YYYY-MM-DD)');
+        if (! in_array($this->chainContext, self::CHAIN_CONTEXTS, true)) {
+            throw new InvalidArgumentException(sprintf(
+                'Envelope field "chain_context" must be one of [%s]; got %s.',
+                implode(', ', self::CHAIN_CONTEXTS),
+                var_export($this->chainContext, true),
+            ));
+        }
 
         if ($this->referenceEventId !== null) {
             $this->assertMatches('reference_event_id', $this->referenceEventId, self::UUID_REGEX, 'uuid');

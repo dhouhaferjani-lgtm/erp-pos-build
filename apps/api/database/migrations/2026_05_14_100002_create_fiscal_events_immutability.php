@@ -81,6 +81,7 @@ return new class extends Migration
                        OR NEW.sequence_number        IS DISTINCT FROM OLD.sequence_number
                        OR NEW.event_time_device      IS DISTINCT FROM OLD.event_time_device
                        OR NEW.business_date          IS DISTINCT FROM OLD.business_date
+                       OR NEW.chain_context          IS DISTINCT FROM OLD.chain_context
                        OR NEW.last_server_time_seen  IS DISTINCT FROM OLD.last_server_time_seen
                        OR NEW.server_received_at     IS DISTINCT FROM OLD.server_received_at
                        OR NEW.reference_event_id     IS DISTINCT FROM OLD.reference_event_id

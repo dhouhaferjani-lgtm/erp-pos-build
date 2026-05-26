@@ -4,7 +4,10 @@ import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { getCurrencyDecimals } from '@/lib/currency';
 import { bcadd, bcformat } from '@/lib/decimal';
+import { appendXReport } from '@/lib/fiscal/zSessionAuthoring';
+import { getFiscalEventEngine } from '@/lib/fiscal/instance';
 import { useAuthStore } from '@/stores/authStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { generateZReport as generateLocalZReport } from '@/lib/offline/zReportService';
 import type { GenerateZReportOpts } from '@/lib/offline/zReportService';
 import { getAllPaymentMethods } from '@/lib/db/repositories/paymentRepository';
@@ -39,6 +42,15 @@ export interface XReportResponse {
   refunds_count: number;
   vat_breakdown: VatBreakdownItem[];
   payment_methods: PaymentMethodItem[];
+}
+
+export interface GenerateXReportOpts {
+  tenantId?: string;
+  fiscalShiftId?: string;
+  fiscalSessionId?: string;
+  operatorId?: string;
+  operatorName?: string;
+  isTraining?: boolean;
 }
 
 export interface ZReportResponse {
@@ -121,12 +133,19 @@ export interface CashDrawerOperation {
   user_name: string;
 }
 
-export async function generateXReport(terminalId: string): Promise<XReportResponse> {
+export async function generateXReport(
+  terminalId: string,
+  opts: GenerateXReportOpts = {},
+): Promise<XReportResponse> {
+  if (opts.fiscalSessionId !== undefined) {
+    return generateLocalXReport(terminalId, opts);
+  }
+
   try {
     return await apiPost<XReportResponse>('/pos/reports/x', { terminal_id: terminalId });
   } catch {
     // Offline fallback: generate X report from local SQLite data
-    return await generateLocalXReport(terminalId);
+    return await generateLocalXReport(terminalId, opts);
   }
 }
 
@@ -146,7 +165,14 @@ export async function generateZReport(
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
   const db = await getDatabase(companyId);
-  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, opts);
+  const terminal = useTerminalStore.getState().terminal;
+  const requiresFiscalEvents = opts.requireFiscalEvents ?? (
+    terminal?.id === terminalId && terminal.fiscal_schema_version === 3
+  );
+  const localReport = await generateLocalZReport(db, terminalId, shiftId, shiftOpenedAt, openingCash, {
+    ...opts,
+    requireFiscalEvents: requiresFiscalEvents,
+  });
   return localZReportToResponse(localReport, decimals);
 }
 
@@ -328,9 +354,16 @@ function getDecimals(): number {
  * Build an X Report from local SQLite offline_receipts.
  * Uses the same aggregation approach as zReportService.
  */
-async function generateLocalXReport(terminalId: string): Promise<XReportResponse> {
+async function generateLocalXReport(
+  terminalId: string,
+  opts: GenerateXReportOpts = {},
+): Promise<XReportResponse> {
   const db = await getDb();
   const decimals = getDecimals();
+  const generatedAtDevice = new Date();
+  const xReportUuid = crypto.randomUUID();
+  const authState = useAuthStore.getState();
+  const companyId = authState.companyId;
 
   // Get current shift open time from terminal store
   const { useTerminalStore } = await import('@/stores/terminalStore');
@@ -383,12 +416,12 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
     paymentByType.set(methodCode, payExisting);
   }
 
-  return {
-    id: `local-x-${Date.now()}`,
+  const report: XReportResponse = {
+    id: xReportUuid,
     terminal_id: terminalId,
     shift_id: shift?.id ?? null,
     generated_by: 'local',
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAtDevice.toISOString(),
     sales_count: receipts.length,
     gross_sales: bcformat(grossSales, decimals),
     net_sales: bcformat(netSales, decimals),
@@ -408,6 +441,65 @@ async function generateLocalXReport(terminalId: string): Promise<XReportResponse
       transaction_count: data.count,
     })),
   };
+
+  if (
+    companyId !== null &&
+    shift !== null &&
+    opts.tenantId !== undefined &&
+    opts.fiscalShiftId !== undefined &&
+    opts.fiscalSessionId !== undefined &&
+    opts.operatorId !== undefined &&
+    opts.operatorName !== undefined
+  ) {
+    const engine = await getFiscalEventEngine(companyId, db);
+    const firstReceipt = receipts[0] ?? null;
+    const lastReceipt = receipts[receipts.length - 1] ?? null;
+    await appendXReport(db, engine, {
+      tenantId: opts.tenantId,
+      companyId,
+      terminalId,
+      shiftId: opts.fiscalShiftId,
+      sessionId: opts.fiscalSessionId,
+      businessDate: shift.opened_at.slice(0, 10),
+      operatorId: opts.operatorId,
+      operatorName: opts.operatorName,
+      periodStart: new Date(shift.opened_at).toISOString(),
+      periodEnd: generatedAtDevice.toISOString(),
+      xReportUuid,
+      reportTotals: {
+        sales_count: report.sales_count,
+        gross_sales: report.gross_sales,
+        net_sales: report.net_sales,
+        tax_amount: report.tax_amount,
+        refunds_count: report.refunds_count,
+        refunds_amount: bcformat('0', decimals),
+        voided_count: 0,
+      },
+      vatBreakdown: report.vat_breakdown.map((row) => ({
+        gross_amount: row.gross_amount,
+        net_amount: row.net_amount,
+        tax_rate: row.tax_rate,
+        vat_amount: row.vat_amount,
+      })),
+      paymentMethodTotals: report.payment_methods.map((row) => ({
+        payment_type: row.payment_type,
+        total_amount: row.total_amount,
+        transaction_count: row.transaction_count,
+      })),
+      cashDrawerTotals: {},
+      operationalEventRange: {
+        first_receipt_hash: firstReceipt?.fiscal_hash ?? null,
+        first_receipt_sequence: firstReceipt?.hash_sequence ?? null,
+        last_receipt_hash: lastReceipt?.fiscal_hash ?? null,
+        last_receipt_sequence: lastReceipt?.hash_sequence ?? null,
+        receipt_count: receipts.length,
+      },
+      isTraining: opts.isTraining ?? false,
+      generatedAtDevice,
+    });
+  }
+
+  return report;
 }
 
 /**

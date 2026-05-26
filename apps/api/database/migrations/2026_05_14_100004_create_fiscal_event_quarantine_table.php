@@ -50,6 +50,7 @@ return new class extends Migration
             $table->bigInteger('claimed_sequence_number');
             $table->timestampTz('event_time_device');
             $table->date('business_date');
+            $table->string('chain_context', 32)->default('operational');
             $table->timestampTz('last_server_time_seen')->nullable();
 
             // Cross-event references — preserved so quarantine incidents can be cross-walked
@@ -137,7 +138,7 @@ return new class extends Migration
             // (per-terminal verifier; per-tenant admin browse) prune efficiently.
             DB::statement(<<<'SQL'
                 CREATE INDEX fiscal_event_quarantine_unresolved_idx
-                    ON fiscal_event_quarantine (tenant_id, terminal_id, claimed_sequence_number)
+                    ON fiscal_event_quarantine (tenant_id, terminal_id, chain_context, claimed_sequence_number)
                     WHERE resolved_at IS NULL
             SQL);
         }

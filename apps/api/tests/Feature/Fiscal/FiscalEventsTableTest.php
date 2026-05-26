@@ -31,7 +31,7 @@ final class FiscalEventsTableTest extends TestCase
         foreach ([
             'id', 'tenant_id', 'company_id', 'terminal_id', 'operator_id', 'event_type',
             'event_version', 'signature_version', 'sequence_number', 'event_time_device',
-            'business_date', 'server_received_at', 'canonical_bytes', 'previous_hash',
+            'business_date', 'chain_context', 'server_received_at', 'canonical_bytes', 'previous_hash',
             'current_hash', 'signature_status', 'integrity_status', 'integrity_exception_class',
             'payload', 'payload_parse_status', 'created_at',
         ] as $col) {
@@ -51,7 +51,21 @@ final class FiscalEventsTableTest extends TestCase
         $this->insertEvent([
             'sequence_number' => 1,
             'id' => Str::uuid()->toString(),
-        ]); // same (tenant_id, terminal_id, sequence_number)
+        ]); // same (tenant_id, company_id, terminal_id, chain_context, sequence_number)
+    }
+
+    public function test_unique_sequence_key_allows_same_sequence_in_different_chain_context(): void
+    {
+        $this->insertEvent(['sequence_number' => 1, 'chain_context' => 'operational']);
+
+        $id = $this->insertEvent([
+            'sequence_number' => 1,
+            'chain_context' => 'z_session',
+            'id' => Str::uuid()->toString(),
+        ]);
+
+        $this->assertSame(2, DB::table('fiscal_events')->count());
+        $this->assertTrue(DB::table('fiscal_events')->where('id', $id)->exists());
     }
 
     public function test_hash_format_check_constraint(): void
@@ -99,6 +113,7 @@ final class FiscalEventsTableTest extends TestCase
             // Driver-portable literals — NOW() / CURRENT_DATE don't exist on SQLite.
             'event_time_device' => now()->toDateTimeString(),
             'business_date' => now()->toDateString(),
+            'chain_context' => 'operational',
             'server_received_at' => now()->toDateTimeString(),
             'canonical_bytes' => '{}',
             'previous_hash' => str_repeat('0', 64),
@@ -108,12 +123,15 @@ final class FiscalEventsTableTest extends TestCase
         // Re-use tenant/terminal across consecutive inserts in the same test
         // so the unique-sequence check fires deterministically.
         static $stickyTenant = null;
+        static $stickyCompany = null;
         static $stickyTerminal = null;
         if ($stickyTenant === null) {
             $stickyTenant = $defaults['tenant_id'];
+            $stickyCompany = $defaults['company_id'];
             $stickyTerminal = $defaults['terminal_id'];
         }
         $defaults['tenant_id'] = $stickyTenant;
+        $defaults['company_id'] = $stickyCompany;
         $defaults['terminal_id'] = $stickyTerminal;
 
         $row = array_merge($defaults, $overrides);

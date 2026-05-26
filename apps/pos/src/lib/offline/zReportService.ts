@@ -38,6 +38,11 @@ import {
   computeCashCountSeverity,
   type CashCountThresholds,
 } from '@/lib/offline/cashCountValidation';
+import { getFiscalEventEngine } from '@/lib/fiscal/instance';
+import {
+  appendZSessionCloseAndZReport,
+  type AuthorZSessionCloseInput,
+} from '@/lib/fiscal/zSessionAuthoring';
 
 // Cumulative fields are persisted at 3 decimals (TND max); see terminalStateRepository.
 const CUMULATIVE_SCALE = 3;
@@ -55,6 +60,14 @@ export interface GenerateZReportOpts {
   varianceReason?: string | null;
   managerUserId?: string | null;
   blindCountUsed?: boolean;
+  tenantId?: string;
+  fiscalShiftId?: string;
+  fiscalSessionId?: string;
+  terminalLabel?: string;
+  operatorId?: string;
+  operatorName?: string;
+  isTraining?: boolean;
+  requireFiscalEvents?: boolean;
   /** Fraud-settings thresholds. When provided, variance_severity is computed
    *  from the aggregated per-tender variances and stamped into shift_fields. */
   fraudSettings?: CashCountThresholds | null;
@@ -102,6 +115,8 @@ export async function generateZReport(
   const authState = useAuthStore.getState();
   const company = authState.companies.find((c) => c.id === authState.companyId);
   const decimals = getCurrencyDecimals(company?.currency ?? 'EUR');
+  const companyId = authState.companyId;
+  assertRequiredFiscalCloseContext(companyId, opts);
 
   // 1. Guard: check no Z-report already exists for this shift
   const existing = await getZReportByShift(db, shiftId);
@@ -343,6 +358,31 @@ export async function generateZReport(
     }
     await advanceZChain(db, terminalId, fiscalHash, newHashSequence, newZNumber);
     await updateGrandTotals(db, terminalId, grossSalesStr, taxStr, refundsStr, salesCount);
+
+    const closeInput = buildFiscalCloseInput({
+      companyId,
+      companyName: company?.name ?? null,
+      currencyCode: companyCurrency,
+      decimals,
+      fiscalHash,
+      generatedAt,
+      grandTotals,
+      newHashSequence,
+      opts,
+      receiptSnapshots,
+      reportData,
+      shiftId,
+      shiftOpenedAt,
+      terminalId,
+      zChainState,
+      zReport,
+      zReportCountRows,
+    });
+    if (closeInput !== null && companyId !== null) {
+      const engine = await getFiscalEventEngine(companyId, db);
+      await appendZSessionCloseAndZReport(db, engine, closeInput);
+    }
+
     await db.execute('COMMIT');
   } catch (error) {
     await db.execute('ROLLBACK');
@@ -350,6 +390,230 @@ export async function generateZReport(
   }
 
   return zReport;
+}
+
+function assertRequiredFiscalCloseContext(companyId: string | null, opts: GenerateZReportOpts): void {
+  if (opts.requireFiscalEvents !== true) {
+    return;
+  }
+
+  const missing: string[] = [];
+  if (companyId === null) missing.push('companyId');
+  if (opts.tenantId === undefined) missing.push('tenantId');
+  if (opts.fiscalShiftId === undefined) missing.push('fiscalShiftId');
+  if (opts.fiscalSessionId === undefined) missing.push('fiscalSessionId');
+  if (opts.terminalLabel === undefined) missing.push('terminalLabel');
+  if (opts.operatorId === undefined) missing.push('operatorId');
+  if (opts.operatorName === undefined) missing.push('operatorName');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot generate cutover Z-report without fiscal event close context: missing ${missing.join(', ')}.`,
+    );
+  }
+}
+
+interface FiscalCloseInputContext {
+  companyId: string | null;
+  companyName: string | null;
+  currencyCode: string;
+  decimals: number;
+  fiscalHash: string;
+  generatedAt: string;
+  grandTotals: GrandTotals;
+  newHashSequence: number;
+  opts: GenerateZReportOpts;
+  receiptSnapshots: ReceiptSnapshot[];
+  reportData: ZReportData;
+  shiftId: string;
+  shiftOpenedAt: string;
+  terminalId: string;
+  zChainState: NonNullable<Awaited<ReturnType<typeof getZChainState>>>;
+  zReport: LocalZReport;
+  zReportCountRows: ZReportCountRow[] | null;
+}
+
+function buildFiscalCloseInput(ctx: FiscalCloseInputContext): AuthorZSessionCloseInput | null {
+  const {
+    companyId,
+    companyName,
+    currencyCode,
+    decimals,
+    fiscalHash,
+    generatedAt,
+    grandTotals,
+    newHashSequence,
+    opts,
+    receiptSnapshots,
+    reportData,
+    shiftId,
+    shiftOpenedAt,
+    terminalId,
+    zChainState,
+    zReport,
+    zReportCountRows,
+  } = ctx;
+
+  if (
+    companyId === null ||
+    opts.tenantId === undefined ||
+    opts.fiscalShiftId === undefined ||
+    opts.fiscalSessionId === undefined ||
+    opts.terminalLabel === undefined ||
+    opts.operatorId === undefined ||
+    opts.operatorName === undefined
+  ) {
+    return null;
+  }
+
+  const cashCountLines = (zReportCountRows ?? []).map((row) => ({
+    actual_amount: row.actual_amount,
+    currency_code: row.currency_code,
+    expected_amount: row.expected_amount,
+    payment_method_id: row.payment_method_id,
+    transaction_count: row.transaction_count,
+    variance_amount: row.variance_amount,
+    variance_direction: row.variance_direction,
+  }));
+  const firstReceipt = receiptSnapshots[0] ?? null;
+  const lastReceipt = receiptSnapshots[receiptSnapshots.length - 1] ?? null;
+  const cashCountSummary = summarizeCashCountLines(cashCountLines, decimals);
+
+  return {
+    tenantId: opts.tenantId,
+    companyId,
+    terminalId,
+    terminalLabel: opts.terminalLabel,
+    shiftId: opts.fiscalShiftId,
+    sessionId: opts.fiscalSessionId,
+    businessDate: shiftOpenedAt.slice(0, 10),
+    operatorId: opts.operatorId,
+    operatorName: opts.operatorName,
+    currencyCode,
+    currencyScale: fiscalCurrencyScale(decimals),
+    periodStart: new Date(shiftOpenedAt).toISOString(),
+    periodEnd: new Date(generatedAt).toISOString(),
+    zReportUuid: zReport.id,
+    zNumber: zReport.z_number,
+    formattedZNumber: zReport.formatted_z_number,
+    expectedCash: zReport.expected_cash,
+    countedCash: cashCountSummary.countedCash,
+    varianceAmount: cashCountSummary.varianceAmount,
+    varianceDirection: cashCountSummary.varianceDirection,
+    varianceSeverity: zReport.shift_fields?.variance_severity ?? null,
+    varianceReason: zReport.shift_fields?.variance_reason ?? null,
+    reportTotals: {
+      sales_count: reportData.sales_count,
+      gross_sales: reportData.gross_sales,
+      net_sales: reportData.net_sales,
+      tax_amount: reportData.tax_amount,
+      refunds_count: reportData.refunds_count,
+      refunds_amount: reportData.refunds_amount,
+      voided_count: reportData.voided_count,
+    },
+    vatBreakdown: reportData.vat_breakdown.map((row) => ({
+      gross_amount: row.gross_amount,
+      net_amount: row.net_amount,
+      tax_rate: row.tax_rate,
+      vat_amount: row.vat_amount,
+    })),
+    paymentMethodTotals: reportData.payment_methods.map((row) => ({
+      payment_type: row.payment_type,
+      total_amount: row.total_amount,
+      transaction_count: row.transaction_count,
+    })),
+    cashCountLines,
+    cashDrawerTotals: {
+      expected_cash: zReport.expected_cash,
+      opening_cash: zReport.opening_cash,
+    },
+    grandTotalsBefore: {
+      cumulative_refunds: zChainState.cumulative_refunds,
+      cumulative_sales: zChainState.cumulative_sales,
+      cumulative_tax: zChainState.cumulative_tax,
+      perpetual_grand_total: zChainState.perpetual_grand_total,
+      receipt_count_lifetime: zChainState.receipt_count_lifetime,
+    },
+    grandTotalsAfter: {
+      cumulative_refunds: grandTotals.cumulative_refunds,
+      cumulative_sales: grandTotals.cumulative_sales,
+      cumulative_tax: grandTotals.cumulative_tax,
+      perpetual_grand_total: grandTotals.perpetual_grand_total,
+      receipt_count_lifetime: grandTotals.receipt_count_lifetime,
+    },
+    toleranceSummary: zReport.tolerance_summary === undefined || zReport.tolerance_summary === null
+      ? null
+      : {
+          currencyCode: zReport.tolerance_summary.currencyCode,
+          totalAmount: zReport.tolerance_summary.totalAmount,
+          writeoffCount: zReport.tolerance_summary.writeoffCount,
+        },
+    legacyReportReference: {
+      fiscal_hash: fiscalHash,
+      hash_sequence: newHashSequence,
+      local_z_report_id: zReport.id,
+      shift_id: shiftId,
+    },
+    companySnapshot: {
+      company_id: companyId,
+      name: companyName,
+    },
+    seller: null,
+    operationalEventRange: {
+      first_receipt_hash: firstReceipt?.fiscal_hash ?? null,
+      first_receipt_sequence: firstReceipt?.hash_sequence ?? null,
+      last_receipt_hash: lastReceipt?.fiscal_hash ?? null,
+      last_receipt_sequence: lastReceipt?.hash_sequence ?? null,
+      receipt_count: receiptSnapshots.length,
+    },
+    isTraining: opts.isTraining ?? false,
+    closedAtDevice: new Date(generatedAt),
+  };
+}
+
+function fiscalCurrencyScale(decimals: number): 0 | 2 | 3 {
+  if (decimals === 0 || decimals === 2 || decimals === 3) return decimals;
+  throw new Error(`Unsupported fiscal currency scale ${decimals}`);
+}
+
+function summarizeCashCountLines(
+  cashCountLines: ReadonlyArray<{
+    actual_amount: string;
+    expected_amount: string;
+  }>,
+  decimals: number,
+): {
+  countedCash: string | null;
+  varianceAmount: string | null;
+  varianceDirection: 'over' | 'under' | 'balanced' | null;
+} {
+  if (cashCountLines.length === 0) {
+    return {
+      countedCash: null,
+      varianceAmount: null,
+      varianceDirection: null,
+    };
+  }
+
+  const totals = cashCountLines.reduce(
+    (acc, line) => ({
+      actual: bcadd(acc.actual, line.actual_amount, decimals),
+      expected: bcadd(acc.expected, line.expected_amount, decimals),
+    }),
+    { actual: bcformat('0', decimals), expected: bcformat('0', decimals) },
+  );
+  const varianceAmount = bcsub(totals.actual, totals.expected, decimals);
+  const varianceCompare = bccomp(varianceAmount, '0');
+
+  return {
+    countedCash: totals.actual,
+    varianceAmount,
+    varianceDirection: varianceCompare > 0
+      ? 'over'
+      : varianceCompare < 0
+        ? 'under'
+        : 'balanced',
+  };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -378,7 +642,7 @@ function aggregateReportData(
   // Void/refund counters are always 0 offline — voiding and refunding
   // are server-side operations tracked after sync.
   const refundsCount = 0;
-  let refundsAmount = '0';
+  const refundsAmount = '0';
   const voidedCount = 0;
 
   const vatByRate = new Map<string, { net: string; vat: string; gross: string }>();
