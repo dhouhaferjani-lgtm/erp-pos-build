@@ -640,7 +640,7 @@ final class ReceiptCreationService
 
                 if ($lineData['product_id'] !== null) {
                     // Direct product line — decrement stock
-                    $this->decrementStock(
+                    $movement = $this->decrementStock(
                         tenantId: $terminal->tenant_id,
                         companyId: $companyId,
                         locationId: $terminal->location_id,
@@ -651,7 +651,7 @@ final class ReceiptCreationService
                     );
 
                     // Allocate batches using FEFO for batch-tracked products
-                    if ($receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
+                    if ($movement !== null && $receiptLineModel !== null && $this->fefoService->productRequiresBatchTracking($lineData['product_id'])) {
                         $this->allocateBatches(
                             tenantId: $terminal->tenant_id,
                             locationId: $terminal->location_id,
@@ -659,6 +659,7 @@ final class ReceiptCreationService
                             quantity: $lineData['quantity'],
                             receiptId: $receipt->id,
                             receiptLineId: $receiptLineModel->id,
+                            movementId: $movement->id,
                         );
                     }
                 } elseif ($lineData['composite_item_id'] !== null) {
@@ -850,7 +851,7 @@ final class ReceiptCreationService
         string $quantity,
         string $receiptId,
         string $cashierId,
-    ): void {
+    ): ?StockMovement {
         /** @var StockLevel|null $stockLevel */
         $stockLevel = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
@@ -860,7 +861,7 @@ final class ReceiptCreationService
 
         if ($stockLevel === null) {
             // No stock record — skip stock decrement for products without inventory tracking
-            return;
+            return null;
         }
 
         /** @var numeric-string $available */
@@ -891,7 +892,7 @@ final class ReceiptCreationService
         $stockLevel->save();
 
         // Create stock movement audit record
-        StockMovement::create([
+        return StockMovement::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -1300,6 +1301,7 @@ final class ReceiptCreationService
         string $quantity,
         string $receiptId,
         string $receiptLineId,
+        string $movementId,
     ): void {
         $result = $this->fefoService->suggestBatchesForSale(
             $productId,
@@ -1338,6 +1340,7 @@ final class ReceiptCreationService
                 batchId: (int) $suggestion->batch->id,
                 locationId: $locationId,
                 quantity: $batchQty,
+                movementId: $movementId,
             );
         }
     }

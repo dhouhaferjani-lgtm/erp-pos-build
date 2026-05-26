@@ -103,6 +103,21 @@ class VerticalConfigServiceTest extends TestCase
         $this->assertContains('Accounting', $modules);
     }
 
+    public function test_get_product_defaults_marks_batch_heavy_verticals_for_batch_tracking(): void
+    {
+        foreach ([Vertical::Pharmacy, Vertical::Parapharmacy, Vertical::Restaurant, Vertical::CoffeeShop] as $vertical) {
+            $defaults = $this->service->getProductDefaults($vertical);
+
+            $this->assertTrue($defaults['requires_batch_tracking'], "{$vertical->value} should default products to batch tracking");
+        }
+
+        foreach ([Vertical::Mechanic, Vertical::Retail, Vertical::Fashion, Vertical::PartsRetailer] as $vertical) {
+            $defaults = $this->service->getProductDefaults($vertical);
+
+            $this->assertFalse($defaults['requires_batch_tracking'], "{$vertical->value} should not default products to batch tracking");
+        }
+    }
+
     public function test_get_verticals_for_product_izipos(): void
     {
         $verticals = $this->service->getVerticalsForProduct('izipos');

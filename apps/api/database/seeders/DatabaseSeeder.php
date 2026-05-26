@@ -129,6 +129,9 @@ class DatabaseSeeder extends Seeder
         $this->command->info('Creating Smart Payment test data...');
         $this->call(SmartPaymentTestDataSeeder::class);
 
+        $this->command->info('Applying batch tracking defaults...');
+        $this->call(BatchTrackingDefaultsSeeder::class);
+
         $this->command->info('Database seeding completed with 2 companies (France + Tunisia) in one tenant!');
     }
 

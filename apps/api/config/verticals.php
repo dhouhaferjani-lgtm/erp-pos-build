@@ -15,6 +15,9 @@ return [
         'description' => 'Automotive repair and maintenance services',
         'product' => 'otospex',
         'compatible_extras' => ['Appointments', 'Fleet'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -42,6 +45,9 @@ return [
         'description' => 'Pharmaceutical retail with prescription management',
         'product' => 'izipos',
         'compatible_extras' => ['BatchExpiry', 'Prescription'],
+        'product_defaults' => [
+            'requires_batch_tracking' => true,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -67,6 +73,9 @@ return [
         'description' => 'Full-service dining with table management',
         'product' => 'izipos',
         'compatible_extras' => ['Tables', 'Reservation', 'Inventory'],
+        'product_defaults' => [
+            'requires_batch_tracking' => true,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -93,6 +102,9 @@ return [
         'description' => 'Coffee shop and quick-service cafe',
         'product' => 'izipos',
         'compatible_extras' => ['Tables', 'Loyalty', 'Inventory'],
+        'product_defaults' => [
+            'requires_batch_tracking' => true,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -118,6 +130,9 @@ return [
         'description' => 'General retail and merchandise',
         'product' => 'izipos',
         'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -142,6 +157,9 @@ return [
         'description' => 'Fashion retail and boutiques',
         'product' => 'izipos',
         'compatible_extras' => ['Loyalty', 'Ecommerce'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -166,6 +184,9 @@ return [
         'description' => 'Automotive body repair and painting',
         'product' => 'otospex',
         'compatible_extras' => ['Appointments', 'Fleet'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -193,6 +214,9 @@ return [
         'description' => 'Automotive parts retail and wholesale',
         'product' => 'otospex',
         'compatible_extras' => ['Ecommerce'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -219,6 +243,9 @@ return [
         'description' => 'Automotive glass replacement and repair',
         'product' => 'otospex',
         'compatible_extras' => ['Appointments', 'Fleet'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -246,6 +273,9 @@ return [
         'description' => 'Tire sales and services',
         'product' => 'otospex',
         'compatible_extras' => ['Appointments'],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -272,6 +302,9 @@ return [
         'description' => 'Fuel station and quick services',
         'product' => 'otospex',
         'compatible_extras' => [],
+        'product_defaults' => [
+            'requires_batch_tracking' => false,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',
@@ -297,6 +330,9 @@ return [
         'description' => 'Health and wellness retail',
         'product' => 'izipos',
         'compatible_extras' => ['BatchExpiry', 'Loyalty'],
+        'product_defaults' => [
+            'requires_batch_tracking' => true,
+        ],
         'default_modules' => [
             'Identity',
             'Tenant',

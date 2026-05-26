@@ -103,7 +103,7 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createInvoiceGLEntries(Document $invoice): string
     {
-        $entryNumber = 'INV-'.$invoice->document_date->format('YmdHis').'-'.random_int(1000, 9999);
+        $entryNumber = $this->sourceEntryNumber('INV', $invoice);
 
         // Get hash chain data BEFORE creating entry
         $previousHash = JournalEntry::getLastChainHash($invoice->company_id);
@@ -219,7 +219,7 @@ final class AccountingService implements AccountingServiceInterface
      */
     public function createCreditNoteGLEntries(Document $creditNote): string
     {
-        $entryNumber = 'CN-'.$creditNote->document_date->format('YmdHis').'-'.random_int(1000, 9999);
+        $entryNumber = $this->sourceEntryNumber('CN', $creditNote);
 
         // Get hash chain data BEFORE creating entry
         $previousHash = JournalEntry::getLastChainHash($creditNote->company_id);
@@ -433,5 +433,12 @@ final class AccountingService implements AccountingServiceInterface
             chainSequence: $entry->chain_sequence ?? 0,
             createdAt: now()->toIso8601String(),
         ));
+    }
+
+    private function sourceEntryNumber(string $prefix, Document $document): string
+    {
+        $documentId = str_replace('-', '', $document->id);
+
+        return $prefix.'-'.$document->document_date->format('YmdHis').'-'.substr($documentId, -12);
     }
 }

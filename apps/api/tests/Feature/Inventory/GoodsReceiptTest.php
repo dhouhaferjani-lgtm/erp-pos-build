@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -30,6 +33,8 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Facades\Route;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -56,6 +61,7 @@ class GoodsReceiptTest extends TestCase
             'slug' => 'gr-test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Retail,
         ]);
 
         $this->company = Company::create([
@@ -481,16 +487,79 @@ class GoodsReceiptTest extends TestCase
     // 5. Batch receiving
     // =========================================================================
 
-    public function test_batch_receiving_skipped_when_product_lacks_batch_tracking(): void
+    public function test_batch_receiving_creates_batch_for_vertical_default_batch_tracked_product(): void
     {
-        // The Product model does not have a `requires_batch_tracking` property.
-        // GoodsReceiptService checks `$product->requires_batch_tracking ?? false`,
-        // which will always be false for standard products.
-        // Batch receiving is effectively a no-op for non-batch-tracked products.
-        $this->markTestSkipped(
-            'Batch receiving requires a `requires_batch_tracking` property on Product which does not exist yet. '
-            .'The GoodsReceiptService has batch logic but it is unreachable for standard products.'
+        $this->tenant->update(['vertical' => Vertical::Pharmacy]);
+
+        $product = $this->createProduct('PROD-BATCH', 'Batch Tracked Product');
+        $this->assertTrue($product->requires_batch_tracking);
+
+        $po = $this->createConfirmedPO([
+            ['product' => $product, 'quantity' => '6.0000', 'unit_price' => '5.000'],
+        ]);
+        $line = $po->lines->firstOrFail();
+
+        $service = app(GoodsReceiptService::class);
+        $result = $service->receiveGoods(
+            $po,
+            [$line->id => '6.0000'],
+            [
+                $line->id => [
+                    'batch_number' => 'BATCH-GR-001',
+                    'expiry_date' => now()->addDays(30)->toDateString(),
+                    'manufacturing_date' => now()->subDays(2)->toDateString(),
+                ],
+            ],
         );
+
+        $batch = Batch::where('product_id', $product->id)
+            ->where('batch_number', 'BATCH-GR-001')
+            ->first();
+
+        $this->assertNotNull($batch);
+        $this->assertSame($batch->id, $result->lines->firstOrFail()->batch_id);
+
+        $batchStock = BatchStock::where('batch_id', $batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+
+        $this->assertNotNull($batchStock);
+        $this->assertEquals(0, bccomp('6.0000', (string) $batchStock->quantity, 4));
+    }
+
+    public function test_batch_tracked_product_requires_batch_data_on_receipt(): void
+    {
+        $this->tenant->update(['vertical' => Vertical::Pharmacy]);
+
+        $product = $this->createProduct('PROD-BATCH-REQ', 'Batch Required Product');
+        $po = $this->createConfirmedPO([
+            ['product' => $product, 'quantity' => '4.0000', 'unit_price' => '5.000'],
+        ]);
+
+        $line = $po->lines->firstOrFail();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Batch data is required');
+
+        app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '4.0000']);
+    }
+
+    public function test_non_physical_product_does_not_default_to_batch_tracking(): void
+    {
+        $this->tenant->update(['vertical' => Vertical::Pharmacy]);
+
+        $product = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'SVC-BATCH',
+            'name' => 'Pharmacy Service',
+            'type' => ProductType::Service,
+            'is_active' => true,
+            'is_physical' => false,
+            'cost_price' => '0.00',
+        ]);
+
+        $this->assertFalse($product->requires_batch_tracking);
     }
 
     // =========================================================================
@@ -723,18 +792,13 @@ class GoodsReceiptTest extends TestCase
     //    HTTP controller/routes. Authorization tests require an API endpoint.
     // =========================================================================
 
-    public function test_authorization_requires_api_endpoint(): void
+    public function test_goods_receipt_service_has_no_direct_http_endpoint(): void
     {
-        // GoodsReceiptService is called directly (no dedicated HTTP route exists).
-        // The inventory routes use `can:inventory.receive` middleware on
-        // `POST /stock-movements/receive`, but that route uses StockMovementController,
-        // not GoodsReceiptService.
-        //
-        // A dedicated goods-receipt API endpoint does not exist yet.
-        $this->markTestSkipped(
-            'No HTTP endpoint exists for goods receipt (GoodsReceiptService is service-layer only). '
-            .'Authorization test requires a controller route with `can:inventory.receive` middleware.'
+        $hasGoodsReceiptRoute = collect(Route::getRoutes())->contains(
+            fn (RoutingRoute $route): bool => str_contains($route->uri(), 'goods-receipt')
         );
+
+        $this->assertFalse($hasGoodsReceiptRoute);
     }
 
     // =========================================================================
