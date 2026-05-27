@@ -90,7 +90,9 @@ final class TrainingModeTest extends TestCase
             'company_id' => $this->company->id,
             'location_id' => $this->location->id,
             'terminal_id' => $this->terminal->id,
-            'chain_sequence' => 0,
+            // Training receipts do not advance the chain: production leaves
+            // chain_sequence NULL (the pos_receipts_sequence CHECK rejects 0).
+            'chain_sequence' => null,
             'receipt_number' => 'TRN-POS01-2026-00000001',
             'previous_hash' => null,
             'fiscal_hash' => hash('sha256', 'TRAINING-fake'),

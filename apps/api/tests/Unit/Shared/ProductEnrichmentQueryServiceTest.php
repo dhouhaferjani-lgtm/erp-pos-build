@@ -15,6 +15,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\DTOs\PendingEnrichmentDTO;
 use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ProductEnrichmentQueryServiceTest extends TestCase
@@ -56,11 +57,13 @@ class ProductEnrichmentQueryServiceTest extends TestCase
 
     public function test_returns_pending_enrichments_as_dtos(): void
     {
+        // platform_submission_id is a uuid column on PostgreSQL.
+        $submissionId = (string) Str::uuid();
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'enrichment_status' => EnrichmentStatus::Pending,
-            'platform_submission_id' => 'trk-pending-001',
+            'platform_submission_id' => $submissionId,
             'updated_at' => now()->subMinutes(15),
         ]);
 
@@ -70,7 +73,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
         $dto = $results->first();
         $this->assertInstanceOf(PendingEnrichmentDTO::class, $dto);
         $this->assertSame($product->id, $dto->productId);
-        $this->assertSame('trk-pending-001', $dto->platformSubmissionId);
+        $this->assertSame($submissionId, $dto->platformSubmissionId);
         $this->assertSame(EnrichmentStatus::Pending, $dto->enrichmentStatus);
     }
 
@@ -80,7 +83,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'enrichment_status' => EnrichmentStatus::Enriching,
-            'platform_submission_id' => 'trk-enriching-001',
+            'platform_submission_id' => (string) Str::uuid(),
             'updated_at' => now()->subMinutes(15),
         ]);
 
@@ -96,7 +99,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'enrichment_status' => EnrichmentStatus::Completed,
-            'platform_submission_id' => 'trk-done-001',
+            'platform_submission_id' => (string) Str::uuid(),
             'updated_at' => now()->subMinutes(15),
         ]);
 
@@ -111,7 +114,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'enrichment_status' => EnrichmentStatus::Pending,
-            'platform_submission_id' => 'trk-recent-001',
+            'platform_submission_id' => (string) Str::uuid(),
             'updated_at' => now()->subMinutes(5), // Only 5 minutes ago
         ]);
 
@@ -142,7 +145,7 @@ class ProductEnrichmentQueryServiceTest extends TestCase
                 'tenant_id' => $this->tenant->id,
                 'company_id' => $this->company->id,
                 'enrichment_status' => EnrichmentStatus::Pending,
-                'platform_submission_id' => "trk-limit-{$i}",
+                'platform_submission_id' => (string) Str::uuid(),
                 'updated_at' => now()->subMinutes(15),
             ]);
         }

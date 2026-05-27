@@ -14,6 +14,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -562,6 +563,9 @@ final class ReceiptReturnFlowTest extends TestCase
             'currency' => 'EUR',
             'is_voided' => true,
             'voided_at' => now(),
+            // voided rows need voided_by (pos_receipts_void_logic, PostgreSQL).
+            'voided_by' => $this->user->id,
+            'fiscal_status' => FiscalStatus::Voided,
             'void_reason' => 'Error',
         ]);
 
@@ -1002,6 +1006,9 @@ final class ReceiptReturnFlowTest extends TestCase
             'currency' => 'EUR',
             'is_voided' => $isVoided,
             'voided_at' => $isVoided ? now() : null,
+            // voided rows need voided_by (pos_receipts_void_logic, PostgreSQL).
+            'voided_by' => $isVoided ? $this->user->id : null,
+            'fiscal_status' => $isVoided ? FiscalStatus::Voided : FiscalStatus::Fiscalized,
         ]);
     }
 }

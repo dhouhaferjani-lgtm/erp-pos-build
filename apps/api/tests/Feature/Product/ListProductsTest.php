@@ -264,8 +264,10 @@ class ListProductsTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.id', $product->id)
             ->assertJsonPath('data.name', 'Single Product')
-            ->assertJsonPath('data.sku', 'SNG-001')
-            ->assertJsonPath('data.sale_price', '99.99');
+            ->assertJsonPath('data.sku', 'SNG-001');
+        // sale_price is numeric(15,3); the DTO passes the stored value through,
+        // so PostgreSQL returns "99.990" and SQLite "99.99". Compare numerically.
+        $this->assertEqualsWithDelta(99.99, (float) $response->json('data.sale_price'), 0.001);
     }
 
     public function test_returns_404_for_nonexistent_product(): void

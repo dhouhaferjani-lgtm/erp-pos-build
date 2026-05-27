@@ -78,6 +78,15 @@ final class ReportGenerationIdempotencyTest extends TestCase
 
         $shift = $this->app->make(ShiftManagementService::class)->openShift($terminal, $this->cashier, '100.00');
 
+        // Back-date the shift open so the GRANDTOTAL_DAILY period has real
+        // duration. The grandtotal event spans [shift.opened_at, now()]; on
+        // PostgreSQL these timestamps are stored at second precision, so a
+        // shift opened in the same whole second as Z-report generation would
+        // collapse to period_start == period_end and violate the
+        // pos_grandtotal_period (period_end > period_start) CHECK. Real shifts
+        // always span time.
+        $shift->update(['opened_at' => now()->subHour()]);
+
         Receipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

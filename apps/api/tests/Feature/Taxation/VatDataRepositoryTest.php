@@ -315,6 +315,10 @@ class VatDataRepositoryTest extends TestCase
             'subtotal' => '1000.000',
             'tax_amount' => '190.000',
             'total' => '1190.000',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'vat-repo-'.$number),
+            'chain_sequence' => 1,
         ]);
     }
 

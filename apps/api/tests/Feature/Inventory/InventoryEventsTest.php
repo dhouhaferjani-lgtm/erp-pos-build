@@ -81,7 +81,7 @@ final class InventoryEventsTest extends TestCase
             landedUnitCost: 50.00,
             reference: 'PO-TEST-001',
             referenceType: 'Document',
-            referenceId: 'test-uuid'
+            referenceId: '00000000-0000-4000-8000-000000000001'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
@@ -114,7 +114,7 @@ final class InventoryEventsTest extends TestCase
             quantity: 5.0,
             reference: 'DN-TEST-001',
             referenceType: 'Document',
-            referenceId: 'test-uuid'
+            referenceId: '00000000-0000-4000-8000-000000000001'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
@@ -140,7 +140,7 @@ final class InventoryEventsTest extends TestCase
             originalCost: 50.00,
             reference: 'RN-TEST-001',
             referenceType: 'Document',
-            referenceId: 'test-uuid'
+            referenceId: '00000000-0000-4000-8000-000000000001'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
@@ -194,13 +194,13 @@ final class InventoryEventsTest extends TestCase
             landedUnitCost: 50.00,
             reference: 'PO-TEST-001',
             referenceType: 'Document',
-            referenceId: 'test-uuid-123'
+            referenceId: '00000000-0000-4000-8000-000000000123'
         );
 
         Event::assertDispatched(StockMovementRecorded::class, function (StockMovementRecorded $event): bool {
             return $event->reference === 'PO-TEST-001'
                 && $event->referenceType === 'Document'
-                && $event->referenceId === 'test-uuid-123';
+                && $event->referenceId === '00000000-0000-4000-8000-000000000123';
         });
     }
 

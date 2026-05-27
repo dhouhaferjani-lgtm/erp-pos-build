@@ -110,9 +110,21 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         $inv1 = $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-T-0001'));
         $this->postingService->post($this->createConfirmedInvoice($tenant, $company, $partner, 'INV-T-0002'));
 
-        // Tamper: change the stored total of the first (genesis) doc directly in DB.
-        // Using DB::table to bypass the sealed-document guard on Document::update().
+        // Tamper: change the stored total of the first (genesis) doc directly in DB,
+        // simulating an attacker who bypasses the application layer. On PostgreSQL
+        // the trg_document_immutability trigger blocks even raw UPDATEs on a sealed
+        // row, so disable it for the injection (SQLite has no such trigger). This is
+        // exactly the post-seal mutation the verify command must still detect.
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE documents DISABLE TRIGGER trg_document_immutability');
+        }
+
         DB::table('documents')->where('id', $inv1->id)->update(['total' => '999999.99']);
+
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE documents ENABLE TRIGGER trg_document_immutability');
+        }
 
         [$exit, $output] = $this->runVerify($company->id);
 

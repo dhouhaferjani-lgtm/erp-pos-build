@@ -190,8 +190,10 @@ class ServiceApiTest extends TestCase
     #[Test]
     public function it_returns_404_for_non_existent_service(): void
     {
+        // Valid-but-nonexistent UUID: the id column is uuid, so a malformed
+        // string would raise a PostgreSQL cast error instead of a 404.
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/services/non-existent-id');
+            ->getJson('/api/v1/services/00000000-0000-0000-0000-000000000000');
 
         $response->assertNotFound();
     }

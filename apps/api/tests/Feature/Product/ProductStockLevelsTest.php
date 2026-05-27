@@ -444,8 +444,11 @@ class ProductStockLevelsTest extends TestCase
     /** @test */
     public function it_returns_404_for_non_existent_product(): void
     {
+        // Use a valid-but-nonexistent UUID: the id column is uuid, so a
+        // malformed string would raise a PostgreSQL 22P02 cast error rather
+        // than resolve to a 404.
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/products/non-existent-id/stock-levels');
+            ->getJson('/api/v1/products/00000000-0000-0000-0000-000000000000/stock-levels');
 
         $response->assertNotFound();
     }

@@ -266,6 +266,10 @@ class InvoiceDocumentTest extends TestCase
             'subtotal' => '500.00',
             'tax_amount' => '100.00',
             'total' => '600.00',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => hash('sha256', 'inv-2025-0001-seal'),
+            'chain_sequence' => 1,
         ]);
 
         $invoice->lines()->create([

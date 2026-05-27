@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
@@ -134,6 +135,9 @@ final class AnalyticsTest extends TestCase
             'receipt_type' => ReceiptType::Sale,
             'is_voided' => true,
             'voided_at' => now(),
+            // voided rows need voided_by (pos_receipts_void_logic, PostgreSQL).
+            'voided_by' => $this->user->id,
+            'fiscal_status' => FiscalStatus::Voided,
             'posted_at' => '2026-03-15 10:00:00',
             'subtotal' => '42.000',
             'tax_amount' => '8.000',

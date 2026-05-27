@@ -20,6 +20,7 @@ use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Events\EnrichmentResultReadyEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class EnrichmentEventFlowTest extends TestCase
@@ -59,18 +60,21 @@ class EnrichmentEventFlowTest extends TestCase
     {
         Event::fake([EnrichmentResultReadyEvent::class]);
 
+        // platform_submission_id / tracking_id are uuid columns on PostgreSQL;
+        // the same value correlates the product, webhook and result rows.
+        $trackingId = (string) Str::uuid();
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Test Product',
             'enrichment_status' => EnrichmentStatus::Enriching,
-            'platform_submission_id' => 'trk-flow-001',
+            'platform_submission_id' => $trackingId,
         ]);
 
         // Mock the PlatformSubmissionInterface to return enrichment data
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
-            trackingId: 'trk-flow-001',
+            trackingId: $trackingId,
             status: 'enriched',
             enrichmentQuality: 'full',
             enrichedData: [
@@ -85,7 +89,7 @@ class EnrichmentEventFlowTest extends TestCase
         $listener = new ProcessEnrichmentEventListener($reviewService);
 
         $webhookEvent = new EnrichmentWebhookReceived(
-            'trk-flow-001',
+            $trackingId,
             'enriched',
             'full',
             true,
@@ -100,7 +104,7 @@ class EnrichmentEventFlowTest extends TestCase
 
         // Enrichment result should be stored
         $this->assertDatabaseHas('enrichment_results', [
-            'tracking_id' => 'trk-flow-001',
+            'tracking_id' => $trackingId,
             'product_id' => $product->id,
         ]);
 
@@ -118,17 +122,18 @@ class EnrichmentEventFlowTest extends TestCase
     {
         Event::fake([EnrichmentResultReadyEvent::class]);
 
+        $trackingId = (string) Str::uuid();
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'Failed Product',
             'enrichment_status' => EnrichmentStatus::Enriching,
-            'platform_submission_id' => 'trk-fail-001',
+            'platform_submission_id' => $trackingId,
         ]);
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
-            trackingId: 'trk-fail-001',
+            trackingId: $trackingId,
             status: 'failed',
             enrichmentQuality: null,
             enrichedData: [],
@@ -140,7 +145,7 @@ class EnrichmentEventFlowTest extends TestCase
         $listener = new ProcessEnrichmentEventListener($reviewService);
 
         $webhookEvent = new EnrichmentWebhookReceived(
-            'trk-fail-001',
+            $trackingId,
             'failed',
             null,
             false,
@@ -160,12 +165,13 @@ class EnrichmentEventFlowTest extends TestCase
     {
         Event::fake([EnrichmentResultReadyEvent::class]);
 
+        $trackingId = (string) Str::uuid();
         Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'name' => 'In Progress Product',
             'enrichment_status' => EnrichmentStatus::Pending,
-            'platform_submission_id' => 'trk-progress-001',
+            'platform_submission_id' => $trackingId,
         ]);
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
@@ -176,7 +182,7 @@ class EnrichmentEventFlowTest extends TestCase
         $listener = new ProcessEnrichmentEventListener($reviewService);
 
         $webhookEvent = new EnrichmentWebhookReceived(
-            'trk-progress-001',
+            $trackingId,
             'enriching', // Non-terminal
             null,
             false,

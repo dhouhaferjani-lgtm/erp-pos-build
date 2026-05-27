@@ -277,14 +277,21 @@ class ZReportHashServiceTest extends TestCase
         $this->zReportSequence++;
 
         // Each Z report must belong to a unique shift (unique constraint on shift_id).
-        // Create a fresh shift for every Z report unless an explicit shift_id is provided.
+        // Create a fresh shift for every Z report unless an explicit shift_id is
+        // provided. A Z report is produced when a shift CLOSES, so the backing
+        // shift is closed here — this also avoids the pos_shifts_one_open_per_terminal
+        // partial unique index (only one OPEN shift per terminal is permitted on
+        // PostgreSQL). Closed shifts must carry closed_at + closed_by to satisfy
+        // pos_shifts_closed_logic.
         $shiftId = $overrides['shift_id'] ?? Shift::create([
             'terminal_id' => $this->terminal->id,
             'cashier_id' => $this->user->id,
             'shift_number' => $this->zReportSequence,
             'opening_cash' => '100.00',
-            'status' => ShiftStatus::Open,
-            'opened_at' => now(),
+            'status' => ShiftStatus::Closed,
+            'opened_at' => now()->subHour(),
+            'closed_at' => now(),
+            'closed_by' => $this->user->id,
         ])->id;
 
         $defaults = [

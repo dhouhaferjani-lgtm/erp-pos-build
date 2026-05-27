@@ -13,6 +13,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Events\ReceiptVoided;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
@@ -421,6 +422,20 @@ final class VoucherCascadeServiceTest extends TestCase
      */
     private function makeCreditNoteReceipt(): Receipt
     {
+        // A return receipt requires original_receipt_id + return_reason
+        // (pos_receipts_return_logic, PostgreSQL); original_receipt_id is an FK
+        // to a real sale receipt.
+        $sale = Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'cashier_name' => $this->cashier->name,
+            'receipt_type' => ReceiptType::Sale,
+            'fiscal_status' => FiscalStatus::Fiscalized,
+        ]);
+
         return Receipt::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -429,6 +444,8 @@ final class VoucherCascadeServiceTest extends TestCase
             'cashier_id' => $this->cashier->id,
             'cashier_name' => $this->cashier->name,
             'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Defective,
             'fiscal_status' => FiscalStatus::Fiscalized,
             'voided_by' => $this->cashier->id,
         ]);

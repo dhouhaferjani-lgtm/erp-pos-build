@@ -392,13 +392,15 @@ final class DocumentConversionTenantIsolationTest extends TestCase
 
     private function createDocument(DocumentType $type, Tenant $tenant, Company $company, Partner $partner, string $number, DocumentStatus $status): Document
     {
+        $sealed = $status === DocumentStatus::Posted;
+
         return Document::create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'partner_id' => $partner->id,
             'type' => $type,
             'fiscal_category' => FiscalCategory::fromDocumentType($type),
-            'fiscal_status' => $status === DocumentStatus::Posted ? FiscalStatus::Sealed : FiscalStatus::Draft,
+            'fiscal_status' => $sealed ? FiscalStatus::Sealed : FiscalStatus::Draft,
             'status' => $status,
             'document_number' => $number,
             'document_date' => now(),
@@ -407,6 +409,10 @@ final class DocumentConversionTenantIsolationTest extends TestCase
             'tax_amount' => '0.00',
             'total' => '100.00',
             'balance_due' => '100.00',
+            // A SEALED fiscal document must carry fiscal core
+            // (chk_fiscal_mandatory_core, enforced by PostgreSQL).
+            'fiscal_hash' => $sealed ? hash('sha256', uniqid('seal-', true)) : null,
+            'chain_sequence' => $sealed ? 1 : null,
         ]);
     }
 

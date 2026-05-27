@@ -27,6 +27,12 @@ final class POSAccountChargeJournalEntryTest extends TestCase
     use RefreshDatabase;
     use WithCurrencyScale;
 
+    // journal_entries.source_id is a uuid column; PostgreSQL rejects non-UUID
+    // strings. These fixed UUIDs stand in for the fiscal event id.
+    private const FISCAL_EVENT_ID = '0193b001-0000-7000-8000-000000000001';
+
+    private const DISCOUNTED_FISCAL_EVENT_ID = '0193b001-0000-7000-8000-000000000002';
+
     private Tenant $tenant;
 
     private Company $company;
@@ -64,7 +70,7 @@ final class POSAccountChargeJournalEntryTest extends TestCase
         $this->assertSame($this->company->id, $entry->company_id);
         $this->assertSame(JournalEntryStatus::Draft, $entry->status);
         $this->assertSame('pos_account_charge', $entry->source_type);
-        $this->assertSame('fiscal-event-001', $entry->source_id);
+        $this->assertSame(self::FISCAL_EVENT_ID, $entry->source_id);
         $this->assertSame('POS Account Charge account-charge-001', $entry->description);
         $this->assertSame('2026-05-21', $entry->entry_date->toDateString());
 
@@ -95,7 +101,7 @@ final class POSAccountChargeJournalEntryTest extends TestCase
             'total' => '119.000',
             'transactionDiscountAmount' => '5.000',
             'accountChargeUuid' => 'discounted-charge-001',
-            'fiscalEventId' => 'discounted-fiscal-event-001',
+            'fiscalEventId' => self::DISCOUNTED_FISCAL_EVENT_ID,
         ]));
 
         $entry->load('lines.account');
@@ -292,7 +298,7 @@ final class POSAccountChargeJournalEntryTest extends TestCase
             'tenantId' => $this->tenant->id,
             'companyId' => $this->company->id,
             'partnerId' => $this->customer->id,
-            'fiscalEventId' => 'fiscal-event-001',
+            'fiscalEventId' => self::FISCAL_EVENT_ID,
             'accountChargeUuid' => 'account-charge-001',
             'businessDate' => '2026-05-21',
             'currencyCode' => 'TND',

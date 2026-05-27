@@ -334,7 +334,11 @@ class ReceiptReturnServiceTest extends TestCase
             'cashier_name' => 'Test Cashier',
             'subtotal' => '100.000',
             'tax_amount' => '19.000',
-            'discount_amount' => '14.000',
+            // Header total must satisfy pos_receipts_totals on PostgreSQL:
+            // total = subtotal + tax_amount - discount_amount. Line-level
+            // discounts (set per-test on receipt lines) drive return proration,
+            // not this header field.
+            'discount_amount' => '0.000',
             'total' => '119.000',
             'currency' => 'TND',
             'is_voided' => false,

@@ -148,7 +148,8 @@ class InvoicePostedListenerTest extends TestCase
         // Create warehouse
         $this->warehouse = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-LISTENER-'.uniqid(),
+            // locations.code is varchar(20); keep within length for PostgreSQL.
+            'code' => 'WHL-'.substr((string) uniqid(), -10),
             'name' => 'Main Warehouse Listener',
             'type' => 'warehouse',
             'is_active' => true,

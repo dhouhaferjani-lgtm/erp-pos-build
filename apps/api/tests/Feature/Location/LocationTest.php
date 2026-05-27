@@ -283,9 +283,10 @@ class LocationTest extends TestCase
 
         $response->assertNoContent();
 
+        // locations is hard-deleted (no deleted_at column); a deleted_at
+        // predicate would reference a nonexistent column on PostgreSQL.
         $this->assertDatabaseMissing('locations', [
             'id' => $location->id,
-            'deleted_at' => null,
         ]);
     }
 

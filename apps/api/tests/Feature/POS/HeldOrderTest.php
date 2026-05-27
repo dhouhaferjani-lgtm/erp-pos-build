@@ -160,13 +160,19 @@ final class HeldOrderTest extends TestCase
     {
         $this->createHeldOrder(['label' => 'Current Shift']);
 
+        // Only one OPEN shift per terminal is allowed
+        // (pos_shifts_one_open_per_terminal, PostgreSQL); the current shift is
+        // already open, so this second shift is closed (needs closed_at +
+        // closed_by per pos_shifts_closed_logic).
         $otherShift = Shift::create([
             'terminal_id' => $this->terminal->id,
             'cashier_id' => $this->user->id,
             'shift_number' => 2,
             'opening_cash' => '100.000',
-            'status' => ShiftStatus::Open,
+            'status' => ShiftStatus::Closed,
             'opened_at' => now()->subHours(2),
+            'closed_at' => now()->subHour(),
+            'closed_by' => $this->user->id,
         ]);
 
         $this->createHeldOrder([

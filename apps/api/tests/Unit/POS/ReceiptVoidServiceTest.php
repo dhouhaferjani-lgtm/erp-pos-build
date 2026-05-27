@@ -11,6 +11,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\CashDrawerOperation;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
@@ -83,7 +84,14 @@ class ReceiptVoidServiceTest extends TestCase
 
     public function test_already_voided_receipt_throws_exception(): void
     {
-        $receipt = $this->createReceipt(['is_voided' => true, 'voided_at' => now()]);
+        // A voided row must carry voided_at AND voided_by to satisfy the
+        // pos_receipts_void_logic CHECK constraint (enforced by PostgreSQL).
+        $receipt = $this->createReceipt([
+            'is_voided' => true,
+            'voided_at' => now(),
+            'voided_by' => $this->cashier->id,
+            'fiscal_status' => FiscalStatus::Voided,
+        ]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Receipt is already voided');

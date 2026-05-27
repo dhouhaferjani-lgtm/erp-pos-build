@@ -156,7 +156,9 @@ final class AnomalyDetectionService
             ->whereBetween('occurred_at', [$from, $to])
             ->selectRaw('event_type, user_id, COUNT(*) as count')
             ->groupBy('event_type', 'user_id')
-            ->having('count', '>', 50)
+            // Filter on the aggregate expression, not the SELECT alias:
+            // PostgreSQL does not resolve output-column aliases inside HAVING.
+            ->havingRaw('COUNT(*) > 50')
             ->get();
 
         foreach ($repeatedActions as $action) {
