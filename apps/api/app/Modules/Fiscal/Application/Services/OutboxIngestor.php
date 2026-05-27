@@ -981,6 +981,31 @@ final class OutboxIngestor
     // Step 4 — conflict handling
     // ------------------------------------------------------------------
 
+    /**
+     * Normalize a raw `canonical_bytes` value read via the query builder.
+     *
+     * On PostgreSQL a `bytea` column selected through `DB::table()` (not Eloquent)
+     * comes back as a stream resource, so `(string) $resource` yields
+     * "Resource id #N" — which makes the hash_equals() comparison below never match
+     * and misroutes a legitimate idempotent re-delivery into quarantine. Eloquent
+     * reads apply the FiscalEvent stream→string accessor; mirror it for the raw row.
+     */
+    private function normalizeCanonicalBytes(mixed $value): string
+    {
+        if (is_resource($value)) {
+            $meta = stream_get_meta_data($value);
+            if ($meta['seekable'] === true) {
+                rewind($value);
+            }
+
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return is_string($value) ? $value : (string) $value;
+    }
+
     private function handleConflict(
         FiscalEventEnvelope $envelope,
         CarbonImmutable $serverReceivedAt,
@@ -1015,7 +1040,7 @@ final class OutboxIngestor
         //   id + current_hash + canonical_bytes + source_event_(class,id) all match.
         $existingId = is_string($existing->id) ? $existing->id : (string) $existing->id;
         $existingHash = is_string($existing->current_hash) ? $existing->current_hash : (string) $existing->current_hash;
-        $existingBytes = is_string($existing->canonical_bytes) ? $existing->canonical_bytes : (string) $existing->canonical_bytes;
+        $existingBytes = $this->normalizeCanonicalBytes($existing->canonical_bytes);
         $existingClass = $existing->source_event_class === null ? null : (is_string($existing->source_event_class) ? $existing->source_event_class : (string) $existing->source_event_class);
         $existingSrcId = $existing->source_event_id === null ? null : (is_string($existing->source_event_id) ? $existing->source_event_id : (string) $existing->source_event_id);
 
