@@ -126,7 +126,7 @@ class DocumentCacheValidationTest extends TestCase
 
         // Verify correct value
         $invoice = $invoice->fresh();
-        $this->assertEquals('80.00', $invoice->balance_due);
+        $this->assertEquals('80.000', $invoice->balance_due);
     }
 
     public function test_cache_accuracy_report(): void

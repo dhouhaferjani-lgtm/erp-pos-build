@@ -69,3 +69,55 @@ TENANCY_DB_PER_TENANT=true DB_CONNECTION=central DB_DATABASE=autoerp_test DB_CEN
 ./vendor/bin/pint --dirty
 ./vendor/bin/phpstan analyse
 ```
+
+## Verification & remaining work - 2026-05-26
+
+Worktree/branch used for this pass:
+
+- `/Users/houssamr/Projects/syneriva/apps/erp.fiscal-pg-debt`
+- branch `fix/fiscal-pg-debt`
+- recovered tip initially verified as containing the expected 11 files from the earlier fiscal PostgreSQL pass: fiscal `bytea` stream accessors, `AccountingService`, `allow_pos_receipt_fk_cleanup`, `ReconcileIdentitiesCommand`, projection/full-flow/parser test updates.
+
+Verification results:
+
+- PASS - Bucket 1 PostgreSQL fiscal projection slice:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_test DB_USERNAME=houssamr DB_PASSWORD= php artisan test -c phpunit-pgsql.xml --filter="PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|TaskPhase2AccountPaymentFullFlowTest"`
+  Result: 421 assertions, warnings only.
+- PASS - Bucket 2 SQLite debt filter:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test --filter="Task33FiscalFullFlowVerificationTest|CompleteGLHashChainE2ETest|BestEffortPayloadParserTest|ConsoleCommandTenantContextTest"`
+  Result: 95 assertions, warnings only.
+- PASS - targeted PostgreSQL broad-regression fixes:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_test DB_USERNAME=houssamr DB_PASSWORD= php artisan test -c phpunit-pgsql.xml --filter="GeneralLedgerServicePOSToleranceTest|HandlesDocumentsTest::test_attach_vehicle_context_deletes_when_null|HandlesDocumentsTest::test_attach_vehicle_context_skips_when_not_explicitly_provided|DocumentCacheValidationTest::test_detects_manually_corrupted_cache|DocumentCacheValidationTest::test_repair_fixes_inconsistencies|FacturXEligibilityTest::test_posted_invoices_are_eligible"`
+  Result: 32 assertions, warnings only.
+- PASS - PostgreSQL `EnrichmentReviewServiceTest` after UUID fixture correction:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_test DB_USERNAME=houssamr DB_PASSWORD= php artisan test -c phpunit-pgsql.xml --filter="EnrichmentReviewServiceTest"`
+  Result: 32 assertions, warnings only.
+- PASS - full SQLite suite:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan test`
+  Result: 698 passed, 3 incomplete, 6018 warnings, 28107 assertions.
+- PASS - database-per-tenant PostgreSQL seeder:
+  `APP_ENV=local APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_CONNECTION=central DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_test DB_CENTRAL_DATABASE=autoerp_test DB_USERNAME=houssamr DB_PASSWORD= CACHE_STORE=array TENANCY_DB_PER_TENANT=true php artisan db:seed --class="Database\\Seeders\\TwoTenantIsolationDemoSeeder" --force`
+  Result: provisioned separate tenant databases for `demo-tenant-a` and `demo-tenant-b`; seeder reported no cross-tenant leak.
+- FAIL - full PostgreSQL suite:
+  `APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_test DB_USERNAME=houssamr DB_PASSWORD= php artisan test -c phpunit-pgsql.xml --stop-on-failure`
+  Result: 39 failures after 396 passed tests, 1079 warnings, 4563 assertions. Remaining failures are outside the fiscal projection buckets and cluster around existing PostgreSQL fixture/constraint mismatches in POS and one product scale assertion.
+
+Closed in this pass:
+
+- `AccountChargePayload` and `AccountPaymentPayload` now preserve their original source payload when hydrated from a database array. This keeps replay comparison stable across PostgreSQL `jsonb` key ordering without weakening typed access.
+- `DocumentFactory::posted()` now supplies valid fiscal core fields (`fiscal_hash`, `chain_sequence`) so sealed document fixtures satisfy the PostgreSQL fiscal CHECK constraint.
+- `DocumentCacheValidationService::findInconsistencies()` now normalizes raw database numeric values to two-decimal report scale. PostgreSQL stores the column with three-decimal scale, while the service contract reports currency-scale values.
+- PostgreSQL-incompatible fixture IDs were corrected to UUIDs where the real schema uses UUID columns: POS tolerance GL `source_id`, document vehicle context `vehicle_id`, product enrichment `tracking_id`, and product `platform_submission_id`.
+- `FacturXEligibilityTest` posted-invoice fixture now includes fiscal hash and sequence because an explicitly sealed document must carry fiscal core.
+- `DocumentCacheValidationTest` now distinguishes persisted column scale (`80.000`) from service report scale (`80.00`).
+
+Remaining full-PG blockers:
+
+- `Tests\Unit\POS\GrandtotalServiceTest`, `ReportGenerationServiceTest`, `ZReportHashServiceTest`: PostgreSQL rejects stale POS fixtures that violate current fiscal constraints, including `pos_grandtotal_events.fiscal_hash` format, `pos_receipts_void_logic`, sealed receipt immutability, and `pos_shifts_one_open_per_terminal`.
+- `Tests\Unit\POS\ReceiptPaymentServiceTest`, `ReceiptReturnServiceTest`, `ReceiptVoidServiceTest`, `ReportGenerationIdempotencyTest`, `HeldOrderServiceTest`: the broad suite still has PostgreSQL-only failures in POS paths outside the fiscal event ingestion/projection bucket.
+- `Tests\Unit\Product\ProductServiceUpsertTest::test_upsert_sets_tax_rate`: PostgreSQL returns stored decimal scale as `19.00`, while the test expects SQLite-style `19`.
+
+Decision:
+
+- Do not open the PR yet. The requested fiscal buckets and full SQLite suite are green, and the database-per-tenant seeder passes, but the full PostgreSQL suite is not green.
+- `./scripts/preflight.sh` was not run because the full PostgreSQL verification gate already fails on the broad POS/product blockers above; running preflight would not produce a mergeable result until those are resolved or explicitly scoped out.

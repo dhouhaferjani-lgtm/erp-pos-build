@@ -22,6 +22,7 @@ use App\Shared\Enums\EnrichmentStatus;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -92,7 +93,7 @@ class EnrichmentReviewServiceTest extends TestCase
             'name' => 'Original Product',
         ]);
 
-        $trackingId = 'trk-test-001';
+        $trackingId = (string) Str::uuid();
 
         Http::fake([
             'platform.test/*' => Http::response([
@@ -144,14 +145,14 @@ class EnrichmentReviewServiceTest extends TestCase
             'name' => 'Original Name',
             'description' => 'Original Description',
             'enrichment_status' => EnrichmentStatus::Completed,
-            'platform_submission_id' => 'sub-123',
+            'platform_submission_id' => (string) Str::uuid(),
         ]);
 
         $enrichmentResult = EnrichmentResult::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-accept-001',
+            'tracking_id' => (string) Str::uuid(),
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => new EnrichedProductData(
                 name: 'Enriched Name',
@@ -192,14 +193,14 @@ class EnrichmentReviewServiceTest extends TestCase
             'company_id' => $this->company->id,
             'name' => 'Product To Reject',
             'enrichment_status' => EnrichmentStatus::Completed,
-            'platform_submission_id' => 'sub-456',
+            'platform_submission_id' => (string) Str::uuid(),
         ]);
 
         $enrichmentResult = EnrichmentResult::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-reject-001',
+            'tracking_id' => (string) Str::uuid(),
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => new EnrichedProductData(
                 name: 'Enriched Name',
@@ -253,11 +254,15 @@ class EnrichmentReviewServiceTest extends TestCase
             assigned_barcode_type: null,
         );
 
+        $fullTrackingId = (string) Str::uuid();
+        $partialTrackingId = (string) Str::uuid();
+        $secondFullTrackingId = (string) Str::uuid();
+
         EnrichmentResult::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-quality-full',
+            'tracking_id' => $fullTrackingId,
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => $enrichedData,
             'enrichment_quality' => 'full',
@@ -267,7 +272,7 @@ class EnrichmentReviewServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-quality-partial',
+            'tracking_id' => $partialTrackingId,
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => $enrichedData,
             'enrichment_quality' => 'partial',
@@ -277,7 +282,7 @@ class EnrichmentReviewServiceTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-quality-full-2',
+            'tracking_id' => $secondFullTrackingId,
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => $enrichedData,
             'enrichment_quality' => 'full',
@@ -293,8 +298,8 @@ class EnrichmentReviewServiceTest extends TestCase
         $this->assertSame(2, $results->total());
 
         $trackingIds = collect($results->items())->pluck('tracking_id')->toArray();
-        $this->assertContains('trk-quality-full', $trackingIds);
-        $this->assertContains('trk-quality-full-2', $trackingIds);
-        $this->assertNotContains('trk-quality-partial', $trackingIds);
+        $this->assertContains($fullTrackingId, $trackingIds);
+        $this->assertContains($secondFullTrackingId, $trackingIds);
+        $this->assertNotContains($partialTrackingId, $trackingIds);
     }
 }

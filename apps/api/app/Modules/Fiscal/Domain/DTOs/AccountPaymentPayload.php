@@ -14,6 +14,7 @@ final readonly class AccountPaymentPayload
      * @param  array<string, mixed>|null  $regimeExtensions
      * @param  array<string, mixed>  $seller
      * @param  array<string, mixed>  $staleness
+     * @param  array<string, mixed>|null  $sourcePayload
      */
     public function __construct(
         public string $accountPaymentUuid,
@@ -36,6 +37,7 @@ final readonly class AccountPaymentPayload
         public string $terminalId,
         public bool $trainingFlag,
         public string $treasuryAllocationPolicy,
+        private ?array $sourcePayload = null,
     ) {}
 
     /**
@@ -77,6 +79,7 @@ final readonly class AccountPaymentPayload
             terminalId: FiscalPayloadArrayGuards::requireString($data, 'terminal_id'),
             trainingFlag: FiscalPayloadArrayGuards::requireBool($data, 'training_flag'),
             treasuryAllocationPolicy: FiscalPayloadArrayGuards::requireString($data, 'treasury_allocation_policy'),
+            sourcePayload: $data,
         );
     }
 
@@ -85,6 +88,10 @@ final readonly class AccountPaymentPayload
      */
     public function toArray(): array
     {
+        if ($this->sourcePayload !== null) {
+            return $this->sourcePayload;
+        }
+
         return [
             'account_payment_uuid' => $this->accountPaymentUuid,
             'business_date' => $this->businessDate,
