@@ -505,15 +505,41 @@ class AuthController extends Controller
                 ];
             });
 
-        // Send verification email asynchronously (after transaction)
-        $this->emailVerificationService->sendVerificationEmail($result['user']);
+        // The verification-email send and the response building both touch
+        // tenant-side data: sendVerificationEmail() writes email_verification_tokens,
+        // and AuthUserData::fromUser() reads the Spatie roles/permissions — all of
+        // which live in the tenant database. Under database-per-tenant the
+        // provisioning service has already reverted to the central connection, so
+        // re-enter the tenant's context for these steps; in shared-DB mode the
+        // initialize/end pair is a deliberate no-op.
+        $buildResponse = function () use ($result): LoginResponseData {
+            // Send verification email (the token row is tenant-side).
+            $this->emailVerificationService->sendVerificationEmail($result['user']);
 
-        $response = new LoginResponseData(
-            user: AuthUserData::fromUser($result['user']),
-            token: $result['token'],
-            tokenType: 'Bearer',
-            deviceId: $result['device']?->device_id,
-        );
+            return new LoginResponseData(
+                user: AuthUserData::fromUser($result['user']),
+                token: $result['token'],
+                tokenType: 'Bearer',
+                deviceId: $result['device']?->device_id,
+            );
+        };
+
+        if (config('tenancy_resolver.db_per_tenant')) {
+            $tenant = Tenant::findOrFail($result['user']->tenant_id);
+            // The database was just created + migrated in THIS request, so
+            // initialize the tenant context directly. (initializeIfProvisioned's
+            // existence probe can read stale connection state mid-request right
+            // after creation; we already know the database is provisioned here.)
+            tenancy()->initialize($tenant);
+
+            try {
+                $response = $buildResponse();
+            } finally {
+                tenancy()->end();
+            }
+        } else {
+            $response = $buildResponse();
+        }
 
         return response()->json([
             'data' => $response,

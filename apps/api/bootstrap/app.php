@@ -22,6 +22,7 @@ use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisCustomerException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisTerminalException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -81,6 +82,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', [
             ResolveTenancy::class,
         ]);
+
+        // Group append order alone is NOT enough: Laravel's middleware-priority
+        // sort runs Authenticate (auth:sanctum) BEFORE an un-prioritized
+        // ResolveTenancy, so on authenticated routes the User would be resolved on
+        // the central connection before the tenant database is opened — a 500 in
+        // DB-per-tenant mode. Pin ResolveTenancy immediately before the
+        // authentication middleware in the priority list (and after StartSession,
+        // which precedes it, so the web-session tenant path still resolves) so the
+        // tenant is always bound before authentication on every surface.
+        $middleware->prependToPriorityList(
+            before: AuthenticatesRequests::class,
+            prepend: ResolveTenancy::class,
+        );
 
         // Ensure API requests get JSON responses for auth failures
         $middleware->redirectGuestsTo(function (Request $request) {

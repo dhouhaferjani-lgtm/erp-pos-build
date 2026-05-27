@@ -47,7 +47,19 @@ class RegisterRequest extends FormRequest
             // (CreateUserRequest uses tenant-scoped uniqueness). Do NOT relax this
             // to per-tenant without re-opening the product decision.
             // See docs/sessions/2026-05-25-t6-phase0a-status.md (Deviations §1).
-            'email' => ['required', 'email', 'unique:users,email'],
+            // Global uniqueness for self-signup is preserved across both tenancy
+            // modes. In shared-DB (compat) the single `users` table IS the global
+            // index. In database-per-tenant there is no global `users` table — the
+            // global email index is `central_identities` (on the central
+            // connection, which is the default connection in DB mode), so check
+            // uniqueness there. Same product rule, correct table per topology.
+            'email' => [
+                'required',
+                'email',
+                config('tenancy_resolver.db_per_tenant')
+                    ? Rule::unique('central_identities', 'email')
+                    : Rule::unique('users', 'email'),
+            ],
             'password' => ['required', 'string', Password::defaults(), 'confirmed'],
 
             // Company fields
