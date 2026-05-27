@@ -82,7 +82,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('stock-reservations.index');
 
+    // The literal `/breakdown` segment MUST be registered before the `{id}`
+    // route, otherwise `/stock-reservations/breakdown` is captured as
+    // `{id}` = "breakdown" and hits show() — which on PostgreSQL probes a uuid
+    // column with a non-uuid and 500s (22P02) instead of reaching breakdown().
+    Route::get('/stock-reservations/breakdown', [StockReservationController::class, 'breakdown'])
+        ->middleware('can:inventory.view')
+        ->name('stock-reservations.breakdown');
+
     Route::get('/stock-reservations/{id}', [StockReservationController::class, 'show'])
+        ->whereUuid('id')
         ->middleware('can:inventory.view')
         ->name('stock-reservations.show');
 
@@ -91,12 +100,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('stock-reservations.store');
 
     Route::post('/stock-reservations/{id}/release', [StockReservationController::class, 'release'])
+        ->whereUuid('id')
         ->middleware('can:inventory.adjust')
         ->name('stock-reservations.release');
-
-    Route::get('/stock-reservations/breakdown', [StockReservationController::class, 'breakdown'])
-        ->middleware('can:inventory.view')
-        ->name('stock-reservations.breakdown');
 
     // ==========================================
     // Inventory Counting Routes

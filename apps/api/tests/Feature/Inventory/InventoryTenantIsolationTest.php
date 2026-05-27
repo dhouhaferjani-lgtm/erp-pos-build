@@ -403,24 +403,23 @@ final class InventoryTenantIsolationTest extends TestCase
 
     /*
      * api.inventory.009 / .010 (StockReservationController::breakdown body
-     * validators) cannot be exercised via HTTP because the GET route
-     * `/api/v1/stock-reservations/breakdown` is shadowed by the
-     * `/api/v1/stock-reservations/{id}` route registered earlier in
-     * routes.php (Laravel resolves `breakdown` as an `{id}` parameter and
-     * 404s in the show action). The validator hardening in this commit is
-     * defense-in-depth: if a future commit reorders the routes so that
-     * breakdown is reachable, the validators will already be tenant-scoped.
-     * Annotated in the inventory as
-     * structurally_protected_by_unreachable_route. Tracked as a follow-up
-     * route-ordering fix outside this cluster's scope.
+     * validators). The `/api/v1/stock-reservations/breakdown` GET route is now
+     * registered BEFORE `/stock-reservations/{id}` (which is uuid-constrained),
+     * so the literal is no longer shadowed: breakdown() is reachable and its
+     * tenant-scoped validators run. Previously `{id}` captured "breakdown" and
+     * ran show() → 404 on SQLite, but a 22P02/500 on PostgreSQL (uuid column
+     * probed with a non-uuid).
      */
-    public function test_breakdown_route_is_shadowed_by_show_route(): void
+    public function test_breakdown_route_is_reachable_and_tenant_scoped(): void
     {
         $response = $this->actingAsForTenant($this->userA, $this->companyA)
             ->getJson('/api/v1/stock-reservations/breakdown?product_id='.$this->productA->id.'&location_id='.$this->locationA->id);
-        // Route `{id}` matches `breakdown` first → show() runs → not found → 404.
-        // This documents the pre-existing route-ordering issue.
-        $response->assertStatus(404);
+        // No longer shadowed → breakdown() runs and returns its payload shape.
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data',
+                'meta' => ['total_reservations', 'total_quantity_reserved'],
+            ]);
     }
 
     // ──────────────────────────────────────────────────────────────────
