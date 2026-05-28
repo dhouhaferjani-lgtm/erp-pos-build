@@ -7,16 +7,25 @@ namespace App\Modules\Catalog\Application\Services;
 use App\Modules\Catalog\Application\Commands\CreateVariantCommand;
 use App\Modules\Catalog\Application\Exceptions\MissingVariantException;
 use App\Modules\Catalog\Application\Exceptions\VariantRequiredException;
+use App\Modules\Catalog\Domain\Entities\ProductAttributeValue;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
 use App\Modules\Catalog\Domain\Events\ProductVariantCreated;
+use App\Modules\Catalog\Domain\Repositories\AttributeRepository;
+use App\Modules\Catalog\Domain\Repositories\AttributeValueRepository;
 use App\Modules\Catalog\Domain\Repositories\ProductVariantRepository;
+use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 final class ProductVariantService
 {
     public function __construct(
         private readonly ProductVariantRepository $variantRepo,
+        private readonly AttributeRepository $attributeRepo,
+        private readonly AttributeValueRepository $attributeValueRepo,
+        private readonly ProductVariantMatrixGenerator $matrixGenerator,
     ) {}
 
     /**
@@ -125,5 +134,129 @@ final class ProductVariantService
     public function resolveSku(string $sku, string $companyId): ?ProductVariant
     {
         return $this->variantRepo->findBySku($sku, $companyId);
+    }
+
+    /**
+     * Generate and persist the full cartesian-product variant matrix for a product.
+     *
+     * For each attribute in $attributeIds, all its values are loaded and used as
+     * one axis. The resulting N₁ × N₂ × … combinations are each persisted as a
+     * ProductVariant (via createVariant) with junction rows.
+     *
+     * SKU / variant_code uniqueness guarantee:
+     *   "{product->sku}-{valueCode1}-{valueCode2}-…" uppercased and stripped of
+     *   spaces. The cartesian product guarantees each combination of value codes
+     *   is unique, so no two generated variants can produce the same suffix.
+     *
+     * is_default rule: the first generated variant is set as default ONLY when
+     * the product currently has zero variants. Subsequent calls therefore never
+     * add a second default.
+     *
+     * @param  string[]  $attributeIds
+     * @return Collection<int, ProductVariant>
+     *
+     * @throws RuntimeException when the product does not exist.
+     */
+    public function generateMatrix(string $productId, array $attributeIds): Collection
+    {
+        /** @var Product|null $product */
+        $product = Product::find($productId);
+
+        if ($product === null) {
+            throw new RuntimeException("Product [{$productId}] not found.");
+        }
+
+        // Build axes (string codes) AND a parallel ID-lookup map at the same time.
+        // axes:   ['taille' => ['36', '37', …], 'couleur' => ['noir', …]]
+        // lookup: ['taille' => ['36' => {attributeId, attributeValueId}, …], …]
+
+        /** @var array<string, string[]> $axes */
+        $axes = [];
+
+        /**
+         * @var array<string, array<string, array{attributeId: string, attributeValueId: string}>> $lookup
+         */
+        $lookup = [];
+
+        foreach ($attributeIds as $attributeId) {
+            $attribute = $this->attributeRepo->findById((string) $attributeId);
+
+            if ($attribute === null) {
+                throw new RuntimeException("Attribute [{$attributeId}] not found.");
+            }
+
+            $values = $this->attributeValueRepo->listForAttribute($attribute->id);
+
+            /** @var array<string, array{attributeId: string, attributeValueId: string}> $axisLookup */
+            $axisLookup = [];
+
+            /** @var array<int, string> $axisCodes */
+            $axisCodes = [];
+
+            /** @var ProductAttributeValue $value */
+            foreach ($values as $value) {
+                $axisCodes[] = $value->code;
+                $axisLookup[$value->code] = [
+                    'attributeId' => $attribute->id,
+                    'attributeValueId' => $value->id,
+                ];
+            }
+
+            $axes[$attribute->code] = $axisCodes;
+            $lookup[$attribute->code] = $axisLookup;
+        }
+
+        $combos = $this->matrixGenerator->cartesian($axes);
+
+        // Determine if this is the first matrix generation (no existing variants).
+        $hasExistingDefault = $this->variantRepo
+            ->listForProduct($productId, onlyActive: false)
+            ->contains('is_default', true);
+
+        $created = collect();
+
+        foreach ($combos as $index => $combo) {
+            // Build suffix parts in axis order for deterministic, unique codes.
+            $codeParts = array_values($combo);
+            $suffix = implode('-', array_map(
+                fn (string $part): string => strtoupper(str_replace(' ', '_', $part)),
+                $codeParts
+            ));
+
+            $variantCode = strtoupper($product->sku).'-'.$suffix;
+            $sku = $variantCode;
+
+            // Build name suffix as human-readable labels joined by " / ".
+            $labelParts = [];
+            foreach ($combo as $axisCode => $valueCode) {
+                $labelParts[] = $valueCode;
+            }
+            $nameSuffix = implode(' / ', $labelParts);
+
+            // Build junction pairs from the lookup.
+            /** @var array<int, array{attributeId: string, attributeValueId: string}> $attributeValues */
+            $attributeValues = [];
+            foreach ($combo as $axisCode => $valueCode) {
+                $attributeValues[] = $lookup[$axisCode][$valueCode];
+            }
+
+            // First combo becomes default only when the product has no existing default.
+            $isDefault = $index === 0 && ! $hasExistingDefault;
+
+            $command = new CreateVariantCommand(
+                tenantId: $product->tenant_id,
+                companyId: $product->company_id,
+                productId: $productId,
+                variantCode: $variantCode,
+                sku: $sku,
+                nameSuffix: $nameSuffix,
+                isDefault: $isDefault,
+                attributeValues: $attributeValues,
+            );
+
+            $created->push($this->createVariant($command));
+        }
+
+        return $created;
     }
 }
