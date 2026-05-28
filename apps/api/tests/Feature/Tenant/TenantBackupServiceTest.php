@@ -156,6 +156,74 @@ class TenantBackupServiceTest extends TestCase
         $this->assertNotNull($row->error_message);
     }
 
+    public function test_restore_round_trips_tenant_data_through_a_backup_file(): void
+    {
+        $tenant = $this->provisionTenant('rt');
+        $service = $this->makeService();
+
+        // Marker row written BEFORE the backup — must survive restore.
+        $markerId = (string) Str::uuid();
+        $this->insertUser($tenant, $markerId, 'pre-backup@example.test');
+
+        $backup = $service->backup($tenant);
+
+        // Extra row written AFTER backup — must be gone after restore.
+        $extraId = (string) Str::uuid();
+        $this->insertUser($tenant, $extraId, 'post-backup@example.test');
+
+        $service->restore($tenant, $backup->filePath, force: true);
+
+        $tenant->run(function () use ($markerId, $extraId): void {
+            $this->assertTrue(
+                DB::table('users')->where('id', $markerId)->exists(),
+                'Pre-backup marker row must survive restore.',
+            );
+            $this->assertFalse(
+                DB::table('users')->where('id', $extraId)->exists(),
+                'Post-backup row must be GONE after restore (drop + recreate semantics).',
+            );
+        });
+    }
+
+    public function test_restore_refuses_without_force(): void
+    {
+        $tenant = $this->provisionTenant('nf');
+        $backup = $this->makeService()->backup($tenant);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/force=true/');
+
+        $this->makeService()->restore($tenant, $backup->filePath, force: false);
+    }
+
+    public function test_restore_aborts_when_backup_file_sha256_does_not_match_central_metadata(): void
+    {
+        $tenant = $this->provisionTenant('cs');
+        $backup = $this->makeService()->backup($tenant);
+
+        // Corrupt the file on disk so the recomputed sha256 will not match the
+        // sha256 the service recorded at backup time.
+        file_put_contents($backup->filePath, "\x00CORRUPTED-PAYLOAD", FILE_APPEND);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/checksum mismatch/');
+
+        $this->makeService()->restore($tenant, $backup->filePath, force: true);
+    }
+
+    public function test_restore_throws_when_db_per_tenant_mode_is_disabled(): void
+    {
+        $tenant = $this->provisionTenant('roff');
+        $backup = $this->makeService()->backup($tenant);
+
+        config(['tenancy_resolver.db_per_tenant' => false]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/database-per-tenant/');
+
+        $this->makeService()->restore($tenant, $backup->filePath, force: true);
+    }
+
     public function test_backup_retention_deletes_older_completed_backups_beyond_keep(): void
     {
         config(['tenant_backups.keep' => 2]);
@@ -194,6 +262,21 @@ class TenantBackupServiceTest extends TestCase
         Bus::dispatchSync(new MigrateDatabase($tenant));
 
         return $tenant;
+    }
+
+    private function insertUser(Tenant $tenant, string $id, string $email): void
+    {
+        $tenant->run(function () use ($tenant, $id, $email): void {
+            DB::table('users')->insert([
+                'id' => $id,
+                'tenant_id' => $tenant->id,
+                'name' => 'Backup Test',
+                'email' => $email,
+                'password' => bcrypt('test-password'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
     }
 
     private function physicalDatabaseExists(string $databaseName): bool

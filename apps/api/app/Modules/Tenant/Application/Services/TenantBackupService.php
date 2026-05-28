@@ -134,6 +134,98 @@ class TenantBackupService
         }
     }
 
+    /**
+     * Restore a previously-captured backup back into the tenant's database.
+     *
+     * Destructive: the existing per-tenant database is dropped and recreated
+     * before pg_restore runs, so any data not in the dump is lost. Caller MUST
+     * pass force=true to allow the drop — the CLI surfaces this as a confirm
+     * prompt; programmatic callers must be explicit.
+     *
+     * Sha256 verification: if a tenant_backups row exists for this file_path,
+     * its sha256 is compared against a fresh hash of the file on disk before
+     * pg_restore runs; mismatch aborts (the dump may have been tampered with
+     * or partially copied).
+     */
+    public function restore(Tenant $tenant, string $backupPath, bool $force = false): void
+    {
+        if (! $this->isDbPerTenantMode()) {
+            throw new RuntimeException(
+                'Tenant restores require database-per-tenant mode (TENANCY_DB_PER_TENANT=true).'
+            );
+        }
+        if (! $force) {
+            throw new RuntimeException(
+                'Tenant restore is destructive; pass force=true (or --force on the CLI).'
+            );
+        }
+        if (! is_file($backupPath)) {
+            throw new RuntimeException("Backup file not found: {$backupPath}");
+        }
+
+        $databaseName = $tenant->database()->getName();
+        if ($databaseName === null || $databaseName === '') {
+            throw new RuntimeException(
+                "Tenant {$tenant->id} has no resolvable database name; refusing to restore."
+            );
+        }
+
+        $this->verifyBackupChecksum($tenant->id, $backupPath);
+
+        $manager = $tenant->database()->manager();
+
+        // Drop + recreate so pg_restore lands on a clean schema. We deliberately
+        // use the Stancl manager (the same code path provisioning uses) so the
+        // recreated DB is owned + parameterised identically to a fresh tenant.
+        if ($manager->databaseExists($databaseName)) {
+            $manager->deleteDatabase($tenant);
+        }
+        $manager->createDatabase($tenant);
+
+        $this->runPgRestore($databaseName, $backupPath);
+
+        $this->logger->info('Tenant restore completed', [
+            'tenant_id' => $tenant->id,
+            'tenant_slug' => $tenant->slug,
+            'backup_path' => $backupPath,
+            'database_name' => $databaseName,
+        ]);
+    }
+
+    private function verifyBackupChecksum(string $tenantId, string $backupPath): void
+    {
+        $row = $this->db->connection('central')->table('tenant_backups')
+            ->where('tenant_id', $tenantId)
+            ->where('file_path', $backupPath)
+            ->where('status', 'completed')
+            ->first();
+
+        if ($row === null || ! is_string($row->sha256) || $row->sha256 === '') {
+            // No metadata row to verify against (e.g., a hand-copied dump).
+            // We log and proceed; trust here is on the operator who invoked
+            // the restore explicitly with --force.
+            $this->logger->warning('Tenant restore: no central metadata for backup; skipping sha256 check', [
+                'tenant_id' => $tenantId,
+                'backup_path' => $backupPath,
+            ]);
+
+            return;
+        }
+
+        $actual = hash_file('sha256', $backupPath);
+        if ($actual === false) {
+            throw new RuntimeException("Failed to hash backup file: {$backupPath}");
+        }
+        if (! hash_equals($row->sha256, $actual)) {
+            throw new RuntimeException(sprintf(
+                'Backup checksum mismatch for %s (expected %s, got %s); refusing to restore.',
+                $backupPath,
+                $row->sha256,
+                $actual,
+            ));
+        }
+    }
+
     private function runPgDump(string $databaseName, string $outputPath): void
     {
         $cfg = $this->pgConfig();
@@ -161,6 +253,37 @@ class TenantBackupService
             $suffix = $stdout !== '' ? "\n".$stdout : '';
             throw new RuntimeException(
                 sprintf('pg_dump failed for database "%s": %s%s', $databaseName, $stderr, $suffix)
+            );
+        }
+    }
+
+    private function runPgRestore(string $databaseName, string $inputPath): void
+    {
+        $cfg = $this->pgConfig();
+
+        $process = new Process([
+            'pg_restore',
+            '--no-owner',
+            '--no-acl',
+            '--exit-on-error',
+            '--host='.$cfg['host'],
+            '--port='.(string) $cfg['port'],
+            '--username='.$cfg['username'],
+            '--dbname='.$databaseName,
+            $inputPath,
+        ]);
+        if ($cfg['password'] !== '') {
+            $process->setEnv(['PGPASSWORD' => $cfg['password']]);
+        }
+        $process->setTimeout(null);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            $stderr = trim($process->getErrorOutput());
+            $stdout = trim($process->getOutput());
+            $suffix = $stdout !== '' ? "\n".$stdout : '';
+            throw new RuntimeException(
+                sprintf('pg_restore failed for database "%s": %s%s', $databaseName, $stderr, $suffix)
             );
         }
     }
