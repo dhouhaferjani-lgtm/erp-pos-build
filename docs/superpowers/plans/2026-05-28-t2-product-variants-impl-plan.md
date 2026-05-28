@@ -508,7 +508,7 @@ public function test_null_barcode_allowed_multiple(): void
 
 - [ ] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Create migration**
+- [ ] **Step 3: Create migration** (P1-3 — all partial uniques are soft-delete-aware; P3-1 — `varchar(100)` matching products.sku)
 
 ```php
 Schema::create('product_variants', function (Blueprint $table) {
@@ -516,9 +516,9 @@ Schema::create('product_variants', function (Blueprint $table) {
     $table->uuid('tenant_id')->index();
     $table->foreignUuid('company_id')->constrained()->cascadeOnDelete();
     $table->foreignUuid('product_id')->constrained()->cascadeOnDelete();
-    $table->string('variant_code', 64);
-    $table->string('sku', 64);
-    $table->string('barcode', 64)->nullable();
+    $table->string('variant_code', 100);  // matches products.sku length
+    $table->string('sku', 100);  // matches products.sku length
+    $table->string('barcode', 100)->nullable();
     $table->string('name_suffix', 128);
     $table->boolean('is_default')->default(false);
     $table->boolean('is_active')->default(true);
@@ -530,26 +530,54 @@ Schema::create('product_variants', function (Blueprint $table) {
     $table->softDeletes();
 
     $table->unique(['product_id', 'variant_code']);
-    $table->unique(['tenant_id', 'sku']);
     $table->index(['tenant_id', 'product_id', 'is_active', 'display_order']);
     $table->index(['tenant_id', 'company_id', 'is_active']);
 });
 
-// Partial unique on barcode (only when present)
+// Partial uniques — all soft-delete-aware (P1-3)
 if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('CREATE UNIQUE INDEX product_variants_tenant_sku_unique
+                   ON product_variants (tenant_id, sku)
+                   WHERE deleted_at IS NULL');
+
     DB::statement('CREATE UNIQUE INDEX product_variants_tenant_barcode_unique
                    ON product_variants (tenant_id, barcode)
-                   WHERE barcode IS NOT NULL');
+                   WHERE barcode IS NOT NULL AND deleted_at IS NULL');
 
-    // Single default per product
     DB::statement('CREATE UNIQUE INDEX product_variants_default_unique
                    ON product_variants (product_id)
-                   WHERE is_default = true');
+                   WHERE is_default = true AND deleted_at IS NULL');
 
     DB::statement('ALTER TABLE product_variants ADD CONSTRAINT product_variants_price_nonneg
                    CHECK (price_override IS NULL OR price_override >= 0)');
     DB::statement('ALTER TABLE product_variants ADD CONSTRAINT product_variants_cost_nonneg
                    CHECK (cost_override IS NULL OR cost_override >= 0)');
+}
+```
+
+**Add Step 3b: regression tests for soft-delete partial-unique behavior (P1-3)**
+
+```php
+public function test_sku_reusable_after_soft_delete(): void
+{
+    $tenant = (string) Str::uuid();
+    $v1 = ProductVariant::factory()->create(['tenant_id' => $tenant, 'sku' => 'ABC-001']);
+    $v1->delete(); // soft-delete
+
+    // Should succeed — soft-deleted SKU is free for reuse
+    $v2 = ProductVariant::factory()->create(['tenant_id' => $tenant, 'sku' => 'ABC-001']);
+    $this->assertNotNull($v2);
+}
+
+public function test_default_reusable_after_soft_delete_of_default(): void
+{
+    $product = Product::factory()->create();
+    $oldDefault = ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+    $oldDefault->delete();
+
+    // Should succeed — soft-deleted default is excluded from partial unique
+    $newDefault = ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+    $this->assertNotNull($newDefault);
 }
 ```
 
@@ -1413,34 +1441,91 @@ public function test_open_reservations_migrated_not_released(): void
 }
 ```
 
-- [ ] **Step 2: Implement**
+- [ ] **Step 1b: Additional failing tests (P2-1 recipe migration + P2-2 large-migration guard)**
+
+```php
+public function test_recipes_pointing_at_product_get_rewritten_to_default_variant(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+    $recipe = Recipe::factory()->create();
+    $line = RecipeLine::factory()->create([
+        'recipe_id' => $recipe->id,
+        'component_type' => ComponentType::Product,
+        'component_id' => $product->id,
+        'component_variant_id' => null, // pre-variant recipe line
+    ]);
+
+    app(StockLevelMigrationService::class)
+        ->migrateToDefaultVariant($product->id, $variant->id);
+
+    $line->refresh();
+    $this->assertSame($variant->id, $line->component_variant_id);
+}
+
+public function test_large_migration_refused_without_override(): void
+{
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'is_default' => true]);
+
+    // Seed > 5000 stock_levels rows for this product (mock or test-config the threshold)
+    // ...
+
+    $this->expectException(LargeMigrationRefusalException::class);
+    app(StockLevelMigrationService::class)
+        ->migrateToDefaultVariant($product->id, $variant->id);
+}
+```
+
+- [ ] **Step 2: Implement** (with recipe handling + large-migration guard)
 
 ```php
 final class StockLevelMigrationService
 {
+    private const LARGE_MIGRATION_THRESHOLD = 5000;
+
     public function __construct(
         private readonly EventDispatcher $events,
     ) {}
 
-    public function migrateToDefaultVariant(string $productId, string $defaultVariantId): void
-    {
+    public function migrateToDefaultVariant(
+        string $productId,
+        string $defaultVariantId,
+        bool $allowLargeMigration = false,
+    ): void {
+        $estimate = $this->estimateAffectedRows($productId);
+        if ($estimate > self::LARGE_MIGRATION_THRESHOLD && ! $allowLargeMigration) {
+            throw new LargeMigrationRefusalException(
+                "Migration would affect {$estimate} rows; exceeds threshold "
+                . self::LARGE_MIGRATION_THRESHOLD
+                . ". Pass allowLargeMigration=true to override."
+            );
+        }
+
         DB::transaction(function () use ($productId, $defaultVariantId) {
-            $stockUpdated = DB::table('stock_levels')
+            DB::table('stock_levels')
                 ->where('product_id', $productId)
                 ->whereNull('variant_id')
                 ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
 
-            $resUpdated = DB::table('stock_reservations')
+            DB::table('stock_reservations')
                 ->where('product_id', $productId)
                 ->whereNull('variant_id')
                 ->whereNull('released_at')
                 ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
 
-            $batchUpdated = DB::table('product_batches')
+            DB::table('product_batches')
                 ->where('product_id', $productId)
                 ->whereNull('variant_id')
                 ->where('is_active', true)
                 ->update(['variant_id' => $defaultVariantId, 'updated_at' => now()]);
+
+            // P2-1 — rewrite recipe lines referring to this product without a variant
+            DB::table('recipe_lines')
+                ->where('component_type', 'product')
+                ->where('component_id', $productId)
+                ->whereNull('component_variant_id')
+                ->update(['component_variant_id' => $defaultVariantId, 'updated_at' => now()]);
         });
 
         $this->events->dispatch(new StockLevelsMigratedToDefaultVariant(
@@ -1448,14 +1533,30 @@ final class StockLevelMigrationService
             defaultVariantId: $defaultVariantId,
         ));
     }
+
+    private function estimateAffectedRows(string $productId): int
+    {
+        return DB::table('stock_levels')->where('product_id', $productId)->whereNull('variant_id')->count()
+            + DB::table('stock_reservations')->where('product_id', $productId)->whereNull('variant_id')->whereNull('released_at')->count()
+            + DB::table('product_batches')->where('product_id', $productId)->whereNull('variant_id')->where('is_active', true)->count()
+            + DB::table('recipe_lines')->where('component_type', 'product')->where('component_id', $productId)->whereNull('component_variant_id')->count();
+    }
 }
 ```
 
-- [ ] **Step 3: Run tests** → PASS.
+Plus a new exception class:
+
+```php
+// apps/api/app/Modules/Inventory/Application/Exceptions/LargeMigrationRefusalException.php
+final class LargeMigrationRefusalException extends \DomainException {}
+```
+
+- [ ] **Step 3: Run tests** → PASS (original 3 from Step 1 + 2 new from Step 1b).
+
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): StockLevelMigrationService — atomic migration to default variant"
+git commit -m "feat(t2): StockLevelMigrationService — atomic migration + recipe lines + large-migration guard"
 ```
 
 ---
@@ -1546,13 +1647,19 @@ private function assertVariantConsistency(string $productId, ?string $variantId)
 }
 ```
 
-- [ ] **Step 3: Sweep callsites** — find every caller and confirm none broke. Grep:
+- [ ] **Step 3: Sweep callsites (P1-2 — corrected grep pattern)** — callers inject `StockAdjustmentService` via constructor and call via instance method. The static-call grep `StockAdjustmentService::receive` returns zero matches. Use this multi-stage sweep instead:
 
 ```bash
-grep -rn 'StockAdjustmentService' apps/api/app apps/api/tests | grep -v '\.test\.'
+# Stage A — find every consumer (anywhere `StockAdjustmentService` appears as a constructor-injected dependency)
+grep -rn 'StockAdjustmentService [\$]' apps/api/app apps/api/tests
+# Then, for each found file, read the constructor; record the property name (e.g., $stockAdjustmentService, $stockSvc)
+
+# Stage B — find every method invocation (the property-arrow pattern, scoped per file as found in Stage A)
+grep -rn '->receive(\|->issue(\|->transfer(\|->reserve(\|->adjust(' apps/api/app apps/api/tests | head -50
+# Filter the results to those in files identified by Stage A (any method-name collision with other services needs disambiguation by reading the file)
 ```
 
-For each callsite, the missing parameter defaults to null. **Confirm in PR** that the call-site's product is non-variant — otherwise the call needs updating. List sweep results in the PR description.
+For each callsite identified by Stage B: verify the call-site's product is non-variant OR pass `variantId` explicitly. List sweep results in the PR description. **Acceptance gate:** the implementer must produce an inventory of every consumer-file that uses `StockAdjustmentService` with the method-call line numbers; no consumer goes undocumented.
 
 - [ ] **Step 4: Run tests** → PASS.
 - [ ] **Step 5: Commit**
@@ -1781,21 +1888,38 @@ git commit -m "refactor(t2): POS ReceiptCreationService variant-aware decrement 
 
 ---
 
-### Task 19: V2/V3 domain events for stock + document lines
+### Task 19: V2/V3 domain events for stock + document lines (DUAL-DISPATCH per P1-1)
+
+**Critical correctness:** existing V1 subscribers (notably `DispatchStockChangeToChannels` on `StockMovementRecorded`) MUST continue working after T2 lands. Spec §6.4 mandates dual-dispatch: producer emits V1 first (unchanged shape), V2 second (with `variantId`). Both fire on every write.
 
 **Files:**
 - Create: `apps/api/app/Modules/Inventory/Domain/Events/StockMovementRecordedV2.php`
-- Create: `apps/api/app/Modules/Document/Domain/Events/DraftLineAddedV3.php`
-- Create: `DraftLineModifiedV3.php`, `DraftLineRemovedV2.php`
+- Create: `apps/api/app/Modules/Document/Domain/Events/DraftLineAddedV3.php`, `DraftLineModifiedV3.php`, `DraftLineRemovedV2.php`
 - Create: `ReservationCreatedV2.php`, `ReservationExpiredV2.php`, `ReservationReleasedV2.php`
-- Test: `apps/api/tests/Feature/Events/T2EventsV2Test.php`
+- Test: `apps/api/tests/Feature/Events/T2EventsV2DualDispatchTest.php`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Enumerate existing V1 subscribers (P1-1 acceptance gate)**
+
+```bash
+grep -rn 'Event::listen.*StockMovementRecorded' apps/api/app
+grep -rn 'StockMovementRecorded.*class' apps/api/app/Modules/*/Application/Listeners
+grep -rln 'DraftLineAdded' apps/api/app
+grep -rln 'DraftLineModified' apps/api/app
+grep -rln 'ReservationCreated\|ReservationExpired\|ReservationReleased' apps/api/app
+```
+
+Record the full subscriber inventory in the impl PR description. Confirmed minimum subscribers (as of 2026-05-28 dev):
+- `StockMovementRecorded` → `DispatchStockChangeToChannels` (Channel module).
+- Any in-place V1 audit listeners (TBD by grep above).
+
+If any subscriber is NOT on this list, the implementer adds it before proceeding.
+
+- [ ] **Step 2: Write failing dual-dispatch test**
 
 ```php
-public function test_StockMovementRecordedV2_carries_variant_id(): void
+public function test_dual_dispatch_V1_and_V2_for_variant_receive(): void
 {
-    Event::fake([StockMovementRecordedV2::class]);
+    Event::fake([StockMovementRecorded::class, StockMovementRecordedV2::class]);
     $product = Product::factory()->create();
     $variant = ProductVariant::factory()->create(['product_id' => $product->id]);
 
@@ -1806,13 +1930,31 @@ public function test_StockMovementRecordedV2_carries_variant_id(): void
         variantId: $variant->id,
     );
 
+    // V1 carries the original shape (no variant_id)
+    Event::assertDispatched(StockMovementRecorded::class);
+    // V2 carries variant_id
     Event::assertDispatched(StockMovementRecordedV2::class, fn ($e) =>
         $e->variantId === $variant->id
     );
 }
+
+public function test_dual_dispatch_for_non_variant_receive_emits_both_with_null_variant_in_V2(): void
+{
+    Event::fake([StockMovementRecorded::class, StockMovementRecordedV2::class]);
+    $product = Product::factory()->create();
+
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: Location::factory()->create()->id,
+        quantity: '1',
+    );
+
+    Event::assertDispatched(StockMovementRecorded::class);
+    Event::assertDispatched(StockMovementRecordedV2::class, fn ($e) => $e->variantId === null);
+}
 ```
 
-- [ ] **Step 2: Create the new event classes** — each is a new file mirroring its V1/V2 predecessor, adding `variantId`. **Do not touch V1/V2 files** — they're immutable per CLAUDE.md rule 8.
+- [ ] **Step 3: Create the new event classes** — each new file mirrors V1/V2 predecessor, adds `variantId`. **Do not touch V1/V2 files** — immutable per CLAUDE.md rule 8.
 
 ```php
 final class StockMovementRecordedV2 extends DomainEvent
@@ -1821,7 +1963,7 @@ final class StockMovementRecordedV2 extends DomainEvent
         public readonly string $movementId,
         public readonly string $productId,
         public readonly ?string $variantId,
-        // ... other fields from V1, copied verbatim
+        // ... ALL other fields from V1, copied verbatim
     ) {}
 
     public function getEventName(): string { return 'inventory.stock_movement_recorded.v2'; }
@@ -1829,16 +1971,33 @@ final class StockMovementRecordedV2 extends DomainEvent
 }
 ```
 
-- [ ] **Step 3: Verify `SalesOrderConfirmed` payload shape** — read `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php` and check whether line items are serialized into the payload. If yes, spawn `SalesOrderConfirmedV2`. If no (just references), no V bump needed. Document the verification in the commit message.
+- [ ] **Step 4: Update producers to dispatch BOTH (NOT V2 instead of V1)**
 
-- [ ] **Step 4: Update `StockAdjustmentService` to dispatch V2 instead of V1** (V1 stays in code but is no longer dispatched on writes — replay can still construct it from history if needed).
+```php
+// In WeightedAverageCostService::recordCostAdjustment (the actual producer):
+DB::afterCommit(function () use (/* ... */) {
+    // Dispatch V1 first (unchanged shape, subscribers stay safe)
+    event(new StockMovementRecorded(/* original args, no variant_id */));
+    // Dispatch V2 second (carries variant_id)
+    event(new StockMovementRecordedV2(/* original args + variant_id */));
+});
+```
 
-- [ ] **Step 5: Run tests** → PASS.
-- [ ] **Step 6: Commit**
+Repeat for every dual-dispatched event class.
+
+- [ ] **Step 5: Verify `SalesOrderConfirmed` payload shape** — read `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php`. If lines are serialized into the payload, spawn `SalesOrderConfirmedV2` and dual-dispatch. If only line IDs are referenced (lines look up variant_id natively), no V bump needed. Document the verification result in the commit message.
+
+- [ ] **Step 6: Run tests** → PASS (both dual-dispatch tests + existing V1 listener test continues to pass).
+
+- [ ] **Step 7: Update spec-listed acceptance criteria §10.6 dual-dispatch test** — verify both subscribers fire.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git commit -m "feat(t2): V2/V3 events for stock + document lines with variant_id"
+git commit -m "feat(t2): V2/V3 events with dual-dispatch for backward compat with V1 subscribers"
 ```
+
+**Out-of-T2 follow-up note:** future PR migrates `DispatchStockChangeToChannels` (and any other V1 subscribers enumerated in Step 1) to subscribe to V2 instead of V1; once all subscribers are V2-native, dual-dispatch can stop. Track in `docs/superpowers/coordination/2026-05-24-pos-coordination-log.md` (or a new track-specific log).
 
 ---
 
@@ -1911,7 +2070,9 @@ git commit -m "feat(t2): RecipeService::addLine accepts componentVariantId"
 
 ---
 
-### Task 22: `RecipeCostCalculationService` reads variant `cost_override`
+### Task 22: `RecipeCostCalculationService` reads variant `cost_override` (ADVISORY only — P1-4)
+
+**Critical:** variant `cost_override` is **advisory only**. It participates in recipe cost (for menu engineering / margin display) but **does NOT** affect inventory WAC / GL postings. Test must explicitly verify the drift behavior.
 
 **Files:**
 - Modify: `apps/api/app/Modules/Catalog/Application/Services/RecipeCostCalculationService.php`
@@ -1945,15 +2106,64 @@ public function test_falls_back_to_product_cost_when_variant_override_null(): vo
 {
     // similar, but cost_override = null; assert uses product->cost_price
 }
+
+public function test_recipe_cost_does_not_affect_inventory_wac(): void
+{
+    // P1-4 — variant cost is advisory; inventory WAC stays product-grain
+    $product = Product::factory()->create(['cost_price' => '10.00']);
+    $variant = ProductVariant::factory()->create([
+        'product_id' => $product->id,
+        'cost_override' => '12.00',
+    ]);
+    $recipe = Recipe::factory()->create();
+    RecipeLine::factory()->create([
+        'recipe_id' => $recipe->id,
+        'component_id' => $product->id,
+        'component_variant_id' => $variant->id,
+        'quantity' => '1',
+    ]);
+
+    // Recipe COGS uses variant cost (advisory)
+    $recipeCogs = app(RecipeCostCalculationService::class)->calculate($recipe->id);
+    $this->assertSame('12.0000', $recipeCogs);
+
+    // But inventory WAC for the product stays at product->cost_price after a receive
+    app(StockAdjustmentService::class)->receive(
+        productId: $product->id,
+        locationId: Location::factory()->create()->id,
+        quantity: '5',
+        variantId: $variant->id,
+    );
+    $product->refresh();
+    $this->assertSame('10.00', $product->cost_price);  // unchanged
+}
 ```
 
 - [ ] **Step 2: Implement** the variant `cost_override` lookup — when `component_variant_id` is set on a line, read the variant's `cost_override`; if null, fall back to `product.cost_price`.
+
+- [ ] **Step 2b: Add comment block at top of `RecipeCostCalculationService.php`**
+
+```php
+/**
+ * Computes the total cost of a recipe, summing `unit_cost * quantity * (1 + wastage_percent/100)`
+ * across all RecipeLines.
+ *
+ * IMPORTANT (T2): when a RecipeLine has `component_variant_id` set, the unit cost is read from
+ * `product_variants.cost_override` (falls back to `products.cost_price` if NULL). This is ADVISORY
+ * cost — used for menu engineering, margin display, recipe COGS reports. It does NOT post to the GL;
+ * inventory accounting uses product-grain WAC.
+ *
+ * Reconciliation reports that compare recipe COGS against inventory WAC depletion will show drift
+ * when variant cost_override differs from product cost_price; this is expected and documented in
+ * apps/api/app/Modules/Pricing/README.md and apps/api/app/Modules/Inventory/README.md.
+ */
+```
 
 - [ ] **Step 3: Run tests** → PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "feat(t2): RecipeCostCalculation uses variant cost_override"
+git commit -m "feat(t2): RecipeCostCalculation uses variant cost_override (advisory; WAC stays product-grain)"
 ```
 
 ---

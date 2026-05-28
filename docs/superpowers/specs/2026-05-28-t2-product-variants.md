@@ -2,7 +2,9 @@
 
 **Track:** T2 (productization sprint, Wave 1 server-side + Wave 2 POS deltas)
 **Date:** 2026-05-28
-**Version:** v1 (this session) — supersedes baseline `2026-05-24-t2-variants.md` (v2 post Codex round-1) by widening scope to cover recipe ingredient resolution, B2B + ecommerce surfaces, and the post-T6 migration topology.
+**Version:** v2 (Opus self-adversarial r1 findings applied — 4 P1 + 3 P2 + 1 P3; see `reviews/2026-05-28-t2-variants-opus-r1.md`).
+**Version history:** v1 (2026-05-28 initial) → v2 (2026-05-28 same-day revision after Opus self-review). Changes: dual-dispatch event strategy (P1-1); soft-delete-aware partial uniques (P1-3); recipe cost is advisory (Option C, P1-4); recipe pre-existing mixed-mode handled by extended `StockLevelMigrationService` (P2-1); variant inherits product-grain coupon (P2-3); `sku` widened to varchar(100) (P3-1).
+**Supersedes:** `2026-05-24-t2-variants.md` (v2 post Codex r1) — widens scope to cover recipe ingredient resolution, B2B + ecommerce surfaces, and the post-T6 migration topology.
 **Relationship to prior work:** the 2026-05-24 v2 spec is the schema-design baseline. Its `ProductAttribute / ProductAttributeValue / ProductVariant / ProductVariantAttributeValue` shape and partial-index strategy are carried forward verbatim and re-verified against current `dev`. The owner's 2026-05-28 briefing adds three non-negotiable requirements (recipes built from variants with earliest-expiry inheritance; ecommerce surfacing; B2B surfacing) that the v2 spec marked out-of-scope or only gestured at. This spec closes those gaps and is the artifact the Phase-2 Codex implementation session should execute against.
 **Workflow recommendation:** Opus owns schema design + recipe-expiry algorithm + partial-index correctness (rigorous, low headcount). Codex owns the mechanical service-layer ripple (touches ~30 files; high headcount) and the admin matrix UI. POS Wave 2 deltas log to the coordination log and are gated by fiscal Phase-1 sign-off.
 **Estimated effort:** ~21 PD (revised up from v2's 16 because recipe-variant resolution and B2B/ecommerce surfacing add real work; POS picker remains a Wave 2 delta).
@@ -134,23 +136,23 @@ Constraints: `UNIQUE (attribute_id, code)`. Index on `(tenant_id, attribute_id, 
 | `tenant_id` | UUID NOT NULL | |
 | `company_id` | UUID NOT NULL FK → `companies.id` CASCADE | mirrors `products.company_id` of parent. |
 | `product_id` | UUID NOT NULL FK → `products.id` CASCADE | parent product. |
-| `variant_code` | varchar(64) NOT NULL | human code, unique per product (e.g., `39-NOIR`). |
-| `sku` | varchar(64) NOT NULL | tenant-unique SKU (matches `products.sku` constraint shape). |
-| `barcode` | varchar(64) NULL | tenant-unique when present. |
+| `variant_code` | varchar(100) NOT NULL | human code, unique per product (e.g., `39-NOIR`). varchar(100) matches `products.sku` length policy. |
+| `sku` | varchar(100) NOT NULL | tenant-unique SKU (length matches `products.sku` exactly — verified at `apps/api/database/migrations/tenant/2025_11_30_052910_create_products_table.php`). |
+| `barcode` | varchar(100) NULL | tenant-unique when present. |
 | `name_suffix` | varchar(128) NOT NULL | rendered after parent name (e.g., `"39 / Noir"`). |
-| `is_default` | bool NOT NULL DEFAULT false | at most one default per product. |
+| `is_default` | bool NOT NULL DEFAULT false | at most one default per product (among non-soft-deleted variants — see partial unique). |
 | `is_active` | bool NOT NULL DEFAULT true | |
 | `display_order` | int NOT NULL DEFAULT 0 | |
 | `price_override` | numeric(15,4) NULL | falls back to `products.sale_price` if NULL. |
-| `cost_override` | numeric(15,4) NULL | falls back to `products.cost_price` if NULL. |
-| `image_url` | varchar(2048) NULL | variant-specific image. |
+| `cost_override` | numeric(15,4) NULL | **advisory only** (recipe cost + pricing display); does NOT affect inventory WAC. Falls back to `products.cost_price` if NULL. See §6.7. |
+| `image_url` | varchar(2048) NULL | denormalized URL of the variant's primary image (full image management via `product_images.product_variant_id` — see §4.2 supplement / P2-4). |
 | `created_at`, `updated_at`, `deleted_at` | timestamps | soft deletes (preserves audit + open-cart references). |
 
-Constraints:
-- `UNIQUE (product_id, variant_code)`.
-- `UNIQUE (tenant_id, sku)` — matches `products.sku` per-tenant uniqueness.
-- `UNIQUE (tenant_id, barcode) WHERE barcode IS NOT NULL` — partial index.
-- Partial unique enforcing one default: `UNIQUE (product_id) WHERE is_default = true`.
+Constraints (P1-3 — every partial unique is soft-delete-aware):
+- `UNIQUE (product_id, variant_code)` — full unique (variant_code reuse after soft-delete acceptable only after admin hard-delete; document trade-off).
+- Partial unique: `UNIQUE (tenant_id, sku) WHERE deleted_at IS NULL` — soft-deleted SKUs are reusable.
+- Partial unique: `UNIQUE (tenant_id, barcode) WHERE barcode IS NOT NULL AND deleted_at IS NULL`.
+- Partial unique enforcing one default: `UNIQUE (product_id) WHERE is_default = true AND deleted_at IS NULL`.
 - CHECK: `price_override IS NULL OR price_override >= 0`. Same for `cost_override`.
 
 Indexes: `(tenant_id, product_id, is_active, display_order)`, `(tenant_id, company_id, is_active)`.
@@ -487,7 +489,7 @@ interface ProductVariantAttributeValueRepository { /* mirror */ }
 
 All repositories use the standard Eloquent infrastructure under `Catalog/Infrastructure/Repositories/` with Stancl tenant context.
 
-### 6.4 Domain events (immutable rule 8 — every shape change creates a new V)
+### 6.4 Domain events (immutable rule 8 — every shape change creates a new V) + dual-dispatch transition strategy
 
 **New events (V1 — never carry product without variant):**
 - `ProductVariantCreated(variantId, productId, tenantId, companyId, sku, variantCode, isDefault)`
@@ -497,13 +499,22 @@ All repositories use the standard Eloquent infrastructure under `Catalog/Infrast
 - `ProductAttributeCreated(attributeId, tenantId, code, dataType)`
 - `ProductAttributeValueAdded(attributeValueId, attributeId, code, label)`
 
-**Existing events that gain `variantId` — must be V'ed:**
-- `DraftLineAddedV2` → spawn `DraftLineAddedV3` adding `variantId`, `variantName`, `variantSku`. V2 stays alive for replay.
-- `DraftLineModifiedV2` → `DraftLineModifiedV3`.
-- `DraftLineRemoved` (V1) → `DraftLineRemovedV2` adding `variantId`.
-- `SalesOrderConfirmed` — carries line items by reference; the snapshot in the audit payload references `variantId` from line state. If `SalesOrderConfirmed` previously serialized lines into its payload, spawn `SalesOrderConfirmedV2`; if it merely references line IDs, no V bump needed. Implementation MUST verify the current payload shape — verify pre-implementation, document the decision in the impl PR.
-- `StockMovementRecorded` — payload-shape change. Spawn `StockMovementRecordedV2` carrying `variantId`. Existing V1 stays alive.
-- `ReservationCreated`, `ReservationExpired`, `ReservationReleased` — V2 spawns adding `variantId`.
+**Existing events that gain `variantId` — spawn V'd successors AND continue dispatching the V1/V2 predecessor (dual-dispatch, P1-1):**
+- `DraftLineAddedV2` → spawn `DraftLineAddedV3` adding `variantId`, `variantName`, `variantSku`. V2 stays alive for replay AND continues to be dispatched.
+- `DraftLineModifiedV2` → `DraftLineModifiedV3` (V2 continues).
+- `DraftLineRemoved` (V1) → `DraftLineRemovedV2` adding `variantId` (V1 continues).
+- `SalesOrderConfirmed` — carries line items by reference; the snapshot in the audit payload references `variantId` from line state. **Implementation must read the current payload shape** at `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php` first. If lines are serialized into the payload, spawn `SalesOrderConfirmedV2` (dual-dispatch); if it merely references line IDs, no V bump needed (lines carry variant_id natively). Document the decision in the impl PR.
+- `StockMovementRecorded` — payload-shape change. Spawn `StockMovementRecordedV2` carrying `variantId`. **CRITICAL: dual-dispatch.** V1 continues to be dispatched alongside V2 throughout T2's lifetime. Subscribers stay on V1 unless explicitly migrated; new subscribers can subscribe to V2.
+- `ReservationCreated`, `ReservationExpired`, `ReservationReleased` — V2 spawns adding `variantId` (V1 continues — dual-dispatch).
+
+**Dual-dispatch contract (P1-1 — listener safety):**
+
+Every existing subscriber of a V1 event MUST continue working unchanged after T2 lands. To guarantee that:
+
+1. The **producer** of a V'd event dispatches both V1 and V2 in sequence (V1 first, V2 second). The V1 payload is unchanged from today (it's an immutable contract). The V2 payload adds `variantId` (nullable for product-scoped writes).
+2. **Existing subscriber inventory (T2 must enumerate before merge):** at minimum, enumerate `StockMovementRecorded` subscribers via `grep -rln "StockMovementRecorded\\b" apps/api/app`. Current known subscribers: `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php` (subscribed in `apps/api/app/Modules/Channel/Providers/ChannelServiceProvider.php` via `Event::listen(StockMovementRecorded::class, DispatchStockChangeToChannels::class)`). Each enumerated subscriber MUST be explicitly listed in the impl PR description; no silent additions.
+3. **Migration plan for subscribers** (NOT in T2 scope, deferred): a follow-up PR migrates the `Channel` listener (and any others enumerated) from V1 to V2 subscription. Once all subscribers are V2-native, dual-dispatch can stop (the producer drops the V1 emit). That follow-up is out of T2 scope.
+4. **No silent payload truncation.** Dual-dispatch is two independent calls — they do not share state. Each event is constructed from its own data.
 
 **Events deferred (justification):**
 - `ProductCreated`, `ProductUpdated`, `ProductCostPriceUpdated` — unchanged. Variants don't impact product-level events.
@@ -517,7 +528,7 @@ Once a product has at least one `is_active=true` variant, every `stock_levels`, 
 2. Service-layer guard in `StockAdjustmentService` (and POS `decrementStock`): when invoked with `productId` for a product that has variants and `variantId=null`, raises `VariantRequiredException`. CHECK invariant; no silent fallback.
 3. Test fixture: `tests/Feature/Catalog/ProductVariantNoMixedModeTest.php`.
 
-### 6.6 New service: `StockLevelMigrationService`
+### 6.6 New service: `StockLevelMigrationService` (extended per P2-1 to handle recipe references)
 
 ```php
 final class StockLevelMigrationService
@@ -528,18 +539,31 @@ final class StockLevelMigrationService
     //   - UPDATE stock_movements ditto for open / unreversed rows? — NO, movements are append-only and historical context is product-level — leave them
     //   - UPDATE stock_reservations ditto WHERE released_at IS NULL
     //   - UPDATE product_batches ditto WHERE is_active = true
-    //   - Emit StockLevelsMigratedToDefaultVariant event
+    //   - UPDATE recipe_lines SET component_variant_id = $defaultVariantId WHERE component_type = 'product' AND component_id = $productId AND component_variant_id IS NULL  (P2-1)
+    //   - Emit StockLevelsMigratedToDefaultVariant event with row-count breakdown
+    //
+    // Guard (P2-2 long-lock concern):
+    //   - Estimate row-count to migrate; if > 5000 rows, raise LargeMigrationRefusalException
+    //   - Operator override flag: pass $allowLargeMigration = true to bypass
 }
 ```
 
 **Critical** — historical `stock_movements` (already-recorded receives/issues) MUST NOT be retroactively assigned to a variant. They are append-only audit records; rewriting them corrupts history. Only *open / unreversed / active* state is migrated. The acceptance criteria in §10 verify this distinction.
 
-### 6.7 Out-of-scope changes (explicit non-goals)
+**Recipe pre-existing mixed-mode (P2-1 fix):** when an operator introduces variants to a product that ALREADY has recipes referring to it, the `recipe_lines.component_variant_id` rows that are NULL get rewritten to the default variant in the same atomic transaction. This prevents the FEFO-with-NULL-variant-on-variant-bearing-product error path (§7.2 invariant). New recipe lines created AFTER variants exist MUST explicitly pass `component_variant_id` (UI enforces).
 
-- **Coupon variant scoping** — `coupons.qualifying_product_ids` JSON stays product-grain.
+**Long-lock guard (P2-2 fix):** the migration estimates affected row count before opening the transaction; if > 5000 rows across all affected tables, raises `LargeMigrationRefusalException` with the row count. Operator can override via `$allowLargeMigration = true` parameter (admin-only API endpoint). Acceptance criterion §10.1 includes a guard test.
+
+### 6.7 Out-of-scope changes (explicit non-goals) and locked semantic decisions
+
+- **Coupon variant scoping** — `coupons.qualifying_product_ids` JSON stays product-grain. **Locked semantics (P2-3):** a coupon scoped to `qualifying_product_ids=[productId X]` applies to **every variant of X**. The promotion evaluator resolves variant-bearing cart lines against the JSON by `product_id` (the variant's parent), not by `variant_id`. No schema change; the `PromotionEvaluationService.evaluate(cartItem)` reads `cartItem.variant.product_id` (or `cartItem.product_id` for non-variant lines) and matches. Acceptance criterion §10.6 includes a "20% off variant-bearing product → applies to both Noir and Blanc" test.
 - **Marketplace listing fan-out** — `marketplace_listings` stays product-grain.
 - **Variant-specific metadata** — `ParapharmacyProductMetadata`, `AutomotiveProductMetadata` stay on parent product. Variants inherit. If a vertical eventually needs variant-grain metadata (e.g., per-size dosage for liquid medicines), that's a future PR.
-- **Variant-level cost calculation in WAC** — WAC stays company-wide per product per memory `project_inventory_costing`. Variants don't introduce per-variant cost. Variant `cost_override` is a display/pricing fallback only; `LandedCostService` and the WAC chain continue at product grain. Confirmed compatible by the §8 recipe math (recipes use `cost_override` when set, otherwise product cost).
+- **Variant-level cost in WAC ledger — LOCKED DECISION (P1-4 Option C):** WAC stays **product-grain** per `project_inventory_costing` memory. Variant `cost_override` is **advisory only** — it participates in `RecipeCostCalculationService::calculate` (so menu engineering / margin analysis reflects variant cost) and in pricing display, but **does NOT post to the GL**. Inventory WAC depletion uses product cost; recipe COGS reports surface variant cost as an advisory P&L view. Reconciliation reports flag drift between recipe-COGS and inventory-WAC-depletion as expected behavior, not a bug. Documented in `apps/api/app/Modules/Pricing/README.md` + `apps/api/app/Modules/Inventory/README.md`.
+
+  **Why Option C, not A (recipe also uses product cost):** The owner driver (parapharmacy + future fashion) needs per-variant pricing margins (a Noir shoe sells at a different price than Blanc; cost might also differ). Forcing recipe cost to use product-grain would defeat the variant-cost feature entirely. Option C lets recipe cost reflect variant economics for **decision support** while keeping the accounting ledger simple.
+
+  **Why not B (promote WAC to variant-grain):** Significant scope expansion. Variant-grain WAC requires a per-variant cost ledger, per-variant LandedCost capitalization, per-variant inventory valuation reports — a future workstream, not T2.
 
 ---
 
@@ -781,7 +805,9 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 - [ ] Migration ordering 01–15 (§4.5) runs cleanly on a tenant DB with existing data; rollback works.
 - [ ] Insert two rows in `stock_levels` for same `(tenant_id, product_id, location_id)` — one with `variant_id=NULL`, one with `variant_id=X` — both succeed. Duplicate of either fails. Same for `product_batches` and `price_list_items`.
 - [ ] CHECK constraints reject illegal combos: `variant_id` set with `product_id=NULL` on `pos_receipt_lines` (XOR + variant_requires_product); `component_variant_id` set with `component_type='composite_item'` on `recipe_lines`.
-- [ ] `product_variants.is_default` partial unique rejects two defaults per product.
+- [ ] `product_variants.is_default` partial unique rejects two non-soft-deleted defaults per product; accepts new default after current default is soft-deleted (P1-3 regression test).
+- [ ] `product_variants.sku` (per-tenant) — same SKU may be reused after soft-deleting the original variant (P1-3 regression test).
+- [ ] `StockLevelMigrationService::migrateToDefaultVariant` raises `LargeMigrationRefusalException` when affected row count > 5000 unless explicit override flag passed (P2-2 guard test).
 
 ### 10.2 Backward compat sweep
 
@@ -817,6 +843,8 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 - [ ] `RecipeExpiryService::resolveEarliestExpiry($kitRecipe, $location)` returns earliest of the three ingredient batches.
 - [ ] Recall one of the three ingredient batches — `resolveEarliestExpiry` after recall returns next-earliest non-recalled.
 - [ ] F&B recipe with no batch-tracked ingredients: `resolveEarliestExpiry` returns `null` cleanly.
+- [ ] **P2-1 regression test:** create recipe pointing at product P (no variants); then introduce variants to P; assert `StockLevelMigrationService` rewrites the recipe's `component_variant_id` to the default variant; assert recipe still sells correctly after variant introduction.
+- [ ] **P1-4 regression test:** product P has a variant with `cost_override = 12.00`; product P `cost_price = 10.00`; recipe references variant. Assert `RecipeCostCalculationService` returns 12-based total; assert inventory WAC adjusts at 10 (product cost); assert reconciliation report flags the drift as expected (advisory).
 
 ### 10.6 Ecommerce + B2B
 
@@ -825,6 +853,9 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 - [ ] B2B partner with `PartnerPriceList` containing variant-specific `price_list_items` — `PricingService::getPrice` returns variant price; without variant row, falls back to product row.
 - [ ] B2B bulk-order SKU upload — variant SKUs resolve correctly; ambiguous SKUs raise validation error.
 - [ ] Channel mapping for one variant — publishes via mock channel adapter; stock-change listener fires for correct mapping.
+- [ ] **P1-1 dual-dispatch test:** create a fake V1 subscriber + V2 subscriber on `StockMovementRecorded`; trigger a variant-aware receive; assert BOTH subscribers fire (V1 with no variant_id, V2 with variant_id set).
+- [ ] **P2-3 coupon-variant test:** create coupon scoped to product X (variant-bearing); cart has two variants of X (Noir, Blanc); assert coupon applies to both lines.
+- [ ] Refund / credit-note against a variant-line returns stock to the same variant row.
 
 ### 10.7 Vertical-modularity proofs
 
