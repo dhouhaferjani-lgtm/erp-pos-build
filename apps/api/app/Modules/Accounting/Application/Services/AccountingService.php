@@ -439,6 +439,6 @@ final class AccountingService implements AccountingServiceInterface
     {
         $documentId = str_replace('-', '', $document->id);
 
-        return $prefix.'-'.$document->document_date->format('YmdHis').'-'.substr($documentId, -12);
+        return $prefix.'-'.$document->document_date->format('YmdHis').'-'.$documentId;
     }
 }

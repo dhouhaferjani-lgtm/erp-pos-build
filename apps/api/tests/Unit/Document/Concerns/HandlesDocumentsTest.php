@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -440,7 +441,7 @@ class HandlesDocumentsTest extends TestCase
         // Create existing vehicle context
         DocumentVehicleContext::create([
             'document_id' => $document->id,
-            'vehicle_id' => 'existing-vehicle-id',
+            'vehicle_id' => Str::uuid()->toString(),
             'vehicle_snapshot' => ['brand' => 'Honda', 'model' => 'Civic'],
         ]);
 
@@ -468,7 +469,7 @@ class HandlesDocumentsTest extends TestCase
         // Create existing vehicle context
         DocumentVehicleContext::create([
             'document_id' => $document->id,
-            'vehicle_id' => 'existing-vehicle-id',
+            'vehicle_id' => Str::uuid()->toString(),
             'vehicle_snapshot' => ['brand' => 'Honda', 'model' => 'Civic'],
         ]);
 

@@ -50,6 +50,7 @@ final readonly class AccountChargePayload
      * @param  array<string, mixed>  $staleness
      * @param  array<string, mixed>  $totals
      * @param  list<array<string, mixed>>  $vatBreakdown
+     * @param  array<string, mixed>|null  $sourcePayload
      */
     public function __construct(
         public string $accountChargeUuid,
@@ -80,6 +81,7 @@ final readonly class AccountChargePayload
         public string $transactionDiscountAmount,
         public ?string $transactionDiscountReason,
         public array $vatBreakdown,
+        private ?array $sourcePayload = null,
     ) {}
 
     /**
@@ -138,6 +140,7 @@ final readonly class AccountChargePayload
             transactionDiscountReason: FiscalPayloadArrayGuards::optionalString($data, 'transaction_discount_reason'),
             // @phpstan-ignore-next-line argument.type
             vatBreakdown: $vatBreakdown,
+            sourcePayload: $data,
         );
     }
 
@@ -146,6 +149,10 @@ final readonly class AccountChargePayload
      */
     public function toArray(): array
     {
+        if ($this->sourcePayload !== null) {
+            return $this->sourcePayload;
+        }
+
         return [
             'account_charge_uuid' => $this->accountChargeUuid,
             'business_date' => $this->businessDate,

@@ -125,6 +125,8 @@ class DocumentFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'status' => DocumentStatus::Posted,
             'fiscal_status' => FiscalStatus::Sealed,
+            'fiscal_hash' => hash('sha256', (string) Str::uuid()),
+            'chain_sequence' => $this->faker->unique()->numberBetween(1, 999999),
             'confirmed_at' => now(),
         ]);
     }

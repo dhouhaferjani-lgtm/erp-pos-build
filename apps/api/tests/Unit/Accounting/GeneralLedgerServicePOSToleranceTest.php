@@ -12,6 +12,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -80,10 +81,11 @@ final class GeneralLedgerServicePOSToleranceTest extends TestCase
     {
         /** @var GeneralLedgerService $service */
         $service = $this->app->make(GeneralLedgerService::class);
+        $receiptId = Str::uuid()->toString();
 
         $entry = $service->createPOSPaymentToleranceEntry(
             companyId: $this->company->id,
-            receiptId: 'rcpt-uuid-123',
+            receiptId: $receiptId,
             amount: '0.020',
             date: new \DateTimeImmutable('2026-04-25T10:00:00Z'),
         );
@@ -92,7 +94,7 @@ final class GeneralLedgerServicePOSToleranceTest extends TestCase
         $this->assertSame($this->company->id, $entry->company_id);
         $this->assertSame($this->tenant->id, $entry->tenant_id);
         $this->assertSame('pos_payment_tolerance', $entry->source_type);
-        $this->assertSame('rcpt-uuid-123', $entry->source_id);
+        $this->assertSame($receiptId, $entry->source_id);
         $this->assertSame(JournalEntryStatus::Draft, $entry->status);
         $this->assertCount(2, $entry->lines);
 
@@ -122,7 +124,7 @@ final class GeneralLedgerServicePOSToleranceTest extends TestCase
 
         $entry = $service->createPOSPaymentToleranceEntry(
             companyId: $this->company->id,
-            receiptId: 'rcpt-uuid-456',
+            receiptId: Str::uuid()->toString(),
             amount: '0.300',
             date: new \DateTimeImmutable('2026-04-25T11:00:00Z'),
         );

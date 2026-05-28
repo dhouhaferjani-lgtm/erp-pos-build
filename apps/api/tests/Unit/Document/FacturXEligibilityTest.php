@@ -75,6 +75,8 @@ final class FacturXEligibilityTest extends TestCase
         $document = $this->createDocument([
             'status' => DocumentStatus::Posted,
             'fiscal_status' => FiscalStatus::Sealed,
+            'fiscal_hash' => str_repeat('a', 64),
+            'chain_sequence' => 1,
         ]);
 
         $this->assertTrue($this->service->isEligible($document));
