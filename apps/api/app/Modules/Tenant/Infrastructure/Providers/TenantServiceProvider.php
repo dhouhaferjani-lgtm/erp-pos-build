@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Infrastructure\Providers;
 
+use App\Modules\Tenant\Application\Commands\BackupTenantCommand;
 use App\Modules\Tenant\Application\Commands\CreateTenantCommand;
 use App\Modules\Tenant\Application\Commands\DeprovisionTenantCommand;
 use App\Modules\Tenant\Application\Commands\ReconcileIdentitiesCommand;
@@ -30,6 +31,7 @@ class TenantServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                BackupTenantCommand::class,
                 CreateTenantCommand::class,
                 DeprovisionTenantCommand::class,
                 ReconcileIdentitiesCommand::class,
