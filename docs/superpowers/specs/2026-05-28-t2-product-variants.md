@@ -2,8 +2,8 @@
 
 **Track:** T2 (productization sprint, Wave 1 server-side + Wave 2 POS deltas)
 **Date:** 2026-05-28
-**Version:** v2 (Opus self-adversarial r1 findings applied — 4 P1 + 3 P2 + 1 P3; see `reviews/2026-05-28-t2-variants-opus-r1.md`).
-**Version history:** v1 (2026-05-28 initial) → v2 (2026-05-28 same-day revision after Opus self-review). Changes: dual-dispatch event strategy (P1-1); soft-delete-aware partial uniques (P1-3); recipe cost is advisory (Option C, P1-4); recipe pre-existing mixed-mode handled by extended `StockLevelMigrationService` (P2-1); variant inherits product-grain coupon (P2-3); `sku` widened to varchar(100) (P3-1).
+**Version:** v3 (Codex r1 findings applied — 8 P1 + 8 P2 + 3 P3; see `reviews/2026-05-28-t2-variants-codex-r1.md`).
+**Version history:** v1 → v2 (Opus self-review r1+r2, NEEDS-REVISION → APPROVE-WITH-MINOR-EDITS) → v3 (Codex r1 REJECT, fixed in this revision). v3 changes: correct constraint names for `product_batches` and `price_list_items` (P1-1, P1-2); PricingService signature aligned with real method (P1-3); channel_product_mappings unique replaced with partial-unique pair (P1-4); atomic FEFO consumption primitive defined (P1-5, P1-6); dual-dispatch producer enumeration corrected to cover all 6 dispatch sites (P1-7); Wave 1 vs Wave 2 acceptance split (P1-8); Accounting reports added to cross-cutting map (P2-1); Loyalty correction (P2-3 — product_ids used, not category-only); T11 coordination clarified (P2-5); online-DDL strategy explicit (P2-6); module-boundary fixed via Shared/Contracts (P2-7); SalesOrderConfirmedV2 required, not conditional (P2-8); daily job name corrected (P3-1); V2/V3 naming consistency (P3-2); automotive zero-variant UI assertion (P3-3).
 **Supersedes:** `2026-05-24-t2-variants.md` (v2 post Codex r1) — widens scope to cover recipe ingredient resolution, B2B + ecommerce surfaces, and the post-T6 migration topology.
 **Relationship to prior work:** the 2026-05-24 v2 spec is the schema-design baseline. Its `ProductAttribute / ProductAttributeValue / ProductVariant / ProductVariantAttributeValue` shape and partial-index strategy are carried forward verbatim and re-verified against current `dev`. The owner's 2026-05-28 briefing adds three non-negotiable requirements (recipes built from variants with earliest-expiry inheritance; ecommerce surfacing; B2B surfacing) that the v2 spec marked out-of-scope or only gestured at. This spec closes those gaps and is the artifact the Phase-2 Codex implementation session should execute against.
 **Workflow recommendation:** Opus owns schema design + recipe-expiry algorithm + partial-index correctness (rigorous, low headcount). Codex owns the mechanical service-layer ripple (touches ~30 files; high headcount) and the admin matrix UI. POS Wave 2 deltas log to the coordination log and are gated by fiscal Phase-1 sign-off.
@@ -222,9 +222,9 @@ CREATE UNIQUE INDEX stock_levels_with_variant
 ```
 **Note:** `company_id` is deliberately not in the unique key shape — see §3 path 7 explanation. Tightening to include `company_id` (when it becomes non-nullable) is a follow-up migration.
 
-**`product_batches`** (existing: `UNIQUE (company_id, product_id, batch_number)`; `company_id` is NOT NULL on this table per migration line 19, so safe to include):
+**`product_batches`** (existing constraint name **VERIFIED** at `apps/api/database/migrations/tenant/2026_01_05_150000_create_product_batches_table.php:47`: `unique_batch_per_product` covering `(company_id, product_id, batch_number)`; `company_id` is NOT NULL on this table per migration line 19, so safe to include — P1-1 fix):
 ```sql
-DROP INDEX product_batches_company_id_product_id_batch_number_unique;
+ALTER TABLE product_batches DROP CONSTRAINT unique_batch_per_product;
 CREATE UNIQUE INDEX product_batches_non_variant
   ON product_batches (company_id, product_id, batch_number)
   WHERE variant_id IS NULL;
@@ -234,9 +234,9 @@ CREATE UNIQUE INDEX product_batches_with_variant
 ```
 Removes the TODO comment at `2026_01_05_150000:23`.
 
-**`price_list_items`** (existing: `UNIQUE (price_list_id, product_id, min_quantity)`):
+**`price_list_items`** (existing constraint name **VERIFIED** at `apps/api/database/migrations/tenant/2025_12_01_201028_create_price_list_items_table.php:23`: `price_list_product_qty_unique` covering `(price_list_id, product_id, min_quantity)` — P1-2 fix):
 ```sql
-DROP INDEX price_list_items_price_list_id_product_id_min_quantity_unique;
+ALTER TABLE price_list_items DROP CONSTRAINT price_list_product_qty_unique;
 CREATE UNIQUE INDEX price_list_items_non_variant
   ON price_list_items (price_list_id, product_id, min_quantity)
   WHERE variant_id IS NULL;
@@ -245,13 +245,59 @@ CREATE UNIQUE INDEX price_list_items_with_variant
   WHERE variant_id IS NOT NULL;
 ```
 
-**`stock_reservations`** — if a unique constraint exists on `(product_id, source_type, source_id)` (verify in migration), apply the same pattern. If none exists, only add `variant_id` column + index.
+**`channel_product_mappings`** (P1-4 fix). Existing constraint at `apps/api/database/migrations/tenant/2026_05_24_120002_create_channel_product_mappings_table.php:27` is a normal unique `(channel_id, product_id, variant_id)` named `channel_product_variant_unique`. **PostgreSQL treats NULL as distinct in unique indexes,** so the existing constraint does NOT prevent two product-level (`variant_id=NULL`) mappings to the same channel + product. T2 replaces it with the standard partial-unique pair:
+```sql
+ALTER TABLE channel_product_mappings DROP CONSTRAINT channel_product_variant_unique;
+CREATE UNIQUE INDEX channel_product_mappings_non_variant
+  ON channel_product_mappings (channel_id, product_id)
+  WHERE variant_id IS NULL;
+CREATE UNIQUE INDEX channel_product_mappings_with_variant
+  ON channel_product_mappings (channel_id, product_id, variant_id)
+  WHERE variant_id IS NOT NULL;
+```
+This was missed in v2's §5.8 — the channel layer is NOT actually pre-positioned correctly for variant-only fan-out today; T2 must fix it as part of the migration sweep.
 
-**Acceptance check:** dual-row insertion test — insert `(tenant, product, location, variant=NULL)` and `(tenant, product, location, variant=X)` — both succeed; duplicate of either fails. Tested per acceptance criterion in §10.
+**`stock_reservations`** — verified: existing constraint on the source-FK side, no `(product_id, source_type, source_id)` unique. Only add `variant_id` column + index. No constraint surgery.
 
-### 4.5 Migration ordering and online-DDL safety
+**`stock_levels`** unique constraint name (verified): the unique is created via `$table->unique(['tenant_id', 'product_id', 'location_id'])` at `apps/api/database/migrations/tenant/2025_11_30_110000_create_inventory_tables.php` with Laravel's auto-generated name `stock_levels_tenant_id_product_id_location_id_unique`. Verified by inspecting `pg_indexes` in a fresh tenant DB; if the implementer finds a different name in their environment, use `\d stock_levels` first to confirm.
 
-All `ALTER TABLE` operations are nullable-add or constraint-replace; PostgreSQL handles these with minimal locking on tables of moderate size (our largest tenant `stock_movements` is ~5M rows; well within an acceptable maintenance-window).
+**Acceptance check:** dual-row insertion test per table — insert `(tenant, product, location, variant=NULL)` and `(tenant, product, location, variant=X)` — both succeed; duplicate of either fails. Same for `product_batches`, `price_list_items`, `channel_product_mappings`. Tested per acceptance criterion in §10.
+
+### 4.5 Migration ordering and online-DDL safety (P2-6 corrected — was too optimistic)
+
+`ALTER TABLE ... ADD COLUMN <nullable>` is fast in PostgreSQL (since 11) — metadata-only, no table rewrite. **Adding the FK constraint, however, validates all existing rows under an `ACCESS EXCLUSIVE` lock** by default. On a 5M-row `stock_movements` this can stall writes for minutes.
+
+**T2 mitigation:**
+
+1. **Add `variant_id` column** first (nullable, no FK) — fast, near-instant lock.
+2. **Add FK as `NOT VALID`** in a separate statement — does not validate existing rows, takes a brief lock.
+3. **Run `VALIDATE CONSTRAINT` in a separate maintenance migration** — takes a `SHARE UPDATE EXCLUSIVE` lock (does not block writes; concurrent queries continue). This can be scheduled off-peak.
+
+```php
+// Step 1: column (in T2 migration)
+Schema::table('stock_movements', fn ($t) => $t->uuid('variant_id')->nullable()->after('product_id'));
+
+// Step 2: FK NOT VALID (in T2 migration, same migration file)
+if (DB::connection()->getDriverName() === 'pgsql') {
+    DB::statement('ALTER TABLE stock_movements
+        ADD CONSTRAINT stock_movements_variant_id_foreign
+        FOREIGN KEY (variant_id) REFERENCES product_variants (id) NOT VALID');
+}
+
+// Step 3: VALIDATE (in a SEPARATE follow-up migration, e.g. 2026_06_15_ name to run later)
+DB::statement('ALTER TABLE stock_movements VALIDATE CONSTRAINT stock_movements_variant_id_foreign');
+```
+
+**For partial unique replacement** (`stock_levels`, `product_batches`, `price_list_items`, `channel_product_mappings`):
+- `CREATE UNIQUE INDEX ... CONCURRENTLY` first (does not block writes).
+- Then `DROP CONSTRAINT` for the old unique (very brief lock).
+- Then `DROP INDEX ... CONCURRENTLY` for any orphan index.
+
+**Important:** `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. Laravel `Schema::table` wraps the closure in a transaction by default; the T2 migrations must use `DB::statement` directly OR mark migrations with `public $withinTransaction = false` (Laravel 12 supports this). Each partial-index migration uses the `withinTransaction = false` approach.
+
+**Original size estimate** — `stock_movements` ~5M, all other tables substantially smaller. The split-migration approach plus `CONCURRENTLY` indexes keeps the operational impact within a normal deploy window.
+
+(Continuing the original migration ordering 01–15:)
 
 Ordering matters across the migration sequence (because the new FKs reference `product_variants.id`):
 
@@ -309,21 +355,49 @@ T2 work:
 - Document printing (PDF + email + receipt) renders parent name + variant `name_suffix` when present. The translation key for this is `document.line.variant_label` in i18n.
 - `product_code` snapshot column (`document_lines.product_code`, added 2025-12-22) gains a sibling `variant_code` snapshot column for audit fidelity.
 
-### 5.3 Pricing module — SURFACE (B2B)
+### 5.3 Pricing module — SURFACE (B2B) — P1-3 signature corrected
 
-Reference sites: `Pricing/Domain/PriceListItem.php`, `PartnerPriceList.php`, `Pricing/Domain/Services/PricingService.php` (`::getPrice($priceListId, $productId, $quantity)`).
+Reference sites: `Pricing/Domain/PriceListItem.php`, `PartnerPriceList.php`, `Pricing/Domain/Services/PricingService.php`.
 
-T2 work (cross-references §9.2):
+**Real `PricingService::getPrice` signature (verified at `apps/api/app/Modules/Pricing/Domain/Services/PricingService.php:32`):**
+```php
+public function getPrice(
+    string $productId,
+    ?string $partnerId = null,
+    string $quantity = '1.00',
+    string $currency = 'USD',
+    ?\DateTimeInterface $date = null,
+): array; // returns {price: string, source: string, price_list_id: string|null}
+```
+
+**T2's variant-aware extension (trailing optional parameter):**
+```php
+public function getPrice(
+    string $productId,
+    ?string $partnerId = null,
+    string $quantity = '1.00',
+    string $currency = 'USD',
+    ?\DateTimeInterface $date = null,
+    ?string $variantId = null,  // NEW (T2)
+): array; // unchanged shape; source enum extends to include 'variant_override' and 'variant_price_list_item'
+```
+
+**Resolution order (variant-aware, with priority — supersedes the v2 ordering which placed `price_override` last):**
+
+1. **Variant `price_override`** (when `$variantId !== null` and the variant's `price_override IS NOT NULL`) — wins over price-list rows because it represents an explicit per-variant pricing decision. `source='variant_override'`.
+2. **Partner price-list variant-specific row** (when `$partnerId !== null`, partner has a `partner_price_lists` link, AND `price_list_items` has `(price_list_id, product_id, variant_id, min_quantity≤qty)`). `source='partner_price_list'`, with `'variant'` flavor.
+3. **Partner price-list variant-agnostic row** `(price_list_id, product_id, NULL, min_quantity≤qty)`. Existing behavior.
+4. **Default price-list variant-specific row** `(price_list_id, product_id, variant_id, min_quantity≤qty)`. `source='default_price_list'`, `'variant'` flavor.
+5. **Default price-list variant-agnostic row** `(price_list_id, product_id, NULL, min_quantity≤qty)`. Existing behavior.
+6. **Product `sale_price`** fallback. Existing behavior.
+
+T2 also updates the private helpers `getPartnerPrice`, `getDefaultPriceListPrice`, `getPriceFromList`, `getQuantityBreaks`, and the bulk-pricing endpoint `getBulkPrices` to accept and propagate `$variantId`. **T11 parity contract** (T11-impl-B's `PricingStrategyResolver`) calls `PricingService::getPrice` directly; when T2 lands, T11's resolver call MUST also pass `$variantId` (currently it does not — see P2-5 / §9.2 coordination note).
+
 - `price_list_items.variant_id` (nullable, §4.2).
-- `PricingService::getPrice` gains optional `?UUID $variantId = null`. Resolution order:
-  1. Variant-specific row `(price_list_id, product_id, variant_id, min_quantity)` matched.
-  2. Variant-agnostic row `(price_list_id, product_id, NULL, min_quantity)` matched.
-  3. Product `sale_price` fallback.
-  4. Variant `price_override` (when set, takes precedence over product fallback).
+- Partner price-list flow unchanged at the linking layer (`partner_price_lists` table); the linked `price_list_items` now optionally carry `variant_id`.
 - Resolution-order documentation lands in `apps/api/app/Modules/Pricing/README.md` (new doc — keeps the contract findable).
-- Partner price-list flow unchanged at the linking layer (`partner_price_lists` table); the linked `price_list_items` now optionally carry variant_id.
 
-This is **not** the same as the T11-impl-B `PricingStrategyResolver` (channel-override + partner-price-list + default-price-list + base-price resolution chain). T11 wraps PricingService; T2 makes PricingService variant-aware. The two compose cleanly.
+This is **not** the same as the T11-impl-B `PricingStrategyResolver` (channel-override + partner-price-list + default-price-list + base-price resolution chain). T11 wraps `PricingService`; T2 makes `PricingService` variant-aware. The two compose cleanly **once T11's parity call passes `variantId`**.
 
 ### 5.4 Batch module — STOCK-CRITICAL
 
@@ -379,11 +453,29 @@ T2 work — small (channel layer is pre-positioned; agent confirmed):
 
 ### 5.9 Loyalty / Coupon / Promotion / Compliance / Marketplace — OPTIONAL or OUT OF SCOPE
 
-- **Loyalty** (`loyalty_registry`) — earn-rate rules use category not product; no variant change needed. Out of T2 scope.
-- **Coupon** (`coupons.qualifying_product_ids` JSON) — stays product-grain in T2. Variant-grain coupons are a follow-up; cost ≈ 2 PD, defer.
+- **Loyalty (P2-3 correction):** rules use **product_ids** (via `EarningConditionsData`, `QualifyingItemsData`, `EarnPointsOnReceiptCompleted`, `RewardRedemptionService`, `StampCardService`, `LoyaltyPOSController` — verified by Codex r1). Earlier v2 text saying "category, not product" was wrong. **Locked semantics:** a loyalty rule scoped to `product_ids=[X]` applies to every variant of X (same pattern as the coupon decision in §6.7). The evaluator resolves variant-bearing cart lines by `variant.product_id` for match. No schema change needed; reuse the coupon-evaluator pattern.
+- **Coupon** (`coupons.qualifying_product_ids` JSON) — stays product-grain in T2. Variant-grain coupons are a follow-up.
 - **Promotion** (`Promotion/Domain/Services/PromotionEvaluationService`) — `CartItemContext.product_id` stays product-grain in T2 evaluations; variant-grain promotions defer.
 - **Compliance/Fraud** (`fraud_alerts.flagged_products`) — product-grain.
-- **Marketplace** (`marketplace_listings.source_product_id`) — product-grain; the variant fan-out to marketplace listings is a future sprint deliverable.
+- **Marketplace** (`marketplace_listings.source_product_id`) — product-grain; the variant fan-out to marketplace listings is a future sprint deliverable. **Stock listener policy (P2-2 acknowledged):** `ListingSyncService::getAvailableQuantity()` sums every `StockLevel` row for a product — when variants exist it would publish aggregated stock across all sizes/colours. Locked decision: for T2, marketplace listings of variant-bearing products show **aggregate stock** with a documented risk note (the variant fan-out follow-up sprint addresses it). Operators can disable listing of variant-bearing products until that sprint ships.
+
+### 5.10 Accounting reports — SURFACE (P2-1 fix)
+
+Codex r1 caught this omission. T2 must add Accounting to the cross-cutting map.
+
+**Affected reports:**
+- `apps/api/app/Modules/Accounting/Application/Services/Reports/SalesReportService.php:74-85` — `topSkus()` groups by `pos_receipt_lines.product_id` + `product_name` + product SKU. Variants would collapse into product rows (multiple variants summed) or appear as duplicate product rows.
+- `apps/api/app/Modules/Accounting/Application/Services/Reports/StockAlertReportService.php:27-49` — low-stock alerts query `stock_levels` by product+location. After variants, alerts would either roll up (hiding per-variant low-stock) or fragment (one alert per variant).
+
+**Locked policy for T2:**
+- `topSkus` and similar top-N reports: report at **variant grain when variant lines exist; product grain otherwise**. SKU column shows variant SKU (which by spec design is unique per-tenant including for product fallback row). Row label shows parent product name + variant `name_suffix` when applicable.
+- `StockAlertReportService`: scope alerts at **variant+location grain**. A product with two variants generates two alerts. Operator dashboard can collapse by product if desired (UI concern, not data-layer).
+
+**Schema:** no migration needed (reports read; T2's column additions to `pos_receipt_lines` and `stock_levels` are enough). The plan adds a Task to update these report services.
+
+### 5.11 Workshop / Automotive parts — OUT OF SCOPE for size/colour variants
+
+(Section renumber; content unchanged from v2's 5.10.)
 
 ### 5.10 Workshop / Automotive parts — OUT OF SCOPE for size/colour variants
 
@@ -398,6 +490,23 @@ All TypeScript DTOs are generated from PHP DTOs via `php artisan typescript:tran
 ---
 
 ## 6. Service contracts and domain events
+
+### 6.0 Module placement and cross-module access (P2-7 fix)
+
+The `ProductVariant` aggregate lives in `apps/api/app/Modules/Catalog/` (alongside existing `CompositeItemVariant`):
+- `Domain/Entities/` — `ProductAttribute`, `ProductAttributeValue`, `ProductVariant`, `ProductVariantAttributeValue`
+- `Application/Services/` — `ProductVariantService`, `AttributeService`, `ProductVariantMatrixGenerator`
+- `Infrastructure/Repositories/`
+- `Presentation/Controllers/`
+
+**Cross-module access (CLAUDE.md rule 6):** other modules (Inventory, Pricing, POS, Cart, Channel, Document) MUST NOT import `App\Modules\Catalog\Domain\Entities\ProductVariant` directly. T2 ships a shared contract:
+
+- `apps/api/app/Modules/Shared/Contracts/ProductVariantLookup.php` — interface with `findById(string $id): ?ProductVariantSummary`, `findByBarcode(string $barcode, string $companyId): ?ProductVariantSummary`, `findBySku(string $sku, string $companyId): ?ProductVariantSummary`, `listForProduct(string $productId, bool $onlyActive = true): Collection<ProductVariantSummary>`. Returns DTOs (`ProductVariantSummary`), not Eloquent models.
+- `apps/api/app/Modules/Shared/DTOs/ProductVariantSummary.php` — immutable DTO: `id`, `productId`, `tenantId`, `companyId`, `sku`, `variantCode`, `barcode`, `nameSuffix`, `isDefault`, `isActive`, `priceOverride`, `costOverride`.
+- `apps/api/app/Modules/Catalog/Infrastructure/Adapters/EloquentProductVariantLookup.php` — implements the contract; reads the Catalog Eloquent model.
+- Service-provider binding maps the interface to the implementation.
+
+Eloquent-level access stays inside Catalog. Inventory / Pricing / POS / Cart / Channel / Document depend on `ProductVariantLookup` via constructor injection. Schema FK references (`stock_levels.variant_id` → `product_variants.id`) are DB-level, not code-level cross-module — acceptable per CLAUDE.md rule 6.
 
 ### 6.1 New services (Catalog module — alongside existing CompositeItem*)
 
@@ -503,18 +612,41 @@ All repositories use the standard Eloquent infrastructure under `Catalog/Infrast
 - `DraftLineAddedV2` → spawn `DraftLineAddedV3` adding `variantId`, `variantName`, `variantSku`. V2 stays alive for replay AND continues to be dispatched.
 - `DraftLineModifiedV2` → `DraftLineModifiedV3` (V2 continues).
 - `DraftLineRemoved` (V1) → `DraftLineRemovedV2` adding `variantId` (V1 continues).
-- `SalesOrderConfirmed` — carries line items by reference; the snapshot in the audit payload references `variantId` from line state. **Implementation must read the current payload shape** at `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php` first. If lines are serialized into the payload, spawn `SalesOrderConfirmedV2` (dual-dispatch); if it merely references line IDs, no V bump needed (lines carry variant_id natively). Document the decision in the impl PR.
-- `StockMovementRecorded` — payload-shape change. Spawn `StockMovementRecordedV2` carrying `variantId`. **CRITICAL: dual-dispatch.** V1 continues to be dispatched alongside V2 throughout T2's lifetime. Subscribers stay on V1 unless explicitly migrated; new subscribers can subscribe to V2.
-- `ReservationCreated`, `ReservationExpired`, `ReservationReleased` — V2 spawns adding `variantId` (V1 continues — dual-dispatch).
+- `SalesOrderConfirmed` (P2-8 fix — REQUIRED, not conditional) → spawn `SalesOrderConfirmedV2` adding `variantId` to each line payload entry. **Verified at `apps/api/app/Modules/Document/Domain/Events/SalesOrderConfirmed.php:17-31`: the payload IS serialized** (`array<int, array{line_id, product_id, quantity, location_id}>`); the v2 entry shape becomes `array<int, array{line_id, product_id, variant_id, quantity, location_id}>`. V1 continues dispatching with old shape; subscribers stay safe.
+- `StockMovementRecorded` (P1-7 fix — six dispatch sites enumerated above) → spawn `StockMovementRecordedV2` carrying `variantId`. **CRITICAL: dual-dispatch.** V1 continues to be dispatched alongside V2 throughout T2's lifetime. Subscribers stay on V1 unless explicitly migrated; new subscribers can subscribe to V2.
+- `ReservationCreated`, `ReservationExpired`, `ReservationReleased` → V2 spawns adding `variantId` (V1 continues — dual-dispatch).
 
-**Dual-dispatch contract (P1-1 — listener safety):**
+**Naming consistency (P3-2 fix):** every event is consistently named with a `V<N>` suffix on the new class; § references like "V3 event" in earlier text are corrected — `StockMovementRecordedV2` is the canonical name for the variant-aware successor (the original is V1; T2 ships V2 only).
+
+**Dual-dispatch contract (P1-1 + P1-7 — listener safety + full producer enumeration):**
 
 Every existing subscriber of a V1 event MUST continue working unchanged after T2 lands. To guarantee that:
 
 1. The **producer** of a V'd event dispatches both V1 and V2 in sequence (V1 first, V2 second). The V1 payload is unchanged from today (it's an immutable contract). The V2 payload adds `variantId` (nullable for product-scoped writes).
-2. **Existing subscriber inventory (T2 must enumerate before merge):** at minimum, enumerate `StockMovementRecorded` subscribers via `grep -rln "StockMovementRecorded\\b" apps/api/app`. Current known subscribers: `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php` (subscribed in `apps/api/app/Modules/Channel/Providers/ChannelServiceProvider.php` via `Event::listen(StockMovementRecorded::class, DispatchStockChangeToChannels::class)`). Each enumerated subscriber MUST be explicitly listed in the impl PR description; no silent additions.
-3. **Migration plan for subscribers** (NOT in T2 scope, deferred): a follow-up PR migrates the `Channel` listener (and any others enumerated) from V1 to V2 subscription. Once all subscribers are V2-native, dual-dispatch can stop (the producer drops the V1 emit). That follow-up is out of T2 scope.
-4. **No silent payload truncation.** Dual-dispatch is two independent calls — they do not share state. Each event is constructed from its own data.
+
+2. **Full producer enumeration for `StockMovementRecorded` (P1-7 — Codex r1 found 6 producers; the original spec listed 1):**
+
+   | File | Line | Producer method |
+   |---|---|---|
+   | `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` | 80 | `receive()` |
+   | `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` | 169 | `issue()` |
+   | `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` | 277 | `transfer()` (outbound leg) |
+   | `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` | 292 | `transfer()` (inbound leg) |
+   | `apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php` | 453 | `adjust()` |
+   | `apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php` | 476 | WAC update path |
+
+   T2 MUST update every one of these six dispatch sites to emit both V1 and V2. Missing any single one means variant sales silently lose the `variantId` in events at that path.
+
+3. **Subscriber enumeration (T2 must enumerate before merge):**
+   - `StockMovementRecorded` subscribers via `grep -rln "StockMovementRecorded\\b" apps/api/app/Modules/*/Application/Listeners apps/api/app/Modules/*/Providers`.
+   - Known subscribers as of 2026-05-28 dev: `apps/api/app/Modules/Channel/Application/Listeners/DispatchStockChangeToChannels.php` (subscribed in `apps/api/app/Modules/Channel/Providers/ChannelServiceProvider.php` via `Event::listen(StockMovementRecorded::class, DispatchStockChangeToChannels::class)`).
+   - Impl PR description MUST list every subscriber found (no silent additions).
+
+4. **Migration plan for subscribers** (NOT in T2 scope, deferred): a follow-up PR migrates each enumerated listener from V1 to V2 subscription. Once all subscribers are V2-native, dual-dispatch can stop (each producer drops the V1 emit). That follow-up is out of T2 scope.
+
+5. **No silent payload truncation.** Dual-dispatch is two independent calls — they do not share state. Each event is constructed from its own data.
+
+6. **Same enumeration discipline for other V'd events:** `DraftLineAddedV2 → V3`, `DraftLineModifiedV2 → V3`, `DraftLineRemoved → V2`, `ReservationCreated/Expired/Released → V2`, `SalesOrderConfirmed → V2` (P2-8 below — REQUIRED, not conditional). Each producer + subscriber inventory in the impl PR.
 
 **Events deferred (justification):**
 - `ProductCreated`, `ProductUpdated`, `ProductCostPriceUpdated` — unchanged. Variants don't impact product-level events.
@@ -581,10 +713,17 @@ Goods receipt flow:
 3. New batch row carries `variant_id`; unique-index pair from §4.4 enforces that two batches with the same `batch_number` can coexist across variants.
 4. `inventory_batch_stock` row created; `inventory_batch_movements` audit row written; `StockMovementRecordedV2` event emitted (V2 carries `variantId`).
 
-### 7.2 FEFO selection at variant grain
+### 7.2 FEFO selection vs FEFO consumption — primitive split (P1-5, P1-6)
 
-`FEFOInventoryService::suggestBatchesForSale($productId, $locationId, $qty, ?UUID $variantId = null)` query (simplified):
+**Codex r1 found a real concurrency hole:** today's `FEFOInventoryService::suggestBatchesForSale` (verified at `apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php:27`) is a **read-only** suggestion API — it calls `->get()` without `lockForUpdate()`. The row-locking happens later in `BatchStockService::issueBatchStock()`, one batch at a time. Two cashiers can both receive identical suggestions; one will later fail or partially allocate. Worse, `ReceiptCreationService::allocateBatches()` (line 1312-1321) logs FEFO shortfall and **still lets the sale proceed**, violating the T2 batch-tracked variant invariant.
 
+T2 introduces a **two-method API** to make consumption atomic:
+
+#### 7.2.1 `suggestBatchesForSale` — unchanged contract (read-only, advisory)
+
+The existing `suggestBatchesForSale(string $productId, string $locationId, float $quantity, bool $includeExpired = false): BatchSuggestionResultDTO` stays a read-only suggestion (used by UI "what batches will be drawn?" displays + capacity planning). T2 adds an optional trailing `?string $variantId = null` parameter to filter by variant tuple.
+
+Query (with variant predicate added):
 ```sql
 SELECT b.id, b.batch_number, b.expiry_date, ibs.available_quantity
 FROM product_batches b
@@ -606,9 +745,63 @@ LIMIT :qty;
 
 When the product has no variants (`variant_id=NULL`), the query returns product-scoped batches — backward compat. When the product has variants and `variantId` is passed, the query returns only variant-scoped batches. **Mixed-mode** queries (where some legacy batches are product-scoped and some are variant-scoped for the same product) are forbidden by the §6.5 invariant — `StockLevelMigrationService` re-scopes batches at variant introduction.
 
+#### 7.2.2 `consumeBatchesAtomically` — NEW (P1-5, P1-6 fix)
+
+```php
+public function consumeBatchesAtomically(
+    string $productId,
+    string $locationId,
+    string $quantity,
+    ?string $variantId = null,
+    bool $strictFulfillment = true,  // when true, all-or-nothing
+): BatchConsumptionResultDTO; // returns the batches actually consumed + remaining shortfall
+```
+
+**Semantic contract:**
+1. Opens a DB transaction.
+2. Runs the FEFO query with `SELECT ... FOR UPDATE SKIP LOCKED` (or `FOR UPDATE` if SKIP LOCKED unavailable — fallback) on `inventory_batch_stock`.
+3. Walks the locked rows in expiry order, drawing quantity from each until the requested quantity is satisfied.
+4. **If shortfall and `$strictFulfillment=true`**: rollback the transaction, raise `InsufficientBatchStockException` — the caller MUST handle this (POS sale aborts, document line is rejected).
+5. **If shortfall and `$strictFulfillment=false`**: commits the partial allocation, returns the shortfall in the DTO — for backward compat with one specific legacy code path that today logs shortfall.
+6. Decrements `inventory_batch_stock.quantity` for each consumed row.
+7. Inserts `inventory_batch_movements` audit rows for each consumed batch.
+8. Dispatches `BatchStockConsumed` event (V1, new).
+
+**Callers MUST migrate to `consumeBatchesAtomically`:**
+- `ReceiptCreationService::allocateBatches` — `$strictFulfillment=true`. The current "log shortfall and proceed" path is fixed.
+- `BatchStockService::issueBatchStock` (becomes a wrapper).
+- POS line decrement when batch-tracked.
+- Recipe ingredient consumption (§8.4 below).
+
+**Acceptance criterion §10.3:** two concurrent cashiers, same variant, both attempt to sell the only available batch — exactly one succeeds; the other gets `InsufficientBatchStockException` and the sale aborts cleanly with no `stock_movements` partial-write.
+
+### 7.3 Recipe sale atomicity (P1-6 fix)
+
+Recipe sale via `ReceiptCreationService::deductCompositeItemStock` (verified at `apps/api/app/Modules/POS/Application/Services/ReceiptCreationService.php:1139`) recurses into each recipe line and calls `decrementStock` per ingredient. T2 adds a **multi-ingredient atomic guard**:
+
+```php
+public function deductCompositeItemStock(
+    string $compositeItemId,
+    ?string $compositeVariantId,
+    string $locationId,
+    string $quantity,
+): void {
+    DB::transaction(function () use (/*...*/) {
+        // 1. Resolve the recipe + lines
+        // 2. For each line, compute required ingredient quantity (recipe_multiplier * yield * qty)
+        // 3. Order lines by (component_id, component_variant_id) — deterministic lock ordering
+        // 4. For each line in order, call FEFOInventoryService::consumeBatchesAtomically($strictFulfillment=true)
+        // 5. If any line raises InsufficientBatchStockException, the whole transaction rolls back
+        // 6. Only after all lines succeed, write the consumption rows + composite-level movement audit
+    });
+}
+```
+
+**Deterministic lock ordering** (sorted by component_id then component_variant_id) prevents two cashiers selling overlapping recipes from deadlocking each other. Acceptance criterion §10.5: two-cashier simultaneous recipe sale test — exactly one succeeds when batches don't suffice for both; the other aborts cleanly.
+
 ### 7.3 Expiry detection at variant grain
 
-The daily expiry-check job (`UpdateBatchExpiryStatusJob`, scheduled in Laravel Scheduler) iterates all active batches per tenant and updates `is_expired` when `expiry_date < today()`. Variant_id is incidental to the check; the job continues unchanged. **Performance note** — the job's loop currently scans `product_batches`; the new `variant_id` index `(tenant_id, product_id, variant_id, expiry_date)` keeps it fast.
+The daily expiry-check job (P3-1 corrected name: **`DailyExpiryCheck`** at `apps/api/app/Modules/BatchExpiry/Jobs/DailyExpiryCheck.php`, scheduled in Laravel Scheduler) iterates all active batches per tenant and updates `is_expired` when `expiry_date < today()`. Variant_id is incidental to the check; the job continues unchanged. **Performance note** — the job's loop currently scans `product_batches`; the new `variant_id` index `(tenant_id, product_id, variant_id, expiry_date)` keeps it fast.
 
 Expiry notifications (`certification_expiry_notifications`) attach to product today; T2 adds `variant_id` (nullable) to that table per §4.2 supplement (added to the impact map late — see verification check), but if not present in the existing schema this is a minor follow-on PR not blocking T2.
 
@@ -827,14 +1020,23 @@ The ecommerce surface has two layers in AutoERP: (a) the **catalog cart** (in-ap
 - [ ] FEFO at POS for `(Taille 39, Couleur Noir)` returns variant batches only.
 - [ ] Existing scenario with non-variant product mixed in same receipt — separate lines, separate stock decrements, no cross-bleed.
 
-### 10.4 POS Wave 2 deltas (logged to coordination log, gated by fiscal Phase-1)
+### 10.4 POS Wave 2 deltas — **DEFERRED (not Wave-1 acceptance gate; P1-8 fix)**
 
+The criteria below are **Wave-2 only**; they live in a sibling coordination log and gate the Wave-2 PR, NOT this Wave-1 PR. The Wave-1 PR ships the server-side `variant_id` columns + variant-aware service-layer; POS UI integration is a separate session.
+
+**Wave-1 PR DOES ship** (still in §10 acceptance):
+- Backend `decrementStock` writes `variant_id` to `pos_receipt_lines` and `stock_movements` (verified server-side; no Tauri UI changes).
+- `pos_receipt_lines.variant_id` schema additions + CHECK constraints.
+
+**Wave-2 PR (separate session, gated by fiscal Phase-1 sign-off):**
 - [ ] POS variant picker modal opens on tap of variant-bearing product; shows matrix with per-cell available stock.
 - [ ] Direct barcode scan of variant barcode adds correct variant to cart; falls back to product when only product barcode matches.
 - [ ] Cart line displays "Chaussure X — 39 / Noir".
 - [ ] Receipt print + email include variant suffix.
 - [ ] SQLite schema migration on POS device: `pos_receipt_lines + variant cache` columns added; offline mode works.
 - [ ] Variant-aware sync to backend: queued offline transactions write `variant_id` correctly.
+
+Each Wave-2 acceptance criterion is tracked in `apps/erp/docs/superpowers/coordination/2026-05-24-pos-coordination-log.md`.
 
 ### 10.5 Recipe + variant + expiry
 
