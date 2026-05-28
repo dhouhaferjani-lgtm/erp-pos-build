@@ -117,11 +117,11 @@ class BatchesVariantUniqueTest extends TestCase
             'product_id' => $this->product->id,
         ]);
 
-        $this->expectException(QueryException::class);
-
         DB::table('product_batches')->insert(array_merge($this->baseRow(), [
             'variant_id' => $variant->id,
         ]));
+
+        $this->expectException(QueryException::class);
 
         // Second insert — same (company_id, product_id, variant_id, batch_number)
         DB::table('product_batches')->insert(array_merge($this->baseRow(), [
