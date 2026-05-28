@@ -73,16 +73,23 @@ final class ProductVariantService
                 );
             }
 
-            event(new ProductVariantCreated(
-                variantId: $variant->id,
-                tenantId: $variant->tenant_id,
-                companyId: $variant->company_id,
-                productId: $variant->product_id,
-                variantCode: $variant->variant_code,
-                sku: $variant->sku,
-                isDefault: $variant->is_default,
-                createdAt: now()->toIso8601String(),
-            ));
+            // Dispatch event only after the outermost transaction commits so that
+            // reactors never observe an event whose writes were subsequently rolled back.
+            // When called standalone, afterCommit fires at the end of this transaction.
+            // When called from generateMatrix's outer transaction (e.g. matrix generation),
+            // it fires when that outer transaction commits — correct nesting behaviour.
+            DB::afterCommit(function () use ($variant): void {
+                event(new ProductVariantCreated(
+                    variantId: $variant->id,
+                    tenantId: $variant->tenant_id,
+                    companyId: $variant->company_id,
+                    productId: $variant->product_id,
+                    variantCode: $variant->variant_code,
+                    sku: $variant->sku,
+                    isDefault: $variant->is_default,
+                    createdAt: now()->toIso8601String(),
+                ));
+            });
 
             return $variant;
         });

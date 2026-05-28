@@ -10,11 +10,14 @@ use App\Modules\Catalog\Application\Services\ProductVariantService;
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Catalog\Domain\Entities\ProductVariantAttributeValue;
 use App\Modules\Catalog\Domain\Events\ProductVariantCreated;
+use App\Modules\Company\Domain\Location;
 use Database\Factories\Catalog\ProductAttributeFactory;
 use Database\Factories\Catalog\ProductAttributeValueFactory;
 use Database\Factories\CompanyFactory;
+use Database\Factories\LocationFactory;
 use Database\Factories\ProductFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -242,5 +245,89 @@ class ProductVariantServiceTest extends TestCase
 
         $this->assertNotNull($found);
         $this->assertSame($variant->id, $found->id);
+    }
+
+    /**
+     * Wire-in integration test: creating the first default variant for a product
+     * must trigger StockLevelMigrationService and migrate the product's pre-existing
+     * product-level stock_levels rows to the new variant.
+     */
+    public function test_create_first_default_variant_migrates_existing_product_stock(): void
+    {
+        Event::fake([ProductVariantCreated::class]);
+
+        $tenantId = (string) Str::uuid();
+        $company = CompanyFactory::new()->create(['tenant_id' => $tenantId]);
+        $product = ProductFactory::new()->create([
+            'tenant_id' => $tenantId,
+            'company_id' => $company->id,
+        ]);
+
+        // Create a location belonging to the same company.
+        $location = LocationFactory::new()->create(['company_id' => $company->id]);
+
+        // Insert a product-level stock_levels row (variant_id NULL) representing
+        // pre-existing stock before variants were introduced.
+        DB::table('stock_levels')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'company_id' => $company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'variant_id' => null,
+            'quantity' => '10.00',
+            'reserved' => '0.00',
+        ]);
+
+        // Confirm the product-level row exists before the call.
+        $this->assertSame(1, DB::table('stock_levels')
+            ->where('product_id', $product->id)
+            ->whereNull('variant_id')
+            ->count());
+
+        $command = new CreateVariantCommand(
+            tenantId: $tenantId,
+            companyId: (string) $company->id,
+            productId: (string) $product->id,
+            variantCode: 'DEFAULT',
+            sku: 'SKU-WIREIN-001',
+            nameSuffix: 'Default',
+            isDefault: true,
+            attributeValues: [],
+        );
+
+        $variant = $this->service->createVariant($command);
+
+        // After the call there must be zero product-level (null variant) rows.
+        $this->assertSame(
+            0,
+            DB::table('stock_levels')
+                ->where('product_id', $product->id)
+                ->whereNull('variant_id')
+                ->count(),
+            'Product-level stock_levels row should have been migrated to the new variant.'
+        );
+
+        // The row must now point to the newly-created default variant.
+        $this->assertSame(
+            1,
+            DB::table('stock_levels')
+                ->where('product_id', $product->id)
+                ->where('variant_id', $variant->id)
+                ->count(),
+            'Migrated stock_levels row must reference the new default variant.'
+        );
+
+        // Quantity must be preserved.
+        $row = DB::table('stock_levels')
+            ->where('product_id', $product->id)
+            ->where('variant_id', $variant->id)
+            ->first();
+        $this->assertNotNull($row);
+        $this->assertEquals('10.00', $row->quantity);
+
+        // ProductVariantCreated event must still be dispatched.
+        Event::assertDispatched(ProductVariantCreated::class, fn (ProductVariantCreated $e): bool => $e->variantId === $variant->id && $e->isDefault === true
+        );
     }
 }

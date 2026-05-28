@@ -83,12 +83,16 @@ final class StockLevelMigrationService
                 ->where('component_id', $productId)
                 ->whereNull('component_variant_id')
                 ->update(['component_variant_id' => $defaultVariantId, 'updated_at' => now()]);
-        });
 
-        event(new StockLevelsMigratedToDefaultVariant(
-            productId: $productId,
-            defaultVariantId: $defaultVariantId,
-        ));
+            // Dispatch event only after the outermost transaction commits so that
+            // reactors never observe an event whose writes were subsequently rolled back.
+            DB::afterCommit(function () use ($productId, $defaultVariantId): void {
+                event(new StockLevelsMigratedToDefaultVariant(
+                    productId: $productId,
+                    defaultVariantId: $defaultVariantId,
+                ));
+            });
+        });
     }
 
     /**

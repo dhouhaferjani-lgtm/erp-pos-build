@@ -444,7 +444,6 @@ class StockLevelMigrationServiceTest extends TestCase
     {
         // Insert 5001 stock_levels rows for this product across distinct locations
         // to exceed the 5000 threshold.  We use bulk inserts to keep this fast.
-        $locationIds = [];
         $batchSize = 250;
         $totalRows = 5001;
 
@@ -455,7 +454,6 @@ class StockLevelMigrationServiceTest extends TestCase
             $count = min($batchSize, $totalRows - $i);
             for ($j = 0; $j < $count; $j++) {
                 $locId = (string) Str::uuid();
-                $locationIds[] = $locId;
                 DB::table('locations')->insert([
                     'id' => $locId,
                     'company_id' => $this->company->id,
@@ -482,13 +480,33 @@ class StockLevelMigrationServiceTest extends TestCase
             ->where('product_id', $this->product->id)
             ->count());
 
-        $this->expectException(LargeMigrationRefusalException::class);
+        try {
+            $this->service->migrateToDefaultVariant(
+                productId: (string) $this->product->id,
+                defaultVariantId: $this->defaultVariant->id,
+                allowLargeMigration: false,
+            );
+            $this->fail('Expected LargeMigrationRefusalException was not thrown.');
+        } catch (LargeMigrationRefusalException) {
+            // Data must be completely untouched — all rows still have variant_id NULL.
+            $this->assertSame(
+                $totalRows,
+                DB::table('stock_levels')
+                    ->where('product_id', $this->product->id)
+                    ->whereNull('variant_id')
+                    ->count(),
+                'stock_levels rows must remain variant_id NULL after a refused migration.'
+            );
 
-        $this->service->migrateToDefaultVariant(
-            productId: (string) $this->product->id,
-            defaultVariantId: $this->defaultVariant->id,
-            allowLargeMigration: false,
-        );
+            $this->assertSame(
+                0,
+                DB::table('stock_levels')
+                    ->where('product_id', $this->product->id)
+                    ->whereNotNull('variant_id')
+                    ->count(),
+                'No stock_levels rows should have been migrated after a refused migration.'
+            );
+        }
     }
 
     public function test_large_migration_allowed_with_override(): void
