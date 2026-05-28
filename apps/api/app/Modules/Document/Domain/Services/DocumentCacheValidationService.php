@@ -53,13 +53,13 @@ final class DocumentCacheValidationService
             ORDER BY calc.difference DESC
         ", [$companyId, $tolerance]);
 
-        return collect($results)->map(static function (object $row): object {
+        foreach ($results as $row) {
             $row->cached_balance = CurrencyScale::bcformat($row->cached_balance, 2);
             $row->computed_balance = CurrencyScale::bcformat($row->computed_balance, 2);
             $row->difference = CurrencyScale::bcformat($row->difference, 2);
+        }
 
-            return $row;
-        });
+        return collect($results);
     }
 
     /**
