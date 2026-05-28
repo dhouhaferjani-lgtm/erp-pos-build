@@ -197,6 +197,16 @@ class T2MigrationRollbackTest extends TestCase
 
         // ── pre-T2 unique constraint on price_list_items should be gone ───────
         $this->assertConstraintAbsent('price_list_items', 'price_list_product_qty_unique', $prefix);
+
+        // ── T2 partial unique indexes on product_batches (migration 008) ──────
+        $this->assertIndexExists('product_batches', 'product_batches_non_variant', $prefix);
+        $this->assertIndexExists('product_batches', 'product_batches_with_variant', $prefix);
+
+        // ── pre-T2 unique constraint on product_batches should be gone ────────
+        $this->assertConstraintAbsent('product_batches', 'unique_batch_per_product', $prefix);
+
+        // ── pre-T2 unique constraint on stock_levels should be gone (migration 005) ─
+        $this->assertConstraintAbsent('stock_levels', 'stock_levels_tenant_id_product_id_location_id_unique', $prefix);
     }
 
     private function assertT2SchemaAbsent(): void
@@ -266,6 +276,13 @@ class T2MigrationRollbackTest extends TestCase
 
         // ── pre-T2 unique constraint on price_list_items must be back ──────────
         $this->assertConstraintExists('price_list_items', 'price_list_product_qty_unique');
+
+        // ── T2 partial unique indexes on product_batches must be gone ─────────
+        $this->assertIndexAbsent('product_batches', 'product_batches_non_variant');
+        $this->assertIndexAbsent('product_batches', 'product_batches_with_variant');
+
+        // ── pre-T2 unique constraint on product_batches must be restored ──────
+        $this->assertConstraintExists('product_batches', 'unique_batch_per_product');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
