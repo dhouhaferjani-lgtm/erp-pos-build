@@ -20,7 +20,6 @@ return new class extends Migration
 
             // Product reference
             $table->foreignUuid('product_id')->constrained()->cascadeOnDelete();
-            // $table->foreignId('product_variant_id')->nullable()->constrained()->nullOnDelete(); // TODO: Add when product_variants table exists
 
             // Batch identity
             $table->string('batch_number', 100);

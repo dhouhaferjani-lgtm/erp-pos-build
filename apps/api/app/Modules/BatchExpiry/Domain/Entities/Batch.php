@@ -33,7 +33,7 @@ class Batch extends Model
         'tenant_id',
         'company_id',
         'product_id',
-        'product_variant_id',
+        'variant_id',
         'batch_number',
         'manufacturing_date',
         'expiry_date',
